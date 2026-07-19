@@ -1,0 +1,51 @@
+# Deep long-reach 224G-class PAM4 (112 GBd) — the reach-ladder base config
+# from examples/18-21: a lossy analytic channel (~25 dB @ Nyquist) equalized
+# by the full ADC DSP stack (6+1+4 FFE + 8-tap DFE + MM-CDR). Pre-FEC BER sits
+# in the FEC-dependent regime — pair with the FEC / Sweeps-Reach tabs, and add
+# MLSD in scripts for the last dB.
+modulation: pam4
+symbol_rate: 112.0e9
+osr: 16
+channel:
+  kind: analytic
+  length_m: 0.20
+  rdc: 5.0
+  r_skin: 2.0e-3
+  l_per_m: 3.0e-7
+  c_per_m: 1.2e-10
+  loss_tangent: 0.012
+  n_freq: 8192
+tx:
+  fir_taps: [-0.06, 1.0, -0.12]
+  fir_n_pre: 1
+  swing: 1.0
+  rj_ui: 0.004
+rx:
+  arch: adc_dsp
+  ctle:
+    peak_db: 8.0
+  adc:
+    n_bits: 8
+    n_lanes: 16
+    enob: 6.5
+    fullscale: 0.6
+  ffe:
+    n_pre: 6
+    n_post: 4
+    adapt: lms
+    mu: 3.0e-5
+  dfe:
+    n_taps: 8
+    adapt: lms
+    mu: 3.0e-5
+  cdr:
+    kind: mueller_muller
+    kp_shift: 7
+    ki_shift: 15
+    pd_input: adc
+  noise_rms: 0.0015
+sim:
+  n_symbols: 200000
+  seed: 3
+  pattern: prbs13q
+  engine: time

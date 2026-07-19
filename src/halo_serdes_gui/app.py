@@ -28,7 +28,11 @@ PANELS = [single_run, eyes, dual_engine, channel, ctle, jitter,
           sweeps, fec, crosstalk, ami_com, fixed_point]
 _PANEL_BY_ID = {p.TAB_ID: p for p in PANELS}
 
-INITIAL = cb.config_to_values(cb.LinkConfig())
+# first-launch default: a runnable analytic preset (so Run works immediately
+# and the sweep/COM tabs are populated), falling back to bare defaults.
+_names = cb.preset_names()
+DEFAULT_PRESET = next((n for n in _names if "analytic" in n), _names[0])
+INITIAL = cb.config_to_values(cb.load_preset(DEFAULT_PRESET))
 
 
 def _sidebar():
@@ -42,7 +46,7 @@ def _sidebar():
 
         dbc.InputGroup([
             dbc.Select(id="preset", options=[{"label": n, "value": n}
-                       for n in cb.preset_names()], value=cb.preset_names()[0],
+                       for n in cb.preset_names()], value=DEFAULT_PRESET,
                        size="sm"),
             dbc.Button("Load", id="preset-load", size="sm", color="secondary"),
         ], className="mb-2"),

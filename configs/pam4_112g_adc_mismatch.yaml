@@ -1,0 +1,50 @@
+# 112 GBd PAM4 ADC with time-interleave MISMATCH enabled — makes the ADC tab's
+# per-lane SER spread and offset/skew mismatch bars come alive (they are flat
+# when mismatch is zero). Demonstrates the TI-ADC sensitivity discussed for the
+# 224G-class receiver (examples/05, 15).
+modulation: pam4
+symbol_rate: 112.0e9
+osr: 16
+channel:
+  kind: analytic
+  length_m: 0.12
+  rdc: 5.0
+  r_skin: 2.5e-3
+  l_per_m: 3.0e-7
+  c_per_m: 1.2e-10
+  loss_tangent: 0.015
+  n_freq: 8192
+tx:
+  fir_taps: [-0.05, 1.0, -0.1]
+  fir_n_pre: 1
+  swing: 1.0
+rx:
+  arch: adc_dsp
+  ctle:
+    peak_db: 5.0
+  adc:
+    n_bits: 8
+    n_lanes: 16
+    enob: 6.5
+    fullscale: 0.6
+    offset_sigma: 0.006      # per-lane offset mismatch [V]
+    gain_sigma: 0.02         # per-lane gain mismatch [ratio]
+    skew_sigma_ui: 0.015     # per-lane sampling skew [UI]
+  ffe:
+    n_pre: 4
+    n_post: 10
+    adapt: lms
+  dfe:
+    n_taps: 1
+    adapt: lms
+  cdr:
+    kind: mueller_muller
+    kp_shift: 7
+    ki_shift: 15
+    pd_input: adc
+  noise_rms: 0.0015
+sim:
+  n_symbols: 200000
+  seed: 5
+  pattern: prbs13q
+  engine: time

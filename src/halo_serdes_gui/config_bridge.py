@@ -334,8 +334,12 @@ def _preset_paths() -> dict[str, Path]:
     return {
         "NRZ 16G mixed-signal": CONFIGS_DIR / "nrz_16g_ms.yaml",
         "NRZ 32G static": CONFIGS_DIR / "nrz_32g.yaml",
+        "NRZ 28G analytic (COM/xtalk)": CONFIGS_DIR / "nrz_28g_analytic.yaml",
         "PAM4 32G mixed-signal": CONFIGS_DIR / "pam4_32g_ms.yaml",
-        "PAM4 224G ADC": CONFIGS_DIR / "pam4_224g_adc.yaml",
+        "PAM4 224G ADC (106 GBd)": CONFIGS_DIR / "pam4_224g_adc.yaml",
+        "PAM4 224G ADC (112 GBd stress)": CONFIGS_DIR / "pam4_224g_112g_adc.yaml",
+        "PAM4 deep-LR ADC (FFE+DFE8)": CONFIGS_DIR / "pam4_deep_lr_adc.yaml",
+        "PAM4 112G ADC (TI mismatch)": CONFIGS_DIR / "pam4_112g_adc_mismatch.yaml",
     }
 
 
