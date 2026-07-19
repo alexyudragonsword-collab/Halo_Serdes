@@ -114,7 +114,9 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     eq_cursors, eq_pre = equalized_cursors(cursors, w_ffe, n_pre_c, ffe_cfg.n_pre)
     main = eq_cursors[eq_pre]
     n_dfe = cfg.rx.dfe.n_taps
-    w_dfe = eq_cursors[eq_pre + 1: eq_pre + 1 + n_dfe].copy() if n_dfe > 0 else np.zeros(0)
+    # weights normalized to the main cursor: feedback multiplies slicer levels
+    w_dfe = (eq_cursors[eq_pre + 1: eq_pre + 1 + n_dfe] / main
+             if n_dfe > 0 else np.zeros(0))
 
     levels = _levels(cfg) * main  # slicer levels scaled by the equalized main cursor
     dec, y_eq = dfe_static(y_ffe.astype(np.float64), w_dfe.astype(np.float64), levels)
