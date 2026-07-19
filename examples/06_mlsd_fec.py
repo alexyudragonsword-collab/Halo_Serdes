@@ -81,16 +81,20 @@ for pre in (1e-3, 3e-4, 1e-4, 2.4e-4):
     kr4 = pre_to_post_fec_ber(pre, "kr4")
     print(f"  pre-FEC {pre:.1e}  ->  post KP4 {kp4:.2e}   post KR4 {kr4:.2e}")
 
-# real codec spot check on the measured error statistics
+# real codec spot checks: within vs beyond correction capability
 rs = rs_kp4()
 rng = np.random.default_rng(1)
 msg = rng.integers(0, 1024, size=514)
 cw = rs.encode(msg)
-p_sym = 1 - (1 - min(ber_m2.ber, 0.02)) ** 10
-flips = rng.random(544) < p_sym
-bad = cw.copy()
-bad[flips] ^= rng.integers(1, 1024, size=int(flips.sum())) if flips.any() else 0
-dec, n_corr = rs.decode(bad)
-ok = np.array_equal(dec, msg)
-print(f"  codec spot check: {int(flips.sum())} symbol errors injected -> "
-      f"{'corrected' if ok else 'FAILED'} (n_corrected={n_corr})")
+for n_errs in (15, 40):
+    bad = cw.copy()
+    pos = rng.choice(544, size=n_errs, replace=False)
+    bad[pos] ^= rng.integers(1, 1024, size=n_errs)
+    dec, n_corr = rs.decode(bad)
+    ok = np.array_equal(dec, msg)
+    print(f"  codec: {n_errs:2d} symbol errors -> "
+          f"{'corrected' if ok else 'uncorrectable (flagged)'}"
+          f"  [t=15{', as expected' if ok == (n_errs <= 15) else ' — UNEXPECTED'}]")
+p_sym = 1 - (1 - ber_m2.ber) ** 10
+print(f"  note: this demo link's pre-FEC BER ({ber_m2.ber:.1e}) is far above the "
+      f"KP4 waterfall (~2.4e-4) — expected symbol errors/frame = {544 * p_sym:.0f} >> t")
