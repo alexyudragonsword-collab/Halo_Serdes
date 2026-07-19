@@ -15,6 +15,9 @@ halo-serdes-gui                      # or: python -m halo_serdes_gui
 
 Then open <http://127.0.0.1:8050/>. Options: `--host`, `--port`, `--debug`.
 
+A screenshot-by-screenshot walkthrough of all 15 tabs is in
+[`GUI_tour.md`](GUI_tour.md).
+
 Bootstrap (Flatly) is vendored under `src/halo_serdes_gui/assets/`, so the app
 is fully self-contained — no network/CDN needed. `galois` (real RS codec) and
 `pyibisami` (vendor IBIS-AMI models) are optional; without them the FEC
