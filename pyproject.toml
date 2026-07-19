@@ -27,9 +27,12 @@ gui = [
     "dash-bootstrap-components>=1.5",
     "diskcache>=5.6",
 ]
+desktop = ["pywebview>=5.0"]           # native-window packaged build (no-JIT)
+package = ["pyinstaller>=6.0", "nuitka>=2.0"]
 
 [project.scripts]
 halo-serdes-gui = "halo_serdes_gui.app:main"
+halo-serdes-gui-desktop = "halo_serdes_gui.desktop:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

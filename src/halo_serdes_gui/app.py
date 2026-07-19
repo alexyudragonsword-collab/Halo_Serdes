@@ -82,8 +82,12 @@ def _main():
 
 def build_app() -> Dash:
     # Bootstrap (Flatly) is vendored in assets/00_bootstrap.min.css and loaded
-    # automatically, so the app is fully self-contained (no CDN needed).
-    app = Dash(__name__, title="Halo_Serdes",
+    # automatically, so the app is fully self-contained (no CDN needed). Pass an
+    # absolute assets path so a frozen build (PyInstaller/Nuitka) still finds it.
+    import os
+
+    assets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+    app = Dash(__name__, title="Halo_Serdes", assets_folder=assets,
                suppress_callback_exceptions=True)
     app.layout = dbc.Container([
         dcc.Store(id="run-store"),

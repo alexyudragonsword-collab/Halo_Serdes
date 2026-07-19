@@ -87,3 +87,14 @@ src/halo_serdes_gui/
 Intermediate-node eye reconstruction lives in
 `halo_serdes.analysis.reconstruct` so the example scripts and the GUI share
 one implementation.
+
+## Desktop app / Windows executable
+
+A native-window build (pywebview, no-JIT) can be packaged into a Windows `.exe`
+with PyInstaller or Nuitka — see [`../packaging/README.md`](../packaging/README.md).
+Locally:
+
+```bash
+pip install -e ".[gui,desktop]"
+halo-serdes-gui-desktop          # native window; --browser for a tab
+```

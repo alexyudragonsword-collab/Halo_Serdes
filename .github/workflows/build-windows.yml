@@ -1,0 +1,75 @@
+name: build-windows-desktop
+
+# Builds the no-JIT pywebview desktop app into a Windows executable with both
+# PyInstaller and Nuitka, smoke-tests each frozen bundle (--selfcheck), and
+# uploads them as artifacts. Trigger manually, or on changes to the GUI /
+# packaging files.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/halo_serdes_gui/**"
+      - "packaging/**"
+      - ".github/workflows/build-windows.yml"
+
+jobs:
+  pyinstaller:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install (gui + desktop, no numba)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[gui,desktop]"
+          pip install "pyinstaller>=6.0"
+      - name: Build
+        run: pyinstaller --noconfirm --clean packaging/halo_serdes_gui.spec
+      - name: Smoke-test frozen bundle
+        run: dist/Halo_Serdes_GUI/Halo_Serdes_GUI.exe --selfcheck
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Halo_Serdes_GUI-pyinstaller
+          path: dist/Halo_Serdes_GUI
+          retention-days: 14
+
+  nuitka:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    continue-on-error: true        # Nuitka compile of scipy is slow/heavy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install (gui + desktop + nuitka)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[gui,desktop]"
+          pip install "nuitka>=2.0" ordered-set zstandard
+      - name: Build (standalone)
+        run: |
+          python -m nuitka --standalone --assume-yes-for-downloads `
+            --include-package=dash --include-package=plotly `
+            --include-package=dash_bootstrap_components `
+            --include-package=halo_serdes --include-package=halo_serdes_gui `
+            --include-package=webview `
+            --include-package-data=dash --include-package-data=plotly `
+            --include-package-data=dash_bootstrap_components `
+            --include-package-data=skrf `
+            --include-data-dir=src/halo_serdes_gui/assets=halo_serdes_gui/assets `
+            --nofollow-import-to=numba --nofollow-import-to=llvmlite `
+            --nofollow-import-to=galois --nofollow-import-to=pytest `
+            --windows-console-mode=disable `
+            --output-dir=build_nuitka --output-filename=Halo_Serdes_GUI `
+            src/halo_serdes_gui/desktop.py
+      - name: Smoke-test frozen bundle
+        run: build_nuitka/desktop.dist/Halo_Serdes_GUI.exe --selfcheck
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Halo_Serdes_GUI-nuitka
+          path: build_nuitka/desktop.dist
+          retention-days: 14
