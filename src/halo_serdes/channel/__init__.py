@@ -1,3 +1,9 @@
+from .crosstalk import (
+    XtalkAggressor,
+    import_xtalk,
+    inject_crosstalk,
+    synthetic_aggressor,
+)
 from .model import ChannelModel
 from .response import freq2impulse, impulse2freq, pulse_from_impulse, trim_impulse, zero_pad_to_dt
 from .touchstone import (
@@ -14,4 +20,5 @@ __all__ = [
     "freq2impulse", "impulse2freq", "zero_pad_to_dt", "trim_impulse", "pulse_from_impulse",
     "import_diff_network", "interp_s2p", "se2mm", "sdd_2port",
     "terminate_gamma", "terminate_renormalize",
+    "XtalkAggressor", "synthetic_aggressor", "inject_crosstalk", "import_xtalk",
 ]

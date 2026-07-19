@@ -75,10 +75,10 @@ def _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami):
 def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False,
                   collect_jitter: bool = False,
-                  tx_ami=None, rx_ami=None) -> SimResult:
+                  tx_ami=None, rx_ami=None, xtalk=None) -> SimResult:
     if cfg.rx.arch == "adc_dsp":
         return _run_adc_link(cfg, channel, collect_eye, collect_jitter,
-                             tx_ami, rx_ami)
+                             tx_ami, rx_ami, xtalk)
     from ..config.schema import (
         MS_COMFORT_DATA_RATE,
         MS_HARD_MAX_BAUD,
@@ -139,6 +139,12 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     rx_y = fft_filter(tx_y, h)
     if rx_ami is not None and rx_ami.has_getwave:
         rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
+
+    # --- FEXT/NEXT crosstalk: sum independent aggressors at the victim node ---
+    if xtalk:
+        from ..channel.crosstalk import inject_crosstalk
+
+        rx_y = inject_crosstalk(rx_y, xtalk, osr, cfg.modulation)
 
     # --- optional per-stage jitter budget (Tx / channel / after-CTLE) ---
     jitter_budget = None
@@ -245,7 +251,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False,
                   collect_jitter: bool = False,
-                  tx_ami=None, rx_ami=None) -> SimResult:
+                  tx_ami=None, rx_ami=None, xtalk=None) -> SimResult:
     """ADC-based RX: light CTLE -> TI-ADC -> digital FFE/DFE -> MM-CDR.
 
     Primary metrics for this architecture are slicer-input SNR and SER
@@ -283,6 +289,11 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     rx_y = fft_filter(tx_y, h)
     if rx_ami is not None and rx_ami.has_getwave:
         rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
+
+    if xtalk:
+        from ..channel.crosstalk import inject_crosstalk
+
+        rx_y = inject_crosstalk(rx_y, xtalk, osr, cfg.modulation)
 
     jitter_budget = None
     if collect_jitter:
