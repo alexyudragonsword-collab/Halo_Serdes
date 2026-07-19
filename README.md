@@ -42,8 +42,17 @@ pytest tests/ -q                                    # 全部单元测试
 | 2 | 时域引擎 + mixed-signal 架构(自适应 DFE + BB-CDR + 抖动注入) | ✅ |
 | 3 | StatEye 统计引擎 + 双引擎交叉校验(MC 比值 1.03×) | ✅ |
 | 4 | ADC-based 架构(TI-ADC + 数字 DSP + MM-CDR),10⁶ 符号@106.25GBd 7s | ✅ |
-| 5 | MLSD + RS-FEC(KP4/KR4)+ 抖动分解 + 双架构对比实验 | ⬜ |
-| 6 | 定点双模式(bit-true)+ RTL 黄金模型出口 | ⬜ |
+| 5 | MLSD(Viterbi/滑动检测器)+ RS-FEC(KP4/KR4)+ 抖动分解 + 双架构对比 | ✅ |
+| 6 | 定点双模式(bit-true)+ RTL 黄金模型出口(lockstep 向量) | ✅ |
+
+全部 6 个阶段完成:87 项测试(闭式解/黄金数据/数值等价/双引擎交叉校验),
+8 个示例脚本(`examples/00`–`08`)。关键达标指标:
+- 统计引擎 vs 蒙特卡洛交叉校验比值 **1.03×**(要求 <2×);
+- 10⁶ 符号 @106.25 GBd/OSR32 时域全链路 **7 s**(要求 ≤2 min);
+- 双架构对比复现业界结论:mixed-signal 在 ~-15 dB Nyquist 损耗后崩溃,
+  ADC/DSP 架构到 -25 dB 仍保持 ~1e-5 SER;
+- 定点数据通路 ≥7 bit 权重与浮点 bit-true 一致,DragonPHY2 流片位宽(10b)
+  为默认 Q 格式;RTL lockstep 向量包由 `examples/08` 生成。
 
 信道数据:`data/channels/` 内含 TEC Whisper 42.8"(802.3ck COM 参考,DC-40 GHz)与
 IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
