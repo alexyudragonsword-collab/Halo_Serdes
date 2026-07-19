@@ -1,0 +1,44 @@
+# 224G-class PAM4 (106.25 GBd, IEEE 802.3dj anchor) over a COM-class channel,
+# ADC-based RX with the 802.3dj reference equalizer (15-tap FFE + 1-tap DFE).
+modulation: pam4
+symbol_rate: 106.25e9
+osr: 32
+# NOTE: public s4p data rarely reaches the 53.125 GHz Nyquist of 106.25 GBd;
+# use the analytic skin-effect model for full-band fidelity at 224G-class
+# rates (the Touchstone path zero-fills beyond the measured band).
+channel:
+  kind: analytic
+  length_m: 0.15
+  rdc: 5.0
+  r_skin: 2.5e-3          # ~-14 dB at 53 GHz with dielectric loss below
+  l_per_m: 3.0e-7
+  c_per_m: 1.2e-10
+  loss_tangent: 0.015
+  n_freq: 8192
+tx:
+  fir_taps: [-0.05, 1.0, -0.1]
+  fir_n_pre: 1
+  swing: 1.0
+rx:
+  arch: adc_dsp
+  ctle:
+    peak_db: 4.0
+  adc:
+    n_bits: 8
+    n_lanes: 16
+    enob: 6.5
+  ffe:
+    n_pre: 4
+    n_post: 10
+    adapt: lms
+  dfe:
+    n_taps: 1
+    adapt: lms
+  cdr:
+    kind: mueller_muller
+    kp_shift: 6
+    ki_shift: 14
+sim:
+  n_symbols: 1000000
+  pattern: prbs13q
+  engine: both

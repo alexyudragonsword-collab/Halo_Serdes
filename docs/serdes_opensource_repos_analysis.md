@@ -194,6 +194,7 @@ problem_set(配套 problem_set.pdf 的 7 次作业)覆盖:NRZ/PAM4 基础与抖�
   - `transmitter.py:186` `sdp.freq2impulse` 引用未定义名 `sdp`(调用 `tx_bandwidth` 会 NameError);
   - `transmitter.py:113` 及 `eye_diagram.py:82` `epsilon.clip(UI)` 结果未赋值,截断无效;
   - `signal.py:403` `if target == None` 对数组 target 会抛异常;`signal.py:452` 注释说"least loss"实际取 `np.max`;
+  - `four_port_to_diff.py:82-89`:混模 SDD 矩阵参考阻抗为 2·z0=100Ω(差分),但反射系数 ΓS/ΓL 却用单端 z0=50Ω 计算——"100Ω 端接 100Ω 差分信道"在该实现下并非无反射,物理上等效引入虚假失配(本仓库 Phase 0 移植时经数值对照确认,见 tests/test_touchstone.py);
   - `forcing_ffe` 先按 Σ|b| 归一化又按主抽头归一化(signal.py:414–418),前一步冗余;
 - **性能**:大量逐样本 Python for 循环(DFE、PRBS 生成、a2d、PRQS 编码),PRBS31 全周期(2³¹−1)在纯 Python 下不可行;reedsolo 纯 Python O(n²);无向量化/JIT;
 - **建模深度**:无统计眼/半解析 BER,BER 下限受蒙特卡洛长度限制;抖动模型只有高斯 RJ(无 DJ/SJ/DCD);无 CDR/时钟恢复模型(采样相位靠 `shift_signal` 启发式);无量化/AGC/ADC 非理想性;Receiver 的过采样 DFE 反馈窗口(半 UI 错位)只是可视化近似;

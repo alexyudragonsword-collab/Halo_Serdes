@@ -1,0 +1,28 @@
+# 32 Gb/s NRZ over the TEC Whisper 42.8" backplane (802.3ck COM reference,
+# DC-40 GHz: ~-32 dB at the 16 GHz Nyquist), mixed-signal RX.
+modulation: nrz
+symbol_rate: 32.0e9
+osr: 32
+channel:
+  kind: touchstone
+  file: data/channels/TEC_Whisper42p8in_Meg6_THRU_C8C9.s4p
+  zs_diff: 100.0
+  zl_diff: 100.0
+  n_freq: 4096
+tx:
+  fir_taps: [-0.1, 1.0]
+  fir_n_pre: 1
+  swing: 1.0
+rx:
+  arch: mixed_signal
+  ctle:
+    peak_db: 6.0
+  dfe:
+    n_taps: 2
+    adapt: sign_sign
+  cdr:
+    kind: bang_bang
+sim:
+  n_symbols: 200000
+  pattern: prbs31
+  engine: time
