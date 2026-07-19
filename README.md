@@ -59,15 +59,18 @@ IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
 
 ## 架构包络约定
 
-- **产品级 mixed-signal 包络**(`MS_PRODUCT_MAX_DATA_RATE`,按调制分,
-  同一 16 GBd 符号率上限):
-  - **NRZ ≤ 16 Gb/s**(默认锚点,`LinkConfig()` 即此;规范配置
-    `configs/nrz_16g_ms.yaml`;-18.7 dB 信道验证:DFE 后内眼 105 mV,BER 0);
-  - **PAM4 ≤ 32 Gb/s**(16 GBd,双比特换 ~9.5 dB 电平代价;规范配置
-    `configs/pam4_32g_ms.yaml`;-7.9 dB 信道验证 BER 0,-18.7 dB 信道
-    约 5e-4 属 KR4-FEC 工况)。
-  接收机分工均为 CTLE + DFE(tap-1 unrolled)+ BB-CDR、无 RX FFE;
-  时域引擎对超包络的 mixed_signal 运行发 UserWarning(允许探索)。
-- **16 GBd 以上**:走 `rx.arch: adc_dsp`(TI-ADC + 数字 FFE/DFE/MLSD +
-  MM-CDR),或用 `run_static_link` 做纯链路预算评估(其 FFE 为链路总
-  线性均衡预算,非 RX 电路)。
+**产品级 mixed-signal 包络**(CTLE + DFE(tap-1 unrolled)+ BB-CDR、
+无 RX FFE),三层结构,由 Whisper 参考背板上的极限扫描标定
+(`examples/12`,闭眼损耗 NRZ ~-30 dB / PAM4 ~-20.5 dB,差值即
+PAM4 的 9.5 dB 电平代价):
+
+| 层级 | NRZ | PAM4 | 引擎行为 |
+|---|---|---|---|
+| 默认锚点 | 16 Gb/s(`LinkConfig()`,`nrz_16g_ms.yaml`) | 32 Gb/s(`pam4_32g_ms.yaml`) | 静默 |
+| 舒适区上限 | ≤ 24 Gb/s | ≤ 32 Gb/s | 静默(参考信道上眼高 ≥ ~25% 电平间距) |
+| 绝对极限 | ≤ 30 Gb/s | ≤ 36 Gb/s | **marginal 告警**(数 mV 眼,FEC 工况,逐信道验证) |
+| 硬顶 | 30 GBd 符号率(不分调制) | 同左 | **exceeds 告警**(未建模的电路墙:CTLE 增益带宽/判决器孔径/时钟路径) |
+
+超过绝对极限或硬顶 → `exceeds` 告警并建议 `rx.arch: adc_dsp`
+(TI-ADC + 数字 FFE/DFE/MLSD + MM-CDR);纯信道可行性评估用
+`run_static_link`(其 FFE 为链路总线性均衡预算,非 RX 电路)。

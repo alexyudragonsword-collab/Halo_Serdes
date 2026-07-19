@@ -36,20 +36,37 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False) -> SimResult:
     if cfg.rx.arch == "adc_dsp":
         return _run_adc_link(cfg, channel, collect_eye)
-    from ..config.schema import MS_PRODUCT_MAX_DATA_RATE
+    from ..config.schema import (
+        MS_COMFORT_DATA_RATE,
+        MS_HARD_MAX_BAUD,
+        MS_LIMIT_DATA_RATE,
+    )
 
-    limit = MS_PRODUCT_MAX_DATA_RATE.get(cfg.modulation, 16.0e9)
-    if cfg.data_rate > limit * (1 + 1e-9):
+    comfort = MS_COMFORT_DATA_RATE.get(cfg.modulation, 16.0e9)
+    limit = MS_LIMIT_DATA_RATE.get(cfg.modulation, 16.0e9)
+    tol = 1 + 1e-9
+    mod = cfg.modulation.upper()
+    if cfg.data_rate > limit * tol or cfg.symbol_rate > MS_HARD_MAX_BAUD * tol:
         import warnings
 
         warnings.warn(
-            f"mixed_signal arch at {cfg.data_rate / 1e9:.3g} Gb/s "
-            f"{cfg.modulation.upper()} exceeds the product envelope "
-            f"({limit / 1e9:.0f} Gb/s for {cfg.modulation.upper()}, i.e. "
-            "16 GBd): the CTLE+DFE partition (no RX FFE) is validated only "
-            "up to that point; use rx.arch='adc_dsp' for higher rates "
-            "(exploration runs are allowed but results are outside the "
-            "supported envelope)",
+            f"mixed_signal arch at {cfg.data_rate / 1e9:.3g} Gb/s {mod} "
+            f"exceeds the mixed-signal envelope (absolute limit "
+            f"{limit / 1e9:.0f} Gb/s {mod} / hard ceiling "
+            f"{MS_HARD_MAX_BAUD / 1e9:.0f} GBd): the eye closes on the "
+            "reference channel and/or unmodeled circuit walls apply — use "
+            "rx.arch='adc_dsp' (exploration runs allowed, results outside "
+            "the supported envelope)",
+            stacklevel=2)
+    elif cfg.data_rate > comfort * tol:
+        import warnings
+
+        warnings.warn(
+            f"mixed_signal arch at {cfg.data_rate / 1e9:.3g} Gb/s {mod} is "
+            f"in the marginal zone (comfort {comfort / 1e9:.0f} Gb/s, "
+            f"absolute limit {limit / 1e9:.0f} Gb/s {mod}): post-DFE eye "
+            "margin on the reference channel drops below ~25% of the level "
+            "spacing — expect FEC-dependent operation and verify per channel",
             stacklevel=2)
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr

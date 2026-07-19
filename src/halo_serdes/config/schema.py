@@ -15,16 +15,28 @@ from typing import Literal, Optional
 
 SCHEMA_VERSION = 1
 
-# Product-grade mixed-signal envelope: the CTLE + DFE + BB-CDR partition
-# (no RX FFE), per modulation in DATA-rate terms — both correspond to the
-# same 16 GBd symbol-rate ceiling; PAM4 doubles the data rate at the cost of
-# a ~9.5 dB level-spacing penalty (so it needs a milder channel or FEC):
-#   NRZ : 16 Gb/s (validated: -18.7 dB channel, 105 mV post-DFE eye, BER 0)
-#   PAM4: 32 Gb/s (validated: -7.9 dB channel, BER 0; marginal ~5e-4 on the
-#         -18.7 dB Whisper — KR4-FEC territory)
-# Above the envelope the time engine warns; ADC/DSP is the supported path.
-MS_PRODUCT_MAX_DATA_RATE: dict[str, float] = {"nrz": 16.0e9, "pam4": 32.0e9}
-MS_PRODUCT_MAX_BAUD = 16.0e9  # the common symbol-rate ceiling behind both
+# ---------------------------------------------------------------------------
+# Product mixed-signal envelope (CTLE + DFE + BB-CDR, no RX FFE) — three
+# tiers, calibrated by the limit sweep on the Whisper reference backplane
+# (examples/12; closure loss ~-30 dB NRZ / ~-20.5 dB PAM4, the 9.5 dB gap
+# being the PAM4 level penalty):
+#
+#   default anchor : 16 GBd (canonical validated configs, ample margin)
+#   comfort zone   : NRZ <= 24 Gb/s, PAM4 <= 32 Gb/s
+#                    (post-DFE eye >= ~25% of level spacing on Whisper)
+#   absolute limit : NRZ <= 30 Gb/s, PAM4 <= 36 Gb/s
+#                    (last-open points; a few-mV eye — expect FEC territory)
+#   hard ceiling   : 30 GBd symbol rate regardless of modulation — proxy for
+#                    the circuit walls this behavioral model does NOT capture
+#                    (CTLE gain-bandwidth, slicer aperture, clock path), which
+#                    are what stop real mixed-signal designs near ~30 GBd.
+#
+# comfort < rate <= limit: the time engine warns "marginal"; beyond the limit
+# or ceiling it warns "exceeds" — ADC/DSP is the supported path there.
+MS_DEFAULT_BAUD = 16.0e9
+MS_COMFORT_DATA_RATE: dict[str, float] = {"nrz": 24.0e9, "pam4": 32.0e9}
+MS_LIMIT_DATA_RATE: dict[str, float] = {"nrz": 30.0e9, "pam4": 36.0e9}
+MS_HARD_MAX_BAUD = 30.0e9
 
 
 @dataclass(frozen=True)
@@ -186,9 +198,9 @@ class NumericConfig:
 @dataclass(frozen=True)
 class LinkConfig:
     # defaults define the product mixed-signal anchor point: 16 GBd NRZ
-    # (the validated upper limit of the CTLE+DFE partition, MS_PRODUCT_MAX_BAUD)
+    # (the canonical validated configuration, well inside the comfort zone)
     modulation: Literal["nrz", "pam4"] = "nrz"
-    symbol_rate: float = MS_PRODUCT_MAX_BAUD   # [Baud]
+    symbol_rate: float = MS_DEFAULT_BAUD   # [Baud]
     osr: int = 32                       # oversampling ratio (samples per UI)
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     tx: TxConfig = field(default_factory=TxConfig)
