@@ -1,0 +1,38 @@
+# Canonical product mixed-signal PAM4 configuration: 32 Gb/s (16 GBd) —
+# the PAM4 side of the mixed-signal envelope (same 16 GBd symbol ceiling as
+# the NRZ default; PAM4 doubles the data rate at a ~9.5 dB level penalty).
+# Validated on a -7.9 dB @ 8 GHz analytic channel: BER 0 / 1.1e5, SNR 16.9 dB.
+# On harsher channels (e.g. Whisper -18.7 dB) expect ~5e-4 BER -> KR4 FEC.
+modulation: pam4
+symbol_rate: 16.0e9
+osr: 32
+channel:
+  kind: analytic
+  length_m: 0.2
+  rdc: 3.0
+  r_skin: 2.5e-3
+  loss_tangent: 0.015
+tx:
+  fir_taps: [1.0]
+  fir_n_pre: 0
+  swing: 1.0
+  rj_ui: 0.01
+rx:
+  arch: mixed_signal
+  ctle:
+    enable: true
+    peak_db: 6.0
+  dfe:
+    n_taps: 4
+    adapt: sign_sign
+    mu: 3.0e-4
+    tap1_mode: unrolled
+  cdr:
+    kind: bang_bang
+    kp_shift: 6
+    ki_shift: 13
+  noise_rms: 0.002
+sim:
+  n_symbols: 120000
+  pattern: prbs13q
+  engine: time

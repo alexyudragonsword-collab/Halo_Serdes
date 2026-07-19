@@ -62,6 +62,40 @@ def test_warns_above_envelope():
         run_time_link(cfg)
 
 
+def test_pam4_32gbps_ms_is_within_envelope():
+    """PAM4 relaxes the data-rate limit to 32 Gb/s (same 16 GBd ceiling)."""
+    cfg = LinkConfig(modulation="pam4", symbol_rate=16e9,
+                     channel=_analytic_channel(),
+                     rx=RxConfig.product_mixed_signal(),
+                     sim=SimConfig(n_symbols=8_000, pattern="prbs13q"))
+    assert cfg.data_rate == 32e9
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        run_time_link(cfg)
+    assert not [w for w in caught if "product envelope" in str(w.message)]
+
+
+def test_pam4_above_16gbd_warns():
+    cfg = LinkConfig(modulation="pam4", symbol_rate=28e9,  # 56 Gb/s
+                     channel=_analytic_channel(),
+                     rx=RxConfig.product_mixed_signal(),
+                     sim=SimConfig(n_symbols=5_000, pattern="prbs13q"))
+    with pytest.warns(UserWarning, match="exceeds the product envelope"):
+        run_time_link(cfg)
+
+
+def test_canonical_pam4_yaml_runs_clean():
+    import pathlib
+
+    root = pathlib.Path(__file__).parent.parent
+    cfg = load_config(root / "configs" / "pam4_32g_ms.yaml",
+                      overrides={"sim.n_symbols": 40_000})
+    assert cfg.data_rate == 32e9
+    res = run_time_link(cfg)
+    assert res.ber.n_errors == 0
+    assert res.slicer_snr_db > 14
+
+
 def test_no_warning_for_adc_above_16g():
     from halo_serdes.config.schema import AdcConfig, CdrConfig, DfeConfig, FfeConfig
 

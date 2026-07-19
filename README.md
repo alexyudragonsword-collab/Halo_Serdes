@@ -59,11 +59,15 @@ IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
 
 ## 架构包络约定
 
-- **产品级 mixed-signal 上限 = 16 GBd NRZ**(`MS_PRODUCT_MAX_BAUD`):
-  CTLE + DFE(tap-1 unrolled)+ BB-CDR、无 RX FFE 的分工,已在 -18.7 dB
-  信道上验证(DFE 后内眼 105 mV,BER 0)。`LinkConfig()` 默认即该锚点;
-  规范配置 `configs/nrz_16g_ms.yaml`;时域引擎对超限的 mixed_signal
-  运行发 UserWarning(允许探索,但结果在支持包络之外)。
+- **产品级 mixed-signal 包络**(`MS_PRODUCT_MAX_DATA_RATE`,按调制分,
+  同一 16 GBd 符号率上限):
+  - **NRZ ≤ 16 Gb/s**(默认锚点,`LinkConfig()` 即此;规范配置
+    `configs/nrz_16g_ms.yaml`;-18.7 dB 信道验证:DFE 后内眼 105 mV,BER 0);
+  - **PAM4 ≤ 32 Gb/s**(16 GBd,双比特换 ~9.5 dB 电平代价;规范配置
+    `configs/pam4_32g_ms.yaml`;-7.9 dB 信道验证 BER 0,-18.7 dB 信道
+    约 5e-4 属 KR4-FEC 工况)。
+  接收机分工均为 CTLE + DFE(tap-1 unrolled)+ BB-CDR、无 RX FFE;
+  时域引擎对超包络的 mixed_signal 运行发 UserWarning(允许探索)。
 - **16 GBd 以上**:走 `rx.arch: adc_dsp`(TI-ADC + 数字 FFE/DFE/MLSD +
   MM-CDR),或用 `run_static_link` 做纯链路预算评估(其 FFE 为链路总
   线性均衡预算,非 RX 电路)。

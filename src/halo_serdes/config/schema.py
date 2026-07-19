@@ -16,10 +16,15 @@ from typing import Literal, Optional
 SCHEMA_VERSION = 1
 
 # Product-grade mixed-signal envelope: the CTLE + DFE + BB-CDR partition
-# (no RX FFE) is validated up to 16 GBd NRZ in this framework (examples/10:
-# -18.7 dB channel, 105 mV post-DFE eye). Above this rate the time engine
-# warns and the ADC/DSP architecture is the supported path.
-MS_PRODUCT_MAX_BAUD = 16.0e9
+# (no RX FFE), per modulation in DATA-rate terms — both correspond to the
+# same 16 GBd symbol-rate ceiling; PAM4 doubles the data rate at the cost of
+# a ~9.5 dB level-spacing penalty (so it needs a milder channel or FEC):
+#   NRZ : 16 Gb/s (validated: -18.7 dB channel, 105 mV post-DFE eye, BER 0)
+#   PAM4: 32 Gb/s (validated: -7.9 dB channel, BER 0; marginal ~5e-4 on the
+#         -18.7 dB Whisper — KR4-FEC territory)
+# Above the envelope the time engine warns; ADC/DSP is the supported path.
+MS_PRODUCT_MAX_DATA_RATE: dict[str, float] = {"nrz": 16.0e9, "pam4": 32.0e9}
+MS_PRODUCT_MAX_BAUD = 16.0e9  # the common symbol-rate ceiling behind both
 
 
 @dataclass(frozen=True)
@@ -208,3 +213,8 @@ class LinkConfig:
     @property
     def bits_per_symbol(self) -> int:
         return 2 if self.modulation == "pam4" else 1
+
+    @property
+    def data_rate(self) -> float:
+        """Data rate [bit/s] = symbol_rate * bits_per_symbol."""
+        return self.symbol_rate * self.bits_per_symbol
