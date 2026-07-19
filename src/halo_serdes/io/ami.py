@@ -354,3 +354,33 @@ class NativeCom(ComAdapter):
             fom_jitter=float(sigma_j),
             detail={"q_target": q, "main_cursor": float(abs(eq[eq_pre])),
                     "ffe_taps": w, "target_der": self.target_der})
+
+
+class Com93a(ComAdapter):
+    """Faithful IEEE 802.3 COM (Clause 93A/178A) behind the same seam.
+
+    Unlike :class:`NativeCom` (a transparent RSS figure of merit), this
+    optimizes the equalizer over a grid by FOM, derives the DFE taps from the
+    cursors with a ``b_max`` bound, and reads the noise amplitude ``A_ni`` off
+    the *convolved* interference-plus-noise PDF at the target DER — the actual
+    802.3 method. The heavy lifting lives in
+    :func:`halo_serdes.analysis.com.compute_com`; this is a thin seam adapter
+    that returns the shared :class:`ComResult` shape (extra fields in
+    ``detail``).
+    """
+
+    def __init__(self, params=None):
+        self.params = params
+
+    def compute(self, channel, cfg, *, xtalk_pulses=None) -> ComResult:
+        from ..analysis.com import compute_com
+
+        r = compute_com(channel, cfg, xtalk_pulses=xtalk_pulses,
+                        params=self.params)
+        detail = dict(r.detail)
+        detail["fom_db"] = r.fom_db
+        detail["method"] = "802.3-93A/178A"
+        return ComResult(
+            com_db=r.com_db, a_signal=r.a_signal, a_noise=r.a_noise,
+            fom_isi=r.fom_isi, fom_xtalk=r.fom_xtalk, fom_noise=r.fom_noise,
+            fom_jitter=r.fom_jitter, detail=detail)

@@ -72,8 +72,12 @@
 - ✅ **IBIS-AMI 接口** —— **本轮补齐**:`io/ami.py` 的 `AmiModel`(Init/GetWave 双流)+
   `IbisAmiModel`(pyibisami 后端,惰性加载)+ `NativeFirAmi` 参考模型,已接入
   时域引擎 Tx/Rx 槽。
-- ✅ **COM(Channel Operating Margin)** —— **本轮补齐**:`io/ami.py` 的 `ComAdapter` +
-  `NativeCom`(基于均衡脉冲响应的行为级 COM,官方 802.3 工具经同一 `compute` 接口接入)。
+- ✅ **COM(Channel Operating Margin)** —— **本轮补齐 + 升级为标准 COM**:`io/ami.py` 的
+  `ComAdapter` 有两个实现:`NativeCom`(基于均衡脉冲响应的透明行为级 RSS 图,快、易读)与
+  `Com93a`(**忠实的 IEEE 802.3 Clause 93A/178A COM**,`analysis/com.py`:CTLE/DFE 网格按
+  FOM 优化均衡器、DFE 抽头由光标经 b_max 上界导出、A_ni 从**卷积后的干扰+噪声 PDF**在目标
+  DER 处读取——非高斯 RSS)。两者共用同一 `compute` 接口,官方 802.3 工具亦可经此接入;
+  示例 `26_com_802p3.py`。
 - ✅ **抖动分解接入管线** —— **本轮补齐**:`stage_jitter_budget`/`total_jitter` +
   时域引擎 `collect_jitter` 逐级预算(Tx/信道/CTLE 后)+ 示例 22。
 - ✅ **时域 FEXT/NEXT 串扰** —— **本轮补齐**:`channel/crosstalk.py` 的 `XtalkAggressor`,

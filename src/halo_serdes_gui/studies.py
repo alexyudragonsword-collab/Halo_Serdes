@@ -101,23 +101,26 @@ def crosstalk_study(rec) -> dict:
 
 def com_study(rec) -> dict:
     def compute():
-        from halo_serdes.io import NativeCom
+        from halo_serdes.io import Com93a, NativeCom
         cfg = rec.cfg
         if cfg.channel.kind != "analytic":
             return {"error": "COM sweep varies analytic channel length; "
                     "set channel.kind = analytic."}
-        com = NativeCom(n_dfe=max(cfg.rx.dfe.n_taps, 1),
+        rss = NativeCom(n_dfe=max(cfg.rx.dfe.n_taps, 1),
                         rx_ffe_taps=cfg.rx.ffe.n_pre + 1 + cfg.rx.ffe.n_post,
                         rx_ffe_pre=cfg.rx.ffe.n_pre)
+        com93a = Com93a()   # faithful 802.3 93A/178A (EQ grid + PDF A_ni)
         base = cfg.channel.length_m or 0.2
-        loss, comdb = [], []
+        loss, comdb, com93 = [], [], []
         for L in np.linspace(0.5 * base, 2.0 * base, 9):
             c = dataclasses.replace(cfg, channel=dataclasses.replace(
                 cfg.channel, length_m=float(L)))
             cm = ChannelModel.from_config(c)
             loss.append(-cm.loss_at(cfg.f_nyquist))
-            comdb.append(com.compute(cm, c).com_db)
-        return {"loss": np.array(loss), "com_db": np.array(comdb)}
+            comdb.append(rss.compute(cm, c).com_db)
+            com93.append(com93a.compute(cm, c).com_db)
+        return {"loss": np.array(loss), "com_db": np.array(comdb),
+                "com_93a": np.array(com93)}
     return _cached(("com", rec.id), compute)
 
 

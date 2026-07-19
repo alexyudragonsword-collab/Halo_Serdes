@@ -33,15 +33,23 @@ def render(rec: RunRecord):
     if "error" in c:
         body.append(dbc.Alert(c["error"], color="light", className="border"))
     else:
+        traces = [{"x": c["loss"], "y": c["com_93a"], "name": "802.3 COM (93A/178A)",
+                   "mode": "lines+markers", "color": theme.PRIMARY}]
+        if "com_db" in c:
+            traces.append({"x": c["loss"], "y": c["com_db"],
+                           "name": "behavioral RSS FoM", "mode": "lines+markers",
+                           "dash": "dot", "color": theme.MUTED})
         fig = figures.lines_fig(
-            [{"x": c["loss"], "y": c["com_db"], "name": "behavioral COM",
-              "mode": "lines+markers", "color": theme.PRIMARY}],
-            title="Behavioral COM vs channel loss",
+            traces, title="COM vs channel loss",
             xtitle="channel loss @ Nyquist [dB]", ytitle="COM [dB]", height=420,
             hlines=[{"y": 3.0, "text": "≈3 dB pass", "color": theme.GOOD}])
         body.append(common.graph(fig))
-    body.append(html.Div("COM here is a transparent behavioral figure of merit "
-                "(signal / RSS of ISI+crosstalk+noise+jitter) via the same "
-                "ComAdapter.compute seam the official 802.3 tool would plug "
-                "into.", style={"fontSize": "0.75rem", "color": "#5b6472"}))
+    body.append(html.Div("Solid = faithful IEEE 802.3 COM (Clause 93A/178A): "
+                "the equalizer is optimized over a CTLE/DFE grid by FOM, the DFE "
+                "taps are derived from the cursors with a b_max bound, and A_ni "
+                "is read off the convolved interference-plus-noise PDF at the "
+                "target DER — not a Gaussian RSS. Dotted = the transparent RSS "
+                "figure of merit (NativeCom) for reference. Both plug into the "
+                "same ComAdapter.compute seam.",
+                style={"fontSize": "0.75rem", "color": "#5b6472"}))
     return html.Div(body)

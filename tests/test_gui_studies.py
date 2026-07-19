@@ -31,8 +31,9 @@ def test_reach_and_com_need_analytic_channel():
     assert "loss" in r and r["loss"].size == 8
     c = studies.com_study(rec)
     assert "com_db" in c and np.all(np.diff(c["loss"]) > 0)
-    # COM falls as loss grows
+    # COM falls as loss grows (both the RSS FoM and the faithful 802.3 COM)
     assert c["com_db"][0] > c["com_db"][-1]
+    assert "com_93a" in c and c["com_93a"][0] > c["com_93a"][-1]
 
 
 def test_crosstalk_sweep_shape():
