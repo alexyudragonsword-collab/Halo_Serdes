@@ -1,0 +1,107 @@
+# 三参考仓库 vs Halo_Serdes 能力对比
+
+> 归档于 2026-07。对比对象:`serdespy`、`PyBERT`、`DragonPHY2` 三个开源参考库,
+> 与当前 `Halo_Serdes` 行为级仿真框架。用于回答:哪些已覆盖、哪些做得更好、
+> 哪些还没做到。
+
+---
+
+## 三库定位速览
+
+| 库 | 定位 | 核心价值 | 局限 |
+|---|---|---|---|
+| **serdespy** | 教学/研究用 Python SerDes 工具箱 | 混模转换、FFE 零迫解、LMS、KP4/KR4 FEC、PRBS/PRQS | 无统计引擎、无 ADC 架构、无 CDR 动态、无定点 |
+| **PyBERT** | 成熟的链路仿真 GUI 工具 | 逐级 h/s/p/H 四响应管线、抖动分解、IBIS-AMI、COM、bathtub | God-object 架构、GUI 耦合重、无 ADC-DSP、无定点 |
+| **DragonPHY2** | 真实流片的 ADC-based PHY(RTL+验证) | MM-CDR、sliding-detector MLSD、Wiener 自适应、TI-ADC 校准、黄金模型 lockstep | 面向单一硅方案、无统计引擎、无通用信道层 |
+
+---
+
+## ① 已覆盖(与参考库对齐)
+
+**相对 serdespy —— 基本是超集**
+
+- 混模 4/8/12 端口转差分(`se2mm`)、广义 S 参数端接
+- `freq2impulse` / `zero_pad` / 保守外推,往返恒等
+- ZF-FFE(Toeplitz 求解)、MMSE-FFE、sign-sign LMS 双模式
+- KP4(544,514,t=15)/ KR4(528,514,t=7)FEC + pre/post-FEC 换算
+- PRBS7-31 + PRBS13Q/31Q + PRQS 码型与 checker
+
+**相对 PyBERT —— 覆盖核心信号链**
+
+- 逐级 h/s/p/H 四响应(`ResponseSet` 懒计算)
+- Tx FIR + driver + 抖动注入(RJ/SJ/DCD/ISI)
+- 行为级 DFE + bang-bang CDR
+- StatEye 统计引擎 + bathtub / 浴盆曲线
+- YAML 配置(frozen dataclass,参数单源)
+
+**相对 DragonPHY2 —— 覆盖 ADC 架构行为级**
+
+- 时间交织 ADC(offset/gain/skew/带宽失配、ENOB 噪声)
+- 数字 FFE / DFE 波特率流水
+- Mueller-Müller CDR(线性 PD + 二阶 PI)
+- sliding-detector MLSD(错误事件纠正)
+- 定点 int64 + 移位定标(RTL 语义)、`dump_vectors` 黄金向量出口
+
+---
+
+## ② 做得更好(超越任一单库)
+
+1. **StatEye 全统计引擎** —— 三库皆无。PDF 卷积外推到 1e-15,与时域 MC 交叉校验
+   (比值 1.03×),是本框架最大差异化增量。
+2. **双 RX 架构公平对比** —— mixed-signal 与 ADC-DSP 共享 Tx/信道/分析层,差异
+   限制在两个组装类内。serdespy/PyBERT 只有 mixed-signal,DragonPHY2 只有 ADC。
+3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→28→29→35→41 dB
+   杠杆分解(MLSD +、DFE/deeper MLSD +、better ADC +6dB、级联 FEC +6dB,正交可叠加)。
+4. **双 MLSD 实现** —— Viterbi MLSE(最优)+ DragonPHY 式 sliding-detector(低复杂度),
+   同一接口下可切换对比。DragonPHY2 只有后者,serdespy/PyBERT 都没有。
+5. **级联内码 FEC 模型** —— 内码硬判决块码 + RS-KP4 外码,把可容忍 pre-FEC BER
+   抬高约 300×,支撑 800G/1.6T 深 LR。三库皆无。
+6. **三层抖动分解** —— 图样平均 → 谱阈值 → 双 Dirac,回收误差 <10%。
+7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
+   30 GBd 硬顶,经眼图扫描标定的产品级边界。
+8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、106 个测试全通过、
+   双引擎交叉校验、bit-true 定点路径。
+
+---
+
+## ③ 还没做到(真实缺口)
+
+**相对 PyBERT**
+
+- **IBIS-AMI 接口** —— 无法加载厂商 AMI 模型(`AMI_Init`/`AMI_GetWave`)。*[本轮补:io/ami.py 适配器骨架]*
+- **COM(Channel Operating Margin)** —— 无 802.3 COM 计算。*[io/ami.py 预留 ComAdapter]*
+- **抖动分解未接入管线** —— `calc_jitter` 已实现且测试,但未在任何引擎/示例中调用,
+  缺逐级抖动预算表。*[本轮补:接入时域引擎 + 示例]*
+- **时域 FEXT/NEXT 串扰** —— 只有统计引擎有 `xtalk_pulses`,时域引擎无串扰注入。
+  *[本轮补:时域引擎 aggressor 注入]*
+- **Duobinary / PR 信道整形** —— 未建模
+- **GUI** —— 纯脚本/库,无交互界面(设计取向,非缺陷)
+- **多 lane 系统级** —— 单 lane 为主
+
+**相对 DragonPHY2**
+
+- **真实 RTL** —— 本框架是行为级黄金模型,`dump_vectors` 出口预留但无实际 SV
+- **三视图方法学(model/rtl/fpga 一致性)** —— 单一 Python 视图
+- **FPGA AMS 混合仿真** —— 无
+- **物理实现流(综合/PnR/DRC)** —— 无(超出行为级范畴)
+- **模拟前端电路深度** —— CTLE/VGA 为传函行为模型,非晶体管级
+- **校准引擎(ADC unfolding 等实际算法)** —— 只建模失配,未实现片上校准回路
+- **片上 BIST/DFT、JTAG** —— 无
+
+---
+
+## 附:各库独有、本框架有意不做
+
+- **PyBERT GUI + 交互式扫描** —— 取向为库+脚本
+- **DragonPHY2 完整硅后流程** —— 取向为行为级建模
+- **serdespy 教学 notebook 体系** —— 以编号示例脚本替代
+
+---
+
+## 一句话总结
+
+> **Halo_Serdes 在"行为级架构探索 + 统计/时域双引擎 + 双 RX 架构公平对比"这条主线上,
+> 是三库的超集并有实质超越;真实缺口集中在 PyBERT 的产业接口(IBIS-AMI/COM)、
+> 若干已实现但未接线的能力(抖动分解、时域串扰),以及 DragonPHY2 的硅实现全流程
+> ——后者超出行为级框架的设计边界。本轮补齐前三项软件可修复缺口。**
