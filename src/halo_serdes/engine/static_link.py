@@ -147,9 +147,11 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 
 def fold_eye(y: np.ndarray, osr: int, phase: int, n_traces: int = 2000,
              n_ui: int = 2) -> np.ndarray:
-    """Fold a waveform into 2-UI segments centered on the sampling phase."""
+    """Fold a waveform into n_ui-UI segments with the *sampling instant* at
+    the segment center (for even n_ui: start one UI before a sampling point,
+    so column span/2 lands exactly on the sampler)."""
     span = n_ui * osr
-    start = phase + osr // 2
+    start = phase + (n_ui // 2) * osr  # center column = phase (mod osr grid)
     n_avail = (y.size - start) // span
     n_traces = min(n_traces, n_avail)
     seg = y[start: start + n_traces * span]
