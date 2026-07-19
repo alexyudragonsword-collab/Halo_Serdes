@@ -1,0 +1,36 @@
+flowchart LR
+    subgraph TX["发射机 Tx"]
+        PRBS["PRBS31 码型<br/>200k 符号"] --> FIR["Tx FIR 去加重<br/>[-0.1, 1] · 1 预光标"]
+        FIR --> DRV["驱动器 ZOH<br/>摆幅 1.0 Vpp<br/>(可选 RJ/SJ/DCD 抖动)"]
+    end
+
+    subgraph CH["信道 Channel"]
+        S4P["Whisper 42.8&quot; 背板 s4p<br/>(802.3ck COM 参考)<br/>混模转换 + 100Ω 端接<br/><b>-31.8 dB @ 16 GHz Nyquist</b>"]
+    end
+
+    subgraph RX["接收机 Rx (mixed-signal)"]
+        CTLE["CTLE<br/>1 零 2 极<br/>peaking 6-9 dB"] --> N["+ AWGN<br/>σ = 3 mV"]
+        N --> SAMP["采样器<br/>Farrow 三次插值<br/>OSR 32 → 波特率"]
+        SAMP --> FFE["FFE 17 taps<br/>(4 pre + 1 + 12 post)<br/>MMSE 解"]
+        FFE --> SUM(("Σ"))
+        SUM --> SLC["判决器<br/>±17.3 mV"]
+        SLC --> DFE["DFE 3 taps<br/>(sign-sign LMS 自适应)"]
+        DFE -->|"反馈 −Σwᵢ·v̂ₖ₋ᵢ"| SUM
+        SLC -.->|"数据/边沿采样"| CDR["Bang-Bang CDR<br/>Alexander PD<br/>Kp=2⁻⁵ Ki=2⁻¹²"]
+        CDR -.->|"相位 φ[k]"| SAMP
+    end
+
+    subgraph MEAS["验证 & 观测"]
+        CHK["PRBS 自同步检错<br/><b>BER = 0 / 2×10⁵</b>"]
+        EYE["眼图: 均衡前闭合 →<br/>均衡后内眼 6.5 mV"]
+        SNR["slicer SNR 14 dB<br/>统计引擎浴盆可外推 1e-15"]
+    end
+
+    TX --> CH --> RX
+    SLC --> CHK
+    SAMP -.-> EYE
+    SLC -.-> SNR
+
+    style S4P fill:#2b3a55,color:#fff
+    style CHK fill:#1e4620,color:#fff
+    style CDR fill:#4a3b1f,color:#fff
