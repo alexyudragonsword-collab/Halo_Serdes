@@ -63,6 +63,43 @@ def test_g1_figure_builders_from_result():
     assert isinstance(figures.jitter_bar_fig(jb, cfg.ui), go.Figure)
 
 
+def test_g2_dynamics_figures():
+    """Adaptation/CDR/ADC/backchannel builders from real mixed-signal + ADC runs."""
+    import dataclasses
+
+    from halo_serdes.channel import ChannelModel
+    from halo_serdes.engine import train_tx_fir
+    from halo_serdes_gui import config_bridge as cb
+    from halo_serdes_gui import runner
+
+    ms = cb.load_preset("NRZ 16G mixed-signal")
+    ms = dataclasses.replace(ms, rx=dataclasses.replace(
+        ms.rx, dfe=dataclasses.replace(ms.rx.dfe, adapt="sign_sign")),
+        sim=dataclasses.replace(ms.sim, n_symbols=20000))
+    rec = runner.run_link(ms)
+    e = rec.sim.extras
+    assert figures.dfe_traj_fig(e["w_dfe_hist"], rec.sim.dfe_taps, e["settle"],
+                                e["train_end"], e["n_ave"]).data
+    assert isinstance(figures.convergence_fig(e["w_dfe_hist"], rec.sim.dfe_taps,
+                                              e["n_ave"]), go.Figure)
+    assert isinstance(figures.cdr_phase_fig(e["phase_track"], ms.osr,
+                                            e["settle"], e["train_end"]), go.Figure)
+    assert isinstance(figures.pd_activity_fig(e["pd_hist"]), go.Figure)
+
+    res = train_tx_fir(ms, channel=ChannelModel.from_config(ms), n_post=2)
+    assert isinstance(figures.backchannel_fig(res), go.Figure)
+
+    adccfg = dataclasses.replace(cb.load_preset("PAM4 224G ADC"),
+                                 sim=dataclasses.replace(
+                                     cb.load_preset("PAM4 224G ADC").sim,
+                                     n_symbols=12000, engine="time"))
+    arec = runner.run_link(adccfg)
+    ae = arec.sim.extras
+    assert figures.lane_ser_fig(ae["lane_ser"]).data[0].type == "bar"
+    assert isinstance(figures.adc_codes_fig(ae["q_hist_head"]), go.Figure)
+    assert isinstance(figures.lane_mismatch_fig(ae["adc"]), go.Figure)
+
+
 def test_runner_end_to_end_and_error_capture():
     from halo_serdes_gui import runner
 

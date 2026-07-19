@@ -205,6 +205,144 @@ def jitter_bar_fig(budget, ui, title="Per-stage jitter budget", height=340):
     return fig
 
 
+# --- adaptation / CDR ------------------------------------------------------
+
+def _stage_shading(fig, settle, train_end):
+    fig.add_vrect(x0=0, x1=settle, fillcolor=theme.MUTED, opacity=0.08,
+                  line_width=0, annotation_text="CDR settle",
+                  annotation_position="top left")
+    fig.add_vrect(x0=settle, x1=train_end, fillcolor=theme.PRIMARY, opacity=0.06,
+                  line_width=0, annotation_text="train", annotation_position="top left")
+
+
+def dfe_traj_fig(w_hist, w_final, settle, train_end, n_ave,
+                 title="DFE tap trajectories", height=340) -> go.Figure:
+    if w_hist is None or np.size(w_hist) == 0:
+        return placeholder("no adaptation history (set dfe.adapt to lms/sign_sign)",
+                           height)
+    w = np.asarray(w_hist)
+    x = np.arange(w.shape[0]) * n_ave
+    fig = go.Figure()
+    for j in range(w.shape[1]):
+        c = theme.COLORWAY[j % len(theme.COLORWAY)]
+        fig.add_scatter(x=x, y=w[:, j], mode="lines", name=f"tap {j+1}",
+                        line=dict(color=c))
+        if w_final is not None and j < len(w_final):
+            fig.add_hline(y=float(w_final[j]), line=dict(color=c, dash="dot",
+                          width=1))
+    _stage_shading(fig, settle, train_end)
+    fig.update_layout(**theme.layout(title, height=height))
+    fig.update_xaxes(title_text="symbol", **theme.axis())
+    fig.update_yaxes(title_text="tap weight", **theme.axis())
+    return fig
+
+
+def convergence_fig(w_hist, w_final, n_ave, title="Convergence", height=340):
+    if w_hist is None or np.size(w_hist) == 0 or w_final is None:
+        return placeholder("no convergence history", height)
+    w = np.asarray(w_hist)
+    err = np.linalg.norm(w - np.asarray(w_final)[None, :], axis=1)
+    x = np.arange(w.shape[0]) * n_ave
+    return lines_fig([{"x": x, "y": np.maximum(err, 1e-12), "name": "‖w−w∞‖",
+                       "mode": "lines", "color": theme.ACCENT}],
+                     title=title, xtitle="symbol", ytitle="tap-vector error",
+                     logy=True, height=height)
+
+
+def cdr_phase_fig(phase_track, osr, settle, train_end,
+                  title="CDR recovered phase", height=340) -> go.Figure:
+    if phase_track is None or np.size(phase_track) == 0:
+        return placeholder("no CDR phase track", height)
+    ph = np.asarray(phase_track) / osr  # oversample units -> UI
+    x = np.arange(ph.size)
+    fig = go.Figure()
+    fig.add_scatter(x=x, y=ph, mode="lines", name="phase [UI]",
+                    line=dict(color=theme.PRIMARY))
+    _stage_shading(fig, settle, train_end)
+    fig.update_layout(**theme.layout(title, height=height))
+    fig.update_xaxes(title_text="symbol", **theme.axis())
+    fig.update_yaxes(title_text="recovered phase [UI]", **theme.axis())
+    return fig
+
+
+def pd_activity_fig(pd_hist, win=200, title="Phase-detector activity", height=300):
+    if pd_hist is None or np.size(pd_hist) == 0:
+        return placeholder("no PD history", height)
+    pd = np.asarray(pd_hist, dtype=float)
+    k = np.ones(win) / win
+    ma = np.convolve(pd, k, mode="valid")
+    x = np.arange(ma.size)
+    fig = lines_fig([{"x": x, "y": ma, "name": f"PD mean ({win})", "mode": "lines",
+                      "color": theme.ACCENT}], title=title, xtitle="symbol",
+                    ytitle="early/late bias", height=height)
+    fig.add_hline(y=0.0, line=dict(color=theme.MUTED, width=1, dash="dot"))
+    return fig
+
+
+# --- ADC -------------------------------------------------------------------
+
+def lane_ser_fig(lane_ser, title="Per-lane SER (TI mismatch)", height=320):
+    if lane_ser is None or np.size(lane_ser) == 0:
+        return placeholder("no per-lane SER (ADC arch only)", height)
+    ls = np.asarray(lane_ser, dtype=float)
+    y = np.maximum(ls, 1e-9)
+    fig = go.Figure(go.Bar(x=np.arange(ls.size), y=y, marker_color=theme.PRIMARY))
+    fig.update_layout(**theme.layout(title, height=height), showlegend=False)
+    fig.update_xaxes(title_text="ADC lane", **theme.axis())
+    fig.update_yaxes(title_text="SER", type="log", **theme.axis())
+    return fig
+
+
+def adc_codes_fig(q_hist, title="ADC code histogram", height=300):
+    if q_hist is None or np.size(q_hist) == 0:
+        return placeholder("no ADC codes (ADC arch only)", height)
+    fig = go.Figure(go.Histogram(x=np.asarray(q_hist), nbinsx=80,
+                                 marker_color=theme.COLORWAY[4]))
+    fig.update_layout(**theme.layout(title, height=height), bargap=0.02)
+    fig.update_xaxes(title_text="ADC code", **theme.axis())
+    fig.update_yaxes(title_text="count", **theme.axis())
+    return fig
+
+
+def lane_mismatch_fig(adc, title="Per-lane mismatch", height=300):
+    if adc is None:
+        return placeholder("no ADC model", height)
+    lanes = np.arange(adc.n_lanes)
+    fig = make_subplots(rows=1, cols=2, subplot_titles=["offset [code]", "skew [UI]"])
+    fig.add_bar(x=lanes, y=np.asarray(adc.offsets), marker_color=theme.COLORWAY[1],
+                row=1, col=1)
+    fig.add_bar(x=lanes, y=np.asarray(adc.skews), marker_color=theme.COLORWAY[2],
+                row=1, col=2)
+    fig.update_layout(**theme.layout(title, height=height), showlegend=False)
+    for c in (1, 2):
+        fig.update_xaxes(title_text="lane", row=1, col=c, **theme.axis())
+    return fig
+
+
+# --- backchannel -----------------------------------------------------------
+
+def backchannel_fig(res, title="Tx FIR training", height=340):
+    if res is None:
+        return placeholder("no training result", height)
+    ch = np.asarray(res.cursor_history)
+    th = np.asarray(res.tap_history)
+    fig = make_subplots(rows=1, cols=2,
+                        subplot_titles=["cursors / main vs round", "Tx taps vs round"])
+    rounds = np.arange(ch.shape[0])
+    for j in range(ch.shape[1]):
+        fig.add_scatter(x=rounds, y=ch[:, j], mode="lines", row=1, col=1,
+                        line=dict(color=theme.COLORWAY[j % 8]),
+                        name=f"cur {j}", showlegend=False)
+    for j in range(th.shape[1]):
+        fig.add_scatter(x=rounds, y=th[:, j], mode="lines+markers", row=1, col=2,
+                        line=dict(color=theme.COLORWAY[j % 8]),
+                        name=f"tap {j}", showlegend=False)
+    fig.update_layout(**theme.layout(title, height=height))
+    for c in (1, 2):
+        fig.update_xaxes(title_text="round", row=1, col=c, **theme.axis())
+    return fig
+
+
 # --- slicer histogram ------------------------------------------------------
 
 def slicer_hist_fig(y_slicer, levels=None, title="Slicer input",
