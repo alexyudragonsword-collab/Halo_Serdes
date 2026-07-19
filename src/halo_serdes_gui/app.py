@@ -17,7 +17,7 @@ from . import theme
 from .config_form import render_form, values_from_states
 from .panels import (
     adaptation, adc, ami_com, backchannel, cdr, channel, crosstalk, ctle,
-    dual_engine, eyes, fec, fixed_point, jitter, single_run, sweeps,
+    dual_engine, eyes, fec, fixed_point, jitter, jtol, single_run, sweeps,
 )
 from .runner import get as get_result
 from .runner import run_from_values
@@ -25,7 +25,7 @@ from .runner import run_from_values
 # --- panel registry --------------------------------------------------------
 PANELS = [single_run, eyes, dual_engine, channel, ctle, jitter,
           adaptation, cdr, adc, backchannel,
-          sweeps, fec, crosstalk, ami_com, fixed_point]
+          sweeps, fec, crosstalk, ami_com, fixed_point, jtol]
 _PANEL_BY_ID = {p.TAB_ID: p for p in PANELS}
 
 # first-launch default: a runnable analytic preset (so Run works immediately

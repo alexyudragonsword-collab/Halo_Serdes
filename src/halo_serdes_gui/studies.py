@@ -169,3 +169,23 @@ def fixedpoint_study(rec) -> dict:
             mism.append(max(float(np.mean(dec != dec_ref)), 1e-6))
         return {"wl": np.array(wls), "mismatch": np.array(mism)}
     return _cached(("fixed", rec.id), compute)
+
+
+# --- jitter tolerance (JTOL) ------------------------------------------------
+
+def jtol_study(rec) -> dict:
+    def compute():
+        import numpy as _np
+
+        from halo_serdes.analysis import jitter_tolerance, jtol_mask
+        cfg = rec.cfg
+        # reduced-fidelity sweep for GUI responsiveness (each point is a full
+        # time-domain run x binary search); raise n_symbols in scripts.
+        freqs = _np.array([1e6, 5e6, 2e7, 5e7, 1e8, 2e8, 4e8])
+        jt = jitter_tolerance(cfg, freqs, ber_threshold=1e-3, amp_lo=0.05,
+                              amp_hi=4.0, iters=4,
+                              n_symbols=min(cfg.sim.n_symbols, 12000))
+        mask = jtol_mask(freqs, lf_max_ui=4.0, f_corner=3e6, hf_floor_ui=0.15)
+        return {"freqs": jt.freqs, "tol_ui": jt.tol_ui, "mask": mask,
+                "threshold": jt.ber_threshold}
+    return _cached(("jtol", rec.id), compute)
