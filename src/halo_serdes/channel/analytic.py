@@ -14,17 +14,24 @@ def tline_abcd(r, l, g, c, d: float, f: np.ndarray) -> np.ndarray:
     """ABCD of a transmission line of length ``d`` [m] from per-unit-length
     RLGC (scalars or frequency-shaped arrays)."""
     w = 2 * np.pi * np.asarray(f, dtype=np.float64)
-    zser = r + 1j * w * l
-    ypar = g + 1j * w * c
+    zser = np.asarray(r + 1j * w * l, dtype=complex)
+    ypar = np.asarray(g + 1j * w * c, dtype=complex)
     gamma_d = d * np.sqrt(zser * ypar)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        z0 = np.sqrt(np.divide(zser, ypar, out=np.full_like(zser, np.inf, dtype=complex),
-                               where=np.abs(ypar) > 0))
     abcd = np.zeros((f.size, 2, 2), dtype=complex)
-    abcd[:, 0, 0] = np.cosh(gamma_d)
-    abcd[:, 0, 1] = z0 * np.sinh(gamma_d)
-    abcd[:, 1, 0] = np.sinh(gamma_d) / z0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        z0 = np.sqrt(zser / ypar)
+        abcd[:, 0, 0] = np.cosh(gamma_d)
+        abcd[:, 0, 1] = z0 * np.sinh(gamma_d)
+        abcd[:, 1, 0] = np.sinh(gamma_d) / z0
     abcd[:, 1, 1] = abcd[:, 0, 0]
+    # ypar -> 0 limit (e.g. exactly DC with G=0): sinh(gd)*z0 -> zser*d,
+    # sinh(gd)/z0 -> ypar*d, cosh -> 1. Patch the degenerate points.
+    degen = np.abs(gamma_d) < 1e-9
+    if degen.any():
+        abcd[degen, 0, 0] = 1.0
+        abcd[degen, 0, 1] = zser[degen] * d
+        abcd[degen, 1, 0] = ypar[degen] * d
+        abcd[degen, 1, 1] = 1.0
     return abcd
 
 

@@ -67,26 +67,28 @@ def zero_pad_to_dt(H: np.ndarray, f: np.ndarray, dt: float) -> tuple[np.ndarray,
     return H_zp, f_zp
 
 
-def trim_impulse(h: Waveform, keep_energy: float = 0.999,
+def trim_impulse(h: Waveform, keep_energy: float = 0.999, pad: int = 8,
                  min_len: int | None = None, max_len: int | None = None) -> tuple[Waveform, int]:
     """Extract the significant span of an impulse response.
 
     PyBERT-style criterion: find the window containing ``keep_energy`` of the
-    first-difference energy (robust against DC tails). Returns the trimmed
+    first-difference energy (robust against DC tails). ``prepend=0`` treats a
+    nonzero first sample as an edge (a pure delta must survive trimming), and
+    ``pad`` samples of margin are kept on each side. Returns the trimmed
     waveform and the start-sample index in the original array.
     """
     y = h.y
-    d = np.diff(y, prepend=y[0])
+    d = np.diff(y, prepend=0.0)
     e = np.cumsum(d * d)
     if e[-1] == 0.0:
         return h, 0
     e = e / e[-1]
     lo = float((1.0 - keep_energy) / 2.0)
-    start = int(np.searchsorted(e, lo))
-    stop = int(np.searchsorted(e, 1.0 - lo)) + 1
+    start = max(0, int(np.searchsorted(e, lo)) - pad)
+    stop = min(y.size, int(np.searchsorted(e, 1.0 - lo)) + 1 + pad)
     if min_len is not None and stop - start < min_len:
-        pad = (min_len - (stop - start) + 1) // 2
-        start = max(0, start - pad)
+        extra = (min_len - (stop - start) + 1) // 2
+        start = max(0, start - extra)
         stop = min(y.size, start + min_len)
     if max_len is not None and stop - start > max_len:
         stop = start + max_len
