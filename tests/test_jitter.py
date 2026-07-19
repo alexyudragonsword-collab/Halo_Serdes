@@ -58,3 +58,76 @@ def test_zero_jitter_is_ideal_zoh():
     v = np.array([0.5, -0.5, -0.5, 0.5, 0.5])
     y = jittered_zoh(v, osr, np.zeros(v.size + 1), ui)
     assert np.array_equal(y, np.repeat(v, osr))
+
+
+# --- jitter-budget helpers (task ①: wire calc_jitter into the pipeline) ---
+
+def test_pattern_period():
+    from halo_serdes.analysis import pattern_period
+
+    assert pattern_period("prbs7", "nrz") == 127
+    assert pattern_period("prbs31", "nrz") == 2 ** 31 - 1
+    assert pattern_period("prbs13q", "pam4") == 2 ** 13 - 1
+    assert pattern_period("prqs10", "pam4") == 1023
+
+
+def test_total_jitter_monotone_in_ber():
+    from halo_serdes.analysis import JitterResult, total_jitter
+
+    jr = JitterResult(tie=np.zeros(0), isi=1e-12, dcd=0.5e-12, pj=0.3e-12,
+                      rj=0.2e-12, mu_l=-0.2e-12, mu_r=0.2e-12, rj_dd=0.2e-12)
+    # deeper BER -> wider total jitter (more Gaussian tail)
+    assert total_jitter(jr, 1e-6) < total_jitter(jr, 1e-12) < total_jitter(jr, 1e-15)
+    # bounded deterministic floor
+    assert total_jitter(jr, 1e-12) > jr.isi + jr.dcd + jr.pj
+
+
+def test_stage_budget_recovers_injected_rj():
+    """A repeating pattern with known Tx RJ: the 'tx' stage Rj must land near
+    the injected sigma, and the channel stage must show more ISI than Tx."""
+    from halo_serdes.analysis import stage_jitter_budget
+    from halo_serdes.channel import ChannelModel
+    from halo_serdes.config.schema import (
+        ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig,
+    )
+    from halo_serdes.engine import run_time_link
+
+    rj = 0.010
+    cfg = LinkConfig(
+        modulation="nrz", symbol_rate=16e9, osr=32,
+        channel=ChannelConfig(kind="analytic", length_m=0.25),
+        tx=TxConfig(swing=1.0, rj_ui=rj),
+        rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=True, peak_db=6.0),
+                    dfe=DfeConfig(n_taps=3), noise_rms=0.0),
+        sim=SimConfig(n_symbols=127 * 12, seed=2, pattern="prbs7"))
+    res = run_time_link(cfg, channel=ChannelModel.from_config(cfg),
+                        collect_jitter=True)
+    jb = res.extras["jitter_budget"]
+    assert set(jb) >= {"tx", "chnl", "ctle"}
+    # Tx-stage random jitter recovers the injected sigma within tolerance
+    tx_rj_ui = jb["tx"].rj * cfg.symbol_rate
+    assert 0.6 * rj < tx_rj_ui < 1.5 * rj, tx_rj_ui
+    # channel adds ISI over the (near-clean) Tx output
+    assert jb["chnl"].isi > jb["tx"].isi
+
+    # formatting produces a table with one row per stage
+    from halo_serdes.analysis import format_jitter_budget
+
+    txt = format_jitter_budget(jb, cfg.ui)
+    assert "tx" in txt and "chnl" in txt and "ctle" in txt
+
+
+def test_budget_none_when_pattern_too_short():
+    """Fewer than 4 pattern periods -> a note, not a bogus decomposition."""
+    from halo_serdes.config.schema import ChannelConfig, RxConfig, SimConfig
+    from halo_serdes.engine import run_time_link
+
+    cfg = LinkConfig(
+        modulation="nrz", symbol_rate=16e9, osr=16,
+        channel=ChannelConfig(kind="analytic", length_m=0.2),
+        tx=TxConfig(swing=1.0, rj_ui=0.01),
+        rx=RxConfig(arch="mixed_signal", noise_rms=0.0),
+        sim=SimConfig(n_symbols=200, seed=1, pattern="prbs7"))
+    res = run_time_link(cfg, collect_jitter=True)
+    jb = res.extras["jitter_budget"]
+    assert jb is not None and "_note" in jb

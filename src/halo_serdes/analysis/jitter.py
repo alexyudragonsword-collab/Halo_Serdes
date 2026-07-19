@@ -146,6 +146,83 @@ def _dual_dirac(tie_ind: np.ndarray) -> tuple[float, float, float]:
         return -s, s, s
 
 
+# two-sided Q scaling for total-jitter extrapolation (2 * Qinv(BER))
+_TJ_Q = {1e-6: 9.507, 1e-9: 11.996, 1e-12: 14.069, 1e-15: 15.612}
+
+
+def total_jitter(jr: JitterResult, ber: float = 1e-12) -> float:
+    """Peak-to-peak total jitter at a target BER [s].
+
+    Classic dual-Dirac decomposition: TJ(BER) = Dj_pp + 2*Qinv(BER)*Rj,
+    with the bounded deterministic part Dj_pp = ISI + DCD + Pj and the
+    random tail extrapolated Gaussian. Uses the dual-Dirac sigma for Rj.
+    """
+    q = _TJ_Q.get(ber)
+    if q is None:
+        # 2 * inverse-Q(BER), from the complementary error function
+        from scipy.special import erfcinv
+
+        q = 2.0 * np.sqrt(2.0) * float(erfcinv(2.0 * ber))
+    dj_pp = jr.isi + jr.dcd + jr.pj
+    return dj_pp + q * jr.rj_dd
+
+
+def pattern_period(pattern: str, modulation: str) -> int:
+    """Symbol-domain repetition period of a PRBS/PRQS pattern name.
+
+    For PRBS-N (NRZ) the bit sequence repeats every 2^N-1 bits; PAM4 maps
+    2 bits/symbol so the symbol period is (2^N-1) when 2^N-1 is odd (always,
+    since 2^N-1 is odd) — the LFSR period in symbols is 2^N-1. Q-coded
+    PRBS-NQ and PRQS10 repeat every 2^N-1 symbols directly.
+    """
+    p = pattern.lower()
+    if p == "prqs10":
+        return 2 ** 10 - 1
+    if p.startswith("prbs") and p.endswith("q"):
+        return 2 ** int(p[4:-1]) - 1
+    if p.startswith("prbs"):
+        order = int(p[4:])
+        period_bits = 2 ** order - 1
+        if modulation == "pam4":
+            # 2 bits/symbol; period_bits is odd so full period is 2*period_bits
+            # bits == (2^N-1) symbols only after two LFSR laps -> lcm handling
+            return period_bits  # symbol pattern realigns every 2^N-1 symbols
+        return period_bits
+    raise ValueError(f"no known period for pattern {pattern!r}")
+
+
+def stage_jitter_budget(stages: dict[str, np.ndarray], dt: float, ui: float,
+                        pattern_len: int, thresh: float = 0.0,
+                        rel_thresh: float = 3.0) -> dict[str, JitterResult]:
+    """Run calc_jitter at each named observation point in the signal chain.
+
+    `stages` maps a stage label (e.g. 'tx', 'chnl', 'ctle') to its
+    oversampled waveform samples. Returns label -> JitterResult. This is the
+    per-stage jitter budget PyBERT produces on every run; here it is an
+    opt-in analysis pass over waveforms captured by the time engine.
+    """
+    out: dict[str, JitterResult] = {}
+    for name, y in stages.items():
+        out[name] = calc_jitter(np.asarray(y, dtype=np.float64), dt, ui,
+                                 pattern_len, thresh, rel_thresh)
+    return out
+
+
+def format_jitter_budget(budget: dict[str, JitterResult], ui: float,
+                         ber: float = 1e-12) -> str:
+    """ASCII per-stage jitter budget table (all figures in %UI)."""
+    u = 100.0 / ui
+    hdr = (f"{'stage':<8}{'ISI':>9}{'DCD':>9}{'Pj':>9}"
+           f"{'Rj(rms)':>10}{'TJ@%g' % ber:>11}")
+    lines = [hdr, "-" * len(hdr)]
+    for name, jr in budget.items():
+        tj = total_jitter(jr, ber) * u
+        lines.append(
+            f"{name:<8}{jr.isi * u:>8.2f}%{jr.dcd * u:>8.2f}%"
+            f"{jr.pj * u:>8.2f}%{jr.rj * u:>9.3f}%{tj:>10.2f}%")
+    return "\n".join(lines)
+
+
 def make_bathtub(jr: JitterResult, ui: float, n_pts: int = 201) -> tuple[np.ndarray, np.ndarray]:
     """Timing bathtub BER(t) across the UI from the dual-Dirac model:
     BER(t) = 0.5[Q((t - mu_l)/sigma) + Q((ui - t + mu_r ... )] (PyBERT

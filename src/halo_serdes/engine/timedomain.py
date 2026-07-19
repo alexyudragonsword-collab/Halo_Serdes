@@ -32,10 +32,31 @@ from .result import SimResult
 from .static_link import _levels, fold_eye, make_pattern
 
 
+def _stage_jitter(cfg: LinkConfig, stages: dict[str, np.ndarray]) -> dict | None:
+    """Per-stage jitter decomposition over captured waveforms.
+
+    Needs a repeating pattern (pattern averaging separates DDJ); returns None
+    with a note when the sim spans fewer than ~4 pattern periods. Crossings
+    are taken at the center threshold (0) — for PAM4 this measures the middle
+    eye, the standard timing reference.
+    """
+    from ..analysis.jitter import pattern_period, stage_jitter_budget
+
+    try:
+        plen = pattern_period(cfg.sim.pattern, cfg.modulation)
+    except ValueError:
+        return None
+    if cfg.sim.n_symbols < 4 * plen:
+        return {"_note": (f"pattern period {plen} symbols needs >=4 reps for "
+                          f"decomposition; ran {cfg.sim.n_symbols}")}
+    return stage_jitter_budget(stages, cfg.dt, cfg.ui, plen, thresh=0.0)
+
+
 def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
-                  collect_eye: bool = False) -> SimResult:
+                  collect_eye: bool = False,
+                  collect_jitter: bool = False) -> SimResult:
     if cfg.rx.arch == "adc_dsp":
-        return _run_adc_link(cfg, channel, collect_eye)
+        return _run_adc_link(cfg, channel, collect_eye, collect_jitter)
     from ..config.schema import (
         MS_COMFORT_DATA_RATE,
         MS_HARD_MAX_BAUD,
@@ -91,6 +112,14 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     h = h * cfg.rx.vga_gain
 
     rx_y = fft_filter(tx_wave.y, h)
+
+    # --- optional per-stage jitter budget (Tx / channel / after-CTLE) ---
+    jitter_budget = None
+    if collect_jitter:
+        ch_only = fft_filter(tx_wave.y, ch_rs.h.y * cfg.rx.vga_gain)
+        jitter_budget = _stage_jitter(cfg, {
+            "tx": tx_wave.y, "chnl": ch_only, "ctle": rx_y})
+
     if cfg.rx.noise_rms > 0:
         rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
 
@@ -182,11 +211,13 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         extras={"phase_track": phase, "pd_hist": pd_hist, "main_cursor": main,
                 "levels": levels, "warmup": warm, "w_dfe0": np.asarray(w_dfe0),
                 "settle": settle, "train_end": train_end,
-                "w_dfe_hist": w_dfe_hist, "n_ave": 100})
+                "w_dfe_hist": w_dfe_hist, "n_ave": 100,
+                "jitter_budget": jitter_budget})
 
 
 def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
-                  collect_eye: bool = False) -> SimResult:
+                  collect_eye: bool = False,
+                  collect_jitter: bool = False) -> SimResult:
     """ADC-based RX: light CTLE -> TI-ADC -> digital FFE/DFE -> MM-CDR.
 
     Primary metrics for this architecture are slicer-input SNR and SER
@@ -220,6 +251,13 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     h = h * cfg.rx.vga_gain
 
     rx_y = fft_filter(tx_wave.y, h)
+
+    jitter_budget = None
+    if collect_jitter:
+        ch_only = fft_filter(tx_wave.y, ch_rs.h.y * cfg.rx.vga_gain)
+        jitter_budget = _stage_jitter(cfg, {
+            "tx": tx_wave.y, "chnl": ch_only, "ctle": rx_y})
+
     if cfg.rx.noise_rms > 0:
         rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
 
@@ -304,4 +342,5 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         extras={"phase_track": phase, "levels": levels, "main_cursor": main,
                 "warmup": warm, "settle": settle, "train_end": train_end,
                 "w_ffe0": np.asarray(w_ffe0), "w_dfe0": np.asarray(w_dfe0),
-                "lane_ser": lane_ser, "adc": adc, "q_hist_head": q_hist[:8192]})
+                "lane_ser": lane_ser, "adc": adc, "q_hist_head": q_hist[:8192],
+                "jitter_budget": jitter_budget})
