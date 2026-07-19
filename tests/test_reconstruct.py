@@ -2,9 +2,13 @@
 
 import numpy as np
 
-from halo_serdes.analysis.reconstruct import front_end_eye, front_end_waveform
+from halo_serdes.analysis.reconstruct import (
+    front_end_eye, front_end_waveform, post_ffe_eye,
+)
 from halo_serdes.config import LinkConfig
-from halo_serdes.config.schema import ChannelConfig, CtleConfig, RxConfig, SimConfig
+from halo_serdes.config.schema import (
+    AdcConfig, ChannelConfig, CtleConfig, FfeConfig, RxConfig, SimConfig,
+)
 
 
 def _cfg(**over):
@@ -33,3 +37,19 @@ def test_ctle_toggle_changes_eye():
     no_ctle = front_end_eye(cfg, include_ctle=False, with_noise=False)
     # CTLE peaking reshapes the analog eye
     assert not np.allclose(with_ctle, no_ctle)
+
+
+def test_post_ffe_eye_reconstruction():
+    # ADC/DSP config; reconstruct the digital-FFE-output eye from baud taps
+    cfg = _cfg(modulation="pam4", symbol_rate=53.125e9, osr=16,
+               rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=4.0),
+                           adc=AdcConfig(n_bits=8, n_lanes=8, enob=6.5),
+                           ffe=FfeConfig(n_pre=3, n_post=8)),
+               sim=SimConfig(n_symbols=3000, seed=2, pattern="prbs13q"))
+    taps = np.zeros(cfg.rx.ffe.n_pre + cfg.rx.ffe.n_post + 1)
+    taps[cfg.rx.ffe.n_pre] = 1.0            # a trivial main-cursor-only FFE
+    eye = post_ffe_eye(cfg, taps, n_traces=600, with_noise=False)
+    assert eye.shape == (600, 2 * cfg.osr)
+    assert np.ptp(eye) > 0
+    # empty taps -> falls back to the raw front-end eye (no crash)
+    assert post_ffe_eye(cfg, np.array([]), n_traces=100).shape == (100, 2 * cfg.osr)

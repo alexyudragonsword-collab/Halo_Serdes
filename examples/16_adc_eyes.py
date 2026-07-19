@@ -33,19 +33,15 @@ plt.rcParams["axes.unicode_minus"] = False
 REPO = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
-from halo_serdes.afe import Ctle  # noqa: E402
 from halo_serdes.analysis.eye import plot_eye  # noqa: E402
+from halo_serdes.analysis.reconstruct import front_end_eye, post_ffe_eye  # noqa: E402
 from halo_serdes.channel import ChannelModel  # noqa: E402
-from halo_serdes.channel.response import pulse_from_impulse  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig,
     RxConfig, SimConfig, TxConfig,
 )
-from halo_serdes.core.waveform import Waveform  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
-from halo_serdes.engine.static_link import fold_eye, make_pattern  # noqa: E402
-from halo_serdes.tx.builder import symbols_to_voltages, tx_fir  # noqa: E402
 
 OUT = REPO / "examples" / "output"
 OUT.mkdir(exist_ok=True)
@@ -75,45 +71,24 @@ for row, rate in enumerate((112.0, 224.0)):
     cfg = make_cfg(rate)
     channel = ChannelModel.from_config(cfg)
     res = run_time_link(cfg, channel=channel)
-    osr = cfg.osr
 
-    # rebuild the AFE (CTLE-output) oversampled waveform
-    rng = np.random.default_rng(cfg.sim.seed)
-    symbols = make_pattern(cfg)
-    v = symbols_to_voltages(symbols, cfg)
-    if len(cfg.tx.fir_taps) > 1:
-        v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
-    y_tx = np.repeat(v, osr)
-    h = channel.response_set(cfg.dt).h.y
-    ctle = Ctle.from_config(cfg.rx.ctle, cfg.f_nyquist)
-    nfft = int(2 ** np.ceil(np.log2(h.size * 4)))
-    f = np.fft.rfftfreq(nfft, d=cfg.dt)
-    h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: h.size * 2]
-    n = y_tx.size
-    afe = np.fft.irfft(np.fft.rfft(y_tx) * np.fft.rfft(h, n), n)
-    afe += rng.normal(scale=cfg.rx.noise_rms, size=n)
-
-    pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
-    peak = int(np.argmax(np.abs(pulse.y)))
-    phase = peak % osr
-
-    # reconstructed post-FFE waveform (upsampled baud taps)
-    w = res.ffe_taps
-    tap_pre = cfg.rx.ffe.n_pre
-    w_up = np.zeros((w.size - 1) * osr + 1)
-    w_up[::osr] = w
-    post_ffe = np.convolve(afe, w_up)[tap_pre * osr: tap_pre * osr + afe.size]
+    # AFE (ADC-input) eye and reconstructed post-FFE eye — the shared
+    # reconstruction (also used by the GUI Eyes tab) upsamples the converged
+    # baud-rate FFE taps onto the oversampled grid and convolves them with the
+    # analog front-end waveform.
+    afe_eye = front_end_eye(cfg, channel, n_traces=3000)
+    ffe_eye = post_ffe_eye(cfg, res.ffe_taps, channel, n_traces=3000)
 
     loss = channel.loss_at(cfg.f_nyquist)
     print(f"{rate:.0f} Gb/s ({cfg.f_nyquist / 1e9:.0f} GHz Nyq, {loss:.1f} dB): "
           f"{res.summary()}")
 
     # panel 1: AFE eye (analog, ADC input)
-    plot_eye(axes[row, 0], fold_eye(afe, osr, phase, n_traces=3000),
-             cfg.ui * 1e12, title=f"{rate:.0f} Gb/s: AFE eye (ADC input, analog)")
+    plot_eye(axes[row, 0], afe_eye, cfg.ui * 1e12,
+             title=f"{rate:.0f} Gb/s: AFE eye (ADC input, analog)")
     # panel 2: reconstructed post-FFE eye (digital-EQ equivalent)
-    plot_eye(axes[row, 1], fold_eye(post_ffe, osr, phase, n_traces=3000),
-             cfg.ui * 1e12, title=f"{rate:.0f} Gb/s: reconstructed post-FFE eye")
+    plot_eye(axes[row, 1], ffe_eye, cfg.ui * 1e12,
+             title=f"{rate:.0f} Gb/s: reconstructed post-FFE eye")
     # panel 3: the real post-DSP view — slicer sample cloud (1-UI strip)
     ax = axes[row, 2]
     y_sl = res.y_slicer

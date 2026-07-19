@@ -46,7 +46,7 @@ re-renders from it instantly (study sweeps are cached per run).
 | Tab | Shows | Notes |
 |---|---|---|
 | **Single Run** | BER/SER/SNR/TJ cards, eye, slicer histogram, adapted taps | any run |
-| **Eyes** | analog front-end eye (reconstructed) + post-EQ eye | arch-aware |
+| **Eyes** | mixed-signal: front-end + post-EQ eye. ADC/DSP: closed ADC-input eye + reconstructed post-FFE eye (upsampled baud taps ⊗ analog waveform) + slicer sample cloud (DFE output) | arch-aware |
 | **Dual-Engine** | statistical eye, phase bathtub (+MC point), slicer PDF stat-vs-MC | computes StatEye on demand |
 | **Channel** | insertion loss, impulse, pulse + ISI cursors, behavioral COM | from `LinkConfig` |
 | **CTLE** | CTLE Bode + realized peaking | |

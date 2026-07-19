@@ -13,7 +13,17 @@ def test_placeholder_and_empty_inputs_return_figures():
     assert isinstance(figures.placeholder("x"), go.Figure)
     assert isinstance(figures.eye_fig(None), go.Figure)
     assert isinstance(figures.slicer_hist_fig(None), go.Figure)
+    assert isinstance(figures.slicer_cloud_fig(None), go.Figure)
     assert isinstance(figures.taps_fig(None, None), go.Figure)
+
+
+def test_slicer_cloud_fig_subsamples_and_marks_levels():
+    rng = np.random.default_rng(1)
+    y = rng.normal(size=20000)
+    fig = figures.slicer_cloud_fig(y, levels=[-1.0, -0.3, 0.3, 1.0], max_pts=8000)
+    assert fig.data and fig.data[0].type == "scattergl"
+    assert len(fig.data[0].y) <= 8000          # subsampled for responsiveness
+    assert fig.layout.xaxis.range == (-0.5, 0.5)
 
 
 def test_eye_fig_from_traces():

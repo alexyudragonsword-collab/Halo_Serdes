@@ -362,6 +362,35 @@ def slicer_hist_fig(y_slicer, levels=None, title="Slicer input",
     return fig
 
 
+def slicer_cloud_fig(y_slicer, levels=None, title="Slicer sample cloud",
+                     height: int = 340, max_pts: int = 8000) -> go.Figure:
+    """1-UI scatter of the slicer-input samples — the true post-DSP view.
+
+    The DFE output has no continuous waveform to fold; all the DSP truly sees is
+    this cloud of decision-instant values (1 point/UI). Horizontal jitter is
+    cosmetic (spreads the strip); the vertical axis is the meaningful one.
+    """
+    if y_slicer is None or getattr(y_slicer, "size", 0) == 0:
+        return placeholder("no slicer samples (run the time engine)", height)
+    y = np.asarray(y_slicer, dtype=float)
+    if y.size > max_pts:                       # subsample for a responsive plot
+        y = y[:: int(np.ceil(y.size / max_pts))]
+    # deterministic horizontal spread (no RNG state, reproducible strip)
+    x = 0.16 * (np.arange(y.size) % 97) / 97.0 - 0.08
+    fig = go.Figure(go.Scattergl(
+        x=x, y=y, mode="markers", hoverinfo="skip", showlegend=False,
+        marker=dict(size=2, color=theme.PRIMARY, opacity=0.25)))
+    if levels is not None:
+        for lv in np.asarray(levels):
+            fig.add_hline(y=float(lv), line=dict(color=theme.CRIT, width=1,
+                                                 dash="dash"))
+    fig.update_layout(**theme.layout(title, height=height))
+    fig.update_xaxes(title_text="sampling instant [UI]", range=[-0.5, 0.5],
+                     **theme.axis())
+    fig.update_yaxes(title_text="Amplitude [V]", **theme.axis())
+    return fig
+
+
 # --- equalizer taps --------------------------------------------------------
 
 def taps_fig(ffe_taps=None, dfe_taps=None, ffe_pre: int = 0,
