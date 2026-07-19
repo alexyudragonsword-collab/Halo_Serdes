@@ -12,7 +12,6 @@ python -m nuitka --standalone --assume-yes-for-downloads `
   --include-package=dash --include-package=plotly `
   --include-package=dash_bootstrap_components `
   --include-package=halo_serdes --include-package=halo_serdes_gui `
-  --include-package=webview `
   --include-package-data=dash --include-package-data=plotly `
   --include-package-data=dash_bootstrap_components `
   --include-package-data=skrf `
