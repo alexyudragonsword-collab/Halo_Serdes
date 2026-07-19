@@ -15,12 +15,12 @@ from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
 from . import config_bridge as cb
 from . import theme
 from .config_form import render_form, values_from_states
-from .panels import single_run
+from .panels import channel, ctle, dual_engine, eyes, jitter, single_run
 from .runner import get as get_result
 from .runner import run_from_values
 
 # --- panel registry (grows as tabs are added in later phases) --------------
-PANELS = [single_run]
+PANELS = [single_run, eyes, dual_engine, channel, ctle, jitter]
 _PANEL_BY_ID = {p.TAB_ID: p for p in PANELS}
 
 INITIAL = cb.config_to_values(cb.LinkConfig())

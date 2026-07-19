@@ -29,20 +29,179 @@ def placeholder(text: str = "no data", height: int = 320) -> go.Figure:
 
 # --- eye -------------------------------------------------------------------
 
-def eye_fig(eye_traces, title: str = "Eye", height: int = 340) -> go.Figure:
+def eye_fig(eye_traces, title: str = "Eye", height: int = 340,
+            mode: str = "density") -> go.Figure:
     if eye_traces is None or getattr(eye_traces, "size", 0) == 0:
         return placeholder("no eye (run the time engine with eye capture)", height)
-    counts, edges = eye_density(np.asarray(eye_traces))
-    with np.errstate(divide="ignore"):
-        z = np.log10(counts + 1.0)
-    span = eye_traces.shape[1]
+    traces = np.asarray(eye_traces)
+    span = traces.shape[1]
     t_ui = (np.arange(span) - span / 2) / (span / 2)
-    v_c = (edges[:-1] + edges[1:]) / 2
-    fig = go.Figure(go.Heatmap(z=z, x=t_ui, y=v_c, colorscale=theme.EYE_SCALE,
-                               colorbar=dict(title="log₁₀ hits", thickness=12)))
+    if mode == "lines":
+        fig = go.Figure()
+        for tr in traces[: min(300, traces.shape[0])]:
+            fig.add_scatter(x=t_ui, y=tr, mode="lines",
+                            line=dict(color="rgba(43,108,176,0.10)", width=1),
+                            hoverinfo="skip", showlegend=False)
+    else:
+        counts, edges = eye_density(traces)
+        with np.errstate(divide="ignore"):
+            z = np.log10(counts + 1.0)
+        v_c = (edges[:-1] + edges[1:]) / 2
+        fig = go.Figure(go.Heatmap(z=z, x=t_ui, y=v_c, colorscale=theme.EYE_SCALE,
+                                   colorbar=dict(title="log₁₀ hits", thickness=12)))
     fig.update_layout(**theme.layout(title, height=height))
     fig.update_xaxes(title_text="Time [UI]", **theme.axis())
     fig.update_yaxes(title_text="Amplitude [V]", **theme.axis())
+    return fig
+
+
+# --- statistical engine ----------------------------------------------------
+
+def stat_eye_fig(stat, title="Statistical eye (log PDF)", height=340) -> go.Figure:
+    if stat is None:
+        return placeholder("run the statistical engine (engine = stat or both)",
+                           height)
+    pdf = np.asarray(stat.eye_pdf)
+    with np.errstate(divide="ignore"):
+        z = np.log10(pdf + 1e-18)
+    fig = go.Figure(go.Heatmap(z=z, x=stat.phi_ui, y=stat.v_centers,
+                               colorscale="Viridis", zmin=-12, zmax=z.max(),
+                               colorbar=dict(title="log₁₀ PDF", thickness=12)))
+    fig.update_layout(**theme.layout(title, height=height))
+    fig.update_xaxes(title_text="phase [UI]", **theme.axis())
+    fig.update_yaxes(title_text="Amplitude [V]", **theme.axis())
+    return fig
+
+
+def bathtub_fig(stat, mc_ber=None, title="Phase bathtub", height=340) -> go.Figure:
+    if stat is None:
+        return placeholder("run the statistical engine", height)
+    fig = lines_fig([{"x": stat.phi_ui, "y": np.maximum(stat.ber_phi, 1e-30),
+                      "name": "StatEye BER(φ)", "mode": "lines",
+                      "color": theme.PRIMARY}],
+                    title=title, xtitle="sampling phase [UI]", ytitle="BER",
+                    logy=True, height=height)
+    if mc_ber is not None and mc_ber > 0:
+        fig.add_hline(y=mc_ber, line=dict(color=theme.ACCENT, dash="dash", width=1),
+                      annotation_text=f"time-domain MC {mc_ber:.1e}")
+    return fig
+
+
+def slicer_pdf_compare_fig(stat, y_slicer, title="Slicer PDF: stat vs MC",
+                           height=340) -> go.Figure:
+    if stat is None:
+        return placeholder("run the statistical engine", height)
+    col = stat.eye_pdf[:, int(stat.best_phi)].astype(float)
+    dv = stat.v_centers[1] - stat.v_centers[0]
+    col = col / max(col.sum() * dv, 1e-30)
+    traces = [{"x": stat.v_centers, "y": np.maximum(col, 1e-20),
+               "name": "StatEye PDF", "mode": "lines", "color": theme.PRIMARY}]
+    if y_slicer is not None and getattr(y_slicer, "size", 0):
+        hist, edges = np.histogram(np.asarray(y_slicer), bins=120, density=True)
+        centers = (edges[:-1] + edges[1:]) / 2
+        traces.append({"x": centers, "y": np.maximum(hist, 1e-20),
+                       "name": "MC histogram", "mode": "lines",
+                       "dash": "dot", "color": theme.ACCENT})
+    return lines_fig(traces, title=title, xtitle="Amplitude [V]",
+                     ytitle="density", logy=True, height=height)
+
+
+# --- channel ---------------------------------------------------------------
+
+def channel_loss_fig(cm, f_nyquist, title="Insertion loss", height=320):
+    f = cm.f / 1e9
+    fig = lines_fig([{"x": f, "y": cm.insertion_loss_db(), "name": "|H| [dB]",
+                      "mode": "lines", "color": theme.PRIMARY}],
+                    title=title, xtitle="Frequency [GHz]", ytitle="Loss [dB]",
+                    height=height)
+    fig.add_vline(x=f_nyquist / 1e9, line=dict(color=theme.MUTED, dash="dot", width=1),
+                  annotation_text="Nyquist")
+    return fig
+
+
+def impulse_fig(cm, dt, title="Impulse response", height=300):
+    h = cm.impulse(dt)
+    t = np.arange(h.y.size) * dt * 1e9
+    return lines_fig([{"x": t, "y": h.y, "name": "h(t)", "mode": "lines",
+                       "color": theme.ACCENT}], title=title,
+                     xtitle="Time [ns]", ytitle="amplitude", height=height)
+
+
+def pulse_cursors_fig(cm, dt, osr, title="Pulse response + ISI cursors", height=300):
+    from halo_serdes.dsp.ffe import channel_cursors
+
+    pulse = cm.pulse(dt, osr)
+    t = (np.arange(pulse.y.size) - int(np.argmax(np.abs(pulse.y)))) * dt * 1e12
+    peak = int(np.argmax(np.abs(pulse.y)))
+    cur = channel_cursors(pulse, osr, 4, 20, peak_idx=peak)
+    cidx = (np.arange(-4, 21)) * osr
+    ct = cidx * dt * 1e12
+    fig = go.Figure()
+    fig.add_scatter(x=t, y=pulse.y, mode="lines", name="pulse",
+                    line=dict(color=theme.PRIMARY))
+    fig.add_scatter(x=ct, y=cur, mode="markers", name="UI cursors",
+                    marker=dict(color=theme.CRIT, size=7))
+    fig.update_layout(**theme.layout(title, height=height))
+    fig.update_xaxes(title_text="Time [ps] (rel. peak)", **theme.axis())
+    fig.update_yaxes(title_text="amplitude", **theme.axis())
+    return fig
+
+
+def com_breakdown_fig(com, title="COM noise breakdown", height=300):
+    labels = ["ISI", "Crosstalk", "Noise", "Jitter"]
+    vals = [com.fom_isi, com.fom_xtalk, com.fom_noise, com.fom_jitter]
+    fig = go.Figure(go.Bar(x=labels, y=vals, marker_color=theme.COLORWAY[:4]))
+    fig.update_layout(**theme.layout(title, height=height), showlegend=False)
+    fig.update_yaxes(title_text="σ contribution [V]", **theme.axis())
+    fig.update_xaxes(**theme.axis())
+    return fig
+
+
+# --- CTLE ------------------------------------------------------------------
+
+def ctle_bode_fig(cfg, title="CTLE frequency response", height=320):
+    from halo_serdes.afe import Ctle
+
+    if not cfg.rx.ctle.enable:
+        return placeholder("CTLE disabled", height)
+    ctle = Ctle.from_config(cfg.rx.ctle, cfg.f_nyquist)
+    f = np.linspace(1e7, 2.5 * cfg.f_nyquist, 800)
+    mag = 20 * np.log10(np.abs(ctle.transfer(f)) + 1e-12)
+    fig = lines_fig([{"x": f / 1e9, "y": mag, "name": "|H_CTLE| [dB]",
+                      "mode": "lines", "color": theme.PRIMARY}],
+                    title=title, xtitle="Frequency [GHz]", ytitle="Gain [dB]",
+                    height=height)
+    fig.add_vline(x=cfg.f_nyquist / 1e9, line=dict(color=theme.MUTED, dash="dot",
+                  width=1), annotation_text="Nyquist")
+    return fig
+
+
+# --- jitter ----------------------------------------------------------------
+
+def jitter_bar_fig(budget, ui, title="Per-stage jitter budget", height=340):
+    if not isinstance(budget, dict) or "_note" in budget or not budget:
+        return placeholder("no jitter budget — needs a repeating pattern "
+                           "(≥4 periods, e.g. prbs7)", height)
+    from halo_serdes.analysis.jitter import total_jitter
+
+    stages = [s for s in ("tx", "chnl", "ctle") if s in budget] or list(budget)
+    u = 100.0 / ui
+    comp = {"ISI": [budget[s].isi * u for s in stages],
+            "DCD": [budget[s].dcd * u for s in stages],
+            "Pj": [budget[s].pj * u for s in stages],
+            "Rj→1e-12": [budget[s].rj * u * 14.07 for s in stages]}
+    colors = {"ISI": theme.COLORWAY[0], "DCD": theme.COLORWAY[1],
+              "Pj": theme.COLORWAY[2], "Rj→1e-12": theme.COLORWAY[3]}
+    fig = go.Figure()
+    for name, vals in comp.items():
+        fig.add_bar(x=stages, y=vals, name=name, marker_color=colors[name])
+    tj = [total_jitter(budget[s], 1e-12) * u for s in stages]
+    fig.add_scatter(x=stages, y=tj, mode="markers", name="TJ@1e-12",
+                    marker=dict(color="black", symbol="line-ew-open", size=22,
+                                line=dict(width=2)))
+    fig.update_layout(**theme.layout(title, height=height), barmode="stack")
+    fig.update_yaxes(title_text="Jitter [%UI]", **theme.axis())
+    fig.update_xaxes(**theme.axis())
     return fig
 
 

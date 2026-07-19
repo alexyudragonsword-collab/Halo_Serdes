@@ -37,6 +37,32 @@ def test_lines_fig_logy():
     assert fig.layout.yaxis.type == "log"
 
 
+def test_g1_figure_builders_from_result():
+    """stat/channel/ctle/jitter builders return figures from a real run."""
+    import dataclasses
+
+    from halo_serdes.channel import ChannelModel
+    from halo_serdes_gui import config_bridge as cb
+    from halo_serdes_gui import runner
+
+    cfg = cb.load_preset("NRZ 16G mixed-signal")
+    cfg = dataclasses.replace(cfg, sim=dataclasses.replace(
+        cfg.sim, n_symbols=127 * 12, pattern="prbs7", engine="both"))
+    rec = runner.run_link(cfg, collect_eye=True, collect_jitter=True)
+    assert rec.ok and rec.stat is not None
+
+    assert figures.stat_eye_fig(rec.stat).data[0].type == "heatmap"
+    assert isinstance(figures.bathtub_fig(rec.stat, mc_ber=rec.sim.ber.ber), go.Figure)
+    assert isinstance(figures.slicer_pdf_compare_fig(rec.stat, rec.sim.y_slicer),
+                      go.Figure)
+    cm = ChannelModel.from_config(cfg)
+    assert isinstance(figures.channel_loss_fig(cm, cfg.f_nyquist), go.Figure)
+    assert isinstance(figures.pulse_cursors_fig(cm, cfg.dt, cfg.osr), go.Figure)
+    assert isinstance(figures.ctle_bode_fig(cfg), go.Figure)
+    jb = rec.sim.extras.get("jitter_budget")
+    assert isinstance(figures.jitter_bar_fig(jb, cfg.ui), go.Figure)
+
+
 def test_runner_end_to_end_and_error_capture():
     from halo_serdes_gui import runner
 
