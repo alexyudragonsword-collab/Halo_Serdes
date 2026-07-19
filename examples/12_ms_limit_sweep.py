@@ -37,7 +37,7 @@ from halo_serdes.config.schema import (  # noqa: E402
 )
 from halo_serdes.core.waveform import Waveform  # noqa: E402
 from halo_serdes.dsp import channel_cursors, dfe_static  # noqa: E402
-from halo_serdes.engine.static_link import _levels, fold_eye, make_pattern  # noqa: E402
+from halo_serdes.engine.static_link import _levels, make_pattern  # noqa: E402
 from halo_serdes.tx.builder import symbols_to_voltages  # noqa: E402
 
 OUT = REPO / "examples" / "output"

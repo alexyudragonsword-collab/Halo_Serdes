@@ -21,7 +21,7 @@ from halo_serdes.config.schema import (  # noqa: E402
 from halo_serdes.core.prbs import symbol_checker  # noqa: E402
 from halo_serdes.dsp import viterbi_mlsd  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
-from halo_serdes.fec import bits_to_gf_symbols, pre_to_post_fec_ber, rs_kp4  # noqa: E402
+from halo_serdes.fec import pre_to_post_fec_ber, rs_kp4  # noqa: E402
 
 # deliberately unequalized (1-tap FFE): the channel postcursors reach the
 # slicer intact so the sequence detector has real ISI structure to exploit

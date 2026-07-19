@@ -304,7 +304,6 @@ class NativeCom(ComAdapter):
 
         pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
         peak = int(np.argmax(np.abs(pulse.y)))
-        fcfg = cfg.rx.ffe
         n_pre_c = self.rx_ffe_pre + 4
         n_post_c = self.rx_ffe_taps + 12
         cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak)

@@ -13,7 +13,6 @@ Reports slicer SNR, SER, pre/post-FEC BER, and the power/complexity proxy
 moved to ADC-based architectures at 224G.
 """
 
-import dataclasses
 import sys
 from pathlib import Path
 
@@ -21,7 +20,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 
 REPO = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO / "src"))

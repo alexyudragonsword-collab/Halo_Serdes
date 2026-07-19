@@ -10,13 +10,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import skrf as rf
 
 from halo_serdes.channel import (
     ChannelModel,
     import_diff_network,
     interp_s2p,
-    sdd_2port,
     terminate_gamma,
     terminate_renormalize,
 )

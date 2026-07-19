@@ -2,7 +2,6 @@
 arbitration against an independent integer reference, float convergence."""
 
 import numpy as np
-import pytest
 
 from halo_serdes.config.schema import NumericConfig, QFormat
 from halo_serdes.core.fixed import from_int, q_limits, rshift_round, saturate, to_int

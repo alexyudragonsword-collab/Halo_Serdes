@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..afe import Ctle, Vga
+from ..afe import Ctle
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig

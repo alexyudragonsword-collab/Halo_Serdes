@@ -6,9 +6,8 @@ results within Monte-Carlo confidence.
 """
 
 import numpy as np
-import pytest
 
-from halo_serdes.config import LinkConfig, apply_overrides
+from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
     ChannelConfig,
     CtleConfig,

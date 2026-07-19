@@ -42,3 +42,13 @@ halo_serdes_gui = ["assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Gate on real defects (pyflakes: undefined names, unused imports/vars,
+# f-string/format bugs) and syntax errors — not stylistic churn. Import
+# sorting (I) and line length (E501) are intentionally left un-gated.
+select = ["E9", "F"]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dash_bootstrap_components as dbc
 import numpy as np
 from dash import html
 

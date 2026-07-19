@@ -85,7 +85,6 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
     fb_f = 0.0  # summing-node filtered feedback
     n_acc = 0
     s_prev = 1.0  # sign of previous data sample
-    v_prev = 0.0
 
     for k in range(n_symbols):
         if k % n_ave == 0 and h_i < n_hist:
@@ -155,7 +154,6 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
             pd = 1 if s_edge == s_prev else -1
         pd_hist[k] = pd
         s_prev = s_cur
-        v_prev = v
 
         # --- loop filter & phase advance ---
         integ += ki * pd

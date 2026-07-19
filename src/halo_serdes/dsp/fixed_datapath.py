@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from ..config.schema import NumericConfig, QFormat
-from ..core.fixed import from_int, q_limits, to_int
+from ..core.fixed import to_int
 
 
 def calculate_ffe_shift(w_float: np.ndarray, w_q: QFormat, code_bits: int,

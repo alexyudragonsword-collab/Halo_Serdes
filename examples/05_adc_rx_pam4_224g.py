@@ -8,7 +8,6 @@
 Primary metrics: slicer-input SNR and SER (post-DSP eyes carry little info).
 """
 
-import dataclasses
 import sys
 import time
 from pathlib import Path

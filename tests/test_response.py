@@ -70,7 +70,6 @@ def test_zero_pad_rejects_decimation():
 
 def test_trim_impulse_keeps_peak():
     dt = 1e-12
-    t = np.arange(4000) * dt
     y = np.zeros(4000)
     center = 2000
     y[center - 50:center + 200] = np.exp(-np.arange(-50, 200) ** 2 / 800.0)

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..config.schema import LinkConfig, TxConfig
+from ..config.schema import LinkConfig
 from ..core.mapping import nrz_levels, pam4_levels
 from ..core.waveform import Waveform
 

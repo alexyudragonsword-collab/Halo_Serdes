@@ -1,7 +1,6 @@
 """MLSD, sliding detector, RS-FEC, and jitter-decomposition tests."""
 
 import numpy as np
-import pytest
 
 from halo_serdes.analysis.jitter import calc_jitter
 from halo_serdes.analysis.metrics import qfunc

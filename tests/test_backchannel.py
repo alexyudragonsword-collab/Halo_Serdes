@@ -48,7 +48,6 @@ def test_training_is_sign_only_protocol():
     res = train_tx_fir(cfg, n_pre=1, n_post=1, step=step, threshold=0.02)
     th = res.tap_history
     for r in range(1, th.shape[0]):
-        prev = th[r - 1]
         # un-normalize: reconstruct the raw update as (taps*norm - prev)
         # instead, check the *requested* movement direction is quantized:
         # renormalization scales all taps equally, so tap ratios change only

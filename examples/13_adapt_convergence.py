@@ -9,7 +9,6 @@ Plots per modulation: DFE tap trajectories (dashed lines = channel-cursor
 targets) and the slicer-error RMS learning curve.
 """
 
-import dataclasses
 import sys
 from pathlib import Path
 

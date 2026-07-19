@@ -39,7 +39,6 @@ from halo_serdes.config.schema import (  # noqa: E402
 )
 from halo_serdes.core.prbs import symbol_checker  # noqa: E402
 from halo_serdes.dsp import viterbi_mlsd  # noqa: E402
-from halo_serdes.dsp.kernels import slice_nearest  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
 from halo_serdes.engine.static_link import make_pattern  # noqa: E402
 from halo_serdes.fec import pre_to_post_fec_ber  # noqa: E402

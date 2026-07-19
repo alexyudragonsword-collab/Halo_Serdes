@@ -7,7 +7,6 @@ the FFE+DFE+slicer datapath bit-true at several weight word lengths:
 - dumps RTL testbench lockstep vectors (codes/weights/decisions + params).
 """
 
-import dataclasses
 import sys
 from pathlib import Path
 

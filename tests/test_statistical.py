@@ -6,7 +6,6 @@ must agree in the 1e-4..1e-2 overlap region within 2x.
 """
 
 import numpy as np
-import pytest
 
 from halo_serdes.analysis.metrics import nrz_ber_awgn, pam4_ser_awgn, qfunc
 from halo_serdes.channel import ChannelModel

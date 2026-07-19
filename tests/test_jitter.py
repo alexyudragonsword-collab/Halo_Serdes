@@ -85,7 +85,6 @@ def test_total_jitter_monotone_in_ber():
 def test_stage_budget_recovers_injected_rj():
     """A repeating pattern with known Tx RJ: the 'tx' stage Rj must land near
     the injected sigma, and the channel stage must show more ISI than Tx."""
-    from halo_serdes.analysis import stage_jitter_budget
     from halo_serdes.channel import ChannelModel
     from halo_serdes.config.schema import (
         ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig,
