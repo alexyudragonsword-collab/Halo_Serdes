@@ -69,12 +69,16 @@
 
 **相对 PyBERT**
 
-- **IBIS-AMI 接口** —— 无法加载厂商 AMI 模型(`AMI_Init`/`AMI_GetWave`)。*[本轮补:io/ami.py 适配器骨架]*
-- **COM(Channel Operating Margin)** —— 无 802.3 COM 计算。*[io/ami.py 预留 ComAdapter]*
-- **抖动分解未接入管线** —— `calc_jitter` 已实现且测试,但未在任何引擎/示例中调用,
-  缺逐级抖动预算表。*[本轮补:接入时域引擎 + 示例]*
-- **时域 FEXT/NEXT 串扰** —— 只有统计引擎有 `xtalk_pulses`,时域引擎无串扰注入。
-  *[本轮补:时域引擎 aggressor 注入]*
+- ✅ **IBIS-AMI 接口** —— **本轮补齐**:`io/ami.py` 的 `AmiModel`(Init/GetWave 双流)+
+  `IbisAmiModel`(pyibisami 后端,惰性加载)+ `NativeFirAmi` 参考模型,已接入
+  时域引擎 Tx/Rx 槽。
+- ✅ **COM(Channel Operating Margin)** —— **本轮补齐**:`io/ami.py` 的 `ComAdapter` +
+  `NativeCom`(基于均衡脉冲响应的行为级 COM,官方 802.3 工具经同一 `compute` 接口接入)。
+- ✅ **抖动分解接入管线** —— **本轮补齐**:`stage_jitter_budget`/`total_jitter` +
+  时域引擎 `collect_jitter` 逐级预算(Tx/信道/CTLE 后)+ 示例 22。
+- ✅ **时域 FEXT/NEXT 串扰** —— **本轮补齐**:`channel/crosstalk.py` 的 `XtalkAggressor`,
+  同一对象驱动时域(`xtalk=`)与统计(`xtalk_pulses=`)两引擎;`synthetic_aggressor` +
+  `import_xtalk`(多端口 Touchstone 提取)。
 - **Duobinary / PR 信道整形** —— 未建模
 - **GUI** —— 纯脚本/库,无交互界面(设计取向,非缺陷)
 - **多 lane 系统级** —— 单 lane 为主
@@ -104,4 +108,17 @@
 > **Halo_Serdes 在"行为级架构探索 + 统计/时域双引擎 + 双 RX 架构公平对比"这条主线上,
 > 是三库的超集并有实质超越;真实缺口集中在 PyBERT 的产业接口(IBIS-AMI/COM)、
 > 若干已实现但未接线的能力(抖动分解、时域串扰),以及 DragonPHY2 的硅实现全流程
-> ——后者超出行为级框架的设计边界。本轮补齐前三项软件可修复缺口。**
+> ——后者超出行为级框架的设计边界。本轮已补齐前三项软件可修复缺口。**
+
+---
+
+## 本轮补齐清单(2026-07)
+
+| 缺口 | 交付 | 示例 | 测试 |
+|---|---|---|---|
+| 抖动分解未接入管线 | `analysis/jitter.py` 逐级预算 + 引擎 `collect_jitter` | `22_jitter_budget.py` | +4 |
+| 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
+| 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
+
+全部 122 测试通过(较补齐前 +18)。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+接口与原生参考实现无外部依赖、始终可用。
