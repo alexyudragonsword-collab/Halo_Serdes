@@ -17,6 +17,7 @@ python -m nuitka --standalone --assume-yes-for-downloads `
   --include-package-data=skrf `
   --include-data-dir=src/halo_serdes_gui/assets=halo_serdes_gui/assets `
   --include-data-dir=configs=configs `
+  --include-data-dir=data/channels=data/channels `
   --nofollow-import-to=numba --nofollow-import-to=llvmlite `
   --nofollow-import-to=galois --nofollow-import-to=pytest `
   --windows-console-mode=disable `

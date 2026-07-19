@@ -51,6 +51,40 @@ def _find_configs_dir() -> Path:
 
 CONFIGS_DIR = _find_configs_dir()
 
+
+def _data_roots() -> list[Path]:
+    import sys
+
+    roots = [Path.cwd()]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        roots.append(Path(meipass))
+    try:
+        exe = Path(sys.executable).resolve().parent
+        roots += [exe, exe / "_internal"]
+    except Exception:
+        pass
+    roots.append(CONFIGS_DIR.parent)                    # repo root / _internal
+    roots.append(Path(__file__).resolve().parents[2])   # repo root (source)
+    return roots
+
+
+def resolve_data_file(rel: str) -> str:
+    """Resolve a (possibly relative) channel file against candidate roots.
+
+    Preset touchstone paths like ``data/channels/foo.s4p`` are repo-relative;
+    inside a frozen bundle they live next to the executable. Return the first
+    existing absolute path, or the input unchanged (so the open fails with a
+    clear message)."""
+    p = Path(rel)
+    if p.is_absolute() and p.exists():
+        return str(p)
+    for root in _data_roots():
+        cand = root / rel
+        if cand.exists():
+            return str(cand.resolve())
+    return rel
+
 # --- field kinds -----------------------------------------------------------
 # float / int / bool / enum / str / opt_float / opt_int / tuple_float /
 # opt_tuple_float.  `scale` (optional) presents a Hz value in GHz/GBd etc.
@@ -249,7 +283,17 @@ def build_config(values: dict[str, Any]) -> LinkConfig:
     for path, field in FIELD_BY_PATH.items():
         if path in values:
             overrides[path] = coerce_in(field, values[path])
-    return apply_overrides(LinkConfig(), overrides)
+    cfg = apply_overrides(LinkConfig(), overrides)
+    return _resolve_channel(cfg)
+
+
+def _resolve_channel(cfg: LinkConfig) -> LinkConfig:
+    """Rewrite a touchstone channel file to an absolute, existing path."""
+    if cfg.channel.kind == "touchstone" and cfg.channel.file:
+        resolved = resolve_data_file(cfg.channel.file)
+        if resolved != cfg.channel.file:
+            cfg = apply_overrides(cfg, {"channel.file": resolved})
+    return cfg
 
 
 def config_to_values(cfg: LinkConfig) -> dict[str, Any]:
@@ -307,7 +351,7 @@ def load_preset(name: str) -> LinkConfig:
     path = _preset_paths().get(name)
     if path is None or not path.exists():
         return LinkConfig()
-    return load_config(path)
+    return _resolve_channel(load_config(path))
 
 
 # --- derived read-only quantities ------------------------------------------

@@ -74,14 +74,27 @@ def main() -> None:
         sys.exit(1)
 
     if "--selfcheck" in argv:
-        from halo_serdes_gui.config_bridge import CONFIGS_DIR, preset_names
+        import os as _os
+
+        from halo_serdes_gui.config_bridge import (
+            CONFIGS_DIR, load_preset, preset_names,
+        )
 
         presets = preset_names()
         print(f"OK {url} presets={len(presets)} configs_dir={CONFIGS_DIR}")
-        # a working bundle must find the example presets, not just the default
         if len(presets) < 2:
             print("ERROR: example presets not bundled", file=sys.stderr)
             sys.exit(2)
+        # a touchstone preset's channel file must resolve inside the bundle
+        for name in presets:
+            cfg = load_preset(name)
+            if cfg.channel.kind == "touchstone" and cfg.channel.file:
+                ok = _os.path.exists(cfg.channel.file)
+                print(f"  touchstone[{name}] -> {cfg.channel.file} exists={ok}")
+                if not ok:
+                    print("ERROR: touchstone channel file not bundled/resolved",
+                          file=sys.stderr)
+                    sys.exit(3)
         return
 
     if "--browser" not in argv:

@@ -40,6 +40,8 @@ datas += [(os.path.join(SRC, "halo_serdes_gui", "assets"),
            "halo_serdes_gui/assets")]
 # example presets -> configs/ (so the Load dropdown is populated in the exe)
 datas += [(os.path.join(ROOT, "configs"), "configs")]
+# touchstone channels referenced by the presets -> data/channels/
+datas += [(os.path.join(ROOT, "data", "channels"), "data/channels")]
 hidden += _subs("halo_serdes") + _subs("halo_serdes_gui")
 
 a = Analysis(
