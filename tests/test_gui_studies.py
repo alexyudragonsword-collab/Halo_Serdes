@@ -12,7 +12,7 @@ from halo_serdes_gui import runner, studies  # noqa: E402
 
 
 def _adc_rec():
-    cfg = cb.load_preset("PAM4 224G ADC")
+    cfg = cb.load_preset("PAM4 224G ADC (106 GBd)")
     cfg = dataclasses.replace(cfg, sim=dataclasses.replace(
         cfg.sim, n_symbols=12000, engine="time"))
     return runner.run_link(cfg)

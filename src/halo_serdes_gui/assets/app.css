@@ -14,12 +14,14 @@ body { font-family: Inter, "Segoe UI", system-ui, sans-serif; }
 .form-control-sm, .form-select-sm { font-size: 0.8rem; }
 .form-label { margin-bottom: 0.1rem; }
 
-/* Result graphs read as cards */
-.js-plotly-plot {
+/* Result graphs read as cards. Style the dcc.Graph wrapper, NOT the inner
+   .js-plotly-plot — Plotly measures that element, and border/padding on it
+   feeds its resize loop (infinite vertical growth inside a webview). */
+.dash-graph {
   border: 1px solid #e6eaf0;
   border-radius: 8px;
   background: #fff;
-  padding: 2px;
+  overflow: hidden;
 }
 
 /* Run button a touch bolder */

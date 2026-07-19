@@ -89,9 +89,9 @@ def test_g2_dynamics_figures():
     res = train_tx_fir(ms, channel=ChannelModel.from_config(ms), n_post=2)
     assert isinstance(figures.backchannel_fig(res), go.Figure)
 
-    adccfg = dataclasses.replace(cb.load_preset("PAM4 224G ADC"),
+    adccfg = dataclasses.replace(cb.load_preset("PAM4 224G ADC (106 GBd)"),
                                  sim=dataclasses.replace(
-                                     cb.load_preset("PAM4 224G ADC").sim,
+                                     cb.load_preset("PAM4 224G ADC (106 GBd)").sim,
                                      n_symbols=12000, engine="time"))
     arec = runner.run_link(adccfg)
     ae = arec.sim.extras

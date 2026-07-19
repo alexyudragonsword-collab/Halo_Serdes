@@ -39,8 +39,21 @@ def need_run_message():
 
 
 def graph(fig, **kw):
-    return dcc.Graph(figure=fig, config={"displaylogo": False,
-                     "toImageButtonOptions": {"format": "png", "scale": 2}},
+    # Pin the graph's container to the figure's own height. Without a fixed
+    # container height, Plotly's responsive resize and the auto-height parent
+    # feed back on each other inside a webview and the chart grows without
+    # bound. Fixed height breaks that loop; width stays responsive.
+    height = 360
+    try:
+        if getattr(fig, "layout", None) is not None and fig.layout.height:
+            height = int(fig.layout.height)
+    except Exception:
+        pass
+    style = kw.pop("style", {})
+    style = {"height": f"{height}px", **style}
+    return dcc.Graph(figure=fig, style=style,
+                     config={"displaylogo": False, "responsive": True,
+                             "toImageButtonOptions": {"format": "png", "scale": 2}},
                      **kw)
 
 
