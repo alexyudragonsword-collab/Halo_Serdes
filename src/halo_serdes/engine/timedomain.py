@@ -52,11 +52,33 @@ def _stage_jitter(cfg: LinkConfig, stages: dict[str, np.ndarray]) -> dict | None
     return stage_jitter_budget(stages, cfg.dt, cfg.ui, plen, thresh=0.0)
 
 
+def _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami):
+    """Fold AMI Tx/Rx models into the chain.
+
+    GetWave models process the time-domain waveform (Tx before the channel,
+    Rx after); Init-only LTI models transform the folded channel+CTLE impulse
+    (convolution commutes, so Tx/Rx side is equivalent here). Returns the
+    possibly-modified ``(h, tx_wave_y)``; the caller applies Rx GetWave after
+    the channel pass.
+    """
+    tx_y = tx_wave.y
+    if tx_ami is not None:
+        if tx_ami.has_getwave:
+            tx_y, _ = tx_ami.get_wave(tx_y, cfg.dt, cfg.ui)
+        else:
+            h = tx_ami.init(h, cfg.dt, cfg.ui)
+    if rx_ami is not None and not rx_ami.has_getwave:
+        h = rx_ami.init(h, cfg.dt, cfg.ui)
+    return h, tx_y
+
+
 def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False,
-                  collect_jitter: bool = False) -> SimResult:
+                  collect_jitter: bool = False,
+                  tx_ami=None, rx_ami=None) -> SimResult:
     if cfg.rx.arch == "adc_dsp":
-        return _run_adc_link(cfg, channel, collect_eye, collect_jitter)
+        return _run_adc_link(cfg, channel, collect_eye, collect_jitter,
+                             tx_ami, rx_ami)
     from ..config.schema import (
         MS_COMFORT_DATA_RATE,
         MS_HARD_MAX_BAUD,
@@ -111,14 +133,19 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: h.size * 2]
     h = h * cfg.rx.vga_gain
 
-    rx_y = fft_filter(tx_wave.y, h)
+    # --- optional AMI Tx/Rx models (Init folds into h, GetWave into the wave) ---
+    h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
+
+    rx_y = fft_filter(tx_y, h)
+    if rx_ami is not None and rx_ami.has_getwave:
+        rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
 
     # --- optional per-stage jitter budget (Tx / channel / after-CTLE) ---
     jitter_budget = None
     if collect_jitter:
-        ch_only = fft_filter(tx_wave.y, ch_rs.h.y * cfg.rx.vga_gain)
+        ch_only = fft_filter(tx_y, ch_rs.h.y * cfg.rx.vga_gain)
         jitter_budget = _stage_jitter(cfg, {
-            "tx": tx_wave.y, "chnl": ch_only, "ctle": rx_y})
+            "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
 
     if cfg.rx.noise_rms > 0:
         rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
@@ -217,7 +244,8 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 
 def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False,
-                  collect_jitter: bool = False) -> SimResult:
+                  collect_jitter: bool = False,
+                  tx_ami=None, rx_ami=None) -> SimResult:
     """ADC-based RX: light CTLE -> TI-ADC -> digital FFE/DFE -> MM-CDR.
 
     Primary metrics for this architecture are slicer-input SNR and SER
@@ -250,13 +278,17 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: h.size * 2]
     h = h * cfg.rx.vga_gain
 
-    rx_y = fft_filter(tx_wave.y, h)
+    h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
+
+    rx_y = fft_filter(tx_y, h)
+    if rx_ami is not None and rx_ami.has_getwave:
+        rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
 
     jitter_budget = None
     if collect_jitter:
-        ch_only = fft_filter(tx_wave.y, ch_rs.h.y * cfg.rx.vga_gain)
+        ch_only = fft_filter(tx_y, ch_rs.h.y * cfg.rx.vga_gain)
         jitter_budget = _stage_jitter(cfg, {
-            "tx": tx_wave.y, "chnl": ch_only, "ctle": rx_y})
+            "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
 
     if cfg.rx.noise_rms > 0:
         rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
