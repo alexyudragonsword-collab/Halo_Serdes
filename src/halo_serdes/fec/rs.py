@@ -113,3 +113,32 @@ def pre_to_post_fec_ber(pre_ber: float, code: str = "kp4",
     p_frame = post_fec_frame_error_rate(ser, n, t)
     # expected wrong bits per failed frame ~ (t+1) symbols * avg wrong bits
     return float(p_frame * (t + 1) * bits_per_fec_symbol_error / (k * M_BITS))
+
+
+def inner_decoded_ber(pre_ber: float, n: int, t: int) -> float:
+    """Post-decode BER of a t-error-correcting (n, k) hard-decision block
+    code on a BSC(pre_ber) — bounded-distance decoder, errors pass through
+    only when more than t occur in a block (miscorrection ignored).
+
+    ``p_out = sum_{j>t} (j/n) * C(n,j) p^j (1-p)^(n-j)``
+    """
+    from scipy.stats import binom
+
+    if pre_ber <= 0:
+        return 0.0
+    j = np.arange(t + 1, n + 1)
+    return float(np.sum(j / n * binom.pmf(j, n, pre_ber)))
+
+
+def concatenated_post_fec_ber(pre_ber: float, inner_n: int, inner_t: int,
+                              outer: str = "kp4") -> float:
+    """Post-FEC BER of an inner (n, t) hard-decision block code concatenated
+    with an RS outer (KP4/KR4).
+
+    The inner code corrects most raw errors, presenting a much lower BER to
+    the RS outer, which raises the tolerable pre-FEC BER (the standard deep-LR
+    / 800G-1.6T concatenated-FEC approach). Total overhead = RS overhead +
+    inner parity/data (report separately; a BCH(n,k) over GF(2^m) has
+    ~m*t parity bits).
+    """
+    return pre_to_post_fec_ber(inner_decoded_ber(pre_ber, inner_n, inner_t), outer)

@@ -141,6 +141,24 @@ def test_post_fec_projection_monotonic():
     assert pre_to_post_fec_ber(3e-4, "kr4") > pre_to_post_fec_ber(3e-4, "kp4")
 
 
+def test_concatenated_fec_raises_tolerance():
+    from halo_serdes.fec import concatenated_post_fec_ber, inner_decoded_ber
+
+    # inner code reduces the BER seen by the RS outer
+    p = 2e-3
+    assert inner_decoded_ber(p, 255, 5) < p
+    # concatenated tolerates a pre-FEC where KP4-alone already fails
+    assert pre_to_post_fec_ber(1.5e-3, "kp4") > 1e-15          # KP4 alone fails
+    assert concatenated_post_fec_ber(1.5e-3, 255, 5) < 1e-15   # concat passes
+    # stronger inner (higher t) -> lower post-FEC at fixed pre-FEC
+    weak = concatenated_post_fec_ber(3e-3, 128, 1)
+    strong = concatenated_post_fec_ber(3e-3, 255, 5)
+    assert strong < weak
+    # vanishing pre-FEC -> vanishing post-FEC
+    assert concatenated_post_fec_ber(1e-6, 255, 5) < 1e-15
+    assert inner_decoded_ber(0.0, 255, 5) == 0.0
+
+
 # ----------------------------------------------------------------- jitter ---
 
 
