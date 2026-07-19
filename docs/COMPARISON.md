@@ -72,9 +72,13 @@
 
 **相对 PyBERT**
 
-- ✅ **IBIS-AMI 接口** —— **本轮补齐**:`io/ami.py` 的 `AmiModel`(Init/GetWave 双流)+
-  `IbisAmiModel`(pyibisami 后端,惰性加载)+ `NativeFirAmi` 参考模型,已接入
-  时域引擎 Tx/Rx 槽。
+- ✅ **IBIS-AMI 接口 + 真执行** —— **本轮补齐 + 升级为真跑编译模型**:`io/ami.py` 的
+  `AmiModel`(Init/GetWave 双流)+ `NativeFirAmi` 参考模型 + `IbisAmiModel`(pyibisami
+  后端,绑定厂商 .ami/.dll);**新增 `AmiCModel`**:通过真实 IBIS-AMI **C ABI**(ctypes)
+  加载并执行一个**编译的共享库**——随仓库附带的参考模型 `io/ami_c/halo_fir_ami.c`
+  实现 spec 的 AMI_Init/AMI_GetWave/AMI_Close 三入口,`build_reference_ami()` 用系统
+  C 编译器现编译成 .so,与 `NativeFirAmi` 逐位一致(Init 精确、GetWave 机器精度),
+  经引擎 Tx/Rx 槽两流验证;示例 29。厂商模型即 `load_ami_model(so_file=...)` 直接替换。
 - ✅ **COM(Channel Operating Margin)** —— **本轮补齐 + 升级为标准 COM**:`io/ami.py` 的
   `ComAdapter` 有两个实现:`NativeCom`(基于均衡脉冲响应的透明行为级 RSS 图,快、易读)与
   `Com93a`(**忠实的 IEEE 802.3 Clause 93A/178A COM**,`analysis/com.py`:CTLE/DFE 网格按

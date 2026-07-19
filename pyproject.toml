@@ -39,6 +39,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 halo_serdes_gui = ["assets/*"]
+halo_serdes = ["io/ami_c/*.c", "io/ami_c/*.ami"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -25,10 +25,17 @@ response; the official IEEE 802.3 (93A/178A) tool plugs in behind the same
 
 from __future__ import annotations
 
+import ctypes
+import os
+import subprocess
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
+
+_AMI_C_DIR = Path(__file__).resolve().parent / "ami_c"
 
 # --------------------------------------------------------------------------- #
 # AMI model seam
@@ -198,16 +205,156 @@ class IbisAmiModel(AmiModel):
         return np.asarray(out, dtype=np.float64), None
 
 
-def load_ami_model(ami_file: str | None = None, dll_file: str | None = None,
-                   *, taps=None, n_pre: int = 0, sample_spaced: bool = True,
-                   params: dict | None = None) -> AmiModel:
-    """Factory: a real IBIS-AMI model when files are given, else a native FIR.
+def _shared_ext() -> str:
+    if os.name == "nt":
+        return ".dll"
+    return ".dylib" if sys.platform == "darwin" else ".so"
 
-    ``load_ami_model(ami_file=..., dll_file=...)`` binds a vendor model;
-    ``load_ami_model(taps=[...], n_pre=k)`` builds a :class:`NativeFirAmi`.
+
+def build_reference_ami(out_dir: str | None = None, *, cc: str | None = None
+                        ) -> tuple[str, str]:
+    """Compile the shipped reference AMI model to a shared object.
+
+    Compiles ``io/ami_c/halo_fir_ami.c`` — a real IBIS-AMI model with the three
+    spec C entry points — into a loadable ``.so``/``.dll``/``.dylib`` and returns
+    ``(shared_object_path, ami_file_path)``. The result loads through
+    :class:`AmiCModel`, which drives it over the actual AMI C ABI. Requires a C
+    compiler (``cc`` or ``$CC``); raises :class:`RuntimeError` if absent or on a
+    compile error.
     """
+    src = _AMI_C_DIR / "halo_fir_ami.c"
+    ami = _AMI_C_DIR / "halo_fir.ami"
+    if not src.exists():
+        raise RuntimeError(f"reference AMI source missing: {src}")
+    cc = cc or os.environ.get("CC") or "cc"
+    out = Path(out_dir) if out_dir else _AMI_C_DIR
+    out.mkdir(parents=True, exist_ok=True)
+    so = out / ("halo_fir_ami" + _shared_ext())
+    cmd = [cc, "-shared", "-fPIC", "-O2", "-o", str(so), str(src), "-lm"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"C compiler {cc!r} not found") from exc
+    if r.returncode != 0:
+        raise RuntimeError(f"AMI model compile failed:\n{r.stderr}")
+    return str(so), str(ami)
+
+
+class AmiCModel(AmiModel):
+    """Run a compiled IBIS-AMI model through the real C ABI via ``ctypes``.
+
+    This is genuine IBIS-AMI *execution*: the ``.so``/``.dll`` is loaded and its
+    ``AMI_Init`` / ``AMI_GetWave`` / ``AMI_Close`` entry points are called with
+    the spec's C signatures — the same interface a vendor model exposes — with no
+    ``pyibisami`` dependency. Pair it with :func:`build_reference_ami` (the
+    shipped reference model) or point it at any spec-compliant shared object.
+
+    Args:
+        so_file: path to the compiled AMI shared object.
+        taps / n_pre: convenience — rendered into the AMI parameter string
+            ``(halo_fir (taps ...) (n_pre k))`` the reference model parses.
+        params: a raw AMI parameter string, overriding ``taps``/``n_pre``.
+        has_getwave: expose the GetWave (time-domain) flow to the host; when
+            False the host uses the Init (LTI impulse-transform) flow.
+    """
+
+    def __init__(self, so_file: str, *, taps=None, n_pre: int = 0,
+                 params: str | None = None, has_getwave: bool = False):
+        self._lib = ctypes.CDLL(str(so_file))
+        c = ctypes
+        self._init_fn = self._lib.AMI_Init
+        self._init_fn.restype = c.c_long
+        self._init_fn.argtypes = [
+            c.POINTER(c.c_double), c.c_long, c.c_long, c.c_double, c.c_double,
+            c.c_char_p, c.POINTER(c.c_char_p), c.POINTER(c.c_void_p),
+            c.POINTER(c.c_char_p)]
+        self._gw_fn = self._lib.AMI_GetWave
+        self._gw_fn.restype = c.c_long
+        self._gw_fn.argtypes = [
+            c.POINTER(c.c_double), c.c_long, c.POINTER(c.c_double),
+            c.POINTER(c.c_char_p), c.c_void_p]
+        self._close_fn = self._lib.AMI_Close
+        self._close_fn.restype = c.c_long
+        self._close_fn.argtypes = [c.c_void_p]
+        self.has_getwave = bool(has_getwave)
+        self._handle: ctypes.c_void_p | None = None
+        self._params = self._render_params(taps, n_pre, params)
+
+    @staticmethod
+    def _render_params(taps, n_pre, params) -> bytes:
+        if params is not None:
+            return params.encode()
+        if taps is not None:
+            tap_str = " ".join(f"{float(t):g}" for t in taps)
+            return f"(halo_fir (taps {tap_str}) (n_pre {int(n_pre)}))".encode()
+        return b"(halo_fir)"
+
+    def _call_init(self, h: np.ndarray, dt: float, ui: float) -> None:
+        c = ctypes
+        pout = c.c_char_p()
+        handle = c.c_void_p()
+        msg = c.c_char_p()
+        rc = self._init_fn(
+            h.ctypes.data_as(c.POINTER(c.c_double)), c.c_long(h.size),
+            c.c_long(0), c.c_double(dt), c.c_double(ui), self._params,
+            c.byref(pout), c.byref(handle), c.byref(msg))
+        if rc != 1:
+            raise RuntimeError(f"AMI_Init returned {rc}")
+        self._handle = handle
+        self.messages = msg.value.decode() if msg.value else ""
+
+    def _ensure_handle(self, dt: float, ui: float) -> None:
+        if self._handle is None:              # GetWave path never called init
+            self._call_init(np.array([1.0], dtype=np.float64), dt, ui)
+
+    def init(self, impulse: np.ndarray, dt: float, ui: float,
+             **params: object) -> np.ndarray:
+        h = np.ascontiguousarray(impulse, dtype=np.float64).copy()
+        if self._handle is not None:
+            self._close_fn(self._handle)
+            self._handle = None
+        self._call_init(h, dt, ui)            # transforms h in place
+        return h
+
+    def get_wave(self, wave: np.ndarray, dt: float,
+                 ui: float) -> tuple[np.ndarray, np.ndarray | None]:
+        c = ctypes
+        self._ensure_handle(dt, ui)
+        y = np.ascontiguousarray(wave, dtype=np.float64).copy()
+        osr = max(int(round(ui / dt)), 1)
+        clk = np.full(y.size // osr + 16, -1.0, dtype=np.float64)
+        pout = c.c_char_p()
+        rc = self._gw_fn(
+            y.ctypes.data_as(c.POINTER(c.c_double)), c.c_long(y.size),
+            clk.ctypes.data_as(c.POINTER(c.c_double)), c.byref(pout),
+            self._handle)
+        if rc != 1:
+            raise RuntimeError(f"AMI_GetWave returned {rc}")
+        return y, None
+
+    def close(self) -> None:
+        if self._handle is not None:
+            self._close_fn(self._handle)
+            self._handle = None
+
+
+def load_ami_model(ami_file: str | None = None, dll_file: str | None = None,
+                   *, so_file: str | None = None, taps=None, n_pre: int = 0,
+                   sample_spaced: bool = True, params=None,
+                   has_getwave: bool = False) -> AmiModel:
+    """Factory for an :class:`AmiModel`.
+
+    * ``so_file=...`` → :class:`AmiCModel` (a compiled model run over the C ABI);
+    * ``ami_file=..., dll_file=...`` → :class:`IbisAmiModel` (pyibisami backend);
+    * ``taps=[...], n_pre=k`` → :class:`NativeFirAmi` (dependency-free reference).
+    """
+    if so_file:
+        return AmiCModel(so_file, taps=taps, n_pre=n_pre,
+                         params=params if isinstance(params, str) else None,
+                         has_getwave=has_getwave)
     if ami_file and dll_file:
-        return IbisAmiModel(ami_file, dll_file, params=params)
+        return IbisAmiModel(ami_file, dll_file,
+                            params=params if isinstance(params, dict) else None)
     if taps is None:
         taps = [1.0]
     return NativeFirAmi(taps, n_pre=n_pre, sample_spaced=sample_spaced)

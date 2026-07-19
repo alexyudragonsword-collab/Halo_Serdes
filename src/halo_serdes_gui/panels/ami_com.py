@@ -15,14 +15,30 @@ TAB_ID = "amicom"
 
 
 def _ami_status():
+    import shutil
+
+    banners = []
+    # real C-ABI execution: a compiled AMI model, no vendor binary needed
+    if shutil.which("cc") or shutil.which("gcc"):
+        banners.append(theme.banner(
+            "info", "C compiler present — the shipped reference IBIS-AMI model "
+            "(io/ami_c/halo_fir_ami.c) compiles and runs over the real AMI C ABI "
+            "via load_ami_model(so_file=...) / AmiCModel."))
+    else:
+        banners.append(theme.banner(
+            "warn", "No C compiler — AmiCModel (real .so execution) unavailable; "
+            "the native FIR reference AMI model still works."))
+    # pyibisami backend for vendor .ami/.dll
     try:
         import pyibisami  # noqa: F401
-        txt, tone = "pyibisami available — vendor .ami/.so models loadable", "good"
+        banners.append(theme.banner(
+            "info", "pyibisami available — vendor .ami/.dll models loadable via "
+            "load_ami_model(ami_file=..., dll_file=...)."))
     except Exception:
-        txt, tone = ("pyibisami not installed — native FIR reference AMI model "
-                     "in use (load_ami_model(taps=...)); install pyibisami to "
-                     "bind vendor models."), "muted"
-    return theme.banner("info" if tone == "good" else "warn", txt)
+        banners.append(theme.banner(
+            "warn", "pyibisami not installed — vendor .ami/.dll binding disabled; "
+            "the compiled reference model and native FIR still exercise the seam."))
+    return html.Div(banners)
 
 
 def render(rec: RunRecord):

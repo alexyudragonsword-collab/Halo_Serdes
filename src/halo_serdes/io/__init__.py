@@ -13,6 +13,7 @@ These adapters are the *interface seam* to the industry ecosystem:
 """
 
 from .ami import (
+    AmiCModel,
     AmiModel,
     Com93a,
     ComAdapter,
@@ -20,10 +21,12 @@ from .ami import (
     IbisAmiModel,
     NativeCom,
     NativeFirAmi,
+    build_reference_ami,
     load_ami_model,
 )
 
 __all__ = [
-    "AmiModel", "NativeFirAmi", "IbisAmiModel", "load_ami_model",
+    "AmiModel", "NativeFirAmi", "IbisAmiModel", "AmiCModel",
+    "build_reference_ami", "load_ami_model",
     "ComAdapter", "NativeCom", "Com93a", "ComResult",
 ]

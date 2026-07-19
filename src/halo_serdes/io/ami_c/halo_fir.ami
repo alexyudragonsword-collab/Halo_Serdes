@@ -1,0 +1,20 @@
+(halo_fir
+
+    (Description "halo_serdes reference FIR IBIS-AMI model (UI-spaced FFE)")
+
+    (Reserved_Parameters
+        (AMI_Version (Usage Info) (Type String) (Value "7.0")
+            (Description "IBIS-AMI spec version this model targets."))
+        (Init_Returns_Impulse (Usage Info) (Type Boolean) (Value True)
+            (Description "AMI_Init realizes the FIR as an LTI impulse transform."))
+        (GetWave_Exists (Usage Info) (Type Boolean) (Value True)
+            (Description "AMI_GetWave applies the same FIR to a waveform block."))
+    )
+
+    (Model_Specific
+        (taps (Usage In) (Type Float) (List -0.1 0.8 -0.1)
+            (Description "UI-spaced FIR taps [pre..., main, post...]."))
+        (n_pre (Usage In) (Type Integer) (Value 1)
+            (Description "Number of precursor taps in `taps`."))
+    )
+)

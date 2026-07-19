@@ -57,7 +57,7 @@ re-renders from it instantly (study sweeps are cached per run).
 | **Sweeps / Reach** | statistical reach vs channel loss + KP4/KR4 | analytic channel |
 | **FEC** | pre→post-FEC projection (KP4/KR4/concatenated), this-run marker | formulas |
 | **Crosstalk** | FEXT/NEXT coupling sweep (StatEye) + multi-lane ICN (~√N) & 802.3 COM vs aggressor count | synthetic aggressors / aggressor_bank |
-| **AMI / COM** | IEEE 802.3 COM (93A/178A) vs loss overlaid on the RSS FoM + IBIS-AMI seam status | analytic channel |
+| **AMI / COM** | IEEE 802.3 COM (93A/178A) vs loss overlaid on the RSS FoM + IBIS-AMI status (compiled reference model runs over the real C ABI; pyibisami for vendor models) | analytic channel |
 | **Fixed-Point** | word-length BER wall (datapath replay) | needs an ADC run |
 
 ## Performance notes
