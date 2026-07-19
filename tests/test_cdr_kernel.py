@@ -39,7 +39,7 @@ def _run(y, n_sym, w_dfe=np.zeros(0), mu=0.0, kp_shift=5, ki_shift=11,
     ref = np.full(n_sym, -1, dtype=np.int64)
     return kernel(y, OSR, float(phase0), n_sym, LEVELS,
                   np.asarray(w_dfe, float), float(mu), 100, kp, ki, 0.0,
-                  1.0, ref, 0, 0)
+                  1.0, ref, 0, 0, 0, np.zeros(LEVELS.size))
 
 
 def test_locks_and_decides_clean_waveform():

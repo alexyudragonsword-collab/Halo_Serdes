@@ -33,7 +33,8 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
               levels: np.ndarray, w_dfe: np.ndarray, mu_dfe: float,
               n_ave: int, kp: float, ki: float, clamp: float,
               sum_alpha: float, ref_idx: np.ndarray, train_len: int,
-              adapt_start: int):
+              adapt_start: int, tap1_unrolled: int,
+              branch_offsets: np.ndarray):
     """Joint DFE + Alexander bang-bang CDR loop.
 
     Args:
@@ -52,6 +53,14 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
         train_len: decisions [0, train_len) use data-aided error/feedback.
         adapt_start: first symbol index at which LMS updates run (lets the
             CDR settle first — the mandated staged startup).
+        tap1_unrolled: 1 = speculative/loop-unrolled first DFE tap — the tap-1
+            correction becomes a per-branch slicer threshold selected (muxed)
+            by the previous decision, and bypasses the summing-node bandwidth
+            model entirely; taps >= 2 stay on the analog feedback path.
+            0 = direct analog feedback for all taps (all through sum_alpha).
+        branch_offsets: per-branch comparator offset [V], one entry per level
+            hypothesis of the previous symbol (unrolled mode only; pass zeros
+            of length len(levels) otherwise).
 
     Returns:
         dec (int64[n]), y_sum (float64[n] summing-node values),
@@ -78,14 +87,22 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
         y_d = _farrow(y, pos)
         y_e = _farrow(y, pos - osr / 2.0)
 
-        # --- DFE feedback (through summing-node bandwidth model) ---
+        # --- DFE feedback ---
+        # direct mode: all taps through the summing node (sum_alpha settling).
+        # unrolled mode: tap 1 is a speculative threshold offset muxed by the
+        # previous decision (instantaneous, escapes sum_alpha); taps >= 2
+        # remain on the analog feedback path.
+        first_tap = 1 if (tap1_unrolled == 1 and nt > 0) else 0
         fb = 0.0
-        for i in range(nt):
+        for i in range(first_tap, nt):
             j = k - 1 - i
             if j >= 0:
                 fb += w[i] * levels[dec[j]]
         fb_f += sum_alpha * (fb - fb_f)
         v = y_d - fb_f
+        if tap1_unrolled == 1 and nt > 0 and k >= 1:
+            prev = dec[k - 1]
+            v = v - w[0] * levels[prev] + branch_offsets[prev]
         y_sum[k] = v
         phase[k] = pos
 

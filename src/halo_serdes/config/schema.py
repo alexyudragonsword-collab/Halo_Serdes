@@ -100,6 +100,13 @@ class DfeConfig:
     tap_limits: Optional[tuple[float, ...]] = None
     sum_bw: Optional[float] = None      # mixed-signal summing-node bandwidth [Hz]
     loop_delay_ui: float = 0.0          # mixed-signal decision feedback delay [UI]
+    # tap-1 implementation (mixed-signal): "direct" = analog feedback into the
+    # summing node (subject to sum_bw settling; loop_delay_ui > 1 kills it);
+    # "unrolled" = speculative/loop-unrolled first tap — per-branch slicer
+    # thresholds muxed by the previous decision (escapes sum_bw; critical
+    # path is the mux; per-branch comparators carry independent offsets).
+    tap1_mode: Literal["direct", "unrolled"] = "direct"
+    comparator_offset_sigma: float = 0.0  # per-branch comparator offset [V] (unrolled)
 
 
 @dataclass(frozen=True)

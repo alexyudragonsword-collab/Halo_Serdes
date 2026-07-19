@@ -71,8 +71,11 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # DFE feedback multiplies slicer levels (which carry the main-cursor
     # scale), so tap weights are postcursors normalized to the main cursor.
     w_dfe0 = cursors[1: 1 + n_dfe] / main if n_dfe else np.zeros(0)
-    # loop-delay constraint: tap 1 unusable if decision comes back too late
-    if n_dfe and cfg.rx.dfe.loop_delay_ui > 1.0:
+    # loop-delay constraint: with direct analog feedback, tap 1 is unusable
+    # if the decision comes back later than 1 UI; the unrolled tap-1 relaxes
+    # the critical path to a mux and keeps the tap.
+    tap1_unrolled = 1 if cfg.rx.dfe.tap1_mode == "unrolled" else 0
+    if n_dfe and cfg.rx.dfe.loop_delay_ui > 1.0 and not tap1_unrolled:
         w_dfe0 = w_dfe0.copy()
         w_dfe0[0] = 0.0
 
@@ -104,11 +107,19 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     ref_arr = np.full(n_sym, -1, dtype=np.int64)
     ref_arr[:train_end] = ref_idx[:train_end]
 
+    # per-branch comparator offsets for the unrolled tap-1 slicer bank
+    if tap1_unrolled and cfg.rx.dfe.comparator_offset_sigma > 0:
+        branch_off = rng.normal(scale=cfg.rx.dfe.comparator_offset_sigma,
+                                size=levels.size)
+    else:
+        branch_off = np.zeros(levels.size)
+
     dec, y_sum, phase, w_dfe, pd_hist = ms_rx(
         rx_y, osr, float(peak), n_sym,
         levels.astype(np.float64), np.asarray(w_dfe0, dtype=np.float64),
         float(mu), 100, float(kp), float(ki), float(clamp),
-        float(sum_alpha), ref_arr, int(train_end), int(settle))
+        float(sum_alpha), ref_arr, int(train_end), int(settle),
+        int(tap1_unrolled), branch_off)
 
     n_run = dec.size
     warm = cfg.sim.warmup_discard if cfg.sim.warmup_discard is not None else train_end
