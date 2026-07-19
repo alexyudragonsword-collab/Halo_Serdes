@@ -21,9 +21,21 @@ dependencies = [
 jit = ["numba>=0.59"]
 fec = ["galois>=0.3"]
 test = ["pytest>=7.0"]
+gui = [
+    "dash>=2.16",
+    "plotly>=5.20",
+    "dash-bootstrap-components>=1.5",
+    "diskcache>=5.6",
+]
+
+[project.scripts]
+halo-serdes-gui = "halo_serdes_gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+halo_serdes_gui = ["assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

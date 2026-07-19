@@ -1,0 +1,33 @@
+/* Halo_Serdes GUI polish — layered on top of vendored Bootstrap (Flatly). */
+
+body { font-family: Inter, "Segoe UI", system-ui, sans-serif; }
+
+/* Compact, engineering-tool density */
+.accordion-button {
+  padding: 0.45rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.accordion-body { padding: 0.5rem 0.75rem; }
+.form-control-sm, .form-select-sm { font-size: 0.8rem; }
+.form-label { margin-bottom: 0.1rem; }
+
+/* Result graphs read as cards */
+.js-plotly-plot {
+  border: 1px solid #e6eaf0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 2px;
+}
+
+/* Run button a touch bolder */
+#run-btn { font-weight: 700; letter-spacing: 0.02em; }
+
+/* Tabs */
+.nav-tabs .nav-link { font-size: 0.85rem; padding: 0.35rem 0.7rem; }
+
+/* Keep the sidebar scrollbar unobtrusive */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 5px; }
