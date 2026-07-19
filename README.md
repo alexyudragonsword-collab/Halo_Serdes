@@ -22,6 +22,19 @@ python examples/00_channel.py path/to/channel.s4p
 pytest tests/ -q                                    # 全部单元测试
 ```
 
+## 图形界面 GUI
+
+一个专业的 Plotly Dash 工作台,把 25 个示例脚本的全部分析能力变成交互式操作
+(单次链路、双引擎交叉校验、眼图/浴盆、CTLE、自适应/CDR 动态、ADC 逐 lane、抖动预算、
+reach 扫描、FEC、串扰、AMI/COM、定点),共 15 个能力标签页。界面不新增任何仿真逻辑,
+只驱动现有引擎并渲染结果。详见 [`docs/GUI.md`](docs/GUI.md)。
+
+```bash
+pip install -e ".[gui,jit,fec]"
+halo-serdes-gui                                     # 或 python -m halo_serdes_gui
+# 浏览器打开 http://127.0.0.1:8050/
+```
+
 ## 当前状态(Phase 0 完成)
 
 - `config/`:YAML → frozen dataclass 的参数单源配置(严格键校验、dotted-path 覆盖、schema 版本迁移);
