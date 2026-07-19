@@ -16,15 +16,16 @@ from . import config_bridge as cb
 from . import theme
 from .config_form import render_form, values_from_states
 from .panels import (
-    adaptation, adc, backchannel, cdr, channel, ctle, dual_engine, eyes,
-    jitter, single_run,
+    adaptation, adc, ami_com, backchannel, cdr, channel, crosstalk, ctle,
+    dual_engine, eyes, fec, fixed_point, jitter, single_run, sweeps,
 )
 from .runner import get as get_result
 from .runner import run_from_values
 
-# --- panel registry (grows as tabs are added in later phases) --------------
+# --- panel registry --------------------------------------------------------
 PANELS = [single_run, eyes, dual_engine, channel, ctle, jitter,
-          adaptation, cdr, adc, backchannel]
+          adaptation, cdr, adc, backchannel,
+          sweeps, fec, crosstalk, ami_com, fixed_point]
 _PANEL_BY_ID = {p.TAB_ID: p for p in PANELS}
 
 INITIAL = cb.config_to_values(cb.LinkConfig())
