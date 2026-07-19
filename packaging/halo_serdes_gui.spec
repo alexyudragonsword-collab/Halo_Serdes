@@ -38,6 +38,8 @@ for pkg in ("dash", "plotly", "dash_bootstrap_components", "skrf", "webview"):
 # vendored assets (Bootstrap + polish css) -> halo_serdes_gui/assets in bundle
 datas += [(os.path.join(SRC, "halo_serdes_gui", "assets"),
            "halo_serdes_gui/assets")]
+# example presets -> configs/ (so the Load dropdown is populated in the exe)
+datas += [(os.path.join(ROOT, "configs"), "configs")]
 hidden += _subs("halo_serdes") + _subs("halo_serdes_gui")
 
 a = Analysis(

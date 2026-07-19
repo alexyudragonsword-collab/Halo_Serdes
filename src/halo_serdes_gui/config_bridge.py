@@ -23,8 +23,33 @@ import yaml
 from halo_serdes.config import LinkConfig, apply_overrides, load_config
 from halo_serdes.config.schema import SCHEMA_VERSION
 
-REPO = Path(__file__).resolve().parents[2]
-CONFIGS_DIR = REPO / "configs"
+def _find_configs_dir() -> Path:
+    """Locate the bundled ``configs/`` dir in source or a frozen build.
+
+    Source layout keeps them at the repo root; a PyInstaller/Nuitka bundle ships
+    them next to the executable (and PyInstaller also extracts to ``_MEIPASS``).
+    Return the first candidate that exists (falling back to the source path).
+    """
+    import sys
+
+    here = Path(__file__).resolve()
+    cands = [here.parents[2] / "configs"]              # repo/src/pkg -> repo/configs
+    meipass = getattr(sys, "_MEIPASS", None)           # PyInstaller extract dir
+    if meipass:
+        cands.append(Path(meipass) / "configs")
+    cands.append(here.parent / "configs")              # bundled beside the package
+    try:
+        cands.append(Path(sys.executable).resolve().parent / "configs")
+        cands.append(Path(sys.executable).resolve().parent / "_internal" / "configs")
+    except Exception:
+        pass
+    for c in cands:
+        if c.is_dir():
+            return c
+    return cands[0]
+
+
+CONFIGS_DIR = _find_configs_dir()
 
 # --- field kinds -----------------------------------------------------------
 # float / int / bool / enum / str / opt_float / opt_int / tuple_float /

@@ -74,7 +74,14 @@ def main() -> None:
         sys.exit(1)
 
     if "--selfcheck" in argv:
-        print(f"OK {url}")
+        from halo_serdes_gui.config_bridge import CONFIGS_DIR, preset_names
+
+        presets = preset_names()
+        print(f"OK {url} presets={len(presets)} configs_dir={CONFIGS_DIR}")
+        # a working bundle must find the example presets, not just the default
+        if len(presets) < 2:
+            print("ERROR: example presets not bundled", file=sys.stderr)
+            sys.exit(2)
         return
 
     if "--browser" not in argv:
