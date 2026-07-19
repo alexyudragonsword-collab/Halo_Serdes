@@ -87,6 +87,50 @@ def test_same_aggressor_feeds_both_engines():
     assert t_xt.slicer_snr_db <= t_base.slicer_snr_db
 
 
+def test_aggressor_bank_counts_and_independence():
+    from halo_serdes.channel import aggressor_bank
+    ui, osr = 1 / 53.125e9, 32
+    bank = aggressor_bank(3, 2, -28.0, ui, ui / osr, modulation="pam4",
+                          base_seed=1)
+    assert len(bank) == 5
+    assert sum(a.kind == "fext" for a in bank) == 3
+    assert sum(a.kind == "next" for a in bank) == 2
+    # each lane has an independent data seed
+    assert len({a.seed for a in bank}) == 5
+    # couplings scatter around the target within the ±spread band
+    peaks = [a.coupling_peak_db(osr) for a in bank]
+    assert all(-28.0 - 2.5 < p < -28.0 + 2.5 for p in peaks)
+
+
+def test_icn_grows_with_aggressor_count():
+    from halo_serdes.channel import aggressor_bank, icn_rms
+    ui, osr = 1 / 53.125e9, 32
+    small = aggressor_bank(1, 1, -30.0, ui, ui / osr, modulation="pam4",
+                           spread_db=0.0, base_seed=2)
+    big = aggressor_bank(4, 4, -30.0, ui, ui / osr, modulation="pam4",
+                         spread_db=0.0, base_seed=2)
+    icn_s = icn_rms(small, osr, modulation="pam4")
+    icn_b = icn_rms(big, osr, modulation="pam4")
+    assert icn_s > 0 and icn_b > icn_s
+    # RSS power sum: 4x the aggressors (2 -> 8) -> ~2x the ICN voltage
+    assert icn_b == pytest.approx(icn_s * np.sqrt(4.0), rel=0.05)
+    assert icn_rms([], osr) == 0.0
+
+
+def test_bank_feeds_com_and_lowers_margin():
+    """A multi-lane bank flows straight into the COM engine as σ_XT."""
+    from halo_serdes.analysis.com import compute_com
+    from halo_serdes.channel import aggressor_bank
+    cfg = _cfg(noise=0.003, n=1000)
+    cm = ChannelModel.from_config(cfg)
+    clean = compute_com(cm, cfg).com_db
+    bank = aggressor_bank(4, 4, -26.0, cfg.ui, cfg.dt, base_seed=3)
+    pulses = [a.pulse(cfg.osr) for a in bank]
+    loud = compute_com(cm, cfg, xtalk_pulses=pulses)
+    assert loud.com_db < clean
+    assert loud.detail["n_aggressors"] == 8 and loud.fom_xtalk > 0
+
+
 def test_import_xtalk_from_synthetic_network():
     """import_xtalk pulls a coupling impulse out of a multi-port network."""
     rf = pytest.importorskip("skrf")

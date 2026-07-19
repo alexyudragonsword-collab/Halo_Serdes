@@ -52,8 +52,11 @@
    限制在两个组装类内。serdespy/PyBERT 只有 mixed-signal,DragonPHY2 只有 ADC。
 3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→28→29→35→41 dB
    杠杆分解(MLSD +、DFE/deeper MLSD +、better ADC +6dB、级联 FEC +6dB,正交可叠加)。
-4. **双 MLSD 实现** —— Viterbi MLSE(最优)+ DragonPHY 式 sliding-detector(低复杂度),
-   同一接口下可切换对比。DragonPHY2 只有后者,serdespy/PyBERT 都没有。
+4. **双 MLSD 实现 + 解析 MLSE 增益** —— Viterbi MLSE(最优)+ DragonPHY 式
+   sliding-detector(低复杂度),`post_detect` 一行接到真实链路;`mlse_min_distance_sq`/
+   `mlse_gain_over_dfe_db` 给出对理想 DFE 的渐近编码增益闭式解(1+D→3.01 dB、EPR4→6.02 dB,
+   匹配滤波器界),示例 27 用它标定实测增益阶梯。DragonPHY2 只有 sliding-detector,
+   serdespy/PyBERT 都没有。
 5. **级联内码 FEC 模型** —— 内码硬判决块码 + RS-KP4 外码,把可容忍 pre-FEC BER
    抬高约 300×,支撑 800G/1.6T 深 LR。三库皆无。
 6. **三层抖动分解** —— 图样平均 → 谱阈值 → 双 Dirac,回收误差 <10%。
@@ -80,12 +83,14 @@
   示例 `26_com_802p3.py`。
 - ✅ **抖动分解接入管线** —— **本轮补齐**:`stage_jitter_budget`/`total_jitter` +
   时域引擎 `collect_jitter` 逐级预算(Tx/信道/CTLE 后)+ 示例 22。
-- ✅ **时域 FEXT/NEXT 串扰** —— **本轮补齐**:`channel/crosstalk.py` 的 `XtalkAggressor`,
-  同一对象驱动时域(`xtalk=`)与统计(`xtalk_pulses=`)两引擎;`synthetic_aggressor` +
-  `import_xtalk`(多端口 Touchstone 提取)。
+- ✅ **时域 FEXT/NEXT 串扰 + 多 lane 环境** —— **本轮补齐**:`channel/crosstalk.py` 的
+  `XtalkAggressor`,同一对象驱动时域(`xtalk=`)与统计(`xtalk_pulses=`)两引擎;
+  `synthetic_aggressor` + `import_xtalk`(多端口 Touchstone 提取);`aggressor_bank`
+  构建多侵略者 lane 组、`icn_rms`(行为级 MDFEXT/MDNEXT 功率和,~√N),同一 bank 直接喂
+  802.3 COM 引擎作 σ_XT;示例 28 + GUI Crosstalk 标签多 lane 扫描。
 - **Duobinary / PR 信道整形** —— 未建模
 - **GUI** —— 纯脚本/库,无交互界面(设计取向,非缺陷)
-- **多 lane 系统级** —— 单 lane 为主
+- ✅ **多 lane 串扰系统级** —— **本轮补齐**(`aggressor_bank`/`icn_rms`,见上);单 lane 数据仍为主
 
 **相对 DragonPHY2**
 

@@ -1,5 +1,7 @@
 from .crosstalk import (
     XtalkAggressor,
+    aggressor_bank,
+    icn_rms,
     import_xtalk,
     inject_crosstalk,
     synthetic_aggressor,
@@ -21,4 +23,5 @@ __all__ = [
     "import_diff_network", "interp_s2p", "se2mm", "sdd_2port",
     "terminate_gamma", "terminate_renormalize",
     "XtalkAggressor", "synthetic_aggressor", "inject_crosstalk", "import_xtalk",
+    "aggressor_bank", "icn_rms",
 ]

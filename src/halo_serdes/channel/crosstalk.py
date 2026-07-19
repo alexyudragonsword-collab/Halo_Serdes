@@ -122,6 +122,57 @@ def synthetic_aggressor(kind: str, coupling_db: float, ui: float, dt: float,
                           label=label or f"{kind.upper()} {coupling_db:.0f}dB")
 
 
+def aggressor_bank(n_fext: int, n_next: int, coupling_db: float, ui: float,
+                   dt: float, *, modulation: str = "nrz", swing: float = 1.0,
+                   spread_db: float = 2.0, base_seed: int = 0,
+                   f3db: float | None = None) -> list[XtalkAggressor]:
+    """A multi-lane crosstalk environment: ``n_fext`` FEXT + ``n_next`` NEXT
+    aggressors, each an independent lane.
+
+    Each lane's coupling peak is drawn around ``coupling_db`` with a ±``spread_db``
+    uniform spread (lane-to-lane variation), and each gets a distinct data seed
+    so the aggressors are mutually independent. NEXT is typically the stronger,
+    broadband coupler; here both share ``coupling_db`` so the caller controls the
+    mix explicitly through the counts.
+    """
+    rng = np.random.default_rng(base_seed)
+    bank: list[XtalkAggressor] = []
+    seed = base_seed + 1
+    for kind, count in (("fext", n_fext), ("next", n_next)):
+        for i in range(count):
+            lvl = coupling_db + float(rng.uniform(-spread_db, spread_db))
+            bank.append(synthetic_aggressor(
+                kind, lvl, ui, dt, modulation=modulation, seed=seed,
+                f3db=f3db, swing=swing,
+                label=f"{kind.upper()}{i + 1} {lvl:.0f}dB"))
+            seed += 1
+    return bank
+
+
+def icn_rms(aggressors, osr: int, *, modulation: str = "nrz") -> float:
+    """Integrated crosstalk noise (behavioral MDFEXT/MDNEXT power sum) [V rms].
+
+    The aggregate crosstalk is the RSS over aggressors of each coupling pulse's
+    baud-cursor power times the per-symbol variance — the behavioral analog of
+    802.3's ICN (integrated over the aggressors instead of the coupled PSD). It
+    is the same quantity the COM engine folds in as ``σ_XT``.
+    """
+    if not aggressors:
+        return 0.0
+    if modulation == "pam4":
+        lv = pam4_levels(1.0)
+    else:
+        lv = nrz_levels(1.0)
+    sym_var = float(np.mean(lv ** 2))          # normalized level variance
+    power = 0.0
+    for agg in aggressors:
+        p = agg.pulse(osr).y
+        pk = int(np.argmax(np.abs(p)))
+        cursors = p[pk % osr::osr]             # baud-spaced cursors
+        power += float(np.sum(cursors ** 2)) * sym_var
+    return float(np.sqrt(power)) * float(getattr(aggressors[0], "swing", 1.0))
+
+
 def inject_crosstalk(rx_y: np.ndarray, aggressors, osr: int,
                      modulation: str) -> np.ndarray:
     """Add all aggressors' victim-node contributions to ``rx_y`` in place-safe

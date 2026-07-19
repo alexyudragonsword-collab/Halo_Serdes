@@ -97,6 +97,30 @@ def crosstalk_study(rec) -> dict:
     return _cached(("xtalk", rec.id), compute)
 
 
+def multilane_study(rec) -> dict:
+    """Margin vs number of aggressor lanes: ICN (~sqrt(N)) and 802.3 COM."""
+    def compute():
+        from halo_serdes.analysis.com import compute_com
+        from halo_serdes.channel import aggressor_bank, icn_rms
+        cfg = rec.cfg
+        cm = ChannelModel.from_config(cfg)
+        counts = [0, 1, 2, 4, 6, 8, 12]
+        icn, com = [], []
+        for nlane in counts:
+            if nlane == 0:
+                bank = []
+            else:
+                nf = (nlane + 1) // 2
+                bank = aggressor_bank(nf, nlane - nf, -30.0, cfg.ui, cfg.dt,
+                                      modulation=cfg.modulation, base_seed=1)
+            pulses = [a.pulse(cfg.osr) for a in bank]
+            icn.append(icn_rms(bank, cfg.osr, modulation=cfg.modulation) * 1e3)
+            com.append(compute_com(cm, cfg, xtalk_pulses=pulses).com_db)
+        return {"counts": np.array(counts, dtype=float),
+                "icn_mv": np.array(icn), "com_db": np.array(com)}
+    return _cached(("multilane", rec.id), compute)
+
+
 # --- behavioral COM vs loss ------------------------------------------------
 
 def com_study(rec) -> dict:

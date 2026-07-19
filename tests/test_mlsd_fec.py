@@ -7,7 +7,13 @@ from halo_serdes.analysis.metrics import qfunc
 from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import TxConfig
 from halo_serdes.dsp.kernels import slice_nearest
-from halo_serdes.dsp.mlsd import sliding_detector, viterbi_mlsd
+from halo_serdes.dsp.mlsd import (
+    mlse_gain_over_dfe_db,
+    mlse_min_distance_sq,
+    post_detect,
+    sliding_detector,
+    viterbi_mlsd,
+)
 from halo_serdes.fec import (
     bits_to_gf_symbols,
     gf_symbols_to_bits,
@@ -81,6 +87,41 @@ def test_sliding_detector_corrects_errors():
     # low-cost error-event detector: modest but real gain (~0.8x); full MLSE
     # gains are covered by test_viterbi_on_1plusD_duobinary_channel
     assert ber1 < 0.85 * ber0, (ber0, ber1)
+
+
+def test_mlse_min_distance_reference_values():
+    # memoryless -> d_min^2 = 1 (no gain); duobinary 1+D -> 2 (matched-filter
+    # bound, the classic 3 dB MLSE gain over an ideal DFE); EPR4 -> 4 (6 dB)
+    assert mlse_min_distance_sq(np.array([1.0])) == 1.0
+    assert mlse_min_distance_sq(np.array([1.0, 1.0])) == 2.0
+    assert mlse_min_distance_sq(np.array([1.0, 1.0, -1.0, -1.0])) == 4.0
+    assert mlse_gain_over_dfe_db(np.array([1.0])) == 0.0
+    assert abs(mlse_gain_over_dfe_db(np.array([1.0, 1.0])) - 3.0103) < 1e-3
+    assert abs(mlse_gain_over_dfe_db(np.array([1.0, 1.0, -1.0, -1.0])) - 6.0206) < 1e-3
+    # MLSE is never worse than an ideal DFE: gain >= 0 for any residual
+    rng = np.random.default_rng(0)
+    for _ in range(20):
+        cur = np.concatenate([[1.0], rng.uniform(-0.6, 0.6, size=3)])
+        assert mlse_gain_over_dfe_db(cur) >= -1e-9
+
+
+def test_post_detect_beats_slicer_on_real_residual():
+    """post_detect turns the kernels into a drop-in post-detector; on a residual
+    channel both Viterbi and the sliding detector beat the memoryless slicer."""
+    rng = np.random.default_rng(21)
+    n = 40_000
+    levels = np.array([-1.0, 1.0])
+    cur = np.array([1.0, 0.5])              # main + one residual postcursor
+    sym = rng.integers(0, 2, size=n)
+    v = levels[sym]
+    y = np.convolve(v, cur)[:n] + rng.normal(scale=0.32, size=n)
+    ber_slicer = np.mean(slice_nearest(y, levels * cur[0]) != sym)
+    ber_vit = np.mean(post_detect(y, cur, levels, "viterbi") != sym)
+    ber_sld = np.mean(post_detect(y, cur, levels, "sliding") != sym)
+    assert ber_vit < ber_slicer
+    assert ber_sld < ber_slicer
+    # full MLSE should be at least as good as the low-cost error-event detector
+    assert ber_vit <= ber_sld + 1e-3
 
 
 # -------------------------------------------------------------------- FEC ---

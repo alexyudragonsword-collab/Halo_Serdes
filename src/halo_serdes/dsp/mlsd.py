@@ -129,6 +129,78 @@ def _sliding_detector_py(y_eq: np.ndarray, dec: np.ndarray, levels: np.ndarray,
     return out
 
 
+def mlse_min_distance_sq(cursors: np.ndarray, max_event_len: int = 8) -> float:
+    """Minimum-distance² of the MLSE trellis for residual channel ``cursors``.
+
+    ``d_min² = min over nonzero error events e of ‖cursors * e‖²`` with the
+    error symbols drawn from unit single-level steps ``{-1, 0, +1}`` (adjacent
+    decision errors dominate the union bound). ``cursors[0]`` is the main
+    cursor. For a memoryless channel ``[1]`` this returns ``1``; for the
+    duobinary ``[1, 1]`` it returns ``2`` — the matched-filter bound, i.e. the
+    classic 3 dB MLSE gain over an ideal DFE.
+
+    Enumerates error events up to ``max_event_len`` taps (first tap fixed to +1
+    by symmetry; remaining taps ternary), which captures the true minimum for
+    the short residuals MLSE is used on.
+    """
+    h = np.asarray(cursors, dtype=float)
+    best = float(np.dot(h, h))                 # single-symbol error e = [1]
+    from itertools import product
+    for L in range(1, max_event_len):
+        for tail in product((-1, 0, 1), repeat=L):
+            if tail[-1] == 0:                  # last tap must be nonzero
+                continue
+            e = np.array((1,) + tail, dtype=float)
+            d = float(np.dot(np.convolve(h, e), np.convolve(h, e)))
+            if d < best:
+                best = d
+    return best
+
+
+def mlse_gain_over_dfe_db(cursors: np.ndarray, max_event_len: int = 8) -> float:
+    """Asymptotic MLSE coding gain over an ideal DFE [dB].
+
+    An ideal DFE cancels the postcursors, leaving distance ``|main|`` per
+    symbol; MLSE achieves ``sqrt(d_min²)``. Gain = ``10·log10(d_min² / main²)``.
+    Duobinary ``[1, 1]`` → ``≈3.01 dB``; memoryless → ``0 dB``.
+    """
+    h = np.asarray(cursors, dtype=float)
+    main2 = float(h[0]) ** 2
+    return 10.0 * np.log10(mlse_min_distance_sq(h, max_event_len) / max(main2, 1e-30))
+
+
+def post_detect(y_eq: np.ndarray, cursors: np.ndarray, levels: np.ndarray,
+                method: str = "viterbi", *, seq_len: int = 4,
+                margin: float = 0.0):
+    """Run an MLSD post-detector over slicer-input samples of a *real* link.
+
+    Turns the standalone kernels into a drop-in post-detector: ``y_eq`` are the
+    equalized slicer-input samples, ``cursors`` the residual channel (main +
+    uncancelled postcursors, ``cursors[0]`` = main), ``levels`` the constellation.
+    ``method`` is ``'viterbi'`` (full MLSE) or ``'sliding'`` (DragonPHY error-event
+    detector, refined over the dominant postcursor). Returns decided level indices.
+    """
+    cur = np.asarray(cursors, dtype=float)
+    lv = np.asarray(levels, dtype=float)
+    if method == "viterbi":
+        return viterbi_mlsd(np.asarray(y_eq, dtype=float), lv, cur)
+    if method == "sliding":
+        dec0 = slice_nearest_local(y_eq, lv * cur[0])
+        resid_post = float(cur[1] / cur[0]) if cur.size > 1 else 0.0
+        out = dec0
+        for _ in range(2):                     # two refinement passes
+            out = sliding_detector(np.asarray(y_eq, dtype=float), out,
+                                   lv * cur[0], resid_post, seq_len, margin)
+        return out
+    raise ValueError(f"method must be 'viterbi' or 'sliding', got {method!r}")
+
+
+def slice_nearest_local(y: np.ndarray, scaled_levels: np.ndarray) -> np.ndarray:
+    """Nearest-level decisions of ``y`` against ``scaled_levels`` (index out)."""
+    y = np.asarray(y, dtype=float)
+    return np.argmin(np.abs(y[:, None] - scaled_levels[None, :]), axis=1)
+
+
 viterbi_mlsd = _viterbi_py
 sliding_detector = _sliding_detector_py
 if os.environ.get("HALO_NO_JIT") != "1":

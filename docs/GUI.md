@@ -56,7 +56,7 @@ re-renders from it instantly (study sweeps are cached per run).
 | **Backchannel** | KR-style Tx-FIR training trajectories | runs `train_tx_fir` |
 | **Sweeps / Reach** | statistical reach vs channel loss + KP4/KR4 | analytic channel |
 | **FEC** | pre→post-FEC projection (KP4/KR4/concatenated), this-run marker | formulas |
-| **Crosstalk** | FEXT/NEXT coupling sweep (StatEye) | synthetic aggressors |
+| **Crosstalk** | FEXT/NEXT coupling sweep (StatEye) + multi-lane ICN (~√N) & 802.3 COM vs aggressor count | synthetic aggressors / aggressor_bank |
 | **AMI / COM** | IEEE 802.3 COM (93A/178A) vs loss overlaid on the RSS FoM + IBIS-AMI seam status | analytic channel |
 | **Fixed-Point** | word-length BER wall (datapath replay) | needs an ADC run |
 
