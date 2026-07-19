@@ -98,9 +98,9 @@ print(f"  PAM4 sub-eye heights @ sampler: "
 
 fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.4))
 eye_ctle = fold_eye(rx, osr, phase, n_traces=3000)
-plot_eye(axes[0], eye_ctle, c.ui * 1e12, title="CTLE 输出(4 电平 + ISI)")
+plot_eye(axes[0], eye_ctle, c.ui * 1e12, title="CTLE out (4-level + ISI)")
 plot_eye(axes[1], fold_eye(y_dfe, osr, phase, n_traces=3000), c.ui * 1e12,
-         title=f"DFE 后:三只子眼 {sub_eyes[0]*1e3:.0f}/{sub_eyes[1]*1e3:.0f}/"
+         title=f"Post-DFE: 3 sub-eyes {sub_eyes[0]*1e3:.0f}/{sub_eyes[1]*1e3:.0f}/"
                f"{sub_eyes[2]*1e3:.0f} mV")
 for ax in axes:
     ax.axvline(0.0, color="w", ls=":", lw=0.8, alpha=0.7)

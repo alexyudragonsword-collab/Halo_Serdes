@@ -73,18 +73,18 @@ def pre_fec_ber(length_m, n_sym=500_000):
 
 # (label, post_fn, overhead%)  overhead = KP4 5.8% + inner m*t/(n-m*t)
 SCHEMES = {
-    "KP4 单独 (t=15)":
+    "KP4 only (t=15)":
         (lambda p: pre_to_post_fec_ber(max(p, 1e-9), "kp4"), 5.8, "C1", "o"),
-    "+ 内码 Hamming(128,120)":
+    "+ inner Hamming(128,120)":
         (lambda p: concatenated_post_fec_ber(max(p, 1e-9), 128, 1), 5.8 + 7.1, "C0", "s"),
-    "+ 内码 BCH(255,215,t=5)":
+    "+ inner BCH(255,215,t=5)":
         (lambda p: concatenated_post_fec_ber(max(p, 1e-9), 255, 5), 5.8 + 18.6, "C2", "^"),
-    "+ 内码 BCH(511,439,t=8)":
+    "+ inner BCH(511,439,t=8)":
         (lambda p: concatenated_post_fec_ber(max(p, 1e-9), 511, 8), 5.8 + 16.4, "C3", "D"),
 }
 
 lengths = [0.16, 0.18, 0.19, 0.20, 0.21, 0.22, 0.24, 0.26]
-print("扫描链路 pre-FEC BER (FFE + DFE8 + MLSD mem3, ADC ENOB 6.5)...")
+print("Sweeping link pre-FEC BER (FFE + DFE8 + MLSD mem3, ADC ENOB 6.5)...")
 loss, pre = [], []
 for L in lengths:
     lo, pb = pre_fec_ber(L)
@@ -104,19 +104,19 @@ def reach(post):
 
 
 fig, ax = plt.subplots(figsize=(8, 5.2))
-print("\n== reach 汇总 (post-FEC < 1e-15) ==")
+print("\n== reach summary (post-FEC < 1e-15) ==")
 for label, (fn, ovh, c, m) in SCHEMES.items():
     post = np.array([fn(p) for p in pre])
     rc = reach(post)
-    tag = f"{label}  (reach {rc:.1f} dB, 开销 {ovh:.0f}%)" if rc else label
+    tag = f"{label}  (reach {rc:.1f} dB, overhead {ovh:.0f}%)" if rc else label
     ax.semilogy(-loss, np.maximum(post, 1e-30), m + "-", color=c, label=tag)
-    print(f"  {label:26s}: reach {rc:.1f} dB (开销 {ovh:.0f}%)"
-          if rc else f"  {label}: <起点")
-ax.axhline(1e-15, color="green", ls=":", lw=1, label="链路目标 1e-15")
+    print(f"  {label:26s}: reach {rc:.1f} dB (overhead {ovh:.0f}%)"
+          if rc else f"  {label}: <start")
+ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.axvspan(35, 46, color="gray", alpha=0.08)
 ax.text(35.2, 1e-28, "802.3dj LR\n(35-45 dB)", fontsize=7, color="gray")
-ax.set(xlabel="信道插损 @ 56 GHz Nyquist [dB]", ylabel="post-FEC BER",
-       title="级联内码 FEC 扩展 reach\n(224 Gb/s PAM4, 同 DSP + 同 ADC ENOB 6.5)")
+ax.set(xlabel="Channel loss @ 56 GHz Nyquist [dB]", ylabel="post-FEC BER",
+       title="Concatenated inner-code FEC extends reach\n(224 Gb/s PAM4, same DSP + same ADC ENOB 6.5)")
 ax.yaxis.set_major_formatter(_fmt); ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=8, loc="lower right")
 ax.grid(True, which="both", alpha=0.3)

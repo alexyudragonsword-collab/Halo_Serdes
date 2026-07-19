@@ -79,11 +79,11 @@ def evaluate(length_m, n_pre, n_post, n_dfe, peak, mem, enob, noise,
 
 CONFIGS = {
     # (label, n_pre, n_post, n_dfe, peak, mem, enob, noise)
-    "FFE + MLSD mem2 (示例18)": dict(n_pre=6, n_post=14, n_dfe=0, peak=6, mem=2,
+    "FFE + MLSD mem2 (example 18)": dict(n_pre=6, n_post=14, n_dfe=0, peak=6, mem=2,
                                       enob=6.5, noise=0.0015),
     "FFE + DFE8 + MLSD mem3":   dict(n_pre=6, n_post=4, n_dfe=8, peak=8, mem=3,
                                       enob=6.5, noise=0.0015),
-    "同上 + 更好 ADC (ENOB7.5)": dict(n_pre=6, n_post=4, n_dfe=8, peak=8, mem=3,
+    "same + better ADC (ENOB7.5)": dict(n_pre=6, n_post=4, n_dfe=8, peak=8, mem=3,
                                        enob=7.5, noise=0.0008),
 }
 lengths = [0.16, 0.18, 0.19, 0.20, 0.21, 0.22, 0.24]
@@ -111,41 +111,41 @@ def reach(rows):
 
 
 fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
-colors = {"FFE + MLSD mem2 (示例18)": "C1", "FFE + DFE8 + MLSD mem3": "C0",
-          "同上 + 更好 ADC (ENOB7.5)": "C2"}
-markers = {"FFE + MLSD mem2 (示例18)": "o", "FFE + DFE8 + MLSD mem3": "s",
-           "同上 + 更好 ADC (ENOB7.5)": "^"}
+colors = {"FFE + MLSD mem2 (example 18)": "C1", "FFE + DFE8 + MLSD mem3": "C0",
+          "same + better ADC (ENOB7.5)": "C2"}
+markers = {"FFE + MLSD mem2 (example 18)": "o", "FFE + DFE8 + MLSD mem3": "s",
+           "same + better ADC (ENOB7.5)": "^"}
 
 # panel 1: DSP depth (fixed ADC ENOB 6.5)
 ax = axes[0]
-for label in ("FFE + MLSD mem2 (示例18)", "FFE + DFE8 + MLSD mem3"):
+for label in ("FFE + MLSD mem2 (example 18)", "FFE + DFE8 + MLSD mem3"):
     r = results[label]
     ax.semilogy(-r[:, 0], np.maximum(r[:, 1], 1e-30), markers[label] + "-",
                 color=colors[label], label=f"{label} (reach {reach(r):.1f} dB)"
                 if reach(r) else label)
-ax.axhline(1e-15, color="green", ls=":", lw=1, label="链路目标 1e-15")
-ax.set(xlabel="信道插损 @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
-       title="加 DFE + 更深 MLSD:同 ADC 下只多 ~1-2 dB\n(残余 ISI 已小,深 LR 是 SNR 受限)")
+ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
+ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
+       title="Add DFE + deeper MLSD: only ~1-2 dB more at same ADC\n(residual ISI already small; deep LR is SNR-limited)")
 ax.yaxis.set_major_formatter(_fmt); ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=7.5); ax.grid(True, which="both", alpha=0.3)
 
 # panel 2: ADC quality (best DSP)
 ax = axes[1]
-for label in ("FFE + DFE8 + MLSD mem3", "同上 + 更好 ADC (ENOB7.5)"):
+for label in ("FFE + DFE8 + MLSD mem3", "same + better ADC (ENOB7.5)"):
     r = results[label]
     ax.semilogy(-r[:, 0], np.maximum(r[:, 1], 1e-30), markers[label] + "-",
                 color=colors[label], label=f"{label} (reach {reach(r):.1f} dB)"
                 if reach(r) else label)
-ax.axhline(1e-15, color="green", ls=":", lw=1, label="链路目标 1e-15")
-ax.set(xlabel="信道插损 @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
-       title="改善 ADC (ENOB 6.5->7.5, 噪声减半):同 DSP 多 ~6 dB\n(深 LR 的真正杠杆是采样质量)")
+ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
+ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
+       title="Better ADC (ENOB 6.5->7.5, half the noise): ~6 dB more at same DSP\n(the real lever for deep LR is sampling quality)")
 ax.yaxis.set_major_formatter(_fmt); ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=7.5); ax.grid(True, which="both", alpha=0.3)
 
 fig.tight_layout()
 fig.savefig(OUT / "19_deep_lr_limit.png", dpi=130)
-print("\n== reach 汇总 (post-KP4 < 1e-15 的最大插损) ==")
+print("\n== reach summary (max loss with post-KP4 < 1e-15) ==")
 for label, r in results.items():
     rc = reach(r)
-    print(f"  {label}: {rc:.1f} dB" if rc else f"  {label}: <起点")
+    print(f"  {label}: {rc:.1f} dB" if rc else f"  {label}: <start")
 print(f"wrote {OUT / '19_deep_lr_limit.png'}")

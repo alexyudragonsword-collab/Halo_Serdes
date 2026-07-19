@@ -80,7 +80,7 @@ for row, rate in enumerate((112.0, 224.0)):
     ax.hist(res.y_slicer, bins=300, color="C0")
     for lv in res.extras["levels"]:
         ax.axvline(lv, ls="--", c="r", alpha=0.5)
-    ax.set(xlabel="V", title=f"{rate:.0f} Gb/s: slicer 直方图 "
+    ax.set(xlabel="V", title=f"{rate:.0f} Gb/s: slicer histogram "
                              f"(SNR {res.slicer_snr_db:.1f} dB, "
                              f"SER {res.ser:.1e})")
 
@@ -93,14 +93,14 @@ for row, rate in enumerate((112.0, 224.0)):
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0e}"))
     ax.yaxis.set_minor_formatter(FuncFormatter(lambda v, _: ""))
     ax.set(xlabel="TI lane", ylabel="SER",
-           title=f"{rate:.0f} Gb/s: 各交织通道 SER(skew/offset 失配)")
+           title=f"{rate:.0f} Gb/s: per-lane SER (skew/offset mismatch)")
 
     ax = axes[row, 2]
     taps = res.ffe_taps
     k = np.arange(taps.size) - cfg.rx.ffe.n_pre
     ax.stem(k, taps)
-    ax.set(xlabel="tap 位置 [UI]", ylabel="权重",
-           title=f"{rate:.0f} Gb/s: 收敛后 FFE 15 taps "
+    ax.set(xlabel="tap position [UI]", ylabel="weight",
+           title=f"{rate:.0f} Gb/s: converged FFE 15 taps "
                  f"(DFE1={res.dfe_taps[0]:+.3f})")
 
 for ax in axes.flat:

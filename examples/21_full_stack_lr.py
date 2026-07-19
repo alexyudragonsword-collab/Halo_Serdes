@@ -72,7 +72,7 @@ def pre_fec(length_m, enob, noise, n_sym=500_000):
 
 
 lengths = [0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30]
-print("扫描 pre-FEC BER,两档 ADC...")
+print("Sweeping pre-FEC BER, two ADC grades...")
 loss65, pre65, loss75, pre75 = [], [], [], []
 for L in lengths:
     lo, pb = pre_fec(L, enob=6.5, noise=0.0015)
@@ -86,13 +86,13 @@ pre65 = np.array(pre65); pre75 = np.array(pre75)
 BCH_N, BCH_T = 255, 5  # inner code for the concatenated schemes
 
 CONFIGS = [
-    ("A. KP4 + ADC 6.5 (基线)", pre65,
+    ("A. KP4 + ADC 6.5 (baseline)", pre65,
      lambda p: pre_to_post_fec_ber(max(p, 1e-9), "kp4"), "C1", "o"),
-    ("B. + 级联 FEC (ADC 6.5)", pre65,
+    ("B. + concatenated FEC (ADC 6.5)", pre65,
      lambda p: concatenated_post_fec_ber(max(p, 1e-9), BCH_N, BCH_T), "C0", "s"),
-    ("C. + 更好 ADC 7.5 (仅 KP4)", pre75,
+    ("C. + better ADC 7.5 (KP4 only)", pre75,
      lambda p: pre_to_post_fec_ber(max(p, 1e-9), "kp4"), "C2", "^"),
-    ("D. 全栈: ADC 7.5 + 级联 FEC", pre75,
+    ("D. full stack: ADC 7.5 + concatenated FEC", pre75,
      lambda p: concatenated_post_fec_ber(max(p, 1e-9), BCH_N, BCH_T), "C3", "D"),
 ]
 
@@ -108,18 +108,18 @@ def reach(post):
 
 
 fig, ax = plt.subplots(figsize=(8.5, 5.4))
-print("\n== reach 汇总 (post-FEC < 1e-15) ==")
+print("\n== reach summary (post-FEC < 1e-15) ==")
 for label, pre, fn, c, m in CONFIGS:
     post = np.array([fn(p) for p in pre])
     rc = reach(post)
     tag = f"{label}  (reach {rc:.1f} dB)" if rc else label
     ax.semilogy(-loss, np.maximum(post, 1e-30), m + "-", color=c, label=tag)
-    print(f"  {label:28s}: reach {rc:.1f} dB" if rc else f"  {label}: <起点")
-ax.axhline(1e-15, color="green", ls=":", lw=1, label="链路目标 1e-15")
+    print(f"  {label:28s}: reach {rc:.1f} dB" if rc else f"  {label}: <start")
+ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.axvspan(35, 46, color="gray", alpha=0.10)
 ax.text(35.3, 1e-27, "802.3dj LR\n(35-45 dB)", fontsize=8, color="dimgray")
-ax.set(xlabel="信道插损 @ 56 GHz Nyquist [dB]", ylabel="post-FEC BER",
-       title="全栈深 LR:DSP + ADC + 级联 FEC 一起上\n(224 Gb/s PAM4)")
+ax.set(xlabel="Channel loss @ 56 GHz Nyquist [dB]", ylabel="post-FEC BER",
+       title="Full-stack deep LR: DSP + ADC + concatenated FEC together\n(224 Gb/s PAM4)")
 ax.yaxis.set_major_formatter(_fmt); ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=8, loc="lower right")
 ax.grid(True, which="both", alpha=0.3)

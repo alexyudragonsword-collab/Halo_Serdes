@@ -93,8 +93,8 @@ def evaluate(length_m: float):
 lengths = [0.15, 0.17, 0.18, 0.19, 0.20, 0.22]
 rows = []
 print("224 Gb/s PAM4 LR: FFE-only vs FFE+MLSD (memory 2), + KP4 projection")
-print(f"{'损耗@Nyq':>9} {'类别':>5} {'SNR':>6} {'FFE BER':>10} {'MLSD BER':>10} "
-      f"{'MLSD增益':>8}  {'post-KP4(MLSD)':>13}")
+print(f"{'Loss@Nyq':>9} {'Class':>5} {'SNR':>6} {'FFE BER':>10} {'MLSD BER':>10} "
+      f"{'MLSD gain':>8}  {'post-KP4(MLSD)':>13}")
 for L in lengths:
     t0 = time.time()
     r = evaluate(L)
@@ -121,11 +121,11 @@ fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
 ax = axes[0]
 ax.semilogy(-loss, ffe, "o-", color="C1", label="FFE-only (slicer)")
 ax.semilogy(-loss, mlsd, "s-", color="C0", label="FFE + MLSD (memory 2)")
-ax.axhline(KP4_WATERFALL, color="r", ls="--", lw=1, label="KP4 pre-FEC 瀑布点 2.4e-4")
+ax.axhline(KP4_WATERFALL, color="r", ls="--", lw=1, label="KP4 pre-FEC waterfall 2.4e-4")
 ax.axvspan(35, 46, color="gray", alpha=0.10)
 ax.text(35.3, 2e-6, "LR (>35 dB)", fontsize=7, color="gray")
-ax.set(xlabel="信道插损 @ 56 GHz Nyquist [dB]", ylabel="pre-FEC BER",
-       title="FFE 够不着的深度 ISI 由 MLSD 补偿\n(224 Gb/s PAM4, ADC 架构)")
+ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="pre-FEC BER",
+       title="Deep ISI beyond FFE's reach is compensated by MLSD\n(224 Gb/s PAM4, ADC arch)")
 ax.yaxis.set_major_formatter(_fmt)
 ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=8)
@@ -136,9 +136,9 @@ ax.semilogy(-loss, np.maximum(post_ffe, 1e-30), "o-", color="C1",
             label="post-KP4 (FFE-only)")
 ax.semilogy(-loss, np.maximum(post_mlsd, 1e-30), "s-", color="C0",
             label="post-KP4 (FFE + MLSD)")
-ax.axhline(1e-15, color="green", ls=":", lw=1, label="链路目标 1e-15")
-ax.set(xlabel="信道插损 @ 56 GHz Nyquist [dB]", ylabel="post-FEC BER (KP4)",
-       title="MLSD 把 pre-FEC 拉回瀑布点以下,\nKP4 才能到 1e-15")
+ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
+ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-FEC BER (KP4)",
+       title="MLSD pulls pre-FEC below the waterfall,\nso KP4 can reach 1e-15")
 ax.yaxis.set_major_formatter(_fmt)
 ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=8)

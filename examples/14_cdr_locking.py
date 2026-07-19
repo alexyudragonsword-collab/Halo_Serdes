@@ -117,14 +117,14 @@ for row, (name, (yaml_path, over)) in enumerate(CASES.items()):
         dec, ys, ph, w, pd, wh = run_cdr(cfg, rx, peak + off_ui * osr, w_dfe, levels)
         dev = (ph - peak - np.arange(ph.size) * osr) / osr
         ax.plot(np.arange(min(ph.size, 600)), dev[:600], lw=1.0,
-                label=f"初始 {off_ui:+.1f} UI")
+                label=f"initial {off_ui:+.1f} UI")
         inside = np.nonzero(np.abs(dev) < 0.05)[0]
         if inside.size and abs(off_ui) > 0.05:
-            print(f"{name}: 初始 {off_ui:+.1f} UI -> 牵引进 0.05 UI 用时 "
-                  f"{inside[0]} 符号")
+            print(f"{name}: initial {off_ui:+.1f} UI -> pull-in to 0.05 UI in "
+                  f"{inside[0]} symbols")
     ax.axhline(0, color="gray", lw=0.6)
-    ax.set(xlabel="symbol", ylabel="相位偏差 [UI]",
-           title=f"{name}: 相位牵引(bang-bang 斜率 ~ Kp x 跳变密度)")
+    ax.set(xlabel="symbol", ylabel="phase deviation [UI]",
+           title=f"{name}: phase pull-in (bang-bang slope ~ Kp x transition density)")
     ax.legend(fontsize=7)
 
     # --- (b) frequency tracking: +/-200 ppm — phase-ramp view (the period
@@ -136,16 +136,16 @@ for row, (name, (yaml_path, over)) in enumerate(CASES.items()):
         k = np.arange(ph.size)
         dev = (ph - peak2 - k * osr) / osr
         ideal = -ppm * 1e-6 * k
-        ax.plot(k / 1e3, dev, color=c, lw=1.0, label=f"{ppm:+d} ppm: 恢复相位")
+        ax.plot(k / 1e3, dev, color=c, lw=1.0, label=f"{ppm:+d} ppm: recovered phase")
         ax.plot(k / 1e3, ideal, color=c, ls="--", lw=0.8, alpha=0.7)
         track_err = dev - ideal
         te = track_err[2000:]
         # an early cycle slip leaves a harmless static integer-UI offset:
         # report the tracking jitter around the settled offset
-        print(f"{name}: {ppm:+d} ppm 静态偏移 {np.mean(te):+.2f} UI, "
-              f"去趋势跟踪抖动 RMS = {np.std(te):.4f} UI")
-    ax.set(xlabel="symbol [k]", ylabel="累计相位偏差 [UI]",
-           title=f"{name}: 频偏跟踪(虚线=输入斜坡,重合=积分支路锁住频差)")
+        print(f"{name}: {ppm:+d} ppm static offset {np.mean(te):+.2f} UI, "
+              f"detrended tracking jitter RMS = {np.std(te):.4f} UI")
+    ax.set(xlabel="symbol [k]", ylabel="cumulative phase deviation [UI]",
+           title=f"{name}: freq tracking (dashed=input ramp, overlap=integral branch locks offset)")
     ax.legend(fontsize=7)
 
     # --- (c) lock detection on the pull-in case ---
@@ -153,11 +153,11 @@ for row, (name, (yaml_path, over)) in enumerate(CASES.items()):
     dec, ys, ph, w, pd, wh = run_cdr(cfg, rx, peak + 0.4 * osr, w_dfe, levels)
     ma, lock_idx = lock_metric(ph, osr, peak)
     ax.plot(np.arange(min(ma.size, 3000)), ma[:3000], lw=0.8,
-            label="相位滑窗峰峰值 [UI] (win=200)")
-    ax.axhspan(0, 0.2, color="green", alpha=0.12, label="锁定判据 pp<0.2 UI")
+            label="phase sliding-window pp [UI] (win=200)")
+    ax.axhspan(0, 0.2, color="green", alpha=0.12, label="lock criterion pp<0.2 UI")
     if lock_idx is not None:
         ax.axvline(lock_idx, color="green", ls="--",
-                   label=f"判定锁定 @ {lock_idx} 符号")
+                   label=f"lock declared @ {lock_idx} symbols")
         ref_sym = make_pattern(cfg)
         if lock_idx > 0:
             err_pre = float(np.mean(dec[:lock_idx] != ref_sym[:lock_idx]))
@@ -166,8 +166,8 @@ for row, (name, (yaml_path, over)) in enumerate(CASES.items()):
         err_post = float(np.mean(dec[lock_idx:] != ref_sym[lock_idx: dec.size]))
         print(f"{name}: lock @ {lock_idx} symbols; SER before/after lock = "
               f"{err_pre:.2e} / {err_post:.2e}")
-    ax.set(xlabel="symbol", ylabel="相位峰峰值 [UI]",
-           title=f"{name}: 锁定检测(相位平稳性判据,从 +0.4 UI 启动)")
+    ax.set(xlabel="symbol", ylabel="phase pp [UI]",
+           title=f"{name}: lock detection (phase-stationarity criterion, start +0.4 UI)")
     ax.legend(fontsize=7)
 
 for ax in axes.flat:

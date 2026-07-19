@@ -67,7 +67,7 @@ for row, (name, (yaml_path, over)) in enumerate(CASES.items()):
     ax.text((settle + train_end) / 2, ax.get_ylim()[1] * 0.9, "train", fontsize=7,
             ha="center", color="green")
     ax.set(xlabel="symbol [k]", ylabel="DFE tap value",
-           title=f"{name}: 抽头轨迹(冷启动,虚线=光标目标)")
+           title=f"{name}: tap trajectories (cold start, dashed = cursor targets)")
     ax.legend(fontsize=7, loc="center right")
     ax.grid(True, alpha=0.3)
 
@@ -87,7 +87,7 @@ for row, (name, (yaml_path, over)) in enumerate(CASES.items()):
                 label="slicer error RMS (post-warmup)")
     ax.axvline(train_end, color="green", ls=":", lw=1, label="train end (DD start)")
     ax.set(xlabel="symbol [k]", ylabel="error RMS [mV]",
-           title=f"{name}: 判决误差学习曲线  ({res.summary()})")
+           title=f"{name}: slicer-error learning curve  ({res.summary()})")
     ax.legend(fontsize=7)
     ax.grid(True, alpha=0.3)
     print(f"{name}: taps zero-init -> {np.round(res.dfe_taps, 4).tolist()}")

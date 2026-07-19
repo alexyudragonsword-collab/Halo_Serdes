@@ -110,10 +110,10 @@ for row, rate in enumerate((112.0, 224.0)):
 
     # panel 1: AFE eye (analog, ADC input)
     plot_eye(axes[row, 0], fold_eye(afe, osr, phase, n_traces=3000),
-             cfg.ui * 1e12, title=f"{rate:.0f} Gb/s: AFE 眼(ADC 输入,模拟)")
+             cfg.ui * 1e12, title=f"{rate:.0f} Gb/s: AFE eye (ADC input, analog)")
     # panel 2: reconstructed post-FFE eye (digital-EQ equivalent)
     plot_eye(axes[row, 1], fold_eye(post_ffe, osr, phase, n_traces=3000),
-             cfg.ui * 1e12, title=f"{rate:.0f} Gb/s: 数字 FFE 后重建眼")
+             cfg.ui * 1e12, title=f"{rate:.0f} Gb/s: reconstructed post-FFE eye")
     # panel 3: the real post-DSP view — slicer sample cloud (1-UI strip)
     ax = axes[row, 2]
     y_sl = res.y_slicer
@@ -121,8 +121,8 @@ for row, rate in enumerate((112.0, 224.0)):
             y_sl, ".", ms=0.6, alpha=0.15, color="C0")
     for lv in res.extras["levels"]:
         ax.axhline(lv, ls="--", c="r", alpha=0.5)
-    ax.set(xlim=(-0.5, 0.5), xlabel="采样时刻 [UI]", ylabel="V",
-           title=f"{rate:.0f} Gb/s: slicer 采样点(DSP 真实所见)")
+    ax.set(xlim=(-0.5, 0.5), xlabel="sampling instant [UI]", ylabel="V",
+           title=f"{rate:.0f} Gb/s: slicer samples (what the DSP truly sees)")
 
 for ax in axes.flat:
     ax.grid(True, alpha=0.3)

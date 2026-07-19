@@ -48,11 +48,11 @@ NOISE = 0.002
 CTLE_GEARS = (3.0, 6.0, 9.0, 12.0)
 
 CHANNELS = {
-    "Whisper 背板": ChannelConfig(
+    "Whisper backplane": ChannelConfig(
         kind="touchstone",
         file=str(REPO / "data/channels/TEC_Whisper42p8in_Meg6_THRU_C8C9.s4p"),
         n_freq=4096),
-    "解析走线 0.2m": ChannelConfig(kind="analytic", length_m=0.2, rdc=3.0,
+    "Analytic trace 0.2m": ChannelConfig(kind="analytic", length_m=0.2, rdc=3.0,
                                     r_skin=2.5e-3, loss_tangent=0.015),
 }
 
@@ -159,14 +159,14 @@ for ch_name, ch_cfg in CHANNELS.items():
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.4))
 styles = {"nrz": "o-", "pam4": "s--"}
-colors = {"Whisper 背板": "C0", "解析走线 0.2m": "C2"}
+colors = {"Whisper backplane": "C0", "Analytic trace 0.2m": "C2"}
 for (mod, ch_name), rows in results.items():
     r = np.array([[x[0], x[1]] for x in rows])
     axes[0].plot(r[:, 0], np.maximum(r[:, 1], -0.005) * 1e3, styles[mod],
                  color=colors[ch_name], label=f"{mod.upper()} @ {ch_name}")
 axes[0].axhline(0, color="r", lw=1)
-axes[0].set(xlabel="数据率 [Gb/s]", ylabel="DFE 后最差内眼 [mV]",
-            title="Mixed-signal 眼高 vs 数据率(眼闭合 = 触底红线)")
+axes[0].set(xlabel="Data rate [Gb/s]", ylabel="Worst inner eye post-DFE [mV]",
+            title="Mixed-signal eye height vs data rate (closed = hits red)")
 axes[0].legend(fontsize=8)
 
 for (mod, ch_name), rows in results.items():
@@ -174,15 +174,15 @@ for (mod, ch_name), rows in results.items():
     axes[1].plot(r[:, 0], np.maximum(r[:, 1], -0.005) * 1e3, styles[mod],
                  color=colors[ch_name], label=f"{mod.upper()} @ {ch_name}")
 axes[1].axhline(0, color="r", lw=1)
-axes[1].set(xlabel="符号率 [GBd]", ylabel="DFE 后最差内眼 [mV]",
-            title="同一数据、以符号率为横轴(架构的真实坐标)")
+axes[1].set(xlabel="Symbol rate [GBd]", ylabel="Worst inner eye post-DFE [mV]",
+            title="Same data, symbol-rate axis (architecture's real axis)")
 axes[1].legend(fontsize=8)
 for ax in axes:
     ax.grid(True, alpha=0.3)
 fig.tight_layout()
 fig.savefig(OUT / "12_ms_limit_sweep.png", dpi=130)
 
-print("== 上限(最后一个眼可打开的点)==")
+print("== Limit (last point with an open eye) ==")
 for (mod, ch_name), rows in results.items():
     open_rows = [r for r in rows if r[1] > 0]
     if open_rows:
@@ -191,5 +191,5 @@ for (mod, ch_name), rows in results.items():
         print(f"  {mod.upper():4s} @ {ch_name}: {last[0]:.0f} Gb/s "
               f"({fs:.0f} GBd, {last[4]:.1f} dB@Nyq, eye {last[1] * 1e3:.1f} mV)")
     else:
-        print(f"  {mod.upper():4s} @ {ch_name}: 起点即闭合")
+        print(f"  {mod.upper():4s} @ {ch_name}: closed at start")
 print(f"wrote {OUT / '12_ms_limit_sweep.png'}")

@@ -130,7 +130,7 @@ rx_t, h_t, _ = build_rx_wave(dataclasses.replace(
     cfg_t, tx=dataclasses.replace(cfg_t.tx, rj_ui=0.0)))
 eye_ctle = fold_eye(rx_t, cfg.osr, int(np.argmax(np.abs(pulse_from_impulse(
     Waveform(h_t, cfg.dt), cfg.osr).y))) % cfg.osr, n_traces=2500)
-plot_eye(axes[0], eye_ctle, cfg.ui * 1e12, title="CTLE 输出(训练后 Tx FIR)")
+plot_eye(axes[0], eye_ctle, cfg.ui * 1e12, title="CTLE out (trained Tx FIR)")
 
 # panel 2: post-DFE, no Tx FIR
 rx_0, h_0, _ = build_rx_wave(dataclasses.replace(
@@ -139,14 +139,14 @@ y_d0, ph0, lv0 = post_dfe_wave(cfg, rx_0, h_0)
 eye_d0 = fold_eye(y_d0, cfg.osr, ph0, n_traces=2500)
 eh0 = eye_height(fold_eye(y_d0, cfg.osr, ph0, n_traces=4000))
 plot_eye(axes[1], eye_d0, cfg.ui * 1e12,
-         title=f"DFE 后(无 Tx FIR)eye={eh0 * 1e3:.1f} mV")
+         title=f"Post-DFE (no Tx FIR) eye={eh0 * 1e3:.1f} mV")
 
 # panel 3: post-DFE, trained Tx FIR
 y_d1, ph1, lv1 = post_dfe_wave(cfg_t, rx_t, h_t)
 eye_d1 = fold_eye(y_d1, cfg.osr, ph1, n_traces=2500)
 eh1 = eye_height(fold_eye(y_d1, cfg.osr, ph1, n_traces=4000))
 plot_eye(axes[2], eye_d1, cfg.ui * 1e12,
-         title=f"DFE 后(训练 Tx FIR)eye={eh1 * 1e3:.1f} mV")
+         title=f"Post-DFE (trained Tx FIR) eye={eh1 * 1e3:.1f} mV")
 
 for ax in axes:
     ax.axvline(0.0, color="w", ls=":", lw=0.8, alpha=0.7)

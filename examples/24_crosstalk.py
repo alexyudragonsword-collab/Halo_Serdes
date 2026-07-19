@@ -54,7 +54,7 @@ print(f"28 GBd NRZ, 0.28 m — loss @ Nyquist {loss:.1f} dB\n")
 # one FEXT + one NEXT aggressor; sweep a common coupling level
 couplings_db = [-40, -34, -30, -26, -22, -18]
 td_snr, td_ber, stat_ber = [], [], []
-print("== 串扰强度扫描 (FEXT+NEXT, 时域引擎) ==")
+print("== Crosstalk strength sweep (FEXT+NEXT, time engine) ==")
 for cdb in couplings_db:
     fext = synthetic_aggressor("fext", cdb, cfg.ui, cfg.dt, seed=11)
     nxt = synthetic_aggressor("next", cdb - 3, cfg.ui, cfg.dt, seed=22)
@@ -72,15 +72,15 @@ fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(11, 4.6))
 x = np.array(couplings_db)
 
 ax0.plot(x, td_snr, "o-", color="C0")
-ax0.set(xlabel="串扰耦合强度 [dB]", ylabel="slicer SNR [dB]",
-        title=f"串扰使 SNR 塌陷\n(28 GBd NRZ, 信道 {loss:.0f} dB)")
+ax0.set(xlabel="Crosstalk coupling strength [dB]", ylabel="slicer SNR [dB]",
+        title=f"Crosstalk collapses SNR\n(28 GBd NRZ, channel {loss:.0f} dB)")
 ax0.grid(True, alpha=0.3)
 
-ax1.semilogy(x, td_ber, "o-", color="C0", label="时域引擎 (MC)")
-ax1.semilogy(x, stat_ber, "s--", color="C3", label="统计引擎 (StatEye)")
-ax1.axhline(2.4e-4, color="green", ls=":", lw=1, label="KP4 pre-FEC 门限")
-ax1.set(xlabel="串扰耦合强度 [dB]", ylabel="pre-FEC BER",
-        title="双引擎串扰对比(统计=保守上界)\n(同一 XtalkAggressor 驱动两引擎)")
+ax1.semilogy(x, td_ber, "o-", color="C0", label="Time engine (MC)")
+ax1.semilogy(x, stat_ber, "s--", color="C3", label="Statistical engine (StatEye)")
+ax1.axhline(2.4e-4, color="green", ls=":", lw=1, label="KP4 pre-FEC threshold")
+ax1.set(xlabel="Crosstalk coupling strength [dB]", ylabel="pre-FEC BER",
+        title="Dual-engine crosstalk (stat=conservative bound)\n(same XtalkAggressor drives both engines)")
 ax1.yaxis.set_major_formatter(_fmt)
 ax1.legend(fontsize=8); ax1.grid(True, which="both", alpha=0.3)
 

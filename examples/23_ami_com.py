@@ -57,11 +57,11 @@ def cfg_for(length_m, fir, noise=0.004):
 
 # --- 1. COM sweep vs loss, two Tx-FIR strengths ---
 com = NativeCom(target_der=1e-4, n_dfe=2, rx_ffe_taps=15, rx_ffe_pre=4)
-FIRS = {"弱 Tx FIR (-0.06,0.9,-0.04)": (-0.06, 0.90, -0.04),
-        "强 Tx FIR (-0.12,0.8,-0.08)": (-0.12, 0.80, -0.08)}
+FIRS = {"Weak Tx FIR (-0.06,0.9,-0.04)": (-0.06, 0.90, -0.04),
+        "Strong Tx FIR (-0.12,0.8,-0.08)": (-0.12, 0.80, -0.08)}
 lengths = np.array([0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50])
 
-print("== 行为级 COM 扫描 (28 GBd NRZ) ==")
+print("== Behavioral COM sweep (28 GBd NRZ) ==")
 fig, (axc, axb) = plt.subplots(1, 2, figsize=(11, 4.6))
 for (label, fir), c in zip(FIRS.items(), ("C0", "C1")):
     loss, comdb = [], []
@@ -73,13 +73,13 @@ for (label, fir), c in zip(FIRS.items(), ("C0", "C1")):
     axc.plot(loss, comdb, "o-", color=c, label=label)
     print(f"  {label}: " + "  ".join(f"{l:.0f}dB->{cb:.1f}"
           for l, cb in zip(loss, comdb)))
-axc.axhline(3.0, color="green", ls=":", lw=1.2, label="COM 通过线 ~3 dB")
-axc.set(xlabel="信道插损 @ 14 GHz Nyquist [dB]", ylabel="行为级 COM [dB]",
-        title="行为级 COM vs 插损\n(经 ComAdapter.compute 接口)")
+axc.axhline(3.0, color="green", ls=":", lw=1.2, label="COM pass line ~3 dB")
+axc.set(xlabel="Channel loss @ 14 GHz Nyquist [dB]", ylabel="Behavioral COM [dB]",
+        title="Behavioral COM vs loss\n(via ComAdapter.compute seam)")
 axc.legend(fontsize=8); axc.grid(True, alpha=0.3)
 
 # --- 2. AMI Rx model in the engine loop: post-cursor FIR strength sweep ---
-print("\n== AMI Rx GetWave 模型接入引擎 (SNR 回读) ==")
+print("\n== AMI Rx GetWave model in engine (SNR readback) ==")
 post_taps = [0.0, -0.03, -0.06, -0.09, -0.12]
 snrs = []
 base_cfg = cfg_for(0.25, (-0.08, 0.85, -0.05))
@@ -92,8 +92,8 @@ for pt in post_taps:
     print(f"  Rx AMI post tap {pt:+.2f} -> slicer SNR {res.slicer_snr_db:.2f} dB "
           f"(BER {res.ber.ber:.1e})")
 axb.plot([-p for p in post_taps], snrs, "s-", color="C3")
-axb.set(xlabel="Rx AMI 后光标抵消强度 |tap|", ylabel="slicer SNR [dB]",
-        title="原生 FIR AMI 模型接入 Rx GetWave 槽\n(vendor .so 走同一 load_ami_model 接口)")
+axb.set(xlabel="Rx AMI post-cursor cancel strength |tap|", ylabel="slicer SNR [dB]",
+        title="Native FIR AMI model in Rx GetWave slot\n(vendor .so uses same load_ami_model seam)")
 axb.grid(True, alpha=0.3)
 
 assert isinstance(rx_ami, NativeFirAmi)  # native reference in use (no pyibisami)

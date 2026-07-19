@@ -77,18 +77,18 @@ tj = np.array([total_jitter(jb[s], 1e-12) * u for s in stages])
 
 fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(11, 4.6))
 x = np.arange(len(stages))
-labels = {"tx": "Tx 驱动输出", "chnl": "信道输出", "ctle": "CTLE+VGA 后"}
+labels = {"tx": "Tx driver output", "chnl": "Channel output", "ctle": "After CTLE+VGA"}
 xt = [labels.get(s, s) for s in stages]
 
 b = np.zeros(len(stages))
-for vals, lab, c in [(isi, "ISI (数据相关)", "C0"), (dcd, "DCD", "C1"),
-                     (pj, "Pj (周期)", "C2"), (rj * 14.07, "Rj->1e-12 尾", "C3")]:
+for vals, lab, c in [(isi, "ISI (data-dependent)", "C0"), (dcd, "DCD", "C1"),
+                     (pj, "Pj (periodic)", "C2"), (rj * 14.07, "Rj->1e-12 tail", "C3")]:
     ax0.bar(x, vals, bottom=b, label=lab, color=c, width=0.6)
     b += vals
-ax0.plot(x, tj, "k_", ms=28, mew=2, label="TJ@1e-12 (总)")
+ax0.plot(x, tj, "k_", ms=28, mew=2, label="TJ@1e-12 (total)")
 ax0.set_xticks(x); ax0.set_xticklabels(xt)
-ax0.set_ylabel("抖动 [%UI]")
-ax0.set_title("逐级抖动预算 (16 GBd NRZ)\n分解: ISI + DCD + Pj + Rj 尾")
+ax0.set_ylabel("Jitter [%UI]")
+ax0.set_title("Per-stage jitter budget (16 GBd NRZ)\nDecomposition: ISI + DCD + Pj + Rj tail")
 ax0.legend(fontsize=8, loc="upper left")
 ax0.grid(True, axis="y", alpha=0.3)
 
@@ -98,7 +98,7 @@ for xi, v in zip(x, rj):
     ax1.text(xi, v, f"{v:.2f}%", ha="center", va="bottom", fontsize=9)
 ax1.set_xticks(x); ax1.set_xticklabels(xt)
 ax1.set_ylabel("Rj (rms) [%UI]")
-ax1.set_title("随机抖动 (rms) 逐级\nTx 档应 ≈ 注入的 0.80%UI")
+ax1.set_title("Random jitter (rms) per stage\nTx stage should ≈ injected 0.80%UI")
 ax1.grid(True, axis="y", alpha=0.3)
 
 fig.tight_layout()
