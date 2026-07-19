@@ -15,6 +15,12 @@ from typing import Literal, Optional
 
 SCHEMA_VERSION = 1
 
+# Product-grade mixed-signal envelope: the CTLE + DFE + BB-CDR partition
+# (no RX FFE) is validated up to 16 GBd NRZ in this framework (examples/10:
+# -18.7 dB channel, 105 mV post-DFE eye). Above this rate the time engine
+# warns and the ADC/DSP architecture is the supported path.
+MS_PRODUCT_MAX_BAUD = 16.0e9
+
 
 @dataclass(frozen=True)
 class QFormat:
@@ -133,6 +139,21 @@ class RxConfig:
     cdr: CdrConfig = field(default_factory=CdrConfig)
     noise_rms: float = 0.0              # input-referred AWGN sigma [V]
 
+    @staticmethod
+    def product_mixed_signal(noise_rms: float = 0.003) -> "RxConfig":
+        """The validated product mixed-signal receiver (<= 16 GBd NRZ):
+        CTLE (7 dB) + 4-tap DFE with unrolled tap-1 + bang-bang CDR.
+        No RX FFE — linear EQ beyond the CTLE belongs to the Tx FIR
+        (backchannel-trained, see engine.backchannel)."""
+        return RxConfig(
+            arch="mixed_signal",
+            ctle=CtleConfig(enable=True, peak_db=7.0),
+            dfe=DfeConfig(n_taps=4, adapt="sign_sign", mu=5e-4,
+                          tap1_mode="unrolled"),
+            cdr=CdrConfig(kind="bang_bang", kp_shift=5, ki_shift=12),
+            noise_rms=noise_rms,
+        )
+
 
 @dataclass(frozen=True)
 class SimConfig:
@@ -159,8 +180,10 @@ class NumericConfig:
 
 @dataclass(frozen=True)
 class LinkConfig:
-    modulation: Literal["nrz", "pam4"]
-    symbol_rate: float                  # [Baud] e.g. 32e9 NRZ, 106.25e9 PAM4
+    # defaults define the product mixed-signal anchor point: 16 GBd NRZ
+    # (the validated upper limit of the CTLE+DFE partition, MS_PRODUCT_MAX_BAUD)
+    modulation: Literal["nrz", "pam4"] = "nrz"
+    symbol_rate: float = MS_PRODUCT_MAX_BAUD   # [Baud]
     osr: int = 32                       # oversampling ratio (samples per UI)
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     tx: TxConfig = field(default_factory=TxConfig)

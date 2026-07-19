@@ -56,3 +56,14 @@ pytest tests/ -q                                    # 全部单元测试
 
 信道数据:`data/channels/` 内含 TEC Whisper 42.8"(802.3ck COM 参考,DC-40 GHz)与
 IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
+
+## 架构包络约定
+
+- **产品级 mixed-signal 上限 = 16 GBd NRZ**(`MS_PRODUCT_MAX_BAUD`):
+  CTLE + DFE(tap-1 unrolled)+ BB-CDR、无 RX FFE 的分工,已在 -18.7 dB
+  信道上验证(DFE 后内眼 105 mV,BER 0)。`LinkConfig()` 默认即该锚点;
+  规范配置 `configs/nrz_16g_ms.yaml`;时域引擎对超限的 mixed_signal
+  运行发 UserWarning(允许探索,但结果在支持包络之外)。
+- **16 GBd 以上**:走 `rx.arch: adc_dsp`(TI-ADC + 数字 FFE/DFE/MLSD +
+  MM-CDR),或用 `run_static_link` 做纯链路预算评估(其 FFE 为链路总
+  线性均衡预算,非 RX 电路)。

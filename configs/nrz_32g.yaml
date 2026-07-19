@@ -1,5 +1,9 @@
 # 32 Gb/s NRZ over the TEC Whisper 42.8" backplane (802.3ck COM reference,
-# DC-40 GHz: ~-32 dB at the 16 GHz Nyquist), mixed-signal RX.
+# DC-40 GHz: ~-32 dB at the 16 GHz Nyquist).
+# NOTE: 32 GBd exceeds the product mixed-signal envelope (16 GBd,
+# MS_PRODUCT_MAX_BAUD) — this config is for link-budget evaluation
+# (run_static_link: the FFE is the total linear-EQ budget, not an RX block).
+# The canonical mixed-signal config is configs/nrz_16g_ms.yaml.
 modulation: nrz
 symbol_rate: 32.0e9
 osr: 32

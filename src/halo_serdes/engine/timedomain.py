@@ -36,6 +36,18 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False) -> SimResult:
     if cfg.rx.arch == "adc_dsp":
         return _run_adc_link(cfg, channel, collect_eye)
+    from ..config.schema import MS_PRODUCT_MAX_BAUD
+
+    if cfg.symbol_rate > MS_PRODUCT_MAX_BAUD * (1 + 1e-9):
+        import warnings
+
+        warnings.warn(
+            f"mixed_signal arch at {cfg.symbol_rate / 1e9:.3g} GBd exceeds the "
+            f"product envelope ({MS_PRODUCT_MAX_BAUD / 1e9:.0f} GBd): the "
+            "CTLE+DFE partition (no RX FFE) is validated up to 16G NRZ; "
+            "use rx.arch='adc_dsp' for higher rates (exploration runs are "
+            "allowed but results are outside the supported envelope)",
+            stacklevel=2)
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 
