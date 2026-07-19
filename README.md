@@ -38,10 +38,10 @@ pytest tests/ -q                                    # 全部单元测试
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | 0 | 骨架 + 配置 + core + 信道层 | ✅ |
-| 1 | NRZ 32G 最小链路(ZF/MMSE FFE + 理想 DFE + MC BER) | ⬜ |
-| 2 | 时域引擎 + mixed-signal 架构(自适应 DFE + BB-CDR + 抖动注入) | ⬜ |
-| 3 | StatEye 统计引擎 + 双引擎交叉校验 | ⬜ |
-| 4 | ADC-based 架构(TI-ADC + 数字 DSP + MM-CDR)+ 224G 性能达标 | ⬜ |
+| 1 | NRZ 32G 最小链路(ZF/MMSE FFE + 理想 DFE + MC BER) | ✅ |
+| 2 | 时域引擎 + mixed-signal 架构(自适应 DFE + BB-CDR + 抖动注入) | ✅ |
+| 3 | StatEye 统计引擎 + 双引擎交叉校验(MC 比值 1.03×) | ✅ |
+| 4 | ADC-based 架构(TI-ADC + 数字 DSP + MM-CDR),10⁶ 符号@106.25GBd 7s | ✅ |
 | 5 | MLSD + RS-FEC(KP4/KR4)+ 抖动分解 + 双架构对比实验 | ⬜ |
 | 6 | 定点双模式(bit-true)+ RTL 黄金模型出口 | ⬜ |
 

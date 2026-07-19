@@ -36,8 +36,9 @@ rx:
     adapt: lms
   cdr:
     kind: mueller_muller
-    kp_shift: 6
-    ki_shift: 14
+    kp_shift: 7
+    ki_shift: 15
+    pd_input: adc      # MM PD on raw ADC codes (fully-equalized input has no gradient)
 sim:
   n_symbols: 1000000
   pattern: prbs13q

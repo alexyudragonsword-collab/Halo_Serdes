@@ -108,6 +108,9 @@ class CdrConfig:
     kp_shift: int = 6                   # proportional gain = 2**-kp_shift [UI/update]
     ki_shift: int = 12                  # integral gain = 2**-ki_shift
     pd_offset: float = 0.0              # MM sampling-point bias
+    pd_input: Literal["adc", "ffe"] = "adc"  # MM PD source (DragonPHY mux);
+    # NOTE: "ffe" on a fully-equalized signal leaves MM without a timing
+    # gradient — use with pd_offset or partial equalization only.
     clamp: Optional[float] = None       # per-update phase step clamp [UI]
     loop_latency_symbols: int = 0       # digital pipeline latency in the loop
 
