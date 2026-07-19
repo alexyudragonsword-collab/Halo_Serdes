@@ -10,6 +10,15 @@ weights are solved once from the pulse response. The streaming time-domain
 engine with CDR/adaptive loops replaces this in Phase 2; this module stays as
 the fast "link feasibility" evaluator and as the reference for closed-form
 tests.
+
+.. note:: **EQ semantics — link budget, not RX circuit.** The FFE solved here
+   represents the *total linear equalization budget* of the link, wherever it
+   physically lives. Product mixed-signal receivers carry no FFE (the split
+   is Tx FIR + RX CTLE + RX DFE, with Tx taps trained over a backchannel —
+   see ``engine.backchannel.train_tx_fir``); RX-side many-tap FFE is real
+   only in the ADC/DSP architecture (``rx.arch = "adc_dsp"``). Use this
+   evaluator to answer "how much linear EQ does this channel need", then map
+   the budget onto an architecture with the time-domain engine.
 """
 
 from __future__ import annotations
@@ -142,7 +151,10 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                      ffe_taps=w_ffe, dfe_taps=w_dfe, sample_phase=phase,
                      eye_data=eye, y_slicer=y_eq[: 20000],
                      extras={"cursors": cursors, "eq_cursors": eq_cursors,
-                             "eq_pre": eq_pre, "main_cursor": main})
+                             "eq_pre": eq_pre, "main_cursor": main,
+                             # the solved FFE is the link's total linear-EQ
+                             # budget, not an RX circuit block (see module doc)
+                             "eq_semantics": "link_budget"})
 
 
 def fold_eye(y: np.ndarray, osr: int, phase: int, n_traces: int = 2000,
