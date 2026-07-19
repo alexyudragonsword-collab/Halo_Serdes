@@ -54,13 +54,17 @@ def test_locks_and_decides_clean_waveform():
     assert np.std(np.diff(phase[5000:])) < 0.5  # stable period
 
 
-def test_frequency_offset_tracking():
-    """+200ppm Tx symbol rate (UI shrinks): steady-state phase step must be
-    osr*(1-eps) — the classic CDR frequency-ramp closed form."""
-    eps = 200e-6
+@pytest.mark.parametrize("eps", [+200e-6, -200e-6])
+def test_frequency_offset_tracking(eps):
+    """+/-200ppm Tx symbol rate: steady-state phase step must be osr*(1-eps).
+
+    Both directions matter: the slow direction (eps < 0, cumulative boundary
+    delay grows beyond 1 UI) once exposed a jittered_zoh bug where nominal-
+    grid region refills clipped the accumulated shift.
+    """
     n_sym = 60_000
     k = np.arange(n_sym + 1)
-    jit = -eps * UI * k  # boundary k arrives early by eps*UI*k
+    jit = -eps * UI * k
     sym, y = _make_wave(n_sym, seed=1, jitter=jit)
     dec, y_sum, phase, w, pd, wh = _run(y, n_sym - 1000, ki_shift=10)
     n = dec.size
@@ -69,7 +73,9 @@ def test_frequency_offset_tracking():
     expected = OSR * (1 - eps)
     # integral branch must absorb the ppm offset
     assert abs(mean_step - expected) < OSR * 30e-6, (mean_step, expected)
-    # and decisions still track after lock
+    # once locked, the sampler emits exactly one decision per data symbol
+    # (its period follows the data clock), so dec[k] <-> sym[k] in both
+    # directions — the broken slow-direction waveform used to violate this
     assert np.array_equal(dec[n // 2:], sym[n // 2: n])
 
 

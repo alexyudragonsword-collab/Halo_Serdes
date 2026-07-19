@@ -47,34 +47,37 @@ def jittered_zoh(v_baud: np.ndarray, osr: int, jitter_s: np.ndarray,
                  ui: float) -> np.ndarray:
     """Build the oversampled waveform with jittered, fractional edges.
 
-    Boundary k sits at t = k*UI + jitter_s[k]. Sample i covers
-    [i*dt, (i+1)*dt); its value is the time-weighted average of the symbol
-    values overlapping that span (jitter << UI, so at most one boundary per
-    sample in practice).
+    Boundary k sits at t = k*UI + jitter_s[k]; symbol k occupies
+    [boundary_k, boundary_{k+1}). Samples fully inside a symbol take its
+    value; the sample straddling a boundary takes the length-weighted mix.
+
+    Implemented as a sequential interval fill between *actual* consecutive
+    boundary positions, so cumulative timing offsets larger than one UI
+    (e.g. ppm frequency-offset ramps) are handled exactly. (A previous
+    implementation refilled regions from the nominal grid position, which
+    silently clipped accumulated shifts beyond 1 UI in the slow direction.)
     """
     n_sym = v_baud.size
     dt = ui / osr
     n = n_sym * osr
-    y = np.repeat(v_baud, osr).astype(np.float64)
-    # boundary sample positions (fractional, in samples)
-    b_pos = (np.arange(n_sym + 1) * ui + jitter_s) / dt
-    # for interior boundaries, adjust the straddled sample
-    for k in range(1, n_sym):
-        p = b_pos[k]
-        i = int(np.floor(p))
-        if i < 0 or i >= n:
-            continue
-        frac = p - i  # boundary position inside sample i
-        va, vb = v_baud[k - 1], v_baud[k]
-        # nominal fill of sample i (belongs to symbol k after nominal edge k*osr)
-        y[i] = va * frac + vb * (1.0 - frac)
-        # samples between nominal edge and boundary need reassigning when the
-        # edge moved by >= 1 sample
-        nom = k * osr
-        if i >= nom:
-            y[nom:i] = va
-        elif i + 1 < nom:
-            y[i + 1: nom] = vb
+    y = np.repeat(v_baud, osr).astype(np.float64)  # base fill (tail/edges)
+    b = (np.arange(n_sym + 1) * ui + jitter_s) / dt  # boundaries [samples]
+    cur_start = b[0]
+    for k in range(1, n_sym + 1):
+        cur_end = b[k]
+        va = v_baud[k - 1]
+        # samples fully inside symbol k-1: [ceil(start), floor(end))
+        i0 = max(int(np.ceil(cur_start)), 0)
+        i1 = min(int(np.floor(cur_end)), n)
+        if i1 > i0:
+            y[i0:i1] = va
+        # boundary-straddling sample: left portion va, right portion next
+        if k < n_sym:
+            j = int(np.floor(cur_end))
+            if 0 <= j < n:
+                frac = cur_end - j
+                y[j] = va * frac + v_baud[k] * (1.0 - frac)
+        cur_start = cur_end
     return y
 
 
