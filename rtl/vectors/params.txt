@@ -1,0 +1,4 @@
+ffe_shift 4
+dfe_shift 8
+out_bits 12
+n_pre 4

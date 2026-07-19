@@ -44,3 +44,21 @@ jobs:
           # nojit exercises the pure-Python fallback kernels
           HALO_NO_JIT: ${{ matrix.jit == 'nojit' && '1' || '' }}
         run: pytest -q
+
+  rtl-lockstep:
+    # Bit-exact check: the SystemVerilog fixed-point datapath vs the Python
+    # golden model (closes the golden-model -> RTL loop).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install iverilog + package
+        run: |
+          sudo apt-get update && sudo apt-get install -y iverilog
+          python -m pip install --upgrade pip
+          pip install -e ".[jit]"
+      - name: Lockstep
+        run: bash rtl/run_lockstep.sh
