@@ -44,7 +44,7 @@ def _run(y, n_sym, w_dfe=np.zeros(0), mu=0.0, kp_shift=5, ki_shift=11,
 
 def test_locks_and_decides_clean_waveform():
     sym, y = _make_wave(20_000)
-    dec, y_sum, phase, w, pd = _run(y, 19_000)
+    dec, y_sum, phase, w, pd, wh = _run(y, 19_000)
     # after settling, all decisions correct
     assert np.array_equal(dec[2000:], sym[2000: dec.size])
     # phase stays near mid-UI of each symbol (mod OSR)
@@ -62,7 +62,7 @@ def test_frequency_offset_tracking():
     k = np.arange(n_sym + 1)
     jit = -eps * UI * k  # boundary k arrives early by eps*UI*k
     sym, y = _make_wave(n_sym, seed=1, jitter=jit)
-    dec, y_sum, phase, w, pd = _run(y, n_sym - 1000, ki_shift=10)
+    dec, y_sum, phase, w, pd, wh = _run(y, n_sym - 1000, ki_shift=10)
     n = dec.size
     steps = np.diff(phase[n // 2:])  # steady state
     mean_step = steps.mean()
@@ -82,7 +82,7 @@ def test_sinusoidal_jitter_tracking():
     k = np.arange(n_sym + 1)
     jit = a_sj * UI * np.sin(2 * np.pi * f_sj * k * UI)
     sym, y = _make_wave(n_sym, seed=2, jitter=jit)
-    dec, y_sum, phase, w, pd = _run(y, n_sym - 1000, kp_shift=4, ki_shift=10)
+    dec, y_sum, phase, w, pd, wh = _run(y, n_sym - 1000, kp_shift=4, ki_shift=10)
     n = dec.size
     ph = phase - np.arange(n) * OSR  # remove nominal advance
     ph = ph[n // 4:]
@@ -101,7 +101,7 @@ def test_dfe_adapts_to_postcursors():
     sym, y = _make_wave(80_000, seed=3, postcursors=post)
     # sign-sign moves at most mu per n_ave symbols: mu must be large enough to
     # cover the 0.25 tap distance well within the run (0.25/2e-3 = 125 updates)
-    dec, y_sum, phase, w, pd = _run(y, 79_000, w_dfe=np.zeros(2), mu=2e-3)
+    dec, y_sum, phase, w, pd, wh = _run(y, 79_000, w_dfe=np.zeros(2), mu=2e-3)
     # normalized taps: postcursor / main (main = 1 here)
     assert abs(w[0] - post[0] / 0.5 * 0.5) < 0.03, w  # levels carry the 0.5
     assert abs(w[1] - post[1] / 0.5 * 0.5) < 0.03, w

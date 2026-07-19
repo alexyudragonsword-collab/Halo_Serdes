@@ -103,6 +103,8 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # DFE feedback multiplies slicer levels (which carry the main-cursor
     # scale), so tap weights are postcursors normalized to the main cursor.
     w_dfe0 = cursors[1: 1 + n_dfe] / main if n_dfe else np.zeros(0)
+    if n_dfe and cfg.rx.dfe.init == "zero":
+        w_dfe0 = np.zeros(n_dfe)
     # loop-delay constraint: with direct analog feedback, tap 1 is unusable
     # if the decision comes back later than 1 UI; the unrolled tap-1 relaxes
     # the critical path to a mux and keeps the tap.
@@ -146,7 +148,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     else:
         branch_off = np.zeros(levels.size)
 
-    dec, y_sum, phase, w_dfe, pd_hist = ms_rx(
+    dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = ms_rx(
         rx_y, osr, float(peak), n_sym,
         levels.astype(np.float64), np.asarray(w_dfe0, dtype=np.float64),
         float(mu), 100, float(kp), float(ki), float(clamp),
@@ -179,7 +181,8 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         eye_data=eye, y_slicer=y_sum[warm: warm + 20000],
         extras={"phase_track": phase, "pd_hist": pd_hist, "main_cursor": main,
                 "levels": levels, "warmup": warm, "w_dfe0": np.asarray(w_dfe0),
-                "settle": settle, "train_end": train_end})
+                "settle": settle, "train_end": train_end,
+                "w_dfe_hist": w_dfe_hist, "n_ave": 100})
 
 
 def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,

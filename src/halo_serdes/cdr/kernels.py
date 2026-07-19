@@ -64,7 +64,8 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
 
     Returns:
         dec (int64[n]), y_sum (float64[n] summing-node values),
-        phase (float64[n] data sample positions), w_out, pd_hist (int8[n]).
+        phase (float64[n] data sample positions), w_out, pd_hist (int8[n]),
+        w_hist (float64[n_batches, nt] tap trajectory, one row per n_ave).
     """
     nl = levels.size
     nt = w_dfe.size
@@ -74,6 +75,10 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
     phase = np.zeros(n_symbols, dtype=np.float64)
     pd_hist = np.zeros(n_symbols, dtype=np.int8)
     corr = np.zeros(nt, dtype=np.float64)
+    # tap trajectory: one row per n_ave symbols (adaptation batch cadence)
+    n_hist = n_symbols // n_ave + 2
+    w_hist = np.zeros((n_hist, nt), dtype=np.float64)
+    h_i = 0
 
     pos = phase0
     integ = 0.0
@@ -83,6 +88,10 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
     v_prev = 0.0
 
     for k in range(n_symbols):
+        if k % n_ave == 0 and h_i < n_hist:
+            for i in range(nt):
+                w_hist[h_i, i] = w[i]
+            h_i += 1
         # --- data & edge samples (fractional positions) ---
         y_d = _farrow(y, pos)
         y_e = _farrow(y, pos - osr / 2.0)
@@ -159,9 +168,10 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
         pos += osr + corr_step
         if pos + osr + 2 >= y.size:
             # truncate: out of waveform
-            return dec[: k + 1], y_sum[: k + 1], phase[: k + 1], w, pd_hist[: k + 1]
+            return (dec[: k + 1], y_sum[: k + 1], phase[: k + 1], w,
+                    pd_hist[: k + 1], w_hist[:h_i])
 
-    return dec, y_sum, phase, w, pd_hist
+    return dec, y_sum, phase, w, pd_hist, w_hist[:h_i]
 
 
 # numba resolves the `_farrow` global at (lazy) compile time, so rebinding it

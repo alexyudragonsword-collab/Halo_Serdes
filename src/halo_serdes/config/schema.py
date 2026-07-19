@@ -130,6 +130,8 @@ class DfeConfig:
     # path is the mux; per-branch comparators carry independent offsets).
     tap1_mode: Literal["direct", "unrolled"] = "direct"
     comparator_offset_sigma: float = 0.0  # per-branch comparator offset [V] (unrolled)
+    init: Literal["cursor", "zero"] = "cursor"  # tap seed: pulse cursors, or
+    # cold start from zero (exercises the full adaptation transient)
 
 
 @dataclass(frozen=True)
