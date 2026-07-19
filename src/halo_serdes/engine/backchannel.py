@@ -57,7 +57,8 @@ def _rx_pulse_base(cfg: LinkConfig, channel: ChannelModel) -> np.ndarray:
 
 def train_tx_fir(cfg: LinkConfig, channel: ChannelModel | None = None,
                  n_pre: int = 1, n_post: int = 1, step: float = 1.0 / 64.0,
-                 threshold: float = 0.01, max_rounds: int = 64) -> BackchannelResult:
+                 threshold: float = 0.01, max_rounds: int = 64,
+                 dfe_covered: int = 0) -> BackchannelResult:
     """Run the KR-style training loop; returns the trained Tx FIR.
 
     Args:
@@ -66,6 +67,11 @@ def train_tx_fir(cfg: LinkConfig, channel: ChannelModel | None = None,
         step: quantized coefficient step per request (KR uses fixed hardware
             steps; sign-only information crosses the backchannel).
         threshold: |cursor|/main below which the RX sends "hold".
+        dfe_covered: postcursors 1..dfe_covered are handled by the RX DFE, so
+            the RX sends "hold" for them regardless of their size — spending
+            Tx swing (peak-power constrained!) on ISI the DFE cancels for
+            free only shrinks the main cursor. A real RX trains toward its
+            own post-DFE metric; pass ``cfg.rx.dfe.n_taps`` here.
     """
     if channel is None:
         channel = ChannelModel.from_config(cfg)
@@ -99,6 +105,9 @@ def train_tx_fir(cfg: LinkConfig, channel: ChannelModel | None = None,
         for i in range(n_taps):
             if i == n_pre:
                 continue  # main tap is not requested directly (KR: c(0) via normalization)
+            k_cursor = i - n_pre
+            if 0 < k_cursor <= dfe_covered:
+                continue  # RX DFE cancels this postcursor for free: hold
             if abs(ratios[i]) > threshold:
                 # a positive residual cursor at position k is reduced by a
                 # negative Tx tap at the same position (ZF direction)
