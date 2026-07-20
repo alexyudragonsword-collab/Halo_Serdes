@@ -21,6 +21,7 @@ python -m nuitka --standalone --assume-yes-for-downloads `
   --nofollow-import-to=numba --nofollow-import-to=llvmlite `
   --nofollow-import-to=galois --nofollow-import-to=pytest `
   --windows-console-mode=disable `
+  --windows-icon-from-ico=packaging/icon.ico `
   --output-dir=build_nuitka --output-filename=Halo_Serdes_GUI `
   src/halo_serdes_gui/desktop.py
 

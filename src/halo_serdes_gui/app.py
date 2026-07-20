@@ -38,11 +38,16 @@ INITIAL = cb.config_to_values(cb.load_preset(DEFAULT_PRESET))
 def _sidebar():
     return html.Div([
         html.Div([
-            html.Span("Halo", style={"fontWeight": 800, "color": theme.PRIMARY}),
-            html.Span("_Serdes", style={"fontWeight": 800, "color": theme.INK}),
-            html.Span("  behavioral SerDes studio",
-                      style={"fontSize": "0.72rem", "color": theme.MUTED}),
-        ], className="mb-2"),
+            html.Img(src="/assets/icon.png", height="30px",
+                     style={"marginRight": "0.5rem", "borderRadius": "6px"}),
+            html.Div([
+                html.Span("Halo", style={"fontWeight": 800, "color": theme.PRIMARY}),
+                html.Span("_Serdes", style={"fontWeight": 800, "color": theme.INK}),
+                html.Div("behavioral SerDes studio",
+                         style={"fontSize": "0.72rem", "color": theme.MUTED,
+                                "marginTop": "-0.15rem"}),
+            ]),
+        ], className="mb-2 d-flex align-items-center"),
 
         dbc.InputGroup([
             dbc.Select(id="preset", options=[{"label": n, "value": n}

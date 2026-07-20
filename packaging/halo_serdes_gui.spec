@@ -56,10 +56,12 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure)
+_icon = os.path.join(SPECPATH, "icon.ico")
 exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True,
     name="Halo_Serdes_GUI",
     console=False,               # GUI app (pywebview window)
     disable_windowed_traceback=False,
+    icon=_icon if os.path.exists(_icon) else None,
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="Halo_Serdes_GUI")
