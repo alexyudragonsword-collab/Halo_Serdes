@@ -33,20 +33,27 @@ def _find_configs_dir() -> Path:
     import sys
 
     here = Path(__file__).resolve()
-    cands = [here.parents[2] / "configs"]              # repo/src/pkg -> repo/configs
+    cands = []
     meipass = getattr(sys, "_MEIPASS", None)           # PyInstaller extract dir
     if meipass:
         cands.append(Path(meipass) / "configs")
+    # __file__-relative: source (repo/src/pkg -> repo/configs) and Nuitka
+    # onefile, which extracts data into a temp dir beside the package tree
+    # (sys.executable points at the launcher there, so anchor on __file__).
+    for up in (1, 2, 3):
+        if up < len(here.parents):
+            cands.append(here.parents[up] / "configs")
     cands.append(here.parent / "configs")              # bundled beside the package
     try:
-        cands.append(Path(sys.executable).resolve().parent / "configs")
-        cands.append(Path(sys.executable).resolve().parent / "_internal" / "configs")
+        exe = Path(sys.executable).resolve().parent    # Nuitka/PyInstaller standalone
+        cands.append(exe / "configs")
+        cands.append(exe / "_internal" / "configs")
     except Exception:
         pass
     for c in cands:
         if c.is_dir():
             return c
-    return cands[0]
+    return here.parents[2] / "configs"                 # source-layout fallback
 
 
 CONFIGS_DIR = _find_configs_dir()
@@ -64,8 +71,10 @@ def _data_roots() -> list[Path]:
         roots += [exe, exe / "_internal"]
     except Exception:
         pass
-    roots.append(CONFIGS_DIR.parent)                    # repo root / _internal
-    roots.append(Path(__file__).resolve().parents[2])   # repo root (source)
+    roots.append(CONFIGS_DIR.parent)                    # resolved bundle/repo root
+    # __file__-relative roots cover Nuitka onefile (temp extract) + source
+    here = Path(__file__).resolve()
+    roots += [here.parents[up] for up in (1, 2, 3) if up < len(here.parents)]
     return roots
 
 

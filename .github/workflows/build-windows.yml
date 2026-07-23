@@ -65,6 +65,7 @@ jobs:
             --nofollow-import-to=numba --nofollow-import-to=llvmlite `
             --nofollow-import-to=galois --nofollow-import-to=pytest `
             --windows-console-mode=disable `
+            --windows-icon-from-ico=packaging/icon.ico `
             --output-dir=build_nuitka --output-filename=Halo_Serdes_GUI `
             src/halo_serdes_gui/desktop.py
       - name: Smoke-test frozen bundle
@@ -73,4 +74,45 @@ jobs:
         with:
           name: Halo_Serdes_GUI-nuitka
           path: build_nuitka/desktop.dist
+          retention-days: 14
+
+  nuitka-onefile:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    continue-on-error: true        # Nuitka compile of scipy is slow/heavy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install (gui + desktop + nuitka)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[gui,desktop]"
+          pip install "nuitka>=2.0" ordered-set zstandard
+      - name: Build (onefile)
+        run: |
+          python -m nuitka --onefile --assume-yes-for-downloads `
+            --include-package=dash --include-package=plotly `
+            --include-package=dash_bootstrap_components `
+            --include-package=halo_serdes --include-package=halo_serdes_gui `
+            --include-package-data=dash --include-package-data=plotly `
+            --include-package-data=dash_bootstrap_components `
+            --include-package-data=skrf `
+            --include-data-dir=src/halo_serdes_gui/assets=halo_serdes_gui/assets `
+            --include-data-dir=configs=configs `
+            --include-data-dir=data/channels=data/channels `
+            --nofollow-import-to=numba --nofollow-import-to=llvmlite `
+            --nofollow-import-to=galois --nofollow-import-to=pytest `
+            --windows-console-mode=disable `
+            --windows-icon-from-ico=packaging/icon.ico `
+            --onefile-tempdir-spec="{CACHE_DIR}/Halo_Serdes/{VERSION}" `
+            --output-dir=build_nuitka_onefile --output-filename=Halo_Serdes_GUI `
+            src/halo_serdes_gui/desktop.py
+      - name: Smoke-test onefile exe
+        run: build_nuitka_onefile/Halo_Serdes_GUI.exe --selfcheck
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Halo_Serdes_GUI-nuitka-onefile
+          path: build_nuitka_onefile/Halo_Serdes_GUI.exe
           retention-days: 14
