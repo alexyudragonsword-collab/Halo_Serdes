@@ -28,6 +28,7 @@ python -m nuitka --onefile --assume-yes-for-downloads `
   --nofollow-import-to=galois --nofollow-import-to=pytest `
   --windows-console-mode=disable `
   --windows-icon-from-ico=packaging/icon.ico `
+  --product-name=Halo_Serdes --product-version=0.0.1 `
   --onefile-tempdir-spec="{CACHE_DIR}/Halo_Serdes/{VERSION}" `
   --output-dir=build_nuitka_onefile --output-filename=Halo_Serdes_GUI `
   src/halo_serdes_gui/desktop.py
