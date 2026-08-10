@@ -117,6 +117,22 @@ def test_icn_grows_with_aggressor_count():
     assert icn_rms([], osr) == 0.0
 
 
+def test_icn_is_order_independent_with_mixed_swings():
+    """Regression: each aggressor must contribute its OWN swing to the power
+    sum. Scaling the whole RSS by one lane's swing made the result depend on
+    list order."""
+    from halo_serdes.channel import icn_rms
+    ui, osr = 1 / 53.125e9, 32
+    a = synthetic_aggressor("fext", -30.0, ui, ui / osr, swing=1.0, seed=1)
+    b = synthetic_aggressor("fext", -30.0, ui, ui / osr, swing=2.0, seed=2)
+    ia, ib = icn_rms([a], osr), icn_rms([b], osr)
+    # a doubled swing doubles that lane's contribution
+    assert ib == pytest.approx(2.0 * ia, rel=1e-9)
+    ab, ba = icn_rms([a, b], osr), icn_rms([b, a], osr)
+    assert ab == pytest.approx(ba, rel=1e-12)          # order-independent
+    assert ab == pytest.approx(np.hypot(ia, ib), rel=1e-9)   # true RSS
+
+
 def test_bank_feeds_com_and_lowers_margin():
     """A multi-lane bank flows straight into the COM engine as σ_XT."""
     from halo_serdes.analysis.com import compute_com

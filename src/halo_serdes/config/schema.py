@@ -39,6 +39,23 @@ MS_LIMIT_DATA_RATE: dict[str, float] = {"nrz": 30.0e9, "pam4": 36.0e9}
 MS_HARD_MAX_BAUD = 30.0e9
 
 
+def _require(cond: bool, msg: str) -> None:
+    """Reject an invalid config at construction.
+
+    The config is the single source of truth for every module, so a bad field
+    must fail here with a precise message rather than surfacing as a deep
+    ZeroDivisionError — or, worse, silently wrong physics (a negative ``osr``
+    yields a negative ``dt`` and reversed time).
+    """
+    if not cond:
+        raise ValueError(msg)
+
+
+def _require_in(value, allowed, field: str) -> None:
+    _require(value in allowed,
+             f"{field} must be one of {sorted(allowed)}, got {value!r}")
+
+
 @dataclass(frozen=True)
 class QFormat:
     """Fixed-point format: signed two's-complement, ``wl`` total bits with
@@ -50,6 +67,11 @@ class QFormat:
     signed: bool = True
     rounding: Literal["floor", "round"] = "round"
     saturate: bool = True
+
+    def __post_init__(self):
+        _require(self.wl >= 1, f"QFormat.wl must be >= 1, got {self.wl}")
+        _require(self.fl >= 0, f"QFormat.fl must be >= 0, got {self.fl}")
+        _require_in(self.rounding, {"floor", "round"}, "QFormat.rounding")
 
 
 @dataclass(frozen=True)
@@ -71,6 +93,15 @@ class ChannelConfig:
     c_per_m: float = 1.2e-10
     loss_tangent: float = 0.0
 
+    def __post_init__(self):
+        _require_in(self.kind, {"touchstone", "analytic"}, "channel.kind")
+        _require(self.n_freq >= 2,
+                 f"channel.n_freq must be >= 2, got {self.n_freq}")
+        _require(self.length_m >= 0.0,
+                 f"channel.length_m must be >= 0, got {self.length_m}")
+        _require(self.f_max is None or self.f_max > 0,
+                 f"channel.f_max must be > 0 when set, got {self.f_max}")
+
 
 @dataclass(frozen=True)
 class TxConfig:
@@ -83,6 +114,23 @@ class TxConfig:
     sj_ui: float = 0.0                     # sinusoidal jitter amplitude [UI]
     sj_freq: float = 0.0                   # sinusoidal jitter frequency [Hz]
     dcd_ui: float = 0.0                    # duty-cycle distortion [UI]
+
+    def __post_init__(self):
+        _require(self.swing > 0, f"tx.swing must be > 0, got {self.swing}")
+        _require(0.0 < self.rlm <= 1.0,
+                 f"tx.rlm is a level-mismatch ratio in (0, 1], got {self.rlm}")
+        _require(len(self.fir_taps) >= 1, "tx.fir_taps must not be empty")
+        _require(self.fir_n_pre >= 0,
+                 f"tx.fir_n_pre must be >= 0, got {self.fir_n_pre}")
+        # a 1-tap "FIR" is a passthrough the engine skips outright, so its
+        # n_pre is meaningless; only constrain it where the FIR is applied
+        _require(len(self.fir_taps) == 1
+                 or self.fir_n_pre < len(self.fir_taps),
+                 f"tx.fir_n_pre must be < len(fir_taps)={len(self.fir_taps)}, "
+                 f"got {self.fir_n_pre}")
+        for nm in ("rj_ui", "sj_ui", "dcd_ui"):
+            _require(getattr(self, nm) >= 0,
+                     f"tx.{nm} must be >= 0, got {getattr(self, nm)}")
 
 
 @dataclass(frozen=True)
@@ -106,6 +154,15 @@ class AdcConfig:
     skew_sigma_ui: float = 0.0          # per-lane sampling skew sigma [UI]
     calibrated: bool = False            # behavioral offset/gain calibration
 
+    def __post_init__(self):
+        _require(self.n_bits >= 1, f"adc.n_bits must be >= 1, got {self.n_bits}")
+        _require(self.n_lanes >= 1,
+                 f"adc.n_lanes must be >= 1, got {self.n_lanes}")
+        _require(self.fullscale > 0,
+                 f"adc.fullscale must be > 0, got {self.fullscale}")
+        _require(self.enob is None or self.enob > 0,
+                 f"adc.enob must be > 0 when set, got {self.enob}")
+
 
 @dataclass(frozen=True)
 class FfeConfig:
@@ -113,6 +170,12 @@ class FfeConfig:
     n_post: int = 10                    # 802.3dj reference receiver: 15 taps total
     adapt: Literal["none", "lms", "wiener"] = "none"
     mu: float = 1e-3
+
+    def __post_init__(self):
+        _require(self.n_pre >= 0, f"ffe.n_pre must be >= 0, got {self.n_pre}")
+        _require(self.n_post >= 0, f"ffe.n_post must be >= 0, got {self.n_post}")
+        _require_in(self.adapt, {"none", "lms", "wiener"}, "ffe.adapt")
+        _require(self.mu >= 0, f"ffe.mu must be >= 0, got {self.mu}")
 
 
 @dataclass(frozen=True)
@@ -133,6 +196,21 @@ class DfeConfig:
     init: Literal["cursor", "zero"] = "cursor"  # tap seed: pulse cursors, or
     # cold start from zero (exercises the full adaptation transient)
 
+    def __post_init__(self):
+        _require(self.n_taps >= 0, f"dfe.n_taps must be >= 0, got {self.n_taps}")
+        _require_in(self.adapt, {"none", "lms", "sign_sign"}, "dfe.adapt")
+        _require(self.mu >= 0, f"dfe.mu must be >= 0, got {self.mu}")
+        _require(self.loop_delay_ui >= 0,
+                 f"dfe.loop_delay_ui must be >= 0, got {self.loop_delay_ui}")
+        _require(self.sum_bw is None or self.sum_bw > 0,
+                 f"dfe.sum_bw must be > 0 when set, got {self.sum_bw}")
+        _require_in(self.tap1_mode, {"direct", "unrolled"}, "dfe.tap1_mode")
+        _require_in(self.init, {"cursor", "zero"}, "dfe.init")
+        _require(self.tap_limits is None
+                 or len(self.tap_limits) == self.n_taps,
+                 f"dfe.tap_limits must have n_taps={self.n_taps} entries, "
+                 f"got {self.tap_limits}")
+
 
 @dataclass(frozen=True)
 class CdrConfig:
@@ -145,6 +223,15 @@ class CdrConfig:
     # gradient — use with pd_offset or partial equalization only.
     clamp: Optional[float] = None       # per-update phase step clamp [UI]
     loop_latency_symbols: int = 0       # digital pipeline latency in the loop
+
+    def __post_init__(self):
+        _require_in(self.kind, {"bang_bang", "mueller_muller"}, "cdr.kind")
+        _require_in(self.pd_input, {"adc", "ffe"}, "cdr.pd_input")
+        _require(self.clamp is None or self.clamp > 0,
+                 f"cdr.clamp must be > 0 when set, got {self.clamp}")
+        _require(self.loop_latency_symbols >= 0,
+                 f"cdr.loop_latency_symbols must be >= 0, "
+                 f"got {self.loop_latency_symbols}")
 
 
 @dataclass(frozen=True)
@@ -186,6 +273,19 @@ class SimConfig:
     train_symbols: int = 4000           # data-aided LMS span after settle
     warmup_discard: int | None = None   # symbols excluded from BER (default: settle+train)
 
+    def __post_init__(self):
+        _require(self.n_symbols >= 1,
+                 f"sim.n_symbols must be >= 1, got {self.n_symbols}")
+        _require_in(self.engine, {"time", "stat", "both"}, "sim.engine")
+        _require(self.chunk_symbols >= 1,
+                 f"sim.chunk_symbols must be >= 1, got {self.chunk_symbols}")
+        for nm in ("cdr_settle", "train_symbols"):
+            _require(getattr(self, nm) >= 0,
+                     f"sim.{nm} must be >= 0, got {getattr(self, nm)}")
+        _require(self.warmup_discard is None or self.warmup_discard >= 0,
+                 f"sim.warmup_discard must be >= 0 when set, "
+                 f"got {self.warmup_discard}")
+
 
 @dataclass(frozen=True)
 class NumericConfig:
@@ -209,6 +309,16 @@ class LinkConfig:
     rx: RxConfig = field(default_factory=RxConfig)
     sim: SimConfig = field(default_factory=SimConfig)
     numeric: NumericConfig = field(default_factory=NumericConfig)
+
+    def __post_init__(self):
+        _require_in(self.modulation, {"nrz", "pam4"}, "modulation")
+        _require(self.symbol_rate > 0,
+                 f"symbol_rate must be > 0 Baud, got {self.symbol_rate}")
+        # a non-positive osr silently yields a negative/infinite dt
+        _require(self.osr >= 1, f"osr must be >= 1 sample/UI, got {self.osr}")
+        # NOTE: a touchstone channel with no file is intentionally allowed here
+        # — LinkConfig() defaults to it, and ChannelModel.from_config raises a
+        # precise error at load time if it is actually used.
 
     @property
     def ui(self) -> float:

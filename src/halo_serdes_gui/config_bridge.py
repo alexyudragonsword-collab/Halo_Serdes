@@ -348,7 +348,8 @@ def _preset_paths() -> dict[str, Path]:
         "PAM4 224G ADC (106 GBd)": CONFIGS_DIR / "pam4_224g_adc.yaml",
         "PAM4 224G ADC (112 GBd stress)": CONFIGS_DIR / "pam4_224g_112g_adc.yaml",
         "PAM4 deep-LR ADC (FFE+DFE8)": CONFIGS_DIR / "pam4_deep_lr_adc.yaml",
-        "PAM4 112G ADC (TI mismatch)": CONFIGS_DIR / "pam4_112g_adc_mismatch.yaml",
+        # 112 GBd PAM4 = 224 Gb/s; "224G" is the data rate everywhere else
+        "PAM4 224G ADC (TI mismatch)": CONFIGS_DIR / "pam4_112g_adc_mismatch.yaml",
     }
 
 

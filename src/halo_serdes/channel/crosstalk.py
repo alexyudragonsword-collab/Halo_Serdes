@@ -169,8 +169,11 @@ def icn_rms(aggressors, osr: int, *, modulation: str = "nrz") -> float:
         p = agg.pulse(osr).y
         pk = int(np.argmax(np.abs(p)))
         cursors = p[pk % osr::osr]             # baud-spaced cursors
-        power += float(np.sum(cursors ** 2)) * sym_var
-    return float(np.sqrt(power)) * float(getattr(aggressors[0], "swing", 1.0))
+        # each aggressor carries its own Tx swing — scale per lane, not once
+        # over the whole sum (mixed-swing banks would otherwise depend on order)
+        swing = float(getattr(agg, "swing", 1.0))
+        power += float(np.sum(cursors ** 2)) * sym_var * swing ** 2
+    return float(np.sqrt(power))
 
 
 def inject_crosstalk(rx_y: np.ndarray, aggressors, osr: int,

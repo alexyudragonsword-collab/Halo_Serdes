@@ -63,7 +63,7 @@
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
    30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、106 个测试全通过、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、212 个测试全通过、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -119,9 +119,11 @@
 ## 一句话总结
 
 > **Halo_Serdes 在"行为级架构探索 + 统计/时域双引擎 + 双 RX 架构公平对比"这条主线上,
-> 是三库的超集并有实质超越;真实缺口集中在 PyBERT 的产业接口(IBIS-AMI/COM)、
-> 若干已实现但未接线的能力(抖动分解、时域串扰),以及 DragonPHY2 的硅实现全流程
-> ——后者超出行为级框架的设计边界。本轮已补齐前三项软件可修复缺口。**
+> 是三库的超集并有实质超越。原先的软件侧缺口(IBIS-AMI、COM、抖动分解、时域串扰)
+> 已全部补齐,并进一步做到真执行/标准级:AMI 经真实 C ABI 跑编译模型、COM 升级为
+> 忠实的 802.3 93A/178A、串扰扩到多 lane + ICN。剩余缺口集中在 DragonPHY2 的硅实现
+> 全流程(真实 RTL 的完整三视图、FPGA AMS、物理实现、片上校准回路/BIST)——超出行为级
+> 框架的设计边界;`rtl/` 已用一个 bit-exact 的 FFE+DFE lockstep 打通黄金模型→RTL 这一环。**
 
 ---
 
@@ -133,5 +135,5 @@
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 122 测试通过(较补齐前 +18)。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 212 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。

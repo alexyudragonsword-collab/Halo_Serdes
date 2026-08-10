@@ -15,7 +15,7 @@ halo-serdes-gui        # → http://127.0.0.1:8050/
 
 ## 1. Single Run — 单次链路总览
 结果卡(pre-FEC BER / SER / slicer SNR / TJ@1e-12 / 引擎耗时)、密度眼图、slicer 输入直方图
-(带判决电平线)、收敛后的 FFE/DFE 抽头。顶部是全部 15 个能力标签页。
+(带判决电平线)、收敛后的 FFE/DFE 抽头。顶部是全部 16 个能力标签页。
 
 ![Single Run](figures/gui/01_single_run.png)
 
@@ -95,5 +95,5 @@ KP4/KR4 与级联内码的 pre→post-FEC BER 投影,并标注本次运行的 pr
 
 ---
 
-> 全部 15 个标签页覆盖 25 个示例脚本的完整能力;GUI 不新增任何仿真逻辑,只驱动现有引擎
+> 全部 16 个标签页覆盖 30 个示例脚本的完整能力;GUI 不新增任何仿真逻辑,只驱动现有引擎
 > 并渲染 `SimResult` / `StatResult`。

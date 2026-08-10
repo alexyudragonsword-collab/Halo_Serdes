@@ -24,11 +24,11 @@ pytest tests/ -q                                    # 全部单元测试
 
 ## 图形界面 GUI
 
-一个专业的 Plotly Dash 工作台,把 25 个示例脚本的全部分析能力变成交互式操作
+一个专业的 Plotly Dash 工作台,把 30 个示例脚本的全部分析能力变成交互式操作
 (单次链路、双引擎交叉校验、眼图/浴盆、CTLE、自适应/CDR 动态、ADC 逐 lane、抖动预算、
-reach 扫描、FEC、串扰、AMI/COM、定点),共 15 个能力标签页。界面不新增任何仿真逻辑,
+reach 扫描、FEC、串扰、AMI/COM、定点),共 16 个能力标签页。界面不新增任何仿真逻辑,
 只驱动现有引擎并渲染结果。详见 [`docs/GUI.md`](docs/GUI.md);
-15 个标签页的图文导览见 [`docs/GUI_tour.md`](docs/GUI_tour.md)。
+16 个标签页的图文导览见 [`docs/GUI_tour.md`](docs/GUI_tour.md)。
 
 ```bash
 pip install -e ".[gui,jit,fec]"
