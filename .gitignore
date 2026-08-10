@@ -8,3 +8,8 @@ __pycache__/
 src/halo_serdes/io/ami_c/*.so
 src/halo_serdes/io/ami_c/*.dll
 src/halo_serdes/io/ami_c/*.dylib
+
+# coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
