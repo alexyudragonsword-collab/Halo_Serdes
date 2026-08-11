@@ -30,6 +30,7 @@ from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
 from ..core.waveform import Waveform
+from ..dsp.mlsd import mlse_min_distance_sq
 from .static_link import _levels
 
 
@@ -124,6 +125,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     peak = int(np.argmax(np.abs(pulse.y)))
     n_dfe = cfg.rx.dfe.n_taps
+    mlsd_mem = cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none" else 0
 
     # phase axis: one UI centered on the pulse peak
     phi_offsets = np.arange(osr) - osr // 2
@@ -159,6 +161,29 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     isi_list[pos] = 0.0
             isi = np.asarray(isi_list)
 
+        # --- optional MLSD over the residual the DFE left behind ---
+        # Textbook MLSE model (matched-filter bound): the detector *resolves*
+        # the postcursors in its trellis, so they stop acting as interference
+        # (dropped from the ISI PDF) and instead contribute energy — the
+        # minimum error-event distance grows from |main| to sqrt(d_min^2),
+        # which is applied here as an equivalent noise reduction. This is the
+        # closed-form form of the planned MLSD gain table; the time engine is
+        # the cross-check (extras['ser_slicer'] vs ser).
+        sigma_eff = noise_sigma
+        if mlsd_mem > 0:
+            res = []
+            isi_list = list(isi)
+            for d in range(mlsd_mem):
+                pos = n_pre + n_dfe + d       # postcursors after the DFE's
+                if pos < len(isi_list):
+                    res.append(isi_list[pos] / main if main else 0.0)
+                    isi_list[pos] = 0.0       # resolved, not interference
+            isi = np.asarray(isi_list)
+            if res:
+                g = np.sqrt(mlse_min_distance_sq(
+                    np.concatenate([[1.0], np.asarray(res)])))
+                sigma_eff = noise_sigma / max(g, 1e-12)
+
         pdf = isi_pdf(isi, levels_norm, v_centers)
         if xtalk_pulses:
             for xp in xtalk_pulses:
@@ -169,8 +194,9 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 xc[xval] = xp.y[xidx[xval]]
                 pdf = np.convolve(pdf, isi_pdf(xc * swing, levels_norm, v_centers),
                                   mode="same")
-        if noise_k.size > 1:
-            pdf = np.convolve(pdf, noise_k, mode="same")
+        nk = noise_k if sigma_eff == noise_sigma else gaussian_kernel(sigma_eff, dv)
+        if nk.size > 1:
+            pdf = np.convolve(pdf, nk, mode="same")
         pdf = pdf / max(pdf.sum(), 1e-300)
 
         # tail CDFs

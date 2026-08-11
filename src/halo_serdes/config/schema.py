@@ -213,6 +213,31 @@ class DfeConfig:
 
 
 @dataclass(frozen=True)
+class MlsdConfig:
+    """Sequence-detection post-processor over the residual ISI.
+
+    Runs after the FFE/DFE on the slicer-input samples, correcting decisions the
+    memoryless slicer got wrong. ``sliding`` is DragonPHY's low-cost error-event
+    detector; ``viterbi`` is full MLSE over ``memory`` residual postcursors
+    (states = n_levels**memory, so keep it small).
+    """
+
+    kind: Literal["none", "sliding", "viterbi"] = "none"
+    memory: int = 1                     # residual postcursors in the trellis
+    seq_len: int = 4                    # sliding-detector squared-error window
+    margin: float = 0.0                 # sliding-detector acceptance margin
+
+    def __post_init__(self):
+        _require_in(self.kind, {"none", "sliding", "viterbi"}, "mlsd.kind")
+        _require(self.memory >= 1,
+                 f"mlsd.memory must be >= 1, got {self.memory}")
+        _require(self.seq_len >= 2,
+                 f"mlsd.seq_len must be >= 2, got {self.seq_len}")
+        _require(self.margin >= 0,
+                 f"mlsd.margin must be >= 0, got {self.margin}")
+
+
+@dataclass(frozen=True)
 class CdrConfig:
     kind: Literal["bang_bang", "mueller_muller"] = "bang_bang"
     kp_shift: int = 6                   # proportional gain = 2**-kp_shift [UI/update]
@@ -243,6 +268,7 @@ class RxConfig:
     ffe: FfeConfig = field(default_factory=FfeConfig)
     dfe: DfeConfig = field(default_factory=DfeConfig)
     cdr: CdrConfig = field(default_factory=CdrConfig)
+    mlsd: MlsdConfig = field(default_factory=MlsdConfig)
     noise_rms: float = 0.0              # input-referred AWGN sigma [V]
 
     @staticmethod
@@ -304,6 +330,11 @@ class LinkConfig:
     modulation: Literal["nrz", "pam4"] = "nrz"
     symbol_rate: float = MS_DEFAULT_BAUD   # [Baud]
     osr: int = 32                       # oversampling ratio (samples per UI)
+    # 1/(1+D) mod-N precoding at the Tx, undone at the Rx. Standard PAM4
+    # practice with DFE/MLSD: it terminates error bursts (a decision error no
+    # longer feeds back forever) at the cost of turning each isolated symbol
+    # error into two — a trade that pays off once bursts dominate.
+    precode: bool = False
     channel: ChannelConfig = field(default_factory=ChannelConfig)
     tx: TxConfig = field(default_factory=TxConfig)
     rx: RxConfig = field(default_factory=RxConfig)

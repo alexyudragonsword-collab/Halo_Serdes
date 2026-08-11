@@ -52,18 +52,20 @@
    限制在两个组装类内。serdespy/PyBERT 只有 mixed-signal,DragonPHY2 只有 ADC。
 3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→28→29→35→41 dB
    杠杆分解(MLSD +、DFE/deeper MLSD +、better ADC +6dB、级联 FEC +6dB,正交可叠加)。
-4. **双 MLSD 实现 + 解析 MLSE 增益** —— Viterbi MLSE(最优)+ DragonPHY 式
-   sliding-detector(低复杂度),`post_detect` 一行接到真实链路;`mlse_min_distance_sq`/
-   `mlse_gain_over_dfe_db` 给出对理想 DFE 的渐近编码增益闭式解(1+D→3.01 dB、EPR4→6.02 dB,
-   匹配滤波器界),示例 27 用它标定实测增益阶梯。DragonPHY2 只有 sliding-detector,
-   serdespy/PyBERT 都没有。
+4. **双 MLSD 实现 + 解析 MLSE 增益 + 双引擎接线** —— Viterbi MLSE(最优)+ DragonPHY 式
+   sliding-detector(低复杂度);`mlse_min_distance_sq`/`mlse_gain_over_dfe_db` 给出对理想
+   DFE 的渐近编码增益闭式解(1+D→3.01 dB、EPR4→6.02 dB,匹配滤波器界),示例 27 标定实测
+   增益阶梯。**已作为 `rx.mlsd` 开关接入两个引擎**:时域引擎在 FFE/DFE 之后按残余光标重新
+   判决(并回报 `ser_slicer` 原始基线以便直接量增益),统计引擎按匹配滤波器界把这些后光标
+   从 ISI 中移除并折算为等效噪声下降 —— 两引擎在 <2× 判据内一致(示例 30)。
+   DragonPHY2 只有 sliding-detector,serdespy/PyBERT 都没有。
 5. **级联内码 FEC 模型** —— 内码硬判决块码 + RS-KP4 外码,把可容忍 pre-FEC BER
    抬高约 300×,支撑 800G/1.6T 深 LR。三库皆无。
 6. **三层抖动分解** —— 图样平均 → 谱阈值 → 双 Dirac,回收误差 <10%。
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
    30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、212 个测试全通过、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、283 个测试全通过、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -92,7 +94,11 @@
   `synthetic_aggressor` + `import_xtalk`(多端口 Touchstone 提取);`aggressor_bank`
   构建多侵略者 lane 组、`icn_rms`(行为级 MDFEXT/MDNEXT 功率和,~√N),同一 bank 直接喂
   802.3 COM 引擎作 σ_XT;示例 28 + GUI Crosstalk 标签多 lane 扫描。
-- **Duobinary / PR 信道整形** —— 未建模
+- ✅ **1+D 预编码** —— **本轮补齐**:`precode` 链路开关,Tx 侧 1/(1+D) mod-N 预编码、
+  Rx 侧解码,三个引擎(时域/静态/统计入口)端到端一致,BER 按用户符号计分;
+  孤立错误精确翻倍(1+D 解码的已知代价),换取 DFE 错误突发被截断。
+- **Duobinary / PR 信道整形本身** —— 仍未建模(预编码 ≠ PR 整形:前者是映射,
+  后者要在发端有意引入受控 ISI)
 - **GUI** —— 纯脚本/库,无交互界面(设计取向,非缺陷)
 - ✅ **多 lane 串扰系统级** —— **本轮补齐**(`aggressor_bank`/`icn_rms`,见上);单 lane 数据仍为主
 
@@ -135,5 +141,5 @@
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 212 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 283 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。

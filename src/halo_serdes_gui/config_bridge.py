@@ -113,6 +113,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("modulation", "Modulation", "enum", options=["nrz", "pam4"]),
         _f("symbol_rate", "Symbol rate [GBd]", "float", scale=1e9),
         _f("osr", "Oversampling (OSR)", "int"),
+        _f("precode", "1+D precoding", "bool"),
     ]),
     ("channel", "Channel", [
         _f("channel.kind", "Kind", "enum", options=["touchstone", "analytic"]),
@@ -185,6 +186,13 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("rx.dfe.comparator_offset_sigma", "Comparator offset sigma [V]",
            "float"),
         _f("rx.dfe.init", "Init", "enum", options=["cursor", "zero"]),
+    ]),
+    ("mlsd", "MLSD", [
+        _f("rx.mlsd.kind", "Detector", "enum",
+           options=["none", "sliding", "viterbi"]),
+        _f("rx.mlsd.memory", "Trellis memory (postcursors)", "int"),
+        _f("rx.mlsd.seq_len", "Sliding window", "int"),
+        _f("rx.mlsd.margin", "Sliding margin", "float"),
     ]),
     ("cdr", "CDR", [
         _f("rx.cdr.kind", "Kind", "enum",

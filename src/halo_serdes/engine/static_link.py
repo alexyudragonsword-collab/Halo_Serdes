@@ -69,9 +69,14 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 
-    # --- pattern & Tx ---
+    # --- pattern & Tx (optionally 1/(1+D) precoded) ---
     symbols = make_pattern(cfg)
-    tx_wave = build_tx_waveform(symbols, cfg)
+    line_symbols = symbols
+    if cfg.precode:
+        from ..core.mapping import precode_1plusd
+
+        line_symbols = precode_1plusd(symbols, 2 ** cfg.bits_per_symbol)
+    tx_wave = build_tx_waveform(line_symbols, cfg)
 
     # --- channel + CTLE + VGA as one LTI response (single frequency-domain pass) ---
     if channel is None:
@@ -110,7 +115,8 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     delay = peak // osr
     n_sym = symbols.size - delay - n_post_c
     y_baud = y_baud[delay: delay + n_sym]
-    ref_symbols = symbols[:n_sym]
+    ref_symbols = line_symbols[:n_sym]   # what the slicer decides
+    user_symbols = symbols[:n_sym]       # what BER is scored against
 
     # --- FFE (MMSE; noise_var=0 -> least-squares ZF) ---
     ffe_cfg = cfg.rx.ffe
@@ -135,12 +141,18 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     err_v = y_eq - ideal
     snr_db = 10.0 * np.log10(np.mean(ideal ** 2) / max(np.mean(err_v ** 2), 1e-30))
 
-    ser = float(np.mean(dec != ref_symbols))
+    dec_user = dec
+    if cfg.precode:
+        from ..core.mapping import unprecode_1plusd
+
+        dec_user = unprecode_1plusd(dec, 2 ** cfg.bits_per_symbol)
+
+    ser = float(np.mean(dec_user != user_symbols))
     if cfg.modulation == "pam4":
-        ber = prbs_mod.symbol_checker(ref_symbols, dec, gray=True)
+        ber = prbs_mod.symbol_checker(user_symbols, dec_user, gray=True)
     else:
-        n_err = int(np.sum(dec != ref_symbols))
-        idx = np.nonzero(dec != ref_symbols)[0]
+        n_err = int(np.sum(dec_user != user_symbols))
+        idx = np.nonzero(dec_user != user_symbols)[0]
         ber = BerResult(n_checked=n_sym, n_errors=n_err, error_idx=idx)
 
     eye = None

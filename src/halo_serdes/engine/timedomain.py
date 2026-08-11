@@ -52,6 +52,68 @@ def _stage_jitter(cfg: LinkConfig, stages: dict[str, np.ndarray]) -> dict | None
     return stage_jitter_budget(stages, cfg.dt, cfg.ui, plen, thresh=0.0)
 
 
+def _tx_symbols(cfg: LinkConfig, symbols: np.ndarray) -> np.ndarray:
+    """Symbols actually launched on the line.
+
+    With ``cfg.precode`` the user symbols pass through the 1/(1+D) mod-N
+    precoder; the slicer then decides *precoded* symbols (so data-aided
+    training must reference these), and the Rx undoes it in
+    :func:`_user_decisions`.
+    """
+    if not cfg.precode:
+        return symbols
+    from ..core.mapping import precode_1plusd
+
+    return precode_1plusd(symbols, 2 ** cfg.bits_per_symbol)
+
+
+def _user_decisions(cfg: LinkConfig, dec: np.ndarray) -> np.ndarray:
+    """Undo the precoder, mapping slicer decisions back to user symbols."""
+    if not cfg.precode:
+        return dec
+    from ..core.mapping import unprecode_1plusd
+
+    return unprecode_1plusd(dec, 2 ** cfg.bits_per_symbol)
+
+
+def _residual_ratios(eq_cursors: np.ndarray, eq_pre: int, n_dfe: int,
+                     memory: int) -> np.ndarray:
+    """Postcursors left for the sequence detector, normalized to the main one.
+
+    The FFE shapes the pulse and the DFE cancels the first ``n_dfe``
+    postcursors; whatever follows is the residual ISI the MLSD works over.
+    """
+    main = eq_cursors[eq_pre]
+    start = eq_pre + 1 + n_dfe
+    tail = eq_cursors[start: start + memory]
+    if tail.size < memory:
+        tail = np.pad(tail, (0, memory - tail.size))
+    return tail / main
+
+
+def _mlsd_post_detect(cfg: LinkConfig, y_slicer: np.ndarray, dec: np.ndarray,
+                      levels: np.ndarray, resid: np.ndarray) -> np.ndarray:
+    """Re-decide the symbol stream with the configured sequence detector.
+
+    ``levels`` are the slicer levels in volts, so the trellis cursor vector is
+    ``[1, r1, r2, ...]`` — the residual ratios scale those same volt levels.
+    Returns ``dec`` unchanged when MLSD is off or the residual is negligible.
+    """
+    mcfg = cfg.rx.mlsd
+    if mcfg.kind == "none":
+        return dec
+    from ..dsp.mlsd import post_detect
+
+    cursors = np.concatenate([[1.0], np.asarray(resid, dtype=float)])
+    if np.all(np.abs(cursors[1:]) < 1e-9):    # nothing left to detect over
+        return dec
+    method = "viterbi" if mcfg.kind == "viterbi" else "sliding"
+    out = post_detect(np.asarray(y_slicer, dtype=float), cursors,
+                      np.asarray(levels, dtype=float), method,
+                      seq_len=mcfg.seq_len, margin=mcfg.margin)
+    return np.asarray(out, dtype=np.int64)
+
+
 def _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami):
     """Fold AMI Tx/Rx models into the chain.
 
@@ -114,9 +176,10 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 
-    # --- pattern, Tx (FIR + jittered edges) ---
+    # --- pattern, Tx (optionally 1/(1+D) precoded; FIR + jittered edges) ---
     symbols = make_pattern(cfg)
-    v = symbols_to_voltages(symbols, cfg)
+    line_symbols = _tx_symbols(cfg, symbols)
+    v = symbols_to_voltages(line_symbols, cfg)
     if len(cfg.tx.fir_taps) > 1:
         v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
     tx_wave, _ = build_jittered_tx(v, cfg, rng)
@@ -160,7 +223,10 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
     peak = int(np.argmax(np.abs(pulse.y)))
     n_dfe = cfg.rx.dfe.n_taps
-    cursors = channel_cursors(pulse, osr, 0, max(n_dfe, 1), peak_idx=peak)
+    # take enough postcursors for the DFE *and* the residual an MLSD works over
+    n_post_c = max(n_dfe, 1) + (cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none"
+                                else 0)
+    cursors = channel_cursors(pulse, osr, 0, n_post_c, peak_idx=peak)
     main = cursors[0]
     # DFE feedback multiplies slicer levels (which carry the main-cursor
     # scale), so tap weights are postcursors normalized to the main cursor.
@@ -183,7 +249,9 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # samples the main cursor of symbol k directly ---
     n_sym_max = (rx_y.size - peak - 4 * osr) // osr - 2
     n_sym = min(symbols.size - delay - 1, n_sym_max)
-    ref_idx = symbols[:n_sym].astype(np.int64)
+    # the slicer decides *line* symbols; BER is scored on user symbols
+    ref_idx = line_symbols[:n_sym].astype(np.int64)
+    user_idx = symbols[:n_sym].astype(np.int64)
 
     settle = min(cfg.sim.cdr_settle, n_sym // 4)
     train = min(cfg.sim.train_symbols, n_sym // 4)
@@ -218,11 +286,17 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         int(tap1_unrolled), branch_off)
 
     n_run = dec.size
+    # --- optional MLSD over the postcursors the DFE left behind ---
+    resid_ratios = _residual_ratios(cursors, 0, n_dfe, cfg.rx.mlsd.memory)
+    dec_slicer = dec
+    dec = _mlsd_post_detect(cfg, y_sum[:n_run], dec, levels, resid_ratios)
+
     warm = cfg.sim.warmup_discard if cfg.sim.warmup_discard is not None else train_end
     warm = min(warm, n_run - 1)
 
-    dec_c = dec[warm:n_run]
-    ref_c = ref_idx[warm:n_run]
+    dec_user = _user_decisions(cfg, dec)
+    dec_c = dec_user[warm:n_run]
+    ref_c = user_idx[warm:n_run]
 
     ser = float(np.mean(dec_c != ref_c))
     if cfg.modulation == "pam4":
@@ -231,7 +305,8 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         idx = np.nonzero(dec_c != ref_c)[0]
         ber = BerResult(n_checked=dec_c.size, n_errors=idx.size, error_idx=idx)
 
-    ideal = levels[ref_c]
+    # SNR is a slicer-input metric: reference the line symbols the slicer saw
+    ideal = levels[ref_idx[warm:n_run]]
     err_v = y_sum[warm:n_run] - ideal
     snr_db = 10.0 * np.log10(np.mean(ideal ** 2) / max(np.mean(err_v ** 2), 1e-30))
 
@@ -245,7 +320,11 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "levels": levels, "warmup": warm, "w_dfe0": np.asarray(w_dfe0),
                 "settle": settle, "train_end": train_end,
                 "w_dfe_hist": w_dfe_hist, "n_ave": 100,
-                "jitter_budget": jitter_budget})
+                "jitter_budget": jitter_budget,
+                "mlsd_resid": resid_ratios,
+                "ser_slicer": float(np.mean(
+                    _user_decisions(cfg, dec_slicer)[warm:n_run] != ref_c)),
+                "precode": cfg.precode})
 
 
 def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
@@ -265,9 +344,10 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 
-    # --- pattern, Tx ---
+    # --- pattern, Tx (optionally 1/(1+D) precoded) ---
     symbols = make_pattern(cfg)
-    v = symbols_to_voltages(symbols, cfg)
+    line_symbols = _tx_symbols(cfg, symbols)
+    v = symbols_to_voltages(line_symbols, cfg)
     if len(cfg.tx.fir_taps) > 1:
         v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
     tx_wave, _ = build_jittered_tx(v, cfg, rng)
@@ -325,7 +405,9 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     delay = peak // osr
     n_sym_max = (rx_y.size - peak - (fcfg.n_pre + 6) * osr) // osr - 2
     n_sym = min(symbols.size - delay - fcfg.n_pre - 2, n_sym_max)
-    ref_idx = symbols[:n_sym].astype(np.int64)
+    # the slicer decides *line* symbols; BER is scored on user symbols
+    ref_idx = line_symbols[:n_sym].astype(np.int64)
+    user_idx = symbols[:n_sym].astype(np.int64)
     enob_noise = (rng.normal(scale=adc.noise_sigma, size=n_sym + fcfg.n_pre + 2)
                   if adc.noise_sigma > 0 else np.zeros(n_sym + fcfg.n_pre + 2))
 
@@ -355,10 +437,19 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         ref_arr, int(train_end), int(settle))
 
     n_run = dec.size
+    # --- optional MLSD over the residual the FFE/DFE left behind ---
+    eq_final, eq_pre_f = equalized_cursors(cursors, w_ffe, n_pre_c, fcfg.n_pre)
+    resid_ratios = _residual_ratios(eq_final, eq_pre_f, n_dfe,
+                                    cfg.rx.mlsd.memory)
+    dec_slicer = dec
+    dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios)
+
     warm = cfg.sim.warmup_discard if cfg.sim.warmup_discard is not None else train_end
     warm = min(warm, n_run - 1)
-    dec_c = dec[warm:n_run]
-    ref_c = ref_idx[warm:n_run]
+    # undo the precoder before scoring: the slicer decided line symbols
+    dec_user = _user_decisions(cfg, dec)
+    dec_c = dec_user[warm:n_run]
+    ref_c = user_idx[warm:n_run]
 
     ser = float(np.mean(dec_c != ref_c))
     if cfg.modulation == "pam4":
@@ -367,7 +458,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         idx = np.nonzero(dec_c != ref_c)[0]
         ber = BerResult(n_checked=dec_c.size, n_errors=idx.size, error_idx=idx)
 
-    ideal = levels[ref_c]
+    # SNR is a slicer-input metric: reference the line symbols the slicer saw
+    ideal = levels[ref_idx[warm:n_run]]
     err_v = y_sl[warm:n_run] - ideal
     snr_db = 10.0 * np.log10(np.mean(ideal ** 2) / max(np.mean(err_v ** 2), 1e-30))
 
@@ -386,4 +478,10 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "warmup": warm, "settle": settle, "train_end": train_end,
                 "w_ffe0": np.asarray(w_ffe0), "w_dfe0": np.asarray(w_dfe0),
                 "lane_ser": lane_ser, "adc": adc, "q_hist_head": q_hist[:8192],
-                "jitter_budget": jitter_budget})
+                "jitter_budget": jitter_budget,
+                "mlsd_resid": resid_ratios,
+                # SER of the raw slicer, before the sequence detector — the
+                # baseline the MLSD gain is measured against
+                "ser_slicer": float(np.mean(
+                    _user_decisions(cfg, dec_slicer)[warm:n_run] != ref_c)),
+                "precode": cfg.precode})
