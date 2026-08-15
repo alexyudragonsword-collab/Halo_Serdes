@@ -52,6 +52,12 @@ def _reach(loss, post):
 # --- reach vs channel loss -------------------------------------------------
 
 def reach_study(rec) -> dict:
+    """Reach ladder: pre/post-FEC BER vs channel loss, and the KP4 1e-15 crossing.
+
+    Sweeps the analytic channel length (Touchstone channels have no length to
+    vary, so those return an ``error`` note the panel renders instead).
+    """
+
     def compute():
         cfg = rec.cfg
         if cfg.channel.kind != "analytic":
@@ -78,6 +84,12 @@ def reach_study(rec) -> dict:
 # --- crosstalk sweep -------------------------------------------------------
 
 def crosstalk_study(rec) -> dict:
+    """BER vs a common FEXT+NEXT coupling level (statistical engine).
+
+    One aggressor of each kind is swept together; the no-crosstalk BER is
+    returned as ``baseline`` for reference.
+    """
+
     def compute():
         from halo_serdes.channel import synthetic_aggressor
         cfg = rec.cfg
@@ -124,6 +136,9 @@ def multilane_study(rec) -> dict:
 # --- behavioral COM vs loss ------------------------------------------------
 
 def com_study(rec) -> dict:
+    """COM vs channel loss, both the faithful 802.3 93A/178A engine and the
+    transparent RSS figure of merit, over the same analytic length sweep."""
+
     def compute():
         from halo_serdes.io import Com93a, NativeCom
         cfg = rec.cfg
@@ -151,6 +166,11 @@ def com_study(rec) -> dict:
 # --- FEC projection (config-independent) -----------------------------------
 
 def fec_projection() -> dict:
+    """KP4 / KR4 / concatenated post-FEC BER over a pre-FEC BER range.
+
+    Config-independent (pure code geometry), so it is cached once globally.
+    """
+
     def compute():
         from halo_serdes.fec import (
             concatenated_post_fec_ber, pre_to_post_fec_ber,
@@ -168,6 +188,9 @@ def fec_projection() -> dict:
 # --- fixed-point word-length sweep (datapath replay) -----------------------
 
 def fixedpoint_study(rec) -> dict:
+    """BER wall vs fixed-point word length: replays the bit-true datapath at a
+    range of weight widths against the float reference."""
+
     def compute():
         cfg = rec.cfg
         e = rec.sim.extras if rec.sim is not None else {}
@@ -201,6 +224,9 @@ def fixedpoint_study(rec) -> dict:
 # --- jitter tolerance (JTOL) ------------------------------------------------
 
 def jtol_study(rec) -> dict:
+    """Jitter tolerance: tolerated SJ amplitude vs frequency at a BER threshold
+    (binary search per frequency; capped symbol count to stay interactive)."""
+
     def compute():
         import numpy as _np
 

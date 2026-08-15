@@ -46,6 +46,7 @@ def layout(title: str = "", height: int | None = None, **kw) -> dict:
 
 
 def axis(**kw) -> dict:
+    """Shared Plotly axis styling (grid, zeroline, ticks); ``kw`` overrides."""
     d = dict(gridcolor=GRID, zerolinecolor=GRID, linecolor="#cbd5e0",
              ticks="outside", ticklen=4, tickcolor="#cbd5e0")
     d.update(kw)
@@ -56,6 +57,8 @@ def axis(**kw) -> dict:
 
 def metric_card(label: str, value: str, tone: str = "info",
                 sub: str = "") -> dbc.Col:
+    """A labelled result card; ``tone`` picks the semantic colour
+    (good / warn / crit / muted / info)."""
     color = _TONE.get(tone, PRIMARY)
     body = [
         html.Div(label, style={"fontSize": "0.72rem", "letterSpacing": "0.04em",
@@ -72,6 +75,7 @@ def metric_card(label: str, value: str, tone: str = "info",
 
 
 def banner(level: str, message: str):
+    """A full-width status strip: ``kind`` selects the semantic colour."""
     if not message:
         return None
     kind = {"warn": "warning", "crit": "danger", "ok": "success",
@@ -81,6 +85,7 @@ def banner(level: str, message: str):
 
 
 def section_title(text: str):
+    """Small uppercase heading used above a form section or figure group."""
     return html.Div(text, style={"fontSize": "0.78rem", "fontWeight": 700,
                                  "textTransform": "uppercase",
                                  "letterSpacing": "0.05em", "color": MUTED,
