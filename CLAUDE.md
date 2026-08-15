@@ -106,6 +106,8 @@ Claude-Session: https://claude.ai/code/session_...
 
 ## 已知限制(不是 bug,别去"修")
 
+> 这些的**改进计划**见 [`ROADMAP.md`](ROADMAP.md);下面只说清现状边界。
+
 - **内存**:波形全量驻留,10⁶ 符号 @OSR32 峰值约 0.9 GB。`fft_filter` 内部已分块
   (overlap-save),但波形数组本身没做窗口化。要跑更长就降 OSR 或分批。
 - **定点只覆盖数据通路**:时域引擎不读 `numeric.mode`,定点走 `fixed_datapath` 独立重放;

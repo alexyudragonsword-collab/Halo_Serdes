@@ -111,6 +111,7 @@ IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
 
 | 文档 | 内容 |
 |---|---|
+| [`ROADMAP.md`](ROADMAP.md) | **待办**:尚未做的事,按可信度影响排序,每条附证据 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 更新日志:按里程碑组织的完整演进 |
 | [`CLAUDE.md`](CLAUDE.md) | 贡献者须知:架构不变量、易踩的坑、代码与文档约定 |
 | [`docs/USAGE.md`](docs/USAGE.md) | **使用指南**:按任务组织(跑链路、扫参数、串扰、COM、AMI、定点、导出) |
