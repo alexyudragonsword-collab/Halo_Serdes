@@ -65,7 +65,7 @@
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
    30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、295 个测试全通过、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、297 个测试全通过、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -141,5 +141,5 @@
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 295 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 297 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。

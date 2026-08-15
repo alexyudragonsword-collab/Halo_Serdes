@@ -73,7 +73,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 硬件 | `rtl/` | FFE+DFE+slicer 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**:核心库 ~5.3k 行 / GUI ~2.6k 行 / 测试 ~2.9k 行 / 示例 ~3.4k 行;
-**283 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**297 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
 **31 个编号示例**(`examples/00`–`30`)。
 
 ## 路线图
@@ -84,7 +84,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 1 | NRZ 32G 最小链路(ZF/MMSE FFE + 理想 DFE + MC BER) | ✅ |
 | 2 | 时域引擎 + mixed-signal 架构(自适应 DFE + BB-CDR + 抖动注入) | ✅ |
 | 3 | StatEye 统计引擎 + 双引擎交叉校验(MC 比值 1.03×) | ✅ |
-| 4 | ADC-based 架构(TI-ADC + 数字 DSP + MM-CDR),10⁶ 符号@106.25GBd 7s | ✅ |
+| 4 | ADC-based 架构(TI-ADC + 数字 DSP + MM-CDR) | ✅ |
 | 5 | MLSD(Viterbi/滑动检测器)+ RS-FEC(KP4/KR4)+ 抖动分解 + 双架构对比 | ✅ |
 | 6 | 定点双模式(bit-true)+ RTL 黄金模型出口(lockstep 向量) | ✅ |
 | G | 16 标签页 Plotly Dash GUI + Windows 桌面打包(PyInstaller / Nuitka) | ✅ |
@@ -111,6 +111,8 @@ IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
 
 | 文档 | 内容 |
 |---|---|
+| [`CHANGELOG.md`](CHANGELOG.md) | 更新日志:按里程碑组织的完整演进 |
+| [`CLAUDE.md`](CLAUDE.md) | 贡献者须知:架构不变量、易踩的坑、代码与文档约定 |
 | [`docs/USAGE.md`](docs/USAGE.md) | **使用指南**:按任务组织(跑链路、扫参数、串扰、COM、AMI、定点、导出) |
 | [`docs/GUI.md`](docs/GUI.md) | GUI 安装/启动/各标签页用法、桌面版打包 |
 | [`docs/GUI_tour.md`](docs/GUI_tour.md) | GUI 图文导览(实拍截图) |
