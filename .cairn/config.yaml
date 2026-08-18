@@ -1,0 +1,25 @@
+version: 0.1
+project:
+  name: "Halo_Serdes"
+  summary: "行为级高速 SerDes 仿真框架:NRZ ≤32 Gb/s 与 PAM4 ≤224 Gb/s,mixed-signal 与 ADC-based 双接收机架构可公平对比,时域 MC 与 StatEye 统计双引擎交叉校验。"
+cairn:
+  knowledge_dir: "cairn"
+  # Date of the skill spec this instance was initialized against, or last
+  # upgraded to. Stamped automatically by init from references/upgrade.md's
+  # "Current spec date" (not a user decision); re-stamped after each instance
+  # upgrade. Audit/upgrade drift checks compare it against the upgrade.md
+  # changelog. Missing field = instance predates this mechanism: run the full
+  # changelog (see references/upgrade.md).
+  skill_spec_date: "2026-08-07"
+  # git_policy: track | ignore | private_sync
+  git_policy: "track"
+  # language: en | zh | ... — language used when writing AGENTS.md/LOG.md/ROADMAP.md/topic notes for this project
+  language: "zh"
+graduation:
+  # (c) Deferred — no knowledge base connected yet ("try Cairn first, connect
+  #     later"). The provider decisions are collected at the first graduation
+  #     instead (see references/graduation.md → Deferred provider).
+  provider: none
+history:
+  # migration_mode: start_fresh | inventory_only | selective_migrate
+  migration_mode: "inventory_only"
