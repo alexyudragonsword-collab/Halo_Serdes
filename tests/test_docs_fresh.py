@@ -8,6 +8,7 @@ match reality.
 """
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -26,18 +27,49 @@ def _n_tabs() -> int:
     return len(PANELS)
 
 
+def _is_generated_artifact(path: Path) -> bool:
+    """True when git deliberately ignores the target (a build product).
+
+    Figures under ``examples/output/`` are produced by running the examples and
+    are gitignored on purpose, so they are absent in a fresh clone. Requiring
+    them here would fail on every clean checkout while telling us nothing about
+    link correctness — but a genuinely wrong path must still fail.
+    """
+    r = subprocess.run(["git", "check-ignore", "-q", str(path)],
+                       cwd=REPO, capture_output=True)
+    return r.returncode == 0
+
+
 @pytest.mark.parametrize("doc", sorted(DOCS.glob("*.md")) + [README])
 def test_internal_links_resolve(doc):
-    """Every relative markdown link points at a file that exists."""
+    """Every relative markdown link points at a file that exists (or is a
+    deliberately-gitignored generated artifact)."""
     text = doc.read_text()
     missing = []
     for target in re.findall(r"\]\(([^)#][^)]*)\)", text):
         if target.startswith(("http://", "https://", "mailto:")):
             continue
         path = (doc.parent / target.split("#")[0]).resolve()
-        if not path.exists():
+        if not path.exists() and not _is_generated_artifact(path):
             missing.append(target)
     assert not missing, f"{doc.name} links to missing files: {missing}"
+
+
+def test_docs_do_not_silently_embed_uncommitted_figures():
+    """A doc that inlines generated figures must say how to produce them.
+
+    docs/SUMMARY.md embeds 8 PNGs from the gitignored examples/output/, so on
+    GitHub — and in any fresh clone — they render as broken images. The figures
+    stay out of the repo (existing artifact policy); the doc has to tell the
+    reader that, rather than fail silently.
+    """
+    for doc in sorted(DOCS.glob("*.md")):
+        text = doc.read_text()
+        if "examples/output/" not in text:
+            continue
+        assert re.search(r"python examples/|运行.*示例|run the examples", text), (
+            f"{doc.name} embeds generated figures but never says how to "
+            f"generate them")
 
 
 def test_readme_example_count_is_current():
