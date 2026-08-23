@@ -13,3 +13,11 @@ src/halo_serdes/io/ami_c/*.dylib
 .coverage
 .coverage.*
 htmlcov/
+
+# Android build outputs + the host-generated probe golden (regenerated per
+# build on purpose: a committed constant would rot and defeat the comparison)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/python/probe_golden.json

@@ -121,6 +121,7 @@ IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
 | [`docs/COMPARISON.md`](docs/COMPARISON.md) | 与 serdespy / PyBERT / DragonPHY2 的能力对比 |
 | [`docs/serdes_opensource_repos_analysis.md`](docs/serdes_opensource_repos_analysis.md) | 三个参考库的深度调研(设计蓝本) |
 | [`rtl/README.md`](rtl/README.md) | 黄金模型 → RTL 的 bit-exact lockstep |
+| [`android/README.md`](android/README.md) | Android(Chaquopy)M0 可行性验证工程与 CI |
 | [`packaging/README.md`](packaging/README.md) | Windows 桌面 exe 打包(PyInstaller / Nuitka) |
 
 ## 架构包络约定

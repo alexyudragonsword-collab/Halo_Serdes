@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install ruff
-      - run: ruff check src/ tests/ examples/
+      - run: ruff check src/ tests/ examples/ android/tools/ android/app/src/main/python/
 
   test:
     runs-on: ubuntu-latest
