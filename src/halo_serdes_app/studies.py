@@ -273,8 +273,14 @@ STUDY_PLOTS: dict[str, list[dict]] = {
     "fec": [{"x": "pre", "y": ["kp4", "kr4", "concat"],
              "x_label": "pre-FEC BER", "y_label": "post-FEC BER",
              "x_log": True, "y_log": True}],
-    "fixedpoint": [{"x": "bits", "y": ["ser"],
-                    "x_label": "weight bits", "y_label": "SER", "y_log": True}],
+    # `wl`/`mismatch`, not `bits`/`ser`. The first version of this spec named
+    # keys this study does not return, and it went unnoticed because it is the
+    # one study that declines every config without an ADC run — so the check
+    # that compares a spec against real data skipped it. The panel would have
+    # rendered empty on exactly the configs where it works.
+    "fixedpoint": [{"x": "wl", "y": ["mismatch"],
+                    "x_label": "weight word length [bits]",
+                    "y_label": "decision mismatch vs float", "y_log": True}],
 }
 
 

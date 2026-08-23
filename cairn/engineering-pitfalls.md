@@ -88,6 +88,15 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 (能看见这件事,靠的是 `run_instrumented.sh` 会打印每个类的测试数;否则只会看到
 一条含糊的失败。)
 
+**"该项不适用就跳过"的测试会把整项漏掉。** 检查 `STUDY_PLOTS` 的规格与数据是否对得上时,
+我对返回 `note`(该 study 不接受这个配置)的项写了 `continue` —— 而 `fixedpoint`
+**对每一个不带 ADC run 的配置都返回 note**,于是它是唯一一个从没被检查过的,
+规格里写的 `bits`/`ser` 与它实际返回的 `wl`/`mismatch` 完全对不上。
+症状会是:在它真正能跑的那些配置上,面板画出来是空的。
+**规则:跳过分支要么把被跳过的项报出来,要么单独给它配一个能跑的输入。**
+现在两条都做了 —— 断言"至少有一项被真正检查到",外加一个专门用 ADC 预设跑
+`fixedpoint` 的测试。
+
 **`org.json` 的 `optString` 把显式 null 变成字符串 `"null"`。** 不是 `""`,
 所以 `optString(k).ifBlank { null }` 这个看着很稳的写法在**键存在且值为 null** 时
 返回四个字符的 `"null"`。Python 侧是**故意**发显式 null 的(非有限浮点、被取消的

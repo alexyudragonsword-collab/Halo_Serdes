@@ -64,6 +64,20 @@ def test_schema_advertises_every_study_with_a_plot_spec():
             assert panel["x"] and panel["y"], s["name"]
 
 
+def _spec_matches_data(name, values):
+    r = call("study", name=name, values=values)
+    assert r["ok"], (name, r)
+    d = r["data"]
+    if d.get("note"):
+        return False          # study declined this config
+    assert d["plots"], f"{name}: ran but advertised no panels"
+    for panel in d["plots"]:
+        for key in [panel["x"]] + panel["y"]:
+            assert key in d["data"], (
+                f"{name}: spec names {key!r}, data has {sorted(d['data'])}")
+    return True
+
+
 def test_every_plot_spec_names_keys_the_study_actually_returns(values):
     """The spec is only useful if its keys exist in the data.
 
@@ -73,15 +87,30 @@ def test_every_plot_spec_names_keys_the_study_actually_returns(values):
     """
     from halo_serdes_app import studies
 
+    reached = {n for n in studies.STUDY_PLOTS if _spec_matches_data(n, values)}
+    # Whatever this config could not reach is checked by the ADC test below.
+    # Naming the gap rather than silently skipping it is the point: the
+    # fixedpoint spec named `bits`/`ser` against a study returning
+    # `wl`/`mismatch`, and a bare `continue` here is why nothing said so.
+    assert reached, "no study produced data on the default config"
+
+
+def test_fixedpoint_spec_is_checked_on_a_config_that_can_run_it():
+    """The one study every other config declines.
+
+    It needs an ADC run (`rx.arch = adc_dsp`) with a time-domain record, so on
+    the default fixture it returns a note and contributes nothing to the check
+    above. That exemption hid a wrong spec, so it gets its own config here.
+    """
+    from halo_serdes_app import studies
+
+    vals = call("preset", name="PAM4 224G ADC (106 GBd)")["data"]["values"]
+    vals["sim.n_symbols"] = "4000"          # enough to replay, quick enough to test
+    assert _spec_matches_data("fixedpoint", vals), \
+        "fixedpoint still declined a config built for it"
+    # And the rest, on this config too — the specs must not be config-specific.
     for name in studies.STUDY_PLOTS:
-        r = call("study", name=name, values=values)
-        assert r["ok"], (name, r)
-        d = r["data"]
-        if d.get("note"):
-            continue          # study declined this config; no data to check
-        for panel in d["plots"]:
-            for key in [panel["x"]] + panel["y"]:
-                assert key in d["data"], f"{name}: spec names missing {key!r}"
+        _spec_matches_data(name, vals)
 
 
 def test_unknown_method_is_data_not_an_exception():
