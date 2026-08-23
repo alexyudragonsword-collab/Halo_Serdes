@@ -6,6 +6,44 @@
 
 ---
 
+## [未发布] — Android M7–M9：时域长跑、Touchstone 导入、通用扫描页
+
+### 新增
+- **M7 时域引擎**：三档质量（2 万 / 10 万 / 50 万符号）、前台服务、可取消。
+  `run/TimeRunController.kt`（单例，因为 run 必须活过界面）+ `TimeRunService.kt`。
+  前台服务类型选 `specialUse` 而非 `dataSync` —— 没有任何东西在同步，而 `dataSync`
+  的每日运行时预算是给网络传输的。`START_NOT_STICKY`：run 是本进程的 Python 线程，
+  进程没了活也没了，被重启的 service 只会播报一个不存在的任务。
+- **门面新增 `result`**：`poll` 只给 handle，此前无法读出跑完的时域结果。
+  它把 `n_errors` / `n_checked` 摆在 BER 旁边并给 `ber_is_upper_bound`；
+  也同时报 `n_symbols` 与 `n_requested`（引擎丢热身与尾部，"快速档"实测约 1.4 万）。
+- **M8 Touchstone 导入**：SAF 选文件 → 拷进私有目录 → `import_touchstone` →
+  确认卡片 → 写回配置。装了 scikit-rf，`data/channels/*.s4p` 也一并打包，
+  九个预设现在都能跑。资产解压改为按包 `lastUpdateTime` 打戳。
+- **M9 扫描页**：两个标签页共用一个 ViewModel；扫描页里**没有任何一个 study 的
+  名字** —— 列表、标题、说明、面板规格全部来自 `schema`（即 `studies.STUDY_LABELS`
+  与 `STUDY_PLOTS`）。`LogLineChart` 变成 `MultiLineChart` 的单序列简写。
+
+### 修复
+- **skrf 的 `Network.interpolate` 依赖别人先 import 过 `scipy.interpolate`。**
+  它只做了 `import scipy` 就去用 `scipy.interpolate.interp1d`。现代 SciPy 惰性加载
+  子包把这件事盖住了，**而手机上装的 SciPy 1.8.1 不会** —— 设备上这条路能不能跑通
+  取决于 import 顺序。`touchstone.py` 现在显式 import；测试断言的是
+  `sys.modules` 里有它，因此与 SciPy 版本无关。由 `wheel-versions` job 抓到。
+- **`org.json.optString` 把显式 null 变成字符串 `"null"`。** 取消后的 job 因此拿到
+  一个叫 `"null"` 的 handle，每条 `field: None` 的错误都会去标红一个叫 `"null"`
+  的输入框。统一走 `stringOrNull`。由仪器化测试抓到 —— 而我最初的断言里是同一个 bug。
+- **`fec` 的 `concat` 在声明为对数的轴上有 9 个精确零**：`_clamp_log_axes` 钳到
+  1e-300（其余 study 本来就是这个值）。
+
+### 已知
+- 进度条是不确定态：接收机内核是一次调用，跑完整个符号循环；要从里面报进度就得
+  切块并跨接缝传 CDR/DFE 状态，而铁律 #3/#4 建立在那段代码上。
+- 取消只在阶段边界生效，界面照实说明内核不能中途打断。
+- **界面观感仍无自动化覆盖**：CI 不启动 Activity。
+
+---
+
 ## [未发布] — Android M6：浴盆曲线与统计眼
 
 ### 新增

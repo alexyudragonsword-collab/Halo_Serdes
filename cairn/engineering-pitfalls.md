@@ -101,6 +101,22 @@ handle,而每一条 `field: None` 的错误都会去把一个名叫 `"null"` 的
 `name` 归类会把整轮测试算到某一个类头上(实测:9 个测试全被标成 `LinkFacadeTest`)。
 要分类明细就遍历 `<testcase>` 的 `classname`。总数对但分类错,比不给分类更有害。
 
+**scikit-rf 的 `Network.interpolate` 依赖别人先 import 过 `scipy.interpolate`。**
+`skrf/network.py` 只做了 `import scipy`,却去用 `scipy.interpolate.interp1d`。
+于是它**在进程里碰巧有人导过那个子模块时能跑**,否则抛
+`AttributeError: module 'scipy' has no attribute 'interpolate'`。现代 SciPy 惰性
+加载子包把这个 bug 完全盖住,**而 Chaquopy 给手机装的 SciPy 1.8.1 不会** ——
+设备上 Touchstone 这条路能不能跑通取决于 import 顺序。`touchstone.py` 现在显式
+`import scipy.interpolate`。**规则:第三方库靠"别人导过"才成立的引用,要在自己这一层
+补上显式 import**;测试断言的是 `sys.modules` 里有它,这样与 SciPy 版本无关。
+(是 `wheel-versions` job 抓到的 —— 它存在的理由就是这个。)
+
+**Chaquopy 的 `pip` 块没有"只给某个包加 pip 选项"这回事。**
+`install("--no-deps", "scikit-rf")` 直接被拒(`Invalid pip install format`,
+只有 `install("-r", "file")` 是合法的双参形式),而 `options("--no-deps")` 是
+**全局**的 —— 会连 numpy/scipy 赖以工作的 `chaquopy-openblas` 一起剥掉。
+想为一个包省掉一条无用的硬依赖,代价是砸掉整个移植的地基;老实装上更便宜。
+
 **Chaquopy 装的不是 `pyproject.toml` 要的版本。** 实际解析到 numpy 1.26.2 + **scipy 1.8.1**
 (声明的是 `scipy>=1.11`),pip 自己都报这对不兼容。它能加载 ≠ 算得一样。
 `android` workflow 的 `wheel-versions` job 就是为此存在:在宿主上降到手机的版本跑一遍。

@@ -3,6 +3,33 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-08-23 · M7–M9:时域长跑 / Touchstone 导入 / 通用扫描页
+
+- **M7**:三档质量 + 前台服务 + 取消。服务类型选 `specialUse` 而非 `dataSync` ——
+  没有东西在同步,而 `dataSync` 的每日预算是给网络传输的;`START_NOT_STICKY`,
+  因为 run 是本进程的 Python 线程,重启的 service 只会播报一个不存在的任务。
+- **新增门面方法 `result`**:`poll` 只给 handle,此前读不出跑完的结果。它把
+  `n_errors`/`n_checked` 摆在 BER 旁边并给 `ber_is_upper_bound` —— 两万符号下舒适
+  链路是**零错误**,`ber == 0.0` 读起来像"完美"、意思是"低于这次能看见的下限"。
+  这一栏是为 pitfalls 里"四个错误上算增益"那条留的。
+- **M8 的硬约束在开工前就问掉了**:先在宿主上屏蔽 pandas 跑完整条 Touchstone
+  读取链路,证明 skrf 不需要它,再动 UI。装了 skrf,`.s4p` 也一并打包,九个预设
+  现在都能跑;解压改成按 `lastUpdateTime` 打戳(4.4 MB 不能每次启动重拷)。
+- **M9 的扫描页里没有任何一个 study 的名字**:列表/标题/说明/面板规格全部来自
+  `schema`(`STUDY_LABELS` + `STUDY_PLOTS`)。与表单和 `SECTIONS` 是同一笔交易。
+- **两次红都抓到了真问题,不是测试的毛病**:
+  (1) `optString` 把显式 null 变成字符串 `"null"` —— 取消后的 job 拿到一个叫
+  `"null"` 的 handle,`field: None` 的错误去标红一个叫 `"null"` 的输入框。
+  **我最初的测试断言里是同一个 bug**,红得对。
+  (2) `wheel-versions` 抓到 skrf 的 `Network.interpolate` 只 `import scipy` 就用
+  `scipy.interpolate.interp1d` —— 现代 SciPy 惰性加载盖住了它,**手机上的 1.8.1
+  不会**,设备上能不能跑通取决于 import 顺序。这正是那个 job 存在的理由。
+- **`--no-deps` 这条路不通**:Chaquopy 不接受 `install("--no-deps", ...)`,
+  而它的 `options()` 是全局的 —— 会连 numpy/scipy 的 openblas 一起剥掉。改为
+  正常安装(多背一个 pandas),宿主那条"不需要 pandas"的测试保留,因为它说明
+  这个依赖只是浪费、不是承重。
+- 坑均已沉淀进 `cairn/engineering-pitfalls.md`;结构与理由见 `android/README.md`。
+
 ## 2026-08-23 · M6:浴盆曲线与统计眼(Canvas 原生绘图)
 
 - 不引入图表库:要画的形状只有两种,通用库会带来版本匹配风险换一堆用不到的功能。
