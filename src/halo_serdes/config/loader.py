@@ -13,7 +13,6 @@ import typing
 from pathlib import Path
 from typing import Any, Union
 
-import yaml
 
 from . import schema
 from .schema import SCHEMA_VERSION, LinkConfig
@@ -79,6 +78,8 @@ def load_config(path: str | Path, overrides: dict[str, Any] | None = None) -> Li
     ``overrides`` is a flat dict of dotted paths, e.g. ``{"rx.arch": "adc_dsp"}``,
     applied after loading (for parameter sweeps from scripts).
     """
+    import yaml  # local: keeps halo_serdes.config importable without PyYAML
+
     with open(path, encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     version = data.pop("schema_version", SCHEMA_VERSION)
@@ -112,6 +113,8 @@ def dump_config(cfg: LinkConfig, path: str | Path) -> None:
     data = dataclasses.asdict(cfg)
     data = _tuples_to_lists(data)
     data["schema_version"] = SCHEMA_VERSION
+    import yaml  # local: see load_config
+
     with open(path, "w", encoding="utf-8") as fh:
         yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=True)
 

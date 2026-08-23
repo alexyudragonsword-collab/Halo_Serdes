@@ -8,7 +8,6 @@ from ..config.schema import ChannelConfig, LinkConfig
 from ..core.waveform import ResponseSet, Waveform
 from . import analytic
 from .response import freq2impulse, pulse_from_impulse, trim_impulse, zero_pad_to_dt
-from .touchstone import import_diff_network, interp_s2p, terminate_renormalize
 
 
 class ChannelModel:
@@ -32,6 +31,12 @@ class ChannelModel:
                         zs_diff: float = 100.0, zl_diff: float = 100.0,
                         renumber: bool = True, lane: int = 0) -> "ChannelModel":
         """Build from a Touchstone file, terminated into zs/zl (differential ohms)."""
+        # local import: only real files need scikit-rf, and it pulls scipy with
+        # it — the analytic path below must stay free of both
+        from .touchstone import (
+            import_diff_network, interp_s2p, terminate_renormalize,
+        )
+
         sdd = import_diff_network(path, renumber=renumber, lane=lane)
         f = np.linspace(0.0, f_max, n_freq)
         sdd_i = interp_s2p(sdd, f)
