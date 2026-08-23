@@ -31,31 +31,42 @@ if [ "$status" -ne 0 ]; then
     echo "::endgroup::"
 fi
 
-python3 - "$RESULTS" <<'PY'
-import glob, sys, xml.etree.ElementTree as ET
+python3 - "$RESULTS" <<'XML_SUMMARY'
+import collections, glob, sys, xml.etree.ElementTree as ET
 
-files = glob.glob(sys.argv[1] + "/**/*.xml", recursive=True)
+# Group by each <testcase>'s classname rather than by the <testsuite> root:
+# AGP writes ONE xml per device whose root aggregates every class, so reading
+# the root's name attribute reports the whole run under a single arbitrary
+# class. (Observed once: 9 tests all labelled LinkFacadeTest.) The totals were
+# right but the breakdown was a lie, which is worse than no breakdown at all.
+per_class = collections.Counter()
+bad = collections.Counter()
 total = fails = errors = skipped = 0
-for path in files:
+
+for path in glob.glob(sys.argv[1] + "/**/*.xml", recursive=True):
     try:
-        r = ET.parse(path).getroot()
+        root = ET.parse(path).getroot()
     except ET.ParseError:
         continue
-    n = int(r.get("tests", 0))
-    total += n
-    fails += int(r.get("failures", 0))
-    errors += int(r.get("errors", 0))
-    skipped += int(r.get("skipped", 0))
-    print(f"  {r.get('name')}: {n} tests, "
-          f"{r.get('failures')} failures, {r.get('errors')} errors")
+    total += int(root.get("tests", 0))
+    fails += int(root.get("failures", 0))
+    errors += int(root.get("errors", 0))
+    skipped += int(root.get("skipped", 0))
+    for case in root.iter("testcase"):
+        name = case.get("classname") or "?"
+        per_class[name] += 1
+        if case.find("failure") is not None or case.find("error") is not None:
+            bad[name] += 1
 
+for name, n in sorted(per_class.items()):
+    print(f"  {name}: {n} tests, {bad[name]} failed")
 print(f"instrumented totals: {total} tests, {fails} failures, "
       f"{errors} errors, {skipped} skipped")
 if total == 0:
     print("NO TESTS RAN - treating as failure; a green tick here would mean "
           "the suite never executed")
     sys.exit(1)
-PY
+XML_SUMMARY
 count_status=$?
 
 [ "$status" -ne 0 ] && exit "$status"

@@ -66,6 +66,20 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 **环境变量交接必须在 `Python.start()` 之前。** `config_bridge` 在 import 期就把
 `CONFIGS_DIR` 定死,晚一步设 `HALO_SERDES_DATA_DIR` 完全没用。
 
+**GitHub Action 的 `script` 输入不是 shell 脚本。** `reactivecircus/android-emulator-runner`
+是用 `sh -c "<script>"` 执行它的,所以内嵌的双引号会闭合外层包裹,命令当场畸形。
+把一条无引号命令改成多行带引号的块之后,连续两次在 ~90 秒挂掉且**没有任何测试报告**。
+更值得记的是**误诊的方式**:我对那段文本单独跑 `sh -n`,通过了,于是排除了这个嫌疑 ——
+语法检查验证的是"到达之后能不能解析",而故障发生在"到达"这一步。
+**规则:凡是要传进第三方 action 的脚本,放进仓库里的 `.sh` 文件,输入端只留一条无引号命令。**
+
+**`connectedDebugAndroidTest` 跑零个测试也算成功。** 一个意思是"套件根本没执行"的绿勾
+比红叉更糟。`android/tools/run_instrumented.sh` 因此解析结果 XML,总数为零就退出非零。
+
+**AGP 的仪器化结果 XML 每台设备只有一个,根 `<testsuite>` 聚合所有类。** 按根节点的
+`name` 归类会把整轮测试算到某一个类头上(实测:9 个测试全被标成 `LinkFacadeTest`)。
+要分类明细就遍历 `<testcase>` 的 `classname`。总数对但分类错,比不给分类更有害。
+
 **Chaquopy 装的不是 `pyproject.toml` 要的版本。** 实际解析到 numpy 1.26.2 + **scipy 1.8.1**
 (声明的是 `scipy>=1.11`),pip 自己都报这对不兼容。它能加载 ≠ 算得一样。
 `android` workflow 的 `wheel-versions` job 就是为此存在:在宿主上降到手机的版本跑一遍。

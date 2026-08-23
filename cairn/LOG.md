@@ -14,8 +14,12 @@
 - 由此补了一个**产品侧**缺陷:`derive` 新增 `channel: {ok, message}`(`valid` 仍为 `true`),
   界面显示说明卡片并禁用 Run,启动时选**第一个能跑的**预设。契约由
   `unreachableChannelsAreFlaggedBeforeRunning`(设备)与两个宿主测试钉住。
-- 同时给 emulator job 加了失败时打印测试 XML —— 之前只能拿到打不开的 artifact,
-  红色构建从日志无法定位。
+- **最终结果(run #9)**:三个 job 全绿,`instrumented totals: 9 tests, 0 failures,
+  0 errors, 0 skipped`(5 个 PythonStackTest + 4 个 LinkFacadeTest)。
+- 路上踩了两个 CI 坑,都已沉淀进 `engineering-pitfalls.md`:
+  (1) emulator action 的 `script` 走 `sh -c "<script>"`,内嵌双引号会把它截断 ——
+  而我用 `sh -n` 检查语法通过,因此误判成"不是我的改动";
+  (2) `connectedDebugAndroidTest` 跑零个测试也算成功,现已在脚本里按失败处理。
 
 ## 2026-08-23 · M0 判定:通过(run #3 三个 job 全绿)
 

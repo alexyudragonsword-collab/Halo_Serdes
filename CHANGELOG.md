@@ -6,6 +6,24 @@
 
 ---
 
+## [未发布] — Android M4：Compose 界面接上共用计算核
+
+### 新增
+- `android/app/src/main/java/.../ui/`：Compose 界面（预设下拉 → 派生量 → 包络告警 →
+  跑统计引擎 → 读 BER），以及 `api/HaloApi.kt` —— 信封只拆一次，界面永远不碰
+  `ok` / `error.message` / `PyException`；所有入口 `suspend` 且强制切到单线程解释器
+  dispatcher（一个解释器一个 GIL）。
+- `derive` 新增 `channel: {ok, message}`：手机上不带 `.s4p`，touchstone 预设跑不了，
+  必须在按 Run **之前**说清楚。`valid` 保持 `true` —— 配置没问题，是数据不在。
+- `android/tools/run_instrumented.sh`：跑仪器化测试，并在日志里报出到底跑了几个；
+  零测试按失败处理。
+
+### 修复
+- **`load_preset` 之外的第二处静默降级**：界面会摆出跑不了的预设，且要按了 Run 才知道。
+  现在显示说明卡片并禁用 Run，启动时选第一个能跑的预设。
+
+---
+
 ## [未发布] — Android（Chaquopy）M0 可行性验证
 
 ### 新增
