@@ -15,6 +15,8 @@
   界面保留上一次派生量而不是清空。
 - 新增 `FormContractTest`:schema 声明的 kind 必须都有控件、预设经表单值映射往返仍合法、
   改 symbol_rate 派生量真的变、非法值按 path 报错。
+- **结果(run #11 全绿)**:`FormContractTest 5 / LinkFacadeTest 4 / PythonStackTest 5`,
+  `instrumented totals: 14 tests, 0 failures`。上一轮修的分类归属这次输出正确。
 
 ## 2026-08-23 · M4:Compose 界面接上共用计算核
 

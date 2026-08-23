@@ -17,6 +17,9 @@
 ### 已知
 - **bool 必须以 JSON 布尔过界**：`coerce_in` 对数值 kind 接受字符串，但 `bool("false")`
   是 `True`，开关当文本发会静默取反。已由上述两个测试钉住。
+- 设备验证：14 项仪器化测试全过（FormContract 5 / LinkFacade 4 / PythonStack 5）。
+- **界面观感无自动化覆盖**：CI 只跑仪器化测试，不启动 Activity —— 布局、折叠动画、
+  深色模式下的错误标记，都要装 APK 自己看。
 
 ---
 
