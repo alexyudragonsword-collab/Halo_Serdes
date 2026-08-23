@@ -31,6 +31,11 @@ class FormContractTest {
     private suspend fun schema(): JSONObject =
         (HaloApi.schema(ctx) as ApiResult.Ok).data
 
+    /** The derived "UI" string for a set of form values. */
+    private suspend fun derivedUi(values: Map<String, Any>): String =
+        (HaloApi.derive(ctx, values.toJson()) as ApiResult.Ok)
+            .data.getJSONObject("derived").getString("UI")
+
     @Test
     fun everyDeclaredFieldKindHasAWidget() = runBlocking<Unit> {
         val sections = parseSections(schema())
@@ -78,14 +83,9 @@ class FormContractTest {
         val values = (HaloApi.preset(ctx, name) as ApiResult.Ok)
             .data.getJSONObject("values").toFormValues(fields)
 
-        fun uiOf(v: Map<String, Any>) = runBlocking<Unit> {
-            ((HaloApi.derive(ctx, v.toJson())) as ApiResult.Ok)
-                .data.getJSONObject("derived").getString("UI")
-        }
-
-        val before = uiOf(values)
+        val before = derivedUi(values)
         // As the form sends it: a string, not a number.
-        val after = uiOf(values + ("symbol_rate" to "14"))
+        val after = derivedUi(values + ("symbol_rate" to "14"))
         assertTrue("UI did not change: $before -> $after", before != after)
         assertTrue("UI lost its unit: $after", after.endsWith("ps"))
     }

@@ -81,7 +81,10 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 `HaloApi.release(...)` 收尾),JUnit 会以 "Method t() should be void" **在校验阶段
 拒绝整个测试类** —— 类里所有测试一个都不跑,只留一条 `initializationError`。
 后果是**测试数悄悄变少而不是变红**:那次 `ChartDataTest` 报的是 "1 tests, 1 failed",
-而它其实有 2 个测试。**统一写 `runBlocking<Unit> { ... }`。**
+而它其实有 2 个测试。**统一写 `runBlocking<Unit> { ... }`** —— 但**只改 `@Test` 方法体**:
+一次全文替换会连带打到需要返回值的局部/辅助函数,把它们也变成 `Unit`,
+下一轮就是编译错误。(实际发生过:替换脚本报"6 处"而那个类只有 5 个 `@Test`,
+证据就在输出里没被读。)
 (能看见这件事,靠的是 `run_instrumented.sh` 会打印每个类的测试数;否则只会看到
 一条含糊的失败。)
 
