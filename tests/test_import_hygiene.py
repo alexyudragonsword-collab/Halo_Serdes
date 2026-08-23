@@ -77,6 +77,9 @@ def test_asset_resolution_survived_the_move():
 
 def test_gui_shims_still_resolve():
     """The old halo_serdes_gui.* paths keep working after the move."""
+    # importing the shim pulls halo_serdes_gui/__init__ -> the Dash app, which
+    # the import-clean CI job deliberately does not install
+    pytest.importorskip("dash", reason="GUI extra not installed")
     from halo_serdes_gui import config_bridge as cb
     from halo_serdes_gui import runner, studies
     from halo_serdes_app import config_bridge as app_cb

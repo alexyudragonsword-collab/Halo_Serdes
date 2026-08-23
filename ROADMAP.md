@@ -55,9 +55,28 @@ overlap-save 分块,**但波形数组本身没有窗口化** —— `tx_wave`、
 
 ---
 
+### 3. `sim.chunk_symbols` 是死字段,时域长跑无法中断
+
+**现状**:`config/schema.py` 定义并校验了 `sim.chunk_symbols`,`config_bridge` 也把它做成了
+表单字段,但**时域引擎从不读它** —— `engine/timedomain.py` 对 `ms_rx`/`adc_rx` 是**整段
+一次性调用**(混合信号与 ADC 两条路径各一处)。
+
+**为什么要紧**:没有让出点意味着(a)拿不到进度,(b)**无法取消**一次已经开始的长跑,
+(c)内存必须一次性容纳整条波形(这正是 P1 第 2 条的根因)。对桌面版是体验问题,
+对手机是致命问题 —— Android 上 10 万符号要 1–2 分钟,期间既不能显示进度也不能取消。
+
+**怎么做**:让 `ms_rx`/`adc_rx` 接受并返回循环状态(CDR 相位、抽头、Farrow 历史),
+使调用方能按 `chunk_symbols` 分块推进。这会同时解决进度、取消与内存三件事,
+并让那个死字段终于有意义。
+
+**注意**:这两个是 numba 编译的热核,受铁律 #2/#4 约束,且 `rtl/run_lockstep.sh` 依赖其
+数值行为 —— 必须以"分块与整段逐位一致"为验收标准,单独立项,不要夹在别的改动里。
+
+---
+
 ## P2 — 一致性与交付
 
-### 3. `has_getwave` 默认值不一致
+### 4. `has_getwave` 默认值不一致
 
 `NativeFirAmi` 默认 `True`、`AmiCModel` 默认 `False`。语义上都说得通(前者两条流都
 实现;后者让调用方明示),但**对比两个 AMI 模型时若不显式对齐,会把"走了不同的流"
@@ -67,13 +86,13 @@ overlap-save 分块,**但波形数组本身没有窗口化** —— `tx_wave`、
 (b) 保持现状但在 `load_ami_model` 里对"两个模型 flag 不一致"发 warning。
 倾向 (a) + 在 `docs/USAGE.md` §12 已有的提示上再加一句。
 
-### 4. 桌面版发 GitHub Release
+### 5. 桌面版发 GitHub Release
 
 CI 已经在构建三种 Windows 产物(PyInstaller / Nuitka standalone / Nuitka onefile)
 并做 `--selfcheck` 冒烟,但只作为 **artifact 上传,会过期**。加一个 tag → Release 的
 job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量最小的一项。
 
-### 5. Rx-FFE 纳入 COM 优化网格
+### 6. Rx-FFE 纳入 COM 优化网格
 
 `analysis/com.py` 现在优化 CTLE peaking × 采样相位 × (可选)Tx FFE,DFE 抽头由光标
 经 `b_max` 导出 —— 这是 **93A 参考接收机(CTLE+DFE)** 的形态。178A 风格的
@@ -84,21 +103,21 @@ job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量�
 
 ## P3 — 能力扩展
 
-### 6. 片上校准回路
+### 7. 片上校准回路
 现在只**建模失配**:`AdcConfig.calibrated=True` 是行为级把 offset/gain 归零,
 不是真实算法。DragonPHY2 的 ADC unfolding 是可移植的参考。做了之后才能回答
 "校准残差 vs 性能"这类问题。
 
-### 7. Duobinary / PR 整形
+### 8. Duobinary / PR 整形
 1+D 预编码已实现(`precode` 开关),但**预编码 ≠ PR 整形**:前者是符号映射,
 后者要在发端有意引入受控 ISI 并配匹配的检测器。属于独立能力。
 
-### 8. 多 lane 数据通路
+### 9. 多 lane 数据通路
 多 lane 目前只在**串扰侧**(`aggressor_bank`/`icn_rms`);链路本身仍是单 lane。
 真正的多 lane 系统级(lane 间 skew、共享 CDR/校准、per-lane FEC 交织)是另一个量级
 的工作,按需再评估。
 
-### 9. 测试与文档的长尾
+### 10. 测试与文档的长尾
 - GUI docstring 28%(核心库 66%);GUI 行覆盖 60%(核心库 89%)。
 - 31 个示例只做 **import 守卫**(`tests/test_examples_api.py`),不执行。
   全量执行太慢(多个用 10⁶ 符号),可考虑加一个"小符号数档"的夜间 CI job。
