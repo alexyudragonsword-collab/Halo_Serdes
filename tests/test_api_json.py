@@ -43,6 +43,24 @@ def test_every_method_is_reachable_and_shaped():
         "start_time_run", "poll", "cancel", "import_touchstone"}
 
 
+def test_schema_lists_the_bundled_channel_files():
+    """A shipped file nobody can name is a file nobody can use.
+
+    Two of the three `.s4p` this repo ships are referenced by no preset, and
+    on Android all of them sit in private storage where the system document
+    picker cannot see them. Without this list the app would carry 4.4 MB it
+    offers no way to open.
+    """
+    chans = call("schema")["data"]["channels"]
+    assert chans, "no bundled channels advertised"
+    for c in chans:
+        assert c["name"].lower().endswith("p") and ".s" in c["name"].lower()
+        assert c["bytes"] > 0
+        # Advertised means openable: the engine must accept what this names.
+        assert call("import_touchstone", path=c["path"])["ok"], c["name"]
+    assert len({c["name"] for c in chans}) == len(chans)
+
+
 def test_schema_advertises_every_study_with_a_plot_spec():
     """A study the client cannot discover is a study nobody runs.
 

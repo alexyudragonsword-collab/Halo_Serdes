@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import dataclasses
 import io
+import re
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +97,31 @@ def _data_roots() -> list[Path]:
     here = Path(__file__).resolve()
     roots += [here.parents[up] for up in (1, 2, 3) if up < len(here.parents)]
     return roots
+
+
+def bundled_channels() -> list[dict]:
+    """Touchstone files shipped with this build, as ``{name, path, bytes}``.
+
+    Needed because a bundled file is not otherwise *findable*. On the desktop
+    they sit in the repo and can simply be browsed to; inside an Android app
+    they live in private storage, where the system document picker cannot see
+    them — so a client with no list has no way to offer them, and two of the
+    three shipped files are named by no preset at all.
+
+    Searched over the same roots ``resolve_data_file`` uses, so whatever this
+    lists is exactly what the engine would be able to open.
+    """
+    seen: dict[str, Path] = {}
+    for root in _data_roots():
+        d = root / "data" / "channels"
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            # .s2p/.s4p/.s8p/.s12p — the port count is part of the suffix.
+            if re.fullmatch(r"\.s\d+p", f.suffix, re.IGNORECASE) and f.is_file():
+                seen.setdefault(f.name, f)
+    return [{"name": n, "path": str(p), "bytes": p.stat().st_size}
+            for n, p in sorted(seen.items())]
 
 
 def resolve_data_file(rel: str) -> str:

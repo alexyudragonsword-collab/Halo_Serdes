@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.halo.serdes.probe.api.ApiResult
 import com.halo.serdes.probe.api.HaloApi
+import com.halo.serdes.probe.ui.parseChannels
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -57,6 +58,35 @@ class TouchstoneTest {
         }
         assertEquals("presets whose channel data is still unreachable",
                      emptyList<String>(), unrunnable)
+    }
+
+    /**
+     * The bundled files must be reachable *by name*, not just present on disk.
+     *
+     * This is the gap that made bundling them pointless on its own: they live
+     * in private storage, where the system document picker cannot browse, and
+     * only one of the three is referenced by any preset. If `schema` stops
+     * listing them the APK goes back to carrying 4.4 MB with no way in.
+     */
+    @Test
+    fun bundledChannelsAreListedAndEveryOneOpens() = runBlocking<Unit> {
+        HaloPython.start(ctx)
+        val schema = (HaloApi.schema(ctx) as ApiResult.Ok).data
+        val listed = parseChannels(schema)
+        assertTrue("schema advertised no bundled channels", listed.isNotEmpty())
+        for (c in listed) {
+            assertTrue("${c.name} has no size", c.bytes > 0)
+            // Advertised means openable: the path must be one this device's
+            // interpreter can actually read, not a host path baked at build.
+            val r = HaloApi.call(ctx, "import_touchstone",
+                                 JSONObject().put("path", c.path))
+            assertTrue("bundled ${c.name} did not open: $r", r is ApiResult.Ok)
+        }
+        // Every .s4p staged into assets should show up in that list.
+        val onDisk = File(ctx.filesDir, "halo_data/data/channels")
+            .listFiles { f -> f.name.endsWith(".s4p") }?.map { it.name }?.toSet()
+            ?: emptySet()
+        assertEquals(onDisk, listed.map { it.name }.toSet())
     }
 
     @Test

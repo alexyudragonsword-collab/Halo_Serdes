@@ -86,9 +86,11 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
 
         TouchstoneCard(
             info = s.touchstone,
+            bundled = s.bundledChannels,
             busy = s.touchstoneBusy,
             error = s.touchstoneError,
             onPick = vm::importTouchstone,
+            onUseBundled = vm::useBundledChannel,
             onAdopt = vm::adoptTouchstone,
             onDiscard = vm::discardTouchstone,
         )
@@ -151,8 +153,8 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
             "${s.presets.size} presets · ${s.sections.sumOf { it.fields.size }} " +
                 "fields · ${s.configsDir}",
             style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

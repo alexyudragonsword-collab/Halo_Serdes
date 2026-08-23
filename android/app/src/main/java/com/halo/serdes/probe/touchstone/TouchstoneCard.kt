@@ -3,6 +3,8 @@ package com.halo.serdes.probe.touchstone
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.halo.serdes.probe.ui.BundledChannel
 
 /**
  * What a Touchstone file turned out to contain, before it is adopted.
@@ -42,12 +46,15 @@ data class TouchstoneInfo(
     val extrapolated: Boolean,
 )
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TouchstoneCard(
     info: TouchstoneInfo?,
+    bundled: List<BundledChannel>,
     busy: Boolean,
     error: String?,
     onPick: (android.net.Uri) -> Unit,
+    onUseBundled: (BundledChannel) -> Unit,
     onAdopt: (TouchstoneInfo) -> Unit,
     onDiscard: () -> Unit,
 ) {
@@ -59,10 +66,34 @@ fun TouchstoneCard(
         Column(Modifier.padding(12.dp)) {
             Text("Channel file", style = MaterialTheme.typography.titleSmall,
                  fontWeight = FontWeight.Bold)
-            Text("Import a Touchstone .s2p/.s4p and use it as this link's " +
-                 "channel.",
+            Text("Pick one of the files shipped with this build, or import " +
+                 "your own .s2p/.s4p, and use it as this link's channel.",
                  style = MaterialTheme.typography.labelSmall,
                  color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            if (bundled.isNotEmpty()) {
+                // The only way to reach these. They live in the app's private
+                // storage, which the system document picker below cannot
+                // browse — and only one of the files this build ships is
+                // named by any preset, so without these chips the other two
+                // are dead weight in the APK.
+                Spacer(Modifier.height(8.dp))
+                Text("Bundled with this build",
+                     style = MaterialTheme.typography.labelSmall,
+                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    bundled.forEach { c ->
+                        AssistChip(
+                            onClick = { onUseBundled(c) },
+                            enabled = !busy,
+                            label = {
+                                Text("${c.label}  ·  %.1f MB".format(c.sizeMb),
+                                     style = MaterialTheme.typography.labelSmall)
+                            },
+                        )
+                    }
+                }
+            }
 
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp),

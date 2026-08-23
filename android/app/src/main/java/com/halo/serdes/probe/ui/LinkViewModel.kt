@@ -103,6 +103,8 @@ data class LinkUiState(
     val studyResults: Map<String, StudyResult> = emptyMap(),
     /** Name of the study currently running, if any. */
     val studyRunning: String? = null,
+    /** Touchstone files inside the APK — the only ones a picker cannot show. */
+    val bundledChannels: List<BundledChannel> = emptyList(),
     val eye: EyeMap? = null,
     val eyeLoading: Boolean = false,
     val warnings: List<String> = emptyList(),
@@ -204,6 +206,7 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
                         sections = parseSections(r.data),
                         presets = names,
                         studies = parseStudies(r.data),
+                        bundledChannels = parseChannels(r.data),
                         configsDir = r.data.optString("configs_dir"),
                     )
                 }
@@ -404,15 +407,34 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
             }
             return@launch
         }
+        inspect(file.absolutePath, deleteOnFailure = true)
+    }
+
+    /**
+     * Inspect a channel this build already ships.
+     *
+     * No copy: the file is in the app's own storage and the interpreter can
+     * open it directly. It goes through the same inspection as an imported
+     * one, so a bundled file gets the same extrapolation warning — a shipped
+     * file is no likelier than a picked one to reach the configured Nyquist.
+     */
+    fun useBundledChannel(channel: BundledChannel) = viewModelScope.launch {
+        _state.update {
+            it.copy(touchstoneBusy = true, touchstoneError = null, touchstone = null)
+        }
+        inspect(channel.path, deleteOnFailure = false)
+    }
+
+    private suspend fun inspect(path: String, deleteOnFailure: Boolean) {
         // The current values go along so the report can compare the file's
         // span against *this* config's Nyquist — the number that decides
         // whether the file answers the question being asked.
         val payload = JSONObject()
-            .put("path", file.absolutePath)
+            .put("path", path)
             .put("values", _state.value.values.toJson())
         when (val r = HaloApi.call(ctx, "import_touchstone", payload)) {
             is ApiResult.Err -> {
-                file.delete()
+                if (deleteOnFailure) java.io.File(path).delete()
                 _state.update {
                     it.copy(touchstoneBusy = false, touchstoneError = r.message)
                 }

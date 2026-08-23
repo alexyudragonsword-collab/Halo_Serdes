@@ -92,3 +92,28 @@ fun parseStudyData(o: JSONObject?): Map<String, List<Double>> {
     }
     return out
 }
+
+/**
+ * A Touchstone file shipped inside the APK.
+ *
+ * Listed by the facade rather than found by walking a path here, because
+ * "where does bundled data live" is already `config_bridge`'s question — and
+ * on a device the answer is private storage, which the system document picker
+ * cannot browse. Without this list the app would carry 4.4 MB of channel data
+ * it offers no way to open.
+ */
+data class BundledChannel(val name: String, val path: String, val bytes: Long) {
+    /** Enough of the filename to tell the files apart in one line. */
+    val label: String get() = name.substringBeforeLast('.')
+    val sizeMb: Double get() = bytes / 1048576.0
+}
+
+fun parseChannels(o: JSONObject): List<BundledChannel> {
+    val arr = o.optJSONArray("channels") ?: return emptyList()
+    return (0 until arr.length()).mapNotNull { i ->
+        val c = arr.optJSONObject(i) ?: return@mapNotNull null
+        val path = c.optString("path")
+        if (path.isBlank()) null
+        else BundledChannel(c.optString("name"), path, c.optLong("bytes"))
+    }
+}

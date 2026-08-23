@@ -159,10 +159,15 @@ def _m_schema(_payload: dict) -> dict:
     it ships verbatim — the client builds every widget from it and no field
     definition is duplicated outside Python.
     """
-    from .config_bridge import CONFIGS_DIR
+    from .config_bridge import CONFIGS_DIR, bundled_channels
 
     return {"sections": _jsonable(SECTIONS),
             "presets": preset_names(),
+            # Touchstone files this build ships. Listed here because on a
+            # phone they are otherwise unreachable: they live in the app's
+            # private storage, which the system document picker cannot browse,
+            # and only one of the three is named by any preset.
+            "channels": bundled_channels(),
             # Advertised, not hardcoded by the client. Adding a study to
             # studies.py with a label and a plot spec makes it appear in every
             # UI with no change on the other side of the bridge.
