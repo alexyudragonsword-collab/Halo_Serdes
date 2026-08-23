@@ -102,12 +102,25 @@ kotlinVersion=2.0.21
 | numpy/scipy 在真机加载并计算吗 | **能** | `erfc`/`erfcinv`/`binom`/`curve_fit` 全过 |
 | 门面能从 Kotlin 调用吗 | **能** | `jsonFacadeIsReachableFromKotlin` 通过 |
 | 计算核与桌面数值一致吗 | **x86_64 上一致** | 模拟器 5/5 通过,golden `rtol=1e-9` 无失配 |
-| **ARM 上一致吗** | **仍未知** | 模拟器是 x86_64;要真机装上修好的 APK 才知道 |
-| 真机性能如何 | **仍未知** | 同上 |
+| **ARM 上一致吗** | **一致** | 真机 `python 3.10.15 on aarch64` → `[golden MATCH]` |
+| 真机性能如何 | **百毫秒量级** | 探针(统计引擎+COM+FEC)164 ms;下方有保留 |
+| 16 KB page 机型能装吗 | **仍未知** | 见下 |
 
-M0 的判定(2026-08-23,run #3):`assemble` / `wheel-versions` / `emulator` 三个 job 全绿,
-`Starting 5 tests` → `Finished 5 tests`,零失败。**Chaquopy 路线成立**,剩下的两格
-只能由手上的机器回答。
+M0 的判定(2026-08-23):`assemble` / `wheel-versions` / `emulator` 三个 job 全绿,
+仪器化 `Starting 5 tests` → `Finished 5 tests` 零失败;真机(aarch64)独立复现
+`golden MATCH`。**Chaquopy 路线成立。**
+
+`golden MATCH` 出现在 **aarch64** 上是这里最难由 CI 替代的一项 —— 不同 libm、不同 FMA
+合并策略、OpenBLAS 的 ARM 内核都可能让 PDF 卷积那条路径在末几位漂开,而它没有。
+
+**两点保留,不要写成已证明:**
+
+- **164 ms 不能直接跟 CI 宿主的 79 ms 比。** 宿主那次是全新进程(确定冷),真机那次是不是
+  首次按键无从判断;若是第二次以后,引擎模块与 numpy 已 import 完,164 ms 是热数据。
+  要可比的数字得杀进程后**只按一次**。无论冷热,"百毫秒量级"这个量级结论成立,
+  M4 的即时交互前提因此有效。
+- **16 KB page 只能说"这台设备可以"**,不能说"16 KB page 机型可以" —— 从运行结果无法
+  判断该机的页大小,而多数在用设备仍是 4 KB。要证明得找一台确知 16 KB page 的机器。
 
 ### 第二次运行的结果:presets 没进 APK(已修)
 

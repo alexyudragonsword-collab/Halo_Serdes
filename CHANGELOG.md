@@ -30,8 +30,9 @@
 - Chaquopy 解析到 numpy 1.26.2 + **scipy 1.8.1**，而 `pyproject.toml` 声明 `scipy>=1.11`。
   新增 `wheel-versions` job 在宿主上降级到这两个版本跑一遍手机的计算路径。**已验证无碍**：
   BER 与现代版本差 1 ULP，COM 与 post-FEC 逐位相同；pip 报的不兼容只在元数据层面。
-- M0 判定**通过**：三个 job 全绿，模拟器 5/5（含 `rtol=1e-9` golden 比对）。
-  模拟器是 x86_64，**ARM 浮点、16 KB page 与真机性能仍待真机验证**。
+- M0 判定**通过**：三个 job 全绿，模拟器 5/5（含 `rtol=1e-9` golden 比对）；
+  真机 aarch64 独立复现 `golden MATCH`（BER 1.3201e-06 / COM 3.35 dB / 164 ms）。
+  仍未证明：**16 KB page 机型**（只能说该测试设备可以，其页大小无从判断）。
 
 ---
 

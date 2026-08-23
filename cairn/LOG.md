@@ -11,9 +11,13 @@
 - **`wheel-versions` 消掉了版本这一维**:numpy 1.26.2 + scipy 1.8.1(手机拿到的版本)
   下,BER 与现代版本只差 **1 ULP**(相对 1.6e-16),COM 与 post-FEC 逐位相同。
   pip 报的不兼容只在元数据层面。今后 golden 若失配,可干净归因给平台。
-- **两格仍未知,只能由真机回答**:模拟器是 x86_64,证不了 ARM 浮点与 16 KB page;
-  真机性能同理。判定表见 `android/README.md`。
-- 上一条(下方)记的打包 bug 至此确认修复。
+- **真机(aarch64)随后独立复现 `golden MATCH`**:`python 3.10.15 on aarch64`、
+  numpy 1.26.2 / scipy 1.8.1、BER 1.3201e-06、COM 3.35 dB、164 ms。
+  ARM 的 libm / FMA 合并 / OpenBLAS ARM 内核都没让 PDF 卷积在 1e-9 内漂开 ——
+  这是 CI 最替代不了的一项。`skrf MISSING` 与 `numba absent: True` 均为预期。
+- **两点保留**:164 ms 不可直接对比 CI 宿主的 79 ms(宿主确定冷启,真机是否首次按键
+  未知,可能是热数据);16 KB page 只证明了**这台设备**可以,该机页大小无从判断。
+- 上一条(下方)记的打包 bug 至此确认修复。判定表见 `android/README.md`。
 
 ## 2026-08-23 · M0 在真机跑通到了"presets 没打包"这一层
 
