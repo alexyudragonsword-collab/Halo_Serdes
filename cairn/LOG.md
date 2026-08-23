@@ -20,6 +20,11 @@
 - 那个 touchstone 假设**是个潜伏问题**(类跑起来就会栽),一并修了:
   "挑第一个预设"这个错我写了两遍,抽成 `TestPresets.runnable()` 一处。
 - 眼图**按需拉取**而非随每次 Run 一起返回:缩减后仍有约 4k 个数,而多数时候按 Run 只为看 BER。
+- **结果(run #14 全绿)**:`ChartDataTest 2 / FormContractTest 5 / LinkFacadeTest 4 /
+  PythonStackTest 5`,`instrumented totals: 16 tests, 0 failures`。
+  ChartDataTest 从"1 tests, 1 failed"(幽灵)变成"2 tests, 0 failed"。
+- 这一轮红了两次,**两次都是我引入的**,第二次还是修第一次时引入的。教训不在 Kotlin,
+  在于**批量文本替换要核对影响面** —— 脚本已经把"6 处替换 vs 5 个 @Test"打出来了,我跳过了。
 
 ## 2026-08-23 · M5:参数表单由 SECTIONS 自动生成
 

@@ -18,6 +18,11 @@
   —— 实测最大约 −2.7、约 1/3 的格子在 −18 钳位底。改为返回实际范围 + 显式 `floor`；
   floor 格子渲染成背景色，因为它们表示"没解出概率"而非"概率很小"。
 
+### 已知
+- 设备验证：16 项仪器化测试全过（ChartData 2 / FormContract 5 / LinkFacade 4 / PythonStack 5）。
+- **图表的实际观感仍无自动化覆盖**：CI 不启动 Activity，曲线和热图画出来什么样，
+  只能装 APK 看。
+
 ---
 
 ## [未发布] — Android M5：SECTIONS 自动生成参数表单
