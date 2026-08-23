@@ -1,12 +1,39 @@
-# Android — M0 可行性验证工程
+# Android — Chaquopy + Compose
 
-这不是 app,是一次**去风险实验**。它只回答一个问题:
+Kotlin 原生界面 + 嵌入式 CPython 计算核。**手机与桌面共用同一份 `src/`**,
+不存在第二套仿真逻辑(项目铁律 #1 的延伸)。
 
-> Chaquopy 能不能在这个 Python 版本上装出可用的 numpy/scipy,
-> 并让 `halo_serdes` 的计算核在 Android 上**算出与桌面一致的数字**?
+```
+Compose UI  ──►  HaloApi (信封解析)  ──►  HaloPython (单线程 dispatcher)
+                                              │
+                                              ▼
+                              halo_serdes_app.api.call(method, json) -> json
+                                              │
+                                              ▼
+                                    halo_serdes(计算核)
+```
 
-答案由 CI 给出 —— 见 [`.github/workflows/android.yml`](../.github/workflows/android.yml)。
-完整方案见仓库根的 `ROADMAP.md` 与规划文件。
+**当前进度:M4。** 选预设 → 看派生量与包络告警 → 跑统计引擎 → 读 BER。
+参数逐项可编辑的表单(由 `SECTIONS` 自动生成)是 M5;图表是 M6。
+
+下面「M0」几节是**历史记录**,保留是因为那些结论(版本约束、打包陷阱)至今仍然管用。
+
+---
+
+## 跨界契约
+
+界面永远不碰 `ok` / `error.message` / `PyException`,只见 `ApiResult`:
+
+| 规则 | 为什么 |
+|---|---|
+| **入参出参都是 JSON 字符串** | Chaquopy 免费转 `str <-> String`,`dict <-> Map` 要手工遍历 `PyObject` |
+| **numpy 不过界** | 结果留在 Python 侧 registry,Kotlin 只拿 `handle`;数组按需经 `series` 抽取后再取 |
+| **错误是数据不是异常** | Python 异常穿过 JNI 会变成不可读的 `PyException`,界面既显示不了有用信息、还可能带走进程 |
+| **一个解释器一个 GIL → 一条线程** | `HaloPython.dispatcher` 是单线程,顺带保证 registry 不会被两个调用交错 |
+
+`LinkViewModel` 在存新 handle 前先 `release` 旧的,所以进程侧最多只留一份结果的
+numpy 数组;`onCleared` 里用 `HaloPython.post` 而不是协程 —— 那时
+`viewModelScope` 已取消,协程根本不会跑。
 
 ---
 
@@ -198,12 +225,16 @@ Chaquopy 的 `python` 源集是**动态注册的扩展**,Kotlin DSL 里 `android
 
 ---
 
-## 有意保持简陋
+## M0 期间有意保持简陋(已解除)
 
-没有 Compose、没有 Material 3、没有导航 —— 只有一个 Activity、一个按钮、一个 TextView。
+M0 那版没有 Compose、没有 Material 3,只有一个 Activity、一个按钮、一个 TextView ——
+它的价值在于**快速给出明确的是/否**,任何与被测风险无关的东西(尤其是会引入版本匹配
+风险的 UI 框架)都会稀释它。
 
-M0 的价值在于**快速给出明确的是/否**,任何与被测风险无关的东西(尤其是会引入版本
-匹配风险的 UI 框架)都会稀释它。真正的 Compose 界面属于后续里程碑。
+M0 判定通过后 M4 才引入 Compose,这个顺序是刻意的:**先证明栈能跑,再堆界面**。
+Kotlin 2.0 起 Compose 编译器随 Kotlin 本体发布,所以
+`org.jetbrains.kotlin.plugin.compose` 的版本必须与 `kotlinVersion` 完全一致 ——
+再没有单独的 composeCompiler 旋钮可以配错。
 
 ---
 
@@ -215,9 +246,13 @@ android/
 ├── settings.gradle.kts                   插件版本在此解析(plugins 块只接受常量)
 ├── app/build.gradle.kts                  Chaquopy 的 pip 清单 + ABI 选择 + configs/ 资产暂存
 ├── app/src/main/python/halo_probe.py     探针:版本/scipy 入口/计算核/golden 比对
-├── app/src/main/java/.../HaloPython.kt   与 Python 的唯一接触面
-├── app/src/main/java/.../MainActivity.kt 一个按钮
-├── app/src/androidTest/.../PythonStackTest.kt   M0 的判定,写成自动化测试
+├── app/src/main/java/.../HaloPython.kt   与 Python 的唯一接触面 + 单线程 dispatcher
+├── app/src/main/java/.../api/HaloApi.kt  信封 -> ApiResult,跨界契约都在这
+├── app/src/main/java/.../ui/LinkViewModel.kt  状态与 handle 生命周期
+├── app/src/main/java/.../ui/LinkScreen.kt     Compose 界面
+├── app/src/main/java/.../MainActivity.kt setContent 一行
+├── app/src/androidTest/.../PythonStackTest.kt  M0 的判定(解释器与数值)
+├── app/src/androidTest/.../LinkFacadeTest.kt   M4 的判定(界面走的那条路)
 └── tools/gen_probe_golden.py             在 CI 宿主上生成 golden
 ```
 

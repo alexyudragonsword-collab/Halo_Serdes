@@ -3,13 +3,14 @@
 
     <application
         android:allowBackup="false"
-        android:label="Halo Probe"
+        android:label="Halo SerDes"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.DayNight">
+        android:theme="@style/Theme.Halo">
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.Halo">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

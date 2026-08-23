@@ -23,6 +23,10 @@ pluginManagement {
     plugins {
         id("com.android.application") version agpVersion
         id("org.jetbrains.kotlin.android") version kotlinVersion
+        // Since Kotlin 2.0 the Compose compiler ships with Kotlin itself, so
+        // this plugin's version must track kotlinVersion exactly — there is no
+        // separate composeCompiler knob to get wrong any more.
+        id("org.jetbrains.kotlin.plugin.compose") version kotlinVersion
         id("com.chaquo.python") version chaquopyVersion
     }
 }

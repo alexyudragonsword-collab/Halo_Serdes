@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Platform themes rather than AppCompat ones: the activity is a plain
+  ComponentActivity and every pixel inside it is drawn by Compose, so this
+  theme's only job is the window background and the system bars before the
+  first frame. Depending on AppCompat just for that would be dead weight.
+
+  The -night variant next to this file supplies the dark counterpart.
+-->
+<resources>
+    <style name="Theme.Halo" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

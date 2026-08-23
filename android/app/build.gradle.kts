@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.chaquo.python")
 }
 
@@ -30,6 +31,8 @@ android {
             signingConfig = signingConfigs.getByName("debug")   // sideload only
         }
     }
+
+    buildFeatures { compose = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -101,7 +104,22 @@ chaquopy {
 }
 
 dependencies {
-    implementation("androidx.appcompat:appcompat:1.7.0")
+    // The BOM pins every compose-* artifact to one tested set, so individual
+    // versions are never stated and cannot drift apart.
+    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Direct dependency: HaloPython owns the single-thread interpreter
+    // dispatcher, so this is not just transitive plumbing from lifecycle.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }

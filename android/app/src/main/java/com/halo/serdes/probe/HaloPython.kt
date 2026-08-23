@@ -4,7 +4,11 @@ import android.content.Context
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.Executors
 
 /**
  * The single place the app talks to Python.
@@ -31,6 +35,36 @@ object HaloPython {
 
     /** Asset subtree staged by the `stageHaloAssets` Gradle task. */
     private const val ASSET_ROOT = "halo_data"
+
+    /**
+     * The one thread every Python call runs on.
+     *
+     * Not [kotlinx.coroutines.Dispatchers.IO]: there is a single interpreter
+     * behind a single GIL, so concurrency here would buy nothing and would let
+     * two calls interleave inside the registry that [HaloApi] hands out
+     * handles from. One thread also means Python-side state (imported modules,
+     * stored results) has one owner.
+     */
+    private val executor =
+        Executors.newSingleThreadExecutor { r -> Thread(r, "halo-python") }
+
+    val dispatcher: CoroutineDispatcher = executor.asCoroutineDispatcher()
+
+    /** Run [block] on the interpreter thread, starting Python if needed. */
+    suspend fun <T> on(context: Context, block: () -> T): T =
+        withContext(dispatcher) {
+            start(context)
+            block()
+        }
+
+    /**
+     * Queue [block] on the interpreter thread and return immediately.
+     *
+     * For cleanup that outlives the scope that would normally await it — most
+     * of all releasing a stored result in `onCleared`, where `viewModelScope`
+     * is already cancelled and a coroutine would simply never run.
+     */
+    fun post(block: () -> Unit) = executor.execute(block)
 
     @Volatile private var started = false
 
@@ -92,15 +126,24 @@ object HaloPython {
     }
 
     /**
-     * The real facade, for when this spike grows into the app:
-     * `call(method, payloadJson) -> json`. Strings both ways, because Chaquopy
-     * marshals str<->String for free while dict<->Map needs PyObject walking.
+     * The facade: `call(method, payloadJson) -> json`. Strings both ways,
+     * because Chaquopy marshals str<->String for free while dict<->Map needs
+     * PyObject walking.
+     *
+     * Blocking, and it starts the interpreter — fine from a test or from
+     * [on], but app code should go through
+     * [com.halo.serdes.probe.api.HaloApi] instead, which cannot be called off
+     * the interpreter thread and returns parsed results rather than raw JSON.
      */
     fun call(context: Context, method: String, payloadJson: String = "{}"): String {
         start(context)
-        return Python.getInstance()
+        return callOnThisThread(method, payloadJson)
+    }
+
+    /** As [call], but assumes the caller is already on [dispatcher] and started. */
+    internal fun callOnThisThread(method: String, payloadJson: String): String =
+        Python.getInstance()
             .getModule("halo_serdes_app.api")
             .callAttr("call", method, payloadJson)
             .toString()
-    }
 }
