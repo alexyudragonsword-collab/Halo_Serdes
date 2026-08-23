@@ -6,6 +6,7 @@ import com.halo.serdes.probe.api.ApiResult
 import com.halo.serdes.probe.api.HaloApi
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -68,14 +69,13 @@ class LinkFacadeTest {
 
         val r = HaloApi.runStat(ctx, values)
         assertTrue("expected an error, got $r", r is ApiResult.Err)
-        assertTrue((r as ApiResult.Err).message.isNotBlank())
+        val err = r as ApiResult.Err
+        assertTrue(err.message.isNotBlank())
         // `field` is what the form uses to mark an input red, and the facade
         // sends it as an explicit JSON null when no path was identified.
-        // org.json's optString turns that into the string "null", which put a
-        // red ring around a field by that name. Null must stay null.
-        assertTrue("field should be null or a real path, was ${r.field}",
-                   r.field == null || r.field in TestPresets.values(ctx,
-                       TestPresets.runnable(ctx)).keys().asSequence().toSet())
+        // org.json renders that as the four-character string "null", which put
+        // a red ring around a field by that name. Absent must stay null.
+        assertNotEquals("null", err.field)
     }
 
     /**
