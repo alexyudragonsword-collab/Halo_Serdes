@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher applies its own mask to these two layers, so the art cannot be
+  dropped in whole: see android/tools/gen_launcher_icons.py, which derives
+  every PNG here from packaging/icon.png — the same master the Windows builds
+  render icon.ico from, so the phone and the exe cannot drift apart.
+
+  <monochrome> is what Android 13+ tints for themed icons. Older parsers skip
+  the element, so it lives in this file rather than a v33 variant.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>
