@@ -258,6 +258,21 @@ Kotlin 2.0 起 Compose 编译器随 Kotlin 本体发布,所以
 
 ---
 
+## 仪器化测试的日志约定
+
+`emulator` job 的 `script:` **必须保持成一条无引号的命令**:
+`reactivecircus/android-emulator-runner` 是用 `sh -c "<script>"` 执行它的,
+内嵌的双引号会把外层包裹闭合,命令当场畸形。踩过一次 —— 改成多行带引号的块之后,
+连续两次都在 ~90 秒挂掉且**没有任何测试报告**,而对那段文本单独跑 `sh -n` 是通过的
+(它作为 shell 合法,只是没能完整送达)。逻辑因此放进 `tools/run_instrumented.sh`。
+
+那个脚本额外做两件 Gradle 不给的事:
+
+1. **失败时把每个测试的 XML 打进日志。** Gradle 只报 HTML 报告路径,报告在 artifact 里;
+   artifact 打不开时,红色构建从日志无法定位。
+2. **成功时报出到底跑了几个。** `connectedDebugAndroidTest` 在**一个测试都没跑**的情况下
+   照样成功 —— 一个意思是"套件根本没执行"的绿勾比红叉更糟,所以零测试在这里按失败处理。
+
 ## 结构
 
 ```
@@ -273,6 +288,7 @@ android/
 ├── app/src/main/java/.../MainActivity.kt setContent 一行
 ├── app/src/androidTest/.../PythonStackTest.kt  M0 的判定(解释器与数值)
 ├── app/src/androidTest/.../LinkFacadeTest.kt   M4 的判定(界面走的那条路)
+├── tools/run_instrumented.sh             跑仪器化测试 + 在日志里报出到底跑了几个
 └── tools/gen_probe_golden.py             在 CI 宿主上生成 golden
 ```
 
