@@ -160,20 +160,10 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
-          # On failure, print the per-test XML into the log. Gradle only names
-          # the HTML report, which lives in an artifact — and an artifact you
-          # cannot open (proxy, no browser, CI-only) makes a red build
-          # undiagnosable from the log alone. The assertion messages are the
-          # whole point of writing them.
-          script: |
-            cd android
-            ./gradlew --no-daemon connectedDebugAndroidTest || {
-              echo "::group::Instrumented test detail"
-              find app/build/outputs/androidTest-results -name '*.xml' \
-                -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;
-              echo "::endgroup::"
-              exit 1
-            }
+          # Must stay a single quote-free command: this action runs `script`
+          # through `sh -c "<script>"`, so an embedded double quote truncates
+          # it. The failure detail lives in the script file instead.
+          script: bash android/tools/run_instrumented.sh
 
       - uses: actions/upload-artifact@v4
         if: always()
