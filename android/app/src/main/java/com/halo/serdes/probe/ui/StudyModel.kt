@@ -26,6 +26,16 @@ data class StudyMeta(
     val name: String,
     val title: String,
     val blurb: String,
+    /**
+     * True when this sweep needs a time-domain record rather than the
+     * statistical engine — the difference between under a second and minutes.
+     *
+     * Advertised by the facade, not decided here: it is the same
+     * "no study names in Kotlin" rule, and it is what lets the screen offer to
+     * reuse a run the user already made instead of starting a second one
+     * inside a call that shows no progress and cannot be cancelled.
+     */
+    val needsTime: Boolean,
     val plots: List<PlotSpec>,
 )
 
@@ -37,6 +47,7 @@ fun parseStudies(o: JSONObject): List<StudyMeta> {
             name = s.optString("name"),
             title = s.optString("title").ifBlank { s.optString("name") },
             blurb = s.optString("blurb"),
+            needsTime = s.optBoolean("needs_time"),
             plots = parsePlots(s.optJSONArray("plots")),
         )
     }.filter { it.name.isNotBlank() }

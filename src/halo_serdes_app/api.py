@@ -167,6 +167,7 @@ def _m_schema(_payload: dict) -> dict:
             # studies.py with a label and a plot spec makes it appear in every
             # UI with no change on the other side of the bridge.
             "studies": [{"name": n, "title": t, "blurb": b,
+                         "needs_time": n in _TIME_STUDIES,
                          "plots": studies.STUDY_PLOTS.get(n, [])}
                         for n, (t, b) in studies.STUDY_LABELS.items()],
             # Where the presets were found. A one-entry `presets` list means
@@ -261,6 +262,16 @@ def _m_run_com(payload: dict) -> dict:
             "summary": r.summary()}
 
 
+#: Studies whose record must come from the time-domain engine.
+#:
+#: Advertised to clients rather than kept here alone, because the difference is
+#: minutes: every other study runs the statistical engine (~0.4 s on ARM) while
+#: this one replays a bit-true datapath and needs a full time-domain run first.
+#: A client that knows can hand back a handle from a run the user already paid
+#: for, instead of starting a second one inside a call with no progress and no
+#: cancel.
+_TIME_STUDIES = {"fixedpoint"}
+
 #: studies.* take a record; fec_projection is config-independent.
 _STUDIES = {
     "reach": studies.reach_study, "crosstalk": studies.crosstalk_study,
@@ -289,7 +300,7 @@ def _m_study(payload: dict) -> dict:
     handle = payload.get("handle")
     rec = runner.get(handle) if handle else None
     if rec is None:
-        engines = ("time",) if name == "fixedpoint" else ("stat",)
+        engines = ("time",) if name in _TIME_STUDIES else ("stat",)
         rec = runner.run_from_values(payload.get("values") or {}, engines=engines)
         if not rec.ok:
             raise _RecordError(rec)

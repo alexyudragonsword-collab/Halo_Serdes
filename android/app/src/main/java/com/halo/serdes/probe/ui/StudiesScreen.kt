@@ -70,6 +70,10 @@ fun StudiesScreen(state: LinkUiState, vm: LinkViewModel) {
                 result = state.studyResults[study.name],
                 running = state.studyRunning == study.name,
                 enabled = state.ready && state.studyRunning == null,
+                // Only meaningful for the sweeps that need one; the card uses
+                // it to say whether pressing Run reuses that work or starts a
+                // fresh time-domain run inside this call.
+                hasTimeRun = state.time != null,
                 onRun = { vm.runStudy(study.name) },
             )
         }
@@ -87,6 +91,7 @@ private fun StudyCard(
     result: StudyResult?,
     running: Boolean,
     enabled: Boolean,
+    hasTimeRun: Boolean,
     onRun: () -> Unit,
 ) {
     var open by rememberSaveable(study.name) { mutableStateOf(false) }
@@ -112,6 +117,23 @@ private fun StudyCard(
                          style = MaterialTheme.typography.labelSmall,
                          color = MaterialTheme.colorScheme.onSurfaceVariant,
                          modifier = Modifier.padding(vertical = 6.dp))
+
+                    if (study.needsTime) {
+                        Text(
+                            if (hasTimeRun)
+                                "Reuses the time-domain run from the Link tab."
+                            else
+                                "Needs a time-domain run. Without one this " +
+                                    "starts a fresh one inside the call — " +
+                                    "minutes, with no progress and no cancel. " +
+                                    "Run one on the Link tab first.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (hasTimeRun)
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically) {

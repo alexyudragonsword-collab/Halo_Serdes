@@ -59,6 +59,11 @@ def test_schema_advertises_every_study_with_a_plot_spec():
     assert len(names) == len(set(names))
     for s in advertised:
         assert s["title"] and s["blurb"], s["name"]
+        # Which studies cost a time-domain run is the difference between 0.4 s
+        # and minutes. A client that does not know cannot offer to reuse a run
+        # the user already made, and starts a second one inside a call that
+        # reports no progress and cannot be cancelled.
+        assert s["needs_time"] == (s["name"] in api._TIME_STUDIES)
         assert s["plots"] == studies.STUDY_PLOTS[s["name"]]
         for panel in s["plots"]:
             assert panel["x"] and panel["y"], s["name"]

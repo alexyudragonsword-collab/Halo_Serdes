@@ -462,6 +462,14 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
         val payload = JSONObject()
             .put("name", name)
             .put("values", _state.value.values.toJson())
+        // A study that needs a time-domain record gets the handle of the run
+        // already sitting on the Link screen, rather than making the facade
+        // start another one inside this call — where it would block with no
+        // progress and no way to stop it.
+        val meta = _state.value.studies.firstOrNull { it.name == name }
+        if (meta?.needsTime == true) {
+            _state.value.time?.handle?.let { payload.put("handle", it) }
+        }
         when (val r = HaloApi.call(ctx, "study", payload)) {
             is ApiResult.Err ->
                 _state.update { it.copy(studyRunning = null, error = r) }
