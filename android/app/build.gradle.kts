@@ -24,13 +24,6 @@ android {
         }
     }
 
-    // The Python source is the repository's own package tree — NOT a copy.
-    // Keeping one source of truth is the whole point: the app and the desktop
-    // build must never diverge (project invariant #1).
-    sourceSets["main"].python {
-        srcDirs("src/main/python", "../../src")
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = false          // Chaquopy uses reflection
@@ -46,19 +39,40 @@ android {
 }
 
 chaquopy {
+    // Python source dirs belong to the `chaquopy` block, NOT to android's
+    // sourceSets — `sourceSets["main"].python { }` does not compile under the
+    // Kotlin DSL (the `python` extension is registered dynamically), which is
+    // what the first CI run reported. Kotlin DSL also needs setSrcDirs(list),
+    // and because it *replaces* the default, "src/main/python" is listed
+    // explicitly alongside the repo tree.
+    //
+    // "../../src" resolves from android/app to the repository's own src/, so
+    // the Python is the real package tree and not a copy — desktop and phone
+    // must never diverge (project invariant #1).
+    sourceSets.getByName("main") {
+        setSrcDirs(listOf("src/main/python", "../../src"))
+    }
+
     defaultConfig {
-        version = "${properties["pythonVersion"]}"
+        // providers.gradleProperty is unambiguous here; plain `properties[...]`
+        // is what failed inside the root plugins block.
+        version = providers.gradleProperty("pythonVersion").get()
 
         pip {
-            // Exactly what src/halo_serdes needs and no more. matplotlib is
-            // never imported by the library (only by examples/), numba has no
+            // Only what M0 needs to give an answer. matplotlib is never
+            // imported by the library (only by examples/), numba has no
             // Android wheels and is optional by design, and galois is only
             // needed for real FEC encode/decode — the projection formulas use
             // scipy.stats alone.
+            //
+            // scikit-rf is deliberately NOT here: it declares pandas as a hard
+            // dependency (even though it never imports it at import time), so
+            // it risks failing the build on a package M0 has no opinion about.
+            // Touchstone import belongs to a later milestone; adding it now
+            // would only blur the one question this spike asks.
             install("numpy")
             install("scipy")     // <-- the wheel whose existence M0 tests
-            install("scikit-rf") // pure Python; enables Touchstone import
-            install("PyYAML")
+            install("PyYAML")    // presets are YAML; loader imports it lazily
         }
 
         // Keep .py sources so a traceback on the device names real lines.

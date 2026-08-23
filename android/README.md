@@ -69,6 +69,17 @@ cd android
 
 ---
 
+## M0 的 pip 清单为什么这么短
+
+只装 **numpy + scipy + PyYAML**。
+
+- **不装 matplotlib** —— 核心库从不 import 它(只有 `examples/` 用)。
+- **不装 numba** —— Android 无 wheel,且铁律 #4 规定纯 Python 内核才是正确性基准。
+- **不装 scikit-rf** —— 它把 `pandas` 声明为硬依赖(尽管运行时从不 import)。
+  M0 的问题是 **scipy**,Touchstone 导入是后续里程碑的事;现在加进来只会让构建
+  可能挂在一个与本次提问无关的包上。探针已验证:skrf 缺失时它优雅报告 MISSING,
+  计算与 golden 比对照常通过。
+
 ## 版本旋钮都在 `gradle.properties`
 
 ```properties
@@ -81,8 +92,22 @@ kotlinVersion=2.0.21
 **这些版本本身就是实验对象。** 若 Chaquopy 新版已支持更高的 Python,把 `pythonVersion`
 调高让 CI 告诉你结果 —— wheel 缺失会以清晰的 pip 错误让构建失败,这正是想要的答案。
 
-> ⚠️ 这些版本号在本环境中**未经真实构建验证**(沙箱无 Android SDK,且出网受限)。
-> 首次 CI 运行很可能需要微调版本组合 —— 这是预期内的,也正是先做 M0 的意义。
+### 首次 CI 运行的结果(已修)
+
+第一次跑就暴露了一个 Kotlin DSL 问题,也正是先做 M0 的价值:
+
+```
+e: app/build.gradle.kts:30: Unresolved reference: python
+   sourceSets["main"].python { srcDirs(...) }
+```
+
+Chaquopy 的 `python` 源集是**动态注册的扩展**,Kotlin DSL 里 `android { sourceSets[...] }`
+拿不到它。正确写法是放进 `chaquopy {}` 并用 `setSrcDirs(listOf(...))`(它**替换**默认值,
+所以 `src/main/python` 要显式列上)。
+
+**同时这次失败也带来了好消息**:错误发生在构建脚本编译阶段,说明
+**AGP 8.7.3 / Kotlin 2.0.21 / Chaquopy 16.1.0 三个插件都已成功解析下载** ——
+版本组合本身是通的。
 
 ---
 
