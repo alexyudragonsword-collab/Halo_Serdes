@@ -36,7 +36,27 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+
+    // The repo's configs/ ride along as Android assets, staged by the task
+    // below. They cannot go through Chaquopy's python srcDirs: that importer
+    // serves modules out of an archive, so a plain Path() lookup for a
+    // non-Python data file never resolves. HaloPython extracts these to the
+    // app's private storage and points $HALO_SERDES_DATA_DIR at them.
+    sourceSets.getByName("main") {
+        assets.srcDir(layout.buildDirectory.dir("generated/haloAssets"))
+    }
 }
+
+// configs/ only (36 KB). data/channels/*.s4p is deliberately left out: reading
+// Touchstone needs scikit-rf, which M0 does not install, so the 4.4 MB would
+// buy nothing this milestone can use.
+val stageHaloAssets by tasks.registering(Copy::class) {
+    from(rootProject.file("../configs")) { into("halo_data/configs") }
+    into(layout.buildDirectory.dir("generated/haloAssets"))
+}
+
+tasks.withType<com.android.build.gradle.tasks.MergeSourceSetFolders>()
+    .configureEach { dependsOn(stageHaloAssets) }
 
 chaquopy {
     // Python source dirs belong to the `chaquopy` block, NOT to android's

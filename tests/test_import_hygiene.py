@@ -75,6 +75,44 @@ def test_asset_resolution_survived_the_move():
     assert len(list(cb.CONFIGS_DIR.glob("*.yaml"))) == len(names) - 1
 
 
+def test_host_can_relocate_the_data_dir():
+    """``$HALO_SERDES_DATA_DIR`` is how Android supplies ``configs/``.
+
+    Chaquopy serves Python modules from an archive, so the ``__file__``-relative
+    search finds nothing on a device; the host app extracts the assets and
+    exports this variable before starting the interpreter. Read at import time,
+    hence a subprocess.
+    """
+    from halo_serdes_app import config_bridge as cb
+
+    r = _run_isolated((), f"""
+        import os, shutil, tempfile, pathlib
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        shutil.copytree({str(cb.CONFIGS_DIR)!r}, tmp / "configs")
+        os.environ["HALO_SERDES_DATA_DIR"] = str(tmp)
+        from halo_serdes_app import config_bridge as cb
+        assert cb.CONFIGS_DIR == tmp / "configs", cb.CONFIGS_DIR
+        assert len(cb.preset_names()) > 1
+        print("OK")
+    """)
+    assert r.returncode == 0, f"stdout={r.stdout}\nstderr={r.stderr}"
+    assert "OK" in r.stdout
+
+
+def test_missing_preset_fails_where_the_cause_is():
+    """A preset that cannot be found must raise, not degrade to defaults.
+
+    ``LinkConfig()`` defaults to a touchstone channel with no file, so the old
+    silent fallback turned "configs/ was not packaged" into "channel.file is
+    unset" raised from deep inside the engine — which is precisely how the
+    first on-device run misdiagnosed itself.
+    """
+    from halo_serdes_app import config_bridge as cb
+
+    with pytest.raises(KeyError, match="unknown preset"):
+        cb.load_preset("no such preset")
+
+
 def test_gui_shims_still_resolve():
     """The old halo_serdes_gui.* paths keep working after the move."""
     # importing the shim pulls halo_serdes_gui/__init__ -> the Dash app, which

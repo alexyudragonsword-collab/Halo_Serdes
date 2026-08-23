@@ -63,6 +63,26 @@ class PythonStackTest {
                    g.getBoolean("match"))
     }
 
+    /**
+     * The presets have to survive the trip into the APK.
+     *
+     * They live in the repo's `configs/`, outside the Python source tree, so
+     * they only arrive if the asset staging *and* the extraction *and* the
+     * `$HALO_SERDES_DATA_DIR` handshake all work. When they do not,
+     * `preset_names()` degrades to the single synthesised "Library defaults"
+     * — whose channel is a touchstone with no file — and the failure surfaces
+     * far downstream inside the engine. Assert it at the cause.
+     */
+    @Test
+    fun presetsSurvivedThePackaging() {
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val data = JSONObject(HaloPython.call(ctx, "schema")).getJSONObject("data")
+        val presets = data.getJSONArray("presets")
+        assertTrue("only ${presets.length()} preset(s) — configs/ not bundled; " +
+                   "config_bridge looked in ${data.getString("configs_dir")}",
+                   presets.length() > 1)
+    }
+
     @Test
     fun jsonFacadeIsReachableFromKotlin() {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext

@@ -92,6 +92,64 @@ kotlinVersion=2.0.21
 **这些版本本身就是实验对象。** 若 Chaquopy 新版已支持更高的 Python,把 `pythonVersion`
 调高让 CI 告诉你结果 —— wheel 缺失会以清晰的 pip 错误让构建失败,这正是想要的答案。
 
+### 已经得到的答案
+
+| 问题 | 答案 | 证据 |
+|---|---|---|
+| Py3.10 有 SciPy wheel 吗 | **有** | `assemble` 变绿 |
+| APK 多大 | **74.4 MB**(2 个 ABI,已压缩) | CI 产物,远低于估的 ~160 MB |
+| 解释器能在真机启动吗 | **能** | 真机跑出了 Python traceback |
+| numpy/scipy 在真机加载并计算吗 | **能** | `erfc`/`erfcinv`/`binom`/`curve_fit` 全过 |
+| 门面能从 Kotlin 调用吗 | **能** | `jsonFacadeIsReachableFromKotlin` 通过 |
+| 计算核与桌面数值一致吗 | **仍未知** | 被下面两件事挡住 |
+
+### 第二次运行的结果:presets 没进 APK(已修)
+
+真机与模拟器给出同一个错误:
+
+```
+ValueError: channel.kind is 'touchstone' but channel.file is unset
+```
+
+**这不是配置错误,是打包错误。** `configs/*.yaml` 在仓库根,不在 Python 源码树里,
+所以 Chaquopy 的 `srcDirs` 根本没带上它们;`config_bridge` 找不到 `configs/`,
+`preset_names()` 退化成只剩合成的 "Library defaults",而它的默认信道正是
+**touchstone 且无文件** —— 于是缺资源的问题伪装成了引擎的参数问题。
+
+修法有三处,缺一不可:
+
+1. **Gradle** `stageHaloAssets` 把 `configs/` 拷进 Android assets
+   (**不能**走 Chaquopy 的 python `srcDirs`:那个 importer 从归档里取模块,
+   普通 `Path()` 查一个非 Python 数据文件是查不到的)。
+2. **Kotlin** `HaloPython.start()` 把 assets 解到私有目录,并在 `Python.start()`
+   **之前**导出 `HALO_SERDES_DATA_DIR` —— `config_bridge` 在 import 期就把
+   `CONFIGS_DIR` 定死了,晚一步就没用。
+3. **Python** `load_preset()` 现在对找不到的预设**直接抛异常**。原来那个静默回退到
+   `LinkConfig()` 才是让这个错误跑到三层之外才现形的元凶。
+
+回归防线:`presetsSurvivedThePackaging`(仪器化,查 preset 数量并打印
+`configs_dir`)+ `test_host_can_relocate_the_data_dir`(宿主侧,钉住环境变量契约)。
+
+`data/channels/*.s4p`(4.4 MB)**故意不打包**:读 Touchstone 要 scikit-rf,而 M0 不装它。
+
+### 第二个发现:Chaquopy 给的版本比 pyproject 要求的老
+
+构建日志里的实际解析结果:
+
+```
+numpy-1.26.2   scipy-1.8.1        ← pyproject 声明的是 scipy>=1.11
+ERROR: scipy 1.8.1 has requirement numpy<1.25.0,>=1.17.3,
+       but you'll have numpy 1.26.2 which is incompatible
+```
+
+**scipy 1.8.1 是 2022 年的**,而且 pip 自己就报了这对组合不兼容。真机上它确实**加载成功
+并算出了 erfc**,但"能加载"不等于"算得一样"。因此新增 `wheel-versions` job:在宿主上把
+numpy/scipy 强行降到手机拿到的这两个版本,跑一遍手机会跑的计算路径 —— 比模拟器便宜得多,
+且失败时能指名原因,而不是等到 golden 比对时变成一个数字对不上。
+
+这也意味着 golden 比对(`rtol=1e-9`)现在跨的是**版本 + 平台**两个变量。若它报不一致,
+先看 `wheel-versions` 是绿是红再决定归因。
+
 ### 首次 CI 运行的结果(已修)
 
 第一次跑就暴露了一个 Kotlin DSL 问题,也正是先做 M0 的价值:
@@ -126,7 +184,7 @@ M0 的价值在于**快速给出明确的是/否**,任何与被测风险无关�
 android/
 ├── gradle.properties                     版本旋钮(实验对象)
 ├── settings.gradle.kts                   插件版本在此解析(plugins 块只接受常量)
-├── app/build.gradle.kts                  Chaquopy 的 pip 清单 + ABI 选择
+├── app/build.gradle.kts                  Chaquopy 的 pip 清单 + ABI 选择 + configs/ 资产暂存
 ├── app/src/main/python/halo_probe.py     探针:版本/scipy 入口/计算核/golden 比对
 ├── app/src/main/java/.../HaloPython.kt   与 Python 的唯一接触面
 ├── app/src/main/java/.../MainActivity.kt 一个按钮

@@ -6,6 +6,32 @@
 
 ---
 
+## [未发布] — Android（Chaquopy）M0 可行性验证
+
+### 新增
+- `src/halo_serdes_app/`：表现层无关的应用层（`config_bridge` / `studies` / `runner`
+  从 `halo_serdes_gui` 迁出，原路径留 re-export shim），加上 `api.py` —— 进出都是 JSON
+  字符串的门面，供任何非 Python UI 调用。
+- `android/`：M0 去风险工程（Chaquopy + 一个 Activity），以及回答 SciPy-wheel 问题的
+  `.github/workflows/android.yml`。golden 值由**同一 commit 在 CI 宿主上生成**，
+  设备重算后比对（`rtol=1e-9`），避免写死常量随引擎演进而腐化。
+- `tests/test_import_hygiene.py`：屏蔽 skrf/PyYAML/matplotlib/numba/galois/Dash 后，
+  手机的计算路径仍须跑通。
+
+### 修复
+- **Android 上 `configs/` 不在 APK 内**：它们在仓库根、不在 Python 源码树里，
+  Chaquopy 的 `srcDirs` 带不上，于是设备上只剩合成的 "Library defaults" 预设 ——
+  而它默认 touchstone 且无文件，最终以 `channel.file is unset` 的样子从引擎里炸出来。
+  改为经 Android assets 打包、首启解压、用 `HALO_SERDES_DATA_DIR` 交接。
+- **`load_preset()` 找不到预设时静默回退到 `LinkConfig()`**：正是它把上面那个打包问题
+  伪装成了配置问题。改为抛 `KeyError`/`FileNotFoundError`，并在消息里报出搜索过的目录。
+
+### 已知
+- Chaquopy 解析到 numpy 1.26.2 + **scipy 1.8.1**，而 `pyproject.toml` 声明 `scipy>=1.11`。
+  新增 `wheel-versions` job 在宿主上降级到这两个版本跑一遍手机的计算路径。
+
+---
+
 ## [未发布] — 文档与审计
 
 ### 新增

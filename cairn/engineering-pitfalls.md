@@ -2,10 +2,10 @@
 type: project_topic
 status: active
 summary: "开发中真实踩过、并付出返工代价的坑 —— 每条都带触发条件与判别方法"
-tags: [pitfalls, measurement, mlsd, benchmarking, serdes]
-contains: [pitfall, measurement-trap, api-trap, statistical-significance]
+tags: [pitfalls, measurement, mlsd, benchmarking, packaging, android, serdes]
+contains: [pitfall, measurement-trap, api-trap, packaging-trap, statistical-significance]
 created: "2026-08-18"
-updated: "2026-08-18"
+updated: "2026-08-23"
 related: [architecture-invariants.md]
 authoring_mode: ai_generated
 ---
@@ -38,6 +38,31 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 默认 `False` —— 对比两个 AMI 模型时必须让这个标志一致,否则会把"走了不同的流"
 误当成模型差异。踩过一次:一度以为 2.62 dB 的差异是 bug,实际只是流不同;
 对齐后两者逐位一致。
+
+### 打包 / 跨平台类
+
+**静默回退会把"资源没打包"伪装成"参数不对"。** `load_preset()` 曾经在预设文件找不到时
+悄悄返回 `LinkConfig()`,而它的默认信道是 **touchstone 且无文件** —— 于是 Android 上
+`configs/` 没进 APK 这件事,现形时的样子是引擎抛
+`channel.kind is 'touchstone' but channel.file is unset`,离真正的原因隔了三层。
+真机与模拟器都被这条误导过。**规则:找不到资源就在找不到的那一层抛,不要回退到默认值** ——
+尤其当默认值本身是不完整的。已改为抛 `KeyError`/`FileNotFoundError` 并在消息里报出
+搜索过的目录。
+
+**Chaquopy 的 importer 不是文件系统。** 它从归档里按需取模块,所以
+`Path(__file__).with_name("data.json")` 这类写法在设备上**不成立**;`__file__` 看着是
+真路径(`/data/data/<pkg>/files/chaquopy/AssetFinder/app/...`),但相邻的非 Python 文件
+不一定被解出来。非 Python 数据要么走 Android assets + 首启解压 + 环境变量交接,
+要么用 `__loader__.get_data()`。项目里两条路都用了(`configs/` 走前者,
+`probe_golden.json` 走后者的回退)。
+
+**环境变量交接必须在 `Python.start()` 之前。** `config_bridge` 在 import 期就把
+`CONFIGS_DIR` 定死,晚一步设 `HALO_SERDES_DATA_DIR` 完全没用。
+
+**Chaquopy 装的不是 `pyproject.toml` 要的版本。** 实际解析到 numpy 1.26.2 + **scipy 1.8.1**
+(声明的是 `scipy>=1.11`),pip 自己都报这对不兼容。它能加载 ≠ 算得一样。
+`android` workflow 的 `wheel-versions` job 就是为此存在:在宿主上降到手机的版本跑一遍。
+做 golden 比对时记住它跨的是**版本 + 平台**两个变量,别一上来就归因给平台。
 
 ### MLSD 类
 

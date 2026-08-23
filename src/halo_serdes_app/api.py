@@ -140,8 +140,14 @@ def _m_schema(_payload: dict) -> dict:
     it ships verbatim — the client builds every widget from it and no field
     definition is duplicated outside Python.
     """
+    from .config_bridge import CONFIGS_DIR
+
     return {"sections": _jsonable(SECTIONS),
             "presets": preset_names(),
+            # Where the presets were found. A one-entry `presets` list means
+            # configs/ was not shipped; reporting the path it looked at turns
+            # that from a mystery into a packaging bug you can see.
+            "configs_dir": str(CONFIGS_DIR),
             "api_version": API_VERSION}
 
 

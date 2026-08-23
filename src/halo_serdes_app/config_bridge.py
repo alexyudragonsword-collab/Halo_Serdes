@@ -22,6 +22,21 @@ from typing import Any
 from halo_serdes.config import LinkConfig, apply_overrides, load_config
 from halo_serdes.config.schema import SCHEMA_VERSION
 
+#: Environment override for the directory holding ``configs/`` (and any other
+#: bundled data). Android is the reason it exists: Chaquopy's importer serves
+#: Python modules out of an asset archive, so ``__file__``-relative lookups do
+#: not reach the repo's ``configs/`` at all. The host app extracts the assets
+#: into its private storage and points this at them before starting Python.
+DATA_DIR_ENV = "HALO_SERDES_DATA_DIR"
+
+
+def _env_data_dir() -> Path | None:
+    import os
+
+    raw = os.environ.get(DATA_DIR_ENV)
+    return Path(raw) if raw else None
+
+
 def _find_configs_dir() -> Path:
     """Locate the bundled ``configs/`` dir in source or a frozen build.
 
@@ -33,6 +48,9 @@ def _find_configs_dir() -> Path:
 
     here = Path(__file__).resolve()
     cands = []
+    env = _env_data_dir()
+    if env:                                            # host-supplied (Android)
+        cands += [env / "configs", env]
     meipass = getattr(sys, "_MEIPASS", None)           # PyInstaller extract dir
     if meipass:
         cands.append(Path(meipass) / "configs")
@@ -62,6 +80,9 @@ def _data_roots() -> list[Path]:
     import sys
 
     roots = [Path.cwd()]
+    env = _env_data_dir()
+    if env:
+        roots.append(env)
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
         roots.append(Path(meipass))
@@ -371,11 +392,26 @@ def preset_names() -> list[str]:
 
 
 def load_preset(name: str) -> LinkConfig:
+    """Load a named preset. Raises rather than falling back to defaults.
+
+    The silent ``LinkConfig()`` fallback this used to have was actively
+    harmful: ``LinkConfig()`` defaults to ``channel.kind='touchstone'`` with no
+    file, so a missing preset file surfaced far downstream as "channel.file is
+    unset" from the engine — which is exactly how a packaging bug (``configs/``
+    not shipped in an APK) got mistaken for a config bug. Fail where the cause
+    is.
+    """
     if name == "Library defaults":
         return LinkConfig()
     path = _preset_paths().get(name)
-    if path is None or not path.exists():
-        return LinkConfig()
+    if path is None:
+        raise KeyError(
+            f"unknown preset {name!r}; available: {preset_names()}")
+    if not path.exists():
+        raise FileNotFoundError(
+            f"preset {name!r} maps to {path}, which does not exist — the "
+            f"configs/ directory was not found (looked under {CONFIGS_DIR}). "
+            f"Set ${DATA_DIR_ENV} to the directory containing configs/.")
     return _resolve_channel(load_config(path))
 
 

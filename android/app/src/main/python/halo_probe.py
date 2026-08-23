@@ -84,6 +84,31 @@ def _scipy_entry_points() -> dict:
     }
 
 
+def _assets() -> dict:
+    """Where the bundled ``configs/`` landed, and whether they landed at all.
+
+    On a device this is not a formality: Chaquopy serves Python modules from an
+    archive, so ``config_bridge``'s ``__file__``-relative search cannot see the
+    repo's ``configs/``. They arrive only via the host app extracting assets and
+    exporting ``$HALO_SERDES_DATA_DIR``. Report it, so a packaging slip reads as
+    "no presets" here instead of as an engine error three layers down.
+    """
+    from halo_serdes_app import api
+
+    r = json.loads(api.call("schema"))
+    if not r["ok"]:
+        return {"ok": False, "error": r["error"]}
+    data = r["data"]
+    return {
+        "HALO_SERDES_DATA_DIR": os.environ.get("HALO_SERDES_DATA_DIR"),
+        "configs_dir": data["configs_dir"],
+        "presets": len(data["presets"]),
+        # "Library defaults" is synthesised in code, so a lone entry means the
+        # configs directory was not found.
+        "ok": len(data["presets"]) > 1,
+    }
+
+
 def _compute_core() -> dict:
     """Run the real thing: statistical engine + 802.3 COM + FEC projection."""
     from halo_serdes_app import api
@@ -138,10 +163,19 @@ def _load_golden() -> dict | None:
     import pathlib
 
     p = pathlib.Path(__file__).with_name("probe_golden.json")
-    if not p.is_file():
-        return None
+    raw: str | None = None
+    if p.is_file():
+        raw = p.read_text()
+    else:
+        # Chaquopy serves this module from an asset archive and only extracts
+        # what is asked for, so the sibling file may not exist on disk even
+        # though it shipped. The importer's loader can still hand it over.
+        try:
+            raw = __loader__.get_data(str(p)).decode()   # noqa: F821
+        except Exception:
+            return None
     try:
-        return json.loads(p.read_text())["compute"]
+        return json.loads(raw)["compute"]
     except Exception:
         return None
 
@@ -152,6 +186,7 @@ def run() -> str:
     try:
         report["versions"] = _versions()
         report["scipy"] = _scipy_entry_points()
+        report["assets"] = _assets()
         compute = _compute_core()
         report["compute"] = compute
         report["golden"] = _compare(compute, _load_golden())
@@ -166,7 +201,13 @@ def summary() -> str:
     """A few lines fit for a phone screen."""
     r = json.loads(run())
     if "error" in r:
-        return f"FAILED\n{r['error']['type']}: {r['error']['message']}"
+        # The asset block is the most common cause and the least obvious from
+        # the traceback, so show it alongside the failure rather than making
+        # someone pull the full JSON.
+        a = r.get("assets") or {}
+        hint = ("" if a.get("ok", True) else
+                f"\nconfigs/ NOT bundled — looked in {a.get('configs_dir')}")
+        return f"FAILED\n{r['error']['type']}: {r['error']['message']}{hint}"
     v, c = r["versions"], r["compute"]
     g = r.get("golden", {})
     verdict = ("golden MATCH" if g.get("match")

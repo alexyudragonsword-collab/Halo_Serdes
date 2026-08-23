@@ -87,6 +87,39 @@ jobs:
           path: android/app/build/outputs/apk/**/*.apk
           retention-days: 14
 
+  wheel-versions:
+    # Chaquopy does not ship what pyproject asks for. Its index resolves
+    # numpy 1.26.2 and **scipy 1.8.1** (2022) against a declared floor of
+    # scipy>=1.11 — and pip itself flags the pair as incompatible
+    # ("scipy 1.8.1 has requirement numpy<1.25.0"). It evidently loads, but
+    # "loads" is not "computes the same thing".
+    #
+    # So run the phone's compute path on the phone's exact versions, on a
+    # host. This is far cheaper than an emulator and fails in a way that names
+    # the cause, instead of arriving as a numerical mismatch later.
+    name: library on Chaquopy's actual wheel versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install, then pin to what Chaquopy resolves
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+          # --no-deps: pyproject's floors would otherwise refuse these, which
+          # is precisely the situation under test.
+          pip install --no-deps --force-reinstall "numpy==1.26.2" "scipy==1.8.1"
+          python -c "import numpy, scipy; print(numpy.__version__, scipy.__version__)"
+      - name: The compute path the phone actually runs
+        run: pytest -q tests/test_import_hygiene.py tests/test_api_json.py
+      - name: Probe end to end
+        run: |
+          python android/tools/gen_probe_golden.py
+          python android/app/src/main/python/halo_probe.py
+
   emulator:
     name: run on emulator (proves the stack computes)
     runs-on: ubuntu-latest
