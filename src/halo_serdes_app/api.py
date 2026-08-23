@@ -57,6 +57,10 @@ MAX_SERIES_POINTS = 2048
 MAX_HEATMAP_ROWS = 256
 MAX_HEATMAP_COLS = 128
 
+#: log10 clamp for eye densities. Below this the statistical engine has not
+#: resolved a probability at all, so it marks absence rather than a value.
+EYE_LOG_FLOOR = -18.0
+
 
 # --------------------------------------------------------------- helpers ---
 
@@ -286,8 +290,24 @@ def _m_series(payload: dict) -> dict:
             raise ValueError("no statistical result on this handle")
         z = _reduce_heatmap(rec.stat.eye_pdf, MAX_HEATMAP_ROWS, MAX_HEATMAP_COLS)
         # log scale: the informative range is the low-probability skirt
-        z = np.log10(np.maximum(z, 1e-18))
-        return {"kind": "heatmap", "z": _jsonable(z), "zmin": -12.0, "zmax": 0.0,
+        z = np.log10(np.maximum(z, 10.0 ** EYE_LOG_FLOOR))
+        # Report the range the data actually occupies, plus the clamp floor.
+        #
+        # This used to declare a fixed -12..0. Neither end was real: a typical
+        # eye tops out near -2.7 (so the top third of any colour ramp went
+        # unused) and a third of the cells sit at the -18 clamp, well below the
+        # stated minimum. A client colouring by the declared range produced a
+        # washed-out picture that also implied the floor cells held a
+        # measured value.
+        #
+        # Cells at `floor` are not a small probability — they are "no
+        # probability resolved on this grid", which a renderer should show as
+        # absence rather than as the darkest colour in the scale.
+        above = z[z > EYE_LOG_FLOOR]
+        return {"kind": "heatmap", "z": _jsonable(z),
+                "floor": EYE_LOG_FLOOR,
+                "zmin": float(above.min()) if above.size else EYE_LOG_FLOOR,
+                "zmax": float(z.max()),
                 "rows": int(z.shape[0]), "cols": int(z.shape[1])}
     if key == "bathtub":
         if rec.stat is None:

@@ -174,6 +174,29 @@ def test_eye_heatmap_is_decimated_before_transport(values):
     assert all(v <= 0.0 for row in d["z"] for v in row)
 
 
+def test_eye_heatmap_range_describes_the_data_it_ships():
+    """The colour range must match the array, and the floor must be nameable.
+
+    It previously declared a fixed -12..0. Neither end was real — a typical eye
+    tops out near -2.7, so the top third of any ramp went unused, and about a
+    third of the cells sit at the -18 clamp, below the stated minimum. A client
+    colouring by that range drew a washed-out picture and implied the floor
+    cells held a measured value, when they mean the opposite: no probability
+    resolved on this grid.
+    """
+    r = call("preset", name="NRZ 28G analytic (COM/xtalk)")["data"]["values"]
+    h = call("run_stat", values=r)["data"]["handle"]
+    d = call("series", handle=h, key="stat_eye")["data"]
+
+    assert d["floor"] == api.EYE_LOG_FLOOR
+    flat = [v for row in d["z"] for v in row]
+    assert min(flat) >= d["floor"]                       # nothing below the clamp
+    assert d["zmax"] == max(flat)                        # top of the ramp is reachable
+    above = [v for v in flat if v > d["floor"]]
+    assert d["zmin"] == min(above)                       # bottom excludes the floor
+    assert d["zmin"] > d["floor"]
+
+
 def test_run_com_is_all_scalars(values):
     d = call("run_com", values=values)["data"]
     for k in ("com_db", "a_signal", "a_noise", "fom_db", "fom_isi",

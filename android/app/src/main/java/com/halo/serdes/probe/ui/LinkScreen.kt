@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +27,7 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.halo.serdes.probe.api.ApiResult
+import com.halo.serdes.probe.ui.charts.EyeHeatMap
+import com.halo.serdes.probe.ui.charts.LogLineChart
 
 /**
  * Pick a preset, edit any of its parameters, run the statistical engine, read
@@ -108,7 +113,7 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
 
             s.error?.let { ErrorCard(it) }
 
-            s.stat?.let { r -> ResultCard(r) }
+            s.stat?.let { r -> ResultCard(r, s, onShowEye = vm::loadEye) }
 
             s.warnings.forEach {
                 InfoCard(
@@ -182,7 +187,11 @@ private fun SectionCard(
 }
 
 @Composable
-private fun ResultCard(r: StatSummary) = Card(Modifier.fillMaxWidth()) {
+private fun ResultCard(
+    r: StatSummary,
+    s: LinkUiState,
+    onShowEye: () -> Unit,
+) = Card(Modifier.fillMaxWidth()) {
     Column(Modifier.padding(12.dp)) {
         Text(
             "BER %.3e".format(r.ber),
@@ -201,8 +210,43 @@ private fun ResultCard(r: StatSummary) = Card(Modifier.fillMaxWidth()) {
         }
         KeyValue("SER", "%.3e".format(r.ser))
         KeyValue("best phase", "${r.bestPhi}")
-        KeyValue("bathtub points", "${r.bathtubPoints}")
         KeyValue("engine time", "%.0f ms".format(r.elapsedS * 1e3))
+
+        if (r.bathtubY.any { it > 0.0 }) {
+            Spacer(Modifier.height(8.dp))
+            LogLineChart(
+                x = r.bathtubX,
+                y = r.bathtubY,
+                yLabel = "BER vs sampling phase",
+                xLabel = "phase [UI]",
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        when {
+            s.eye != null -> {
+                Text("Statistical eye  (log₁₀ density)",
+                     style = MaterialTheme.typography.labelSmall,
+                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                EyeHeatMap(
+                    key = r.handle,
+                    z = s.eye.z,
+                    zmin = s.eye.zmin,
+                    zmax = s.eye.zmax,
+                    floorValue = s.eye.floor,
+                )
+                Text(
+                    "%.1f … %.1f, blank = no probability resolved"
+                        .format(s.eye.zmin, s.eye.zmax),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            s.eyeLoading -> CircularProgressIndicator(Modifier.size(20.dp))
+            // Not fetched with the run: a reduced eye is still ~4k numbers and
+            // most presses of Run are to read a BER.
+            else -> TextButton(onClick = onShowEye) { Text("Show statistical eye") }
+        }
     }
 }
 

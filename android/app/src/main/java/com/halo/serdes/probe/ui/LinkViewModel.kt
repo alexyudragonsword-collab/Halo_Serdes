@@ -21,8 +21,23 @@ data class StatSummary(
     val ber: Double,
     val ser: Double,
     val bestPhi: Int,
-    val bathtubPoints: Int,
     val elapsedS: Double,
+    /** Phase axis in UI and the BER at each phase — the bathtub, plot-ready. */
+    val bathtubX: List<Double> = emptyList(),
+    val bathtubY: List<Double> = emptyList(),
+)
+
+/**
+ * The statistical eye, already reduced and log10-scaled by the facade.
+ *
+ * `floor` marks cells where no probability was resolved at all, which is not
+ * the same as a very small one — the renderer shows them as absence.
+ */
+data class EyeMap(
+    val z: List<List<Double>>,
+    val zmin: Double,
+    val zmax: Double,
+    val floor: Double,
 )
 
 /** The mixed-signal envelope banner: `ok` / `warn` / `crit` plus a message. */
@@ -46,6 +61,8 @@ data class LinkUiState(
      */
     val channelIssue: String? = null,
     val stat: StatSummary? = null,
+    val eye: EyeMap? = null,
+    val eyeLoading: Boolean = false,
     val warnings: List<String> = emptyList(),
     val busy: Boolean = false,
     val validating: Boolean = false,
@@ -200,7 +217,7 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
         val values = _state.value.values
         if (values.isEmpty()) return@launch
         val previous = _state.value.stat?.handle
-        _state.update { it.copy(busy = true, error = null) }
+        _state.update { it.copy(busy = true, error = null, eye = null) }
 
         when (val r = HaloApi.runStat(ctx, values.toJson())) {
             is ApiResult.Err -> _state.update { it.copy(busy = false, error = r) }
@@ -215,13 +232,52 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
                             ber = d.optDouble("ber"),
                             ser = d.optDouble("ser"),
                             bestPhi = d.optInt("best_phi"),
-                            bathtubPoints = d.optJSONObject("bathtub")
-                                ?.optJSONArray("x")?.length() ?: 0,
                             elapsedS = d.optDouble("elapsed_s"),
+                            bathtubX = d.optJSONObject("bathtub")
+                                ?.optJSONArray("x").toDoubleList(),
+                            bathtubY = d.optJSONObject("bathtub")
+                                ?.optJSONArray("y").toDoubleList(),
                         ),
                     )
                 }
                 previous?.let { HaloApi.release(ctx, it) }
+            }
+        }
+    }
+
+    /**
+     * Fetch the statistical eye for the current result.
+     *
+     * On demand rather than with every run: it is the one payload big enough to
+     * be worth not sending — a reduced map is still ~4k numbers, and most
+     * presses of Run are to read a BER, not to look at the eye.
+     */
+    fun loadEye() = viewModelScope.launch {
+        val handle = _state.value.stat?.handle ?: return@launch
+        if (_state.value.eye != null || _state.value.eyeLoading) return@launch
+        _state.update { it.copy(eyeLoading = true) }
+
+        val payload = JSONObject().put("handle", handle).put("key", "stat_eye")
+        when (val r = HaloApi.call(ctx, "series", payload)) {
+            is ApiResult.Err ->
+                _state.update { it.copy(eyeLoading = false, error = r) }
+            is ApiResult.Ok -> {
+                val rows = r.data.optJSONArray("z")
+                val z = if (rows == null) emptyList()
+                        else (0 until rows.length()).map {
+                            rows.optJSONArray(it).toDoubleList()
+                        }
+                _state.update {
+                    it.copy(
+                        eyeLoading = false,
+                        eye = EyeMap(
+                            z = z,
+                            zmin = r.data.optDouble("zmin", -18.0),
+                            zmax = r.data.optDouble("zmax", 0.0),
+                            floor = r.data.optDouble("floor", -18.0),
+                        ),
+                    )
+                }
             }
         }
     }
@@ -247,6 +303,9 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
         const val DERIVE_DEBOUNCE_MS = 300L
     }
 }
+
+private fun org.json.JSONArray?.toDoubleList(): List<Double> =
+    if (this == null) emptyList() else List(length()) { optDouble(it) }
 
 private fun JSONObject?.toStringMap(): Map<String, String> {
     if (this == null) return emptyMap()

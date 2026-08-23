@@ -13,8 +13,29 @@ Compose UI  ──►  HaloApi (信封解析)  ──►  HaloPython (单线程 
                                     halo_serdes(计算核)
 ```
 
-**当前进度:M5。** 选预设 → **改任意参数** → 看派生量与包络告警 → 跑统计引擎 → 读 BER。
-图表是 M6,Touchstone 导入是 M8。
+**当前进度:M6。** 选预设 → 改任意参数 → 看派生量与包络告警 → 跑统计引擎 →
+读 BER **+ 浴盆曲线 + 统计眼**。时域长跑是 M7,Touchstone 导入是 M8。
+
+### 图表是画出来的,没有引入图表库
+
+要画的形状就两种(对数十倍频程的浴盆、密度图),而一个通用库会带来它自己的版本匹配风险,
+换来一堆用不到的功能。两个决定值得记:
+
+- **纵轴按数据自适应,不写死 1e-30…1。** 舒适链路的浴盆可能只跨 5 个数量级,
+  硬撑到 30 个会把曲线压成顶边一条线。
+- **眼图用一张缩放的位图,不是逐格 `drawRect`。** 256×128 是 32768 个格子,
+  每帧发这么多绘制调用正是图表卡顿的原因。位图按 run handle 缓存 ——
+  用 `z` 做 remember key 意味着每次重组都要深比较 32768 个 double,比绘制还贵。
+
+### 顺带修掉的一个 API 缺陷
+
+`series(stat_eye)` 原本声明 `zmin=-12, zmax=0`,**两端都不是真的**:典型眼图最大值约 −2.7
+(色带顶部三分之一永远用不到),而约三分之一的格子压在 −18 的钳位底(低于声称的下限)。
+按声明的范围上色会画出一张发灰的图,而且暗示钳位格子里有测到的值 —— 恰恰相反,
+它们的含义是**这个网格上没有解出概率**。
+
+现在返回数据**实际**占据的范围,外加显式的 `floor`;渲染时 floor 格子画成背景色而不是
+色带最暗端。宿主 `test_eye_heatmap_range_describes_the_data_it_ships` 钉住这条。
 
 ### 表单不是手写的
 
@@ -302,10 +323,12 @@ android/
 ├── app/src/main/java/.../ui/FormFields.kt     按 kind 渲染的控件
 ├── app/src/main/java/.../ui/LinkViewModel.kt  状态、去抖校验、handle 生命周期
 ├── app/src/main/java/.../ui/LinkScreen.kt     Compose 界面
+├── app/src/main/java/.../ui/charts/Charts.kt  Canvas 绘图(对数线图 + 密度图)
 ├── app/src/main/java/.../MainActivity.kt setContent 一行
 ├── app/src/androidTest/.../PythonStackTest.kt  M0 的判定(解释器与数值)
 ├── app/src/androidTest/.../LinkFacadeTest.kt   M4 的判定(界面走的那条路)
 ├── app/src/androidTest/.../FormContractTest.kt M5 的判定(表单与 schema 不许漂移)
+├── app/src/androidTest/.../ChartDataTest.kt    M6 的判定(图表数据有限且范围自洽)
 ├── tools/run_instrumented.sh             跑仪器化测试 + 在日志里报出到底跑了几个
 └── tools/gen_probe_golden.py             在 CI 宿主上生成 golden
 ```
