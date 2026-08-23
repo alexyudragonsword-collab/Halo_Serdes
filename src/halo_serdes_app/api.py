@@ -355,6 +355,54 @@ def _m_series(payload: dict) -> dict:
     raise ValueError(f"unknown series key {key!r}")
 
 
+def _m_result(payload: dict) -> dict:
+    """Summarise a stored record — whichever engines actually ran on it.
+
+    ``poll`` hands back a handle and stops there; without this there is no way
+    to read what a finished time-domain run produced. Kept separate from
+    ``start_time_run`` so a result survives the job being polled to completion
+    and can be re-read after a rotation.
+
+    ``n_errors`` and ``n_checked`` are reported next to the BER, not buried.
+    A time-domain BER is a ratio of counted errors, and this project has
+    already been misled once by a difference computed on four of them: at
+    20 000 symbols a comfortable link produces *zero* errors, and the honest
+    reading of that is "below what this run can measure", not 0.0.
+    """
+    rec = runner.get(payload.get("handle"))
+    if rec is None:
+        raise KeyError(f"unknown handle {payload.get('handle')!r}")
+    out: dict[str, Any] = {"handle": rec.id, "engines": list(rec.engines),
+                           "elapsed_s": rec.elapsed_s,
+                           "warnings": rec.warnings,
+                           "series": []}
+    if rec.stat is not None:
+        out["stat"] = {"ber": _jsonable(rec.stat.ber),
+                       "ser": _jsonable(rec.stat.ser),
+                       "best_phi": int(rec.stat.best_phi)}
+        out["series"] += ["bathtub", "stat_eye"]
+    if rec.sim is not None:
+        b = rec.sim.ber
+        out["sim"] = {
+            "ber": _jsonable(b.ber), "ser": _jsonable(rec.sim.ser),
+            "n_errors": int(b.n_errors), "n_checked": int(b.n_checked),
+            # Two different numbers, both wanted. The engine discards
+            # warm-up and trailing partial symbols, so a "fast" run reports
+            # ~14 000 of the 20 000 the tier promised; showing only the
+            # requested figure would overstate what was measured.
+            "n_symbols": int(rec.sim.n_symbols),
+            "n_requested": int(rec.cfg.sim.n_symbols),
+            "slicer_snr_db": _jsonable(rec.sim.slicer_snr_db),
+            "sample_phase": int(rec.sim.sample_phase),
+            # An upper bound when nothing went wrong: with zero errors the
+            # measurement says only "better than roughly 1/n_checked".
+            "ber_is_upper_bound": b.n_errors == 0,
+        }
+        out["series"] += [k for k in ("y_slicer", "phase_track", "pd_hist")
+                          if k == "y_slicer" or k in rec.sim.extras]
+    return out
+
+
 def _m_release(payload: dict) -> dict:
     rid = payload.get("handle")
     runner._RESULTS.pop(rid, None)
@@ -534,7 +582,7 @@ _METHODS = {
     "schema": _m_schema, "preset": _m_preset, "derive": _m_derive,
     "to_yaml": _m_to_yaml, "from_yaml": _m_from_yaml,
     "run_stat": _m_run_stat, "run_com": _m_run_com, "study": _m_study,
-    "series": _m_series, "release": _m_release,
+    "series": _m_series, "result": _m_result, "release": _m_release,
     "start_time_run": _m_start_time_run, "poll": _m_poll, "cancel": _m_cancel,
     "import_touchstone": _m_import_touchstone,
 }

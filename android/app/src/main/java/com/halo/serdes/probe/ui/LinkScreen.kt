@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.halo.serdes.probe.api.ApiResult
+import com.halo.serdes.probe.run.TimeRunCard
 import com.halo.serdes.probe.ui.charts.EyeHeatMap
 import com.halo.serdes.probe.ui.charts.LogLineChart
 
@@ -114,6 +115,13 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
             s.error?.let { ErrorCard(it) }
 
             s.stat?.let { r -> ResultCard(r, s, onShowEye = vm::loadEye) }
+
+            TimeRunCard(
+                enabled = s.ready,
+                summary = s.time,
+                onStart = vm::startTimeRun,
+                onClear = vm::clearTimeRun,
+            )
 
             s.warnings.forEach {
                 InfoCard(

@@ -6,12 +6,15 @@ import androidx.lifecycle.viewModelScope
 import com.halo.serdes.probe.HaloPython
 import com.halo.serdes.probe.api.ApiResult
 import com.halo.serdes.probe.api.HaloApi
+import com.halo.serdes.probe.run.Quality
+import com.halo.serdes.probe.run.TimeRunController
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import android.content.Context
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -40,6 +43,29 @@ data class EyeMap(
     val floor: Double,
 )
 
+/**
+ * What a finished time-domain run measured.
+ *
+ * [berIsUpperBound] is the field that keeps this honest. A comfortable link at
+ * the fast tier makes zero errors, and the engine then reports `ber == 0.0` —
+ * which reads as "perfect" but means "below what this many symbols can see".
+ * [berBound] is that visibility limit, 1/n_checked.
+ */
+data class TimeSummary(
+    val handle: String,
+    val ber: Double,
+    val ser: Double,
+    val nErrors: Int,
+    val nChecked: Int,
+    val nSymbols: Int,
+    val nRequested: Int,
+    val slicerSnrDb: Double,
+    val elapsedS: Double,
+    val berIsUpperBound: Boolean,
+) {
+    val berBound: Double get() = if (nChecked > 0) 1.0 / nChecked else Double.NaN
+}
+
 /** The mixed-signal envelope banner: `ok` / `warn` / `crit` plus a message. */
 data class Envelope(val level: String, val message: String)
 
@@ -61,6 +87,7 @@ data class LinkUiState(
      */
     val channelIssue: String? = null,
     val stat: StatSummary? = null,
+    val time: TimeSummary? = null,
     val eye: EyeMap? = null,
     val eyeLoading: Boolean = false,
     val warnings: List<String> = emptyList(),
@@ -93,6 +120,59 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         loadSchema()
+        watchTimeRuns()
+    }
+
+    /**
+     * Turn a finished job into a summary.
+     *
+     * The controller only knows the job reached `done` and hands over a
+     * handle; reading what it measured is a separate call, made once here
+     * rather than by the screen, so a rotation does not re-fetch it.
+     */
+    private fun watchTimeRuns() = viewModelScope.launch {
+        var seen: String? = null
+        TimeRunController.state.collect { r ->
+            val handle = r.handle
+            if (r.state != "done" || handle == null || handle == seen) return@collect
+            seen = handle
+            val res = HaloApi.call(ctx, "result", JSONObject().put("handle", handle))
+            if (res !is ApiResult.Ok) return@collect
+            val sim = res.data.optJSONObject("sim") ?: return@collect
+            val previous = _state.value.time?.handle
+            _state.update {
+                it.copy(time = TimeSummary(
+                    handle = handle,
+                    ber = sim.optDouble("ber"),
+                    ser = sim.optDouble("ser"),
+                    nErrors = sim.optInt("n_errors"),
+                    nChecked = sim.optInt("n_checked"),
+                    nSymbols = sim.optInt("n_symbols"),
+                    nRequested = sim.optInt("n_requested"),
+                    slicerSnrDb = sim.optDouble("slicer_snr_db"),
+                    elapsedS = res.data.optDouble("elapsed_s"),
+                    berIsUpperBound = sim.optBoolean("ber_is_upper_bound"),
+                ))
+            }
+            if (previous != null && previous != handle) HaloApi.release(ctx, previous)
+        }
+    }
+
+    /**
+     * Start a time-domain run at the chosen tier.
+     *
+     * The values go to the controller, not to a coroutine here: the run must
+     * outlive this ViewModel, which a rotation destroys.
+     */
+    fun startTimeRun(context: Context, quality: Quality) {
+        val values = _state.value.values
+        if (values.isEmpty()) return
+        TimeRunController.start(context, values.toJson(), quality)
+    }
+
+    fun clearTimeRun(context: Context) {
+        TimeRunController.clear(context)
+        _state.update { it.copy(time = null) }
     }
 
     private fun loadSchema() = viewModelScope.launch {
@@ -283,6 +363,9 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        // Only the statistical handle. The time-domain one belongs to
+        // TimeRunController, which outlives this ViewModel on purpose —
+        // releasing it here would delete a finished run's result on rotation.
         val handle = _state.value.stat?.handle
         if (handle != null) {
             // viewModelScope is already cancelled here, so a coroutine would

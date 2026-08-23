@@ -39,7 +39,7 @@ def test_every_method_is_reachable_and_shaped():
     """
     assert set(api.methods()) == {
         "schema", "preset", "derive", "to_yaml", "from_yaml",
-        "run_stat", "run_com", "study", "series", "release",
+        "run_stat", "run_com", "study", "series", "result", "release",
         "start_time_run", "poll", "cancel", "import_touchstone"}
 
 
@@ -303,6 +303,43 @@ def test_time_run_reports_stages_and_yields_a_handle(values):
     assert call("series", handle=p["handle"], key="y_slicer",
                 max_points=32)["ok"]
     assert call("release", handle=p["handle"])["ok"]
+
+
+def test_result_reports_the_error_count_behind_a_time_domain_ber(values):
+    """A counted BER without its error count is not readable.
+
+    At the fast tier a comfortable link produces zero errors, and `ber` is then
+    0.0 — which reads as "perfect" when it means "below what 20 000 symbols can
+    measure". `ber_is_upper_bound` and the raw counts are what let a client say
+    which of the two it is. (This project has already drawn a wrong conclusion
+    from a difference computed on four errors; see engineering-pitfalls.)
+    """
+    job = call("start_time_run", values=values, quality="fast")["data"]["job"]
+    p = _await_job(job)
+    r = call("result", handle=p["handle"])
+    assert r["ok"], r
+    sim = r["data"]["sim"]
+    assert sim["n_requested"] == api.QUALITY_SYMBOLS["fast"]
+    # The engine drops warm-up and trailing partials, so what it measured is
+    # strictly less than what the tier asked for. Both are reported because a
+    # UI that shows only the tier would overstate the run.
+    assert 0 < sim["n_symbols"] < sim["n_requested"]
+    assert sim["n_checked"] > 0
+    assert sim["ber_is_upper_bound"] == (sim["n_errors"] == 0)
+    # whatever `series` keys it advertises must actually be fetchable
+    for key in r["data"]["series"]:
+        assert call("series", handle=p["handle"], key=key,
+                    max_points=16)["ok"], key
+    call("release", handle=p["handle"])
+
+
+def test_result_on_a_statistical_handle_carries_no_sim_half(values):
+    h = call("run_stat", values=values)["data"]["handle"]
+    d = call("result", handle=h)["data"]
+    assert "stat" in d and "sim" not in d
+    assert set(d["series"]) == {"bathtub", "stat_eye"}
+    assert call("result", handle="nope")["ok"] is False
+    call("release", handle=h)
 
 
 def test_only_one_run_at_a_time(values):

@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- A time-domain run is a minute or more of compute inside this process.
+         Backgrounded without a foreground service, the process is eligible for
+         death and the work vanishes with nothing on screen to say so. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Only to keep the run's own progress notification visible on API 33+.
+         Nothing else in the app posts notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="false"
         android:label="Halo SerDes"
@@ -16,5 +25,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- specialUse, not dataSync: nothing is being synchronised. Android
+             has no category for "long local computation", and dataSync carries
+             a daily runtime budget meant for network transfers that this work
+             would consume under a false description. specialUse is the type
+             that exists for exactly this case; the subtype below is its
+             required justification. -->
+        <service
+            android:name=".run.TimeRunService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Long-running numerical simulation started by the user" />
+        </service>
     </application>
 </manifest>
