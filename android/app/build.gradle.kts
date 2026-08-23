@@ -50,11 +50,12 @@ android {
     }
 }
 
-// configs/ only (36 KB). data/channels/*.s4p is deliberately left out: reading
-// Touchstone needs scikit-rf, which M0 does not install, so the 4.4 MB would
-// buy nothing this milestone can use.
+// configs/ (36 KB) and, since M8 installs scikit-rf, data/channels/*.s4p
+// (4.4 MB) as well — without a reader those files were dead weight, and with
+// one they are the difference between five runnable presets and nine.
 val stageHaloAssets by tasks.registering(Copy::class) {
     from(rootProject.file("../configs")) { into("halo_data/configs") }
+    from(rootProject.file("../data/channels")) { into("halo_data/data/channels") }
     into(layout.buildDirectory.dir("generated/haloAssets"))
 }
 
@@ -88,14 +89,24 @@ chaquopy {
             // needed for real FEC encode/decode — the projection formulas use
             // scipy.stats alone.
             //
-            // scikit-rf is deliberately NOT here: it declares pandas as a hard
-            // dependency (even though it never imports it at import time), so
-            // it risks failing the build on a package M0 has no opinion about.
-            // Touchstone import belongs to a later milestone; adding it now
-            // would only blur the one question this spike asks.
             install("numpy")
             install("scipy")     // <-- the wheel whose existence M0 tests
             install("PyYAML")    // presets are YAML; loader imports it lazily
+
+            // --no-deps because scikit-rf declares pandas as a hard
+            // dependency it never actually needs on this path. Verified on a
+            // host by blocking the import outright: skrf loads, and the whole
+            // Touchstone read (import_diff_network -> se2mm -> ChannelModel)
+            // completes. Letting pip honour the declaration would drag in
+            // pandas — a large compiled wheel — to satisfy metadata alone.
+            //
+            // The trade is real and stated: --no-deps means pip stops
+            // checking, so a future skrf that *does* import pandas would fail
+            // at runtime on the device rather than at build time.
+            // test_import_hygiene.py is what catches that, on the host, by
+            // blocking the same modules this build omits.
+            install("--no-deps", "scikit-rf")
+            install("typing-extensions")   // skrf's other declared dependency
         }
 
         // Keep .py sources so a traceback on the device names real lines.

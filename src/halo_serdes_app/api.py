@@ -163,6 +163,12 @@ def _m_schema(_payload: dict) -> dict:
 
     return {"sections": _jsonable(SECTIONS),
             "presets": preset_names(),
+            # Advertised, not hardcoded by the client. Adding a study to
+            # studies.py with a label and a plot spec makes it appear in every
+            # UI with no change on the other side of the bridge.
+            "studies": [{"name": n, "title": t, "blurb": b,
+                         "plots": studies.STUDY_PLOTS.get(n, [])}
+                        for n, (t, b) in studies.STUDY_LABELS.items()],
             # Where the presets were found. A one-entry `presets` list means
             # configs/ was not shipped; reporting the path it looked at turns
             # that from a mystery into a packaging bug you can see.

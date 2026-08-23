@@ -25,10 +25,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.halo.serdes.probe.api.ApiResult
 import com.halo.serdes.probe.run.TimeRunCard
+import com.halo.serdes.probe.touchstone.TouchstoneCard
 import com.halo.serdes.probe.ui.charts.EyeHeatMap
 import com.halo.serdes.probe.ui.charts.LogLineChart
 
@@ -63,92 +62,97 @@ import com.halo.serdes.probe.ui.charts.LogLineChart
 fun LinkScreen(vm: LinkViewModel = viewModel()) {
     val s by vm.state.collectAsStateWithLifecycle()
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Halo SerDes") }) }) { pad ->
-        Column(
-            Modifier
-                .padding(pad)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            PresetPicker(s, onSelect = vm::select)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        PresetPicker(s, onSelect = vm::select)
 
-            s.channelIssue?.let { msg ->
-                // Distinct from an error card: nothing is wrong with the
-                // config, the data file simply is not on this device. Run is
-                // disabled rather than left to fail.
-                InfoCard(
-                    MaterialTheme.colorScheme.surfaceVariant,
-                    MaterialTheme.colorScheme.onSurfaceVariant,
-                    "CHANNEL DATA UNAVAILABLE",
-                    "$msg\n\nTouchstone presets need a .s4p this build does not " +
-                        "ship. Pick an analytic preset, or import a file (later " +
-                        "milestone).",
-                )
-            }
-
-            s.envelope?.let { env ->
-                val (bg, fg) = envelopeColors(env.level)
-                InfoCard(bg, fg, env.level.uppercase(), env.message)
-            }
-
-            if (s.derived.isNotEmpty()) {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
-                        s.derived.forEach { (k, v) -> KeyValue(k, v) }
-                    }
-                }
-            }
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Button(onClick = vm::run, enabled = s.ready) {
-                    Text("Run statistical engine")
-                }
-                if (s.busy || s.validating) CircularProgressIndicator(Modifier.size(20.dp))
-            }
-
-            s.error?.let { ErrorCard(it) }
-
-            s.stat?.let { r -> ResultCard(r, s, onShowEye = vm::loadEye) }
-
-            TimeRunCard(
-                enabled = s.ready,
-                summary = s.time,
-                onStart = vm::startTimeRun,
-                onClear = vm::clearTimeRun,
-            )
-
-            s.warnings.forEach {
-                InfoCard(
-                    MaterialTheme.colorScheme.surfaceVariant,
-                    MaterialTheme.colorScheme.onSurfaceVariant,
-                    "WARNING", it,
-                )
-            }
-
-            HorizontalDivider()
-            Text(
-                "Parameters",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            s.sections.forEach { section ->
-                SectionCard(section, s, onChange = vm::setField)
-            }
-
-            // Where the presets came from. Invisible plumbing until it breaks,
-            // and when it breaks (nothing bundled) this line is the diagnosis.
-            Text(
-                "${s.presets.size} presets · ${s.sections.sumOf { it.fields.size }} " +
-                    "fields · ${s.configsDir}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        s.channelIssue?.let { msg ->
+            // Distinct from an error card: nothing is wrong with the
+            // config, the data file simply is not on this device. Run is
+            // disabled rather than left to fail.
+            InfoCard(
+                MaterialTheme.colorScheme.surfaceVariant,
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                "CHANNEL DATA UNAVAILABLE",
+                "$msg\n\nPick another preset, or import a Touchstone " +
+                    "file below.",
             )
         }
+
+        TouchstoneCard(
+            info = s.touchstone,
+            busy = s.touchstoneBusy,
+            error = s.touchstoneError,
+            onPick = vm::importTouchstone,
+            onAdopt = vm::adoptTouchstone,
+            onDiscard = vm::discardTouchstone,
+        )
+
+        s.envelope?.let { env ->
+            val (bg, fg) = envelopeColors(env.level)
+            InfoCard(bg, fg, env.level.uppercase(), env.message)
+        }
+
+        if (s.derived.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    s.derived.forEach { (k, v) -> KeyValue(k, v) }
+                }
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(onClick = vm::run, enabled = s.ready) {
+                Text("Run statistical engine")
+            }
+            if (s.busy || s.validating) CircularProgressIndicator(Modifier.size(20.dp))
+        }
+
+        s.error?.let { ErrorCard(it) }
+
+        s.stat?.let { r -> ResultCard(r, s, onShowEye = vm::loadEye) }
+
+        TimeRunCard(
+            enabled = s.ready,
+            summary = s.time,
+            onStart = vm::startTimeRun,
+            onClear = vm::clearTimeRun,
+        )
+
+        s.warnings.forEach {
+            InfoCard(
+                MaterialTheme.colorScheme.surfaceVariant,
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                "WARNING", it,
+            )
+        }
+
+        HorizontalDivider()
+        Text(
+            "Parameters",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        s.sections.forEach { section ->
+            SectionCard(section, s, onChange = vm::setField)
+        }
+
+        // Where the presets came from. Invisible plumbing until it breaks,
+        // and when it breaks (nothing bundled) this line is the diagnosis.
+        Text(
+            "${s.presets.size} presets · ${s.sections.sumOf { it.fields.size }} " +
+                "fields · ${s.configsDir}",
+            style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     }
 }
 

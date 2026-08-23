@@ -276,3 +276,34 @@ STUDY_PLOTS: dict[str, list[dict]] = {
     "fixedpoint": [{"x": "bits", "y": ["ser"],
                     "x_label": "weight bits", "y_label": "SER", "y_log": True}],
 }
+
+
+#: Human-readable title and one-line blurb per study.
+#:
+#: Beside ``STUDY_PLOTS`` for the same reason: a client that had to name these
+#: itself would either duplicate the wording or invent its own, and the two UIs
+#: would drift. The blurb is what someone reads to decide whether a sweep is
+#: worth the wait, so it says what varies, not what the function is called.
+STUDY_LABELS: dict[str, tuple[str, str]] = {
+    "reach": ("Reach ladder",
+              "Pre- and post-FEC BER against channel loss. Analytic channels "
+              "only — a Touchstone file has no length to sweep."),
+    "crosstalk": ("Crosstalk",
+                  "BER against a common FEXT+NEXT coupling level, one "
+                  "aggressor of each kind."),
+    "multilane": ("Multi-lane",
+                  "ICN and 802.3 COM against the number of aggressor lanes."),
+    "com": ("COM vs loss",
+            "The 802.3 93A engine and the transparent RSS figure of merit "
+            "over one length sweep, so the two can be compared directly."),
+    "jtol": ("Jitter tolerance",
+             "Tolerated sinusoidal jitter against frequency, with the mask. "
+             "Binary search per point — the slowest sweep here."),
+    "fec": ("FEC projection",
+            "KP4, KR4 and concatenated post-FEC BER over a pre-FEC range. "
+            "Config-independent, so it needs no run."),
+    "fixedpoint": ("Fixed point",
+                   "The BER wall against datapath word length, replayed "
+                   "bit-true against the float reference. Needs a time-domain "
+                   "run, so it is the slowest to start."),
+}

@@ -71,8 +71,8 @@ object HaloApi {
             ApiResult.Err(
                 kind = e.optString("kind", "error"),
                 message = e.optString("message", raw.take(400)),
-                field = e.optString("field").ifBlank { null },
-                traceback = e.optString("traceback").ifBlank { null },
+                field = e.stringOrNull("field"),
+                traceback = e.stringOrNull("traceback"),
             )
         }
     } catch (t: Throwable) {
@@ -103,3 +103,19 @@ object HaloApi {
 
 internal fun JSONArray?.toStringList(): List<String> =
     if (this == null) emptyList() else List(length()) { optString(it) }
+
+/**
+ * A string field, or null when the key is absent *or* explicitly JSON null.
+ *
+ * `optString` alone is a trap and it caught this code once. On an explicit
+ * `null` it returns the four-character string `"null"`, not "" — so
+ * `optString("handle").ifBlank { null }` yielded a handle called "null" for a
+ * cancelled run, and `optString("field")` marked a form field by that name for
+ * every error the facade reports with `field: None`.
+ *
+ * The Python side emits explicit nulls deliberately (a non-finite float, an
+ * absent handle), so every nullable string read from a response goes through
+ * here.
+ */
+internal fun JSONObject.stringOrNull(key: String): String? =
+    if (isNull(key)) null else optString(key).ifBlank { null }

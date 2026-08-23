@@ -83,13 +83,27 @@ object HaloPython {
     /**
      * Copy the bundled data assets into private storage and return the root.
      *
-     * Unconditional rather than first-run-only: the payload is ~36 KB of YAML,
-     * so re-copying costs nothing measurable, while a "already extracted" flag
-     * would happily serve last version's presets after an upgrade.
+     * This used to run on every start, which was fine while the payload was
+     * 36 KB of YAML. M8 added 4.4 MB of Touchstone files, and re-inflating
+     * those on each launch is latency paid for nothing.
+     *
+     * The stamp is the package's `lastUpdateTime`, not a boolean flag and not
+     * the version code: it changes on every install of every build, including
+     * the same version code reinstalled during development, which is exactly
+     * when stale assets are most likely and hardest to recognise.
      */
     private fun extractData(context: Context): File {
         val dest = File(context.filesDir, ASSET_ROOT)
+        val stampFile = File(context.filesDir, "$ASSET_ROOT.stamp")
+        val stamp = context.packageManager
+            .getPackageInfo(context.packageName, 0).lastUpdateTime.toString()
+        if (dest.isDirectory && runCatching { stampFile.readText() }
+                .getOrNull() == stamp) {
+            return dest
+        }
+        dest.deleteRecursively()
         copyAssetTree(context, ASSET_ROOT, dest)
+        stampFile.writeText(stamp)
         return dest
     }
 

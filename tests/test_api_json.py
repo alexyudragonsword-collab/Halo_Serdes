@@ -43,6 +43,47 @@ def test_every_method_is_reachable_and_shaped():
         "start_time_run", "poll", "cancel", "import_touchstone"}
 
 
+def test_schema_advertises_every_study_with_a_plot_spec():
+    """A study the client cannot discover is a study nobody runs.
+
+    Both halves are pinned: the names must match `_STUDIES` (plus the
+    config-independent `fec`), and each must carry the panel spec that says
+    which key is the x axis and which axes are logarithmic. A study with a
+    label but no spec would render as a guess.
+    """
+    from halo_serdes_app import studies
+
+    advertised = call("schema")["data"]["studies"]
+    names = [s["name"] for s in advertised]
+    assert set(names) == set(api._STUDIES) | {"fec"}
+    assert len(names) == len(set(names))
+    for s in advertised:
+        assert s["title"] and s["blurb"], s["name"]
+        assert s["plots"] == studies.STUDY_PLOTS[s["name"]]
+        for panel in s["plots"]:
+            assert panel["x"] and panel["y"], s["name"]
+
+
+def test_every_plot_spec_names_keys_the_study_actually_returns(values):
+    """The spec is only useful if its keys exist in the data.
+
+    A renamed array in a study would otherwise leave the panel silently empty
+    — a chart that draws nothing looks the same as a link with nothing to
+    show.
+    """
+    from halo_serdes_app import studies
+
+    for name in studies.STUDY_PLOTS:
+        r = call("study", name=name, values=values)
+        assert r["ok"], (name, r)
+        d = r["data"]
+        if d.get("note"):
+            continue          # study declined this config; no data to check
+        for panel in d["plots"]:
+            for key in [panel["x"]] + panel["y"]:
+                assert key in d["data"], f"{name}: spec names missing {key!r}"
+
+
 def test_unknown_method_is_data_not_an_exception():
     r = call("no_such_method")
     assert r["ok"] is False

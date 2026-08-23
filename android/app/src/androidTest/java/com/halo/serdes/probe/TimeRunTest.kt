@@ -101,7 +101,13 @@ class TimeRunTest {
                    p.getString("state") in setOf("cancelled", "done"))
         if (p.getString("state") == "cancelled") {
             // Nothing was measured, so there must be no result to read.
-            assertTrue(p.optString("handle").isBlank())
+            //
+            // `isNull`, not `optString(...).isBlank()`. That was the first
+            // version and it failed: org.json's optString renders an explicit
+            // JSON null as the four-character string "null". The production
+            // code had the same bug, which is what this failure exposed —
+            // `stringOrNull` now handles it in one place.
+            assertTrue("cancelled run left a handle: $p", p.isNull("handle"))
         } else {
             HaloApi.release(ctx, p.getString("handle"))
         }

@@ -69,6 +69,13 @@ class LinkFacadeTest {
         val r = HaloApi.runStat(ctx, values)
         assertTrue("expected an error, got $r", r is ApiResult.Err)
         assertTrue((r as ApiResult.Err).message.isNotBlank())
+        // `field` is what the form uses to mark an input red, and the facade
+        // sends it as an explicit JSON null when no path was identified.
+        // org.json's optString turns that into the string "null", which put a
+        // red ring around a field by that name. Null must stay null.
+        assertTrue("field should be null or a real path, was ${r.field}",
+                   r.field == null || r.field in TestPresets.values(ctx,
+                       TestPresets.runnable(ctx)).keys().asSequence().toSet())
     }
 
     /**

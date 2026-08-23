@@ -18,6 +18,7 @@ rather than at ``pip install`` time on a device.
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -141,6 +142,39 @@ def test_phone_compute_path_imports_without_optional_packages(blocked):
         from halo_serdes.engine.statistical import run_statistical
         from halo_serdes.analysis.com import compute_com
         from halo_serdes.fec import pre_to_post_fec_ber
+        print("OK")
+    """)
+    assert r.returncode == 0, f"stdout={r.stdout}\nstderr={r.stderr}"
+
+
+def test_touchstone_path_works_without_pandas():
+    """The Android build installs scikit-rf with ``--no-deps``. This is why.
+
+    scikit-rf declares ``pandas>=1.1`` as a hard requirement and never imports
+    it on the Touchstone path — so honouring the declaration would drag a
+    large compiled wheel into the APK to satisfy metadata alone. ``--no-deps``
+    skips it, which also means pip stops checking: a future scikit-rf that
+    genuinely reaches for pandas would fail on the device, at import, with the
+    app already in someone's hand.
+
+    This is that check, moved to the host. It blocks pandas outright and runs
+    the whole read the engine runs — parse, mixed-mode conversion, model
+    construction, insertion loss.
+    """
+    files = sorted(Path(__file__).resolve().parents[1].glob("data/channels/*.s4p"))
+    if not files:
+        pytest.skip("no bundled .s4p to read")
+    r = _run_isolated(("pandas", "matplotlib", "numba", "llvmlite", "galois"), f"""
+        from halo_serdes.channel import ChannelModel, import_diff_network
+        import numpy as np
+
+        path = {str(files[0])!r}
+        sdd = import_diff_network(path)
+        assert sdd.f.size > 0
+        ch = ChannelModel.from_touchstone(path, f_max=20e9, n_freq=512)
+        il = ch.insertion_loss_db()
+        assert np.isfinite(il[1:]).any(), "insertion loss is all non-finite"
+        assert il[1:].min() < 0.0, "a through channel must show loss"
         print("OK")
     """)
     assert r.returncode == 0, f"stdout={r.stdout}\nstderr={r.stderr}"

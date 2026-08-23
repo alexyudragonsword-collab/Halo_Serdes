@@ -88,6 +88,15 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 (能看见这件事,靠的是 `run_instrumented.sh` 会打印每个类的测试数;否则只会看到
 一条含糊的失败。)
 
+**`org.json` 的 `optString` 把显式 null 变成字符串 `"null"`。** 不是 `""`,
+所以 `optString(k).ifBlank { null }` 这个看着很稳的写法在**键存在且值为 null** 时
+返回四个字符的 `"null"`。Python 侧是**故意**发显式 null 的(非有限浮点、被取消的
+run 没有 handle、错误没有对应字段),于是:取消后的 job 拿到一个叫 `"null"` 的
+handle,而每一条 `field: None` 的错误都会去把一个名叫 `"null"` 的输入框标红。
+**规则:凡是可空的字符串字段都走 `stringOrNull(key)`(先 `isNull` 再 `optString`)。**
+这条是仪器化测试逼出来的 —— 我的断言 `optString("handle").isBlank()` 红了,
+而**产品代码里是同一个 bug**,测试红得对。
+
 **AGP 的仪器化结果 XML 每台设备只有一个,根 `<testsuite>` 聚合所有类。** 按根节点的
 `name` 归类会把整轮测试算到某一个类头上(实测:9 个测试全被标成 `LinkFacadeTest`)。
 要分类明细就遍历 `<testcase>` 的 `classname`。总数对但分类错,比不给分类更有害。

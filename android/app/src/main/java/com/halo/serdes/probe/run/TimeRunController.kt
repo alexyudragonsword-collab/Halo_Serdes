@@ -3,6 +3,7 @@ package com.halo.serdes.probe.run
 import android.content.Context
 import com.halo.serdes.probe.api.ApiResult
 import com.halo.serdes.probe.api.HaloApi
+import com.halo.serdes.probe.api.stringOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -111,7 +112,7 @@ object TimeRunController {
                 stage = d.optString("stage"),
                 elapsedS = d.optDouble("elapsed_s", 0.0),
                 cancelPending = d.optBoolean("cancel_pending"),
-                handle = d.optString("handle").ifBlank { null },
+                handle = d.stringOrNull("handle"),
                 error = jobErr?.ifBlank { null },
             )
             if (!_state.value.active) break

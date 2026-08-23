@@ -6,8 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.halo.serdes.probe.HaloPython
 import com.halo.serdes.probe.api.ApiResult
 import com.halo.serdes.probe.api.HaloApi
+import com.halo.serdes.probe.api.stringOrNull
 import com.halo.serdes.probe.run.Quality
 import com.halo.serdes.probe.run.TimeRunController
+import com.halo.serdes.probe.touchstone.TouchstoneImport
+import com.halo.serdes.probe.touchstone.TouchstoneInfo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import android.content.Context
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -88,6 +94,15 @@ data class LinkUiState(
     val channelIssue: String? = null,
     val stat: StatSummary? = null,
     val time: TimeSummary? = null,
+    /** A picked Touchstone file, inspected but not yet adopted. */
+    val touchstone: TouchstoneInfo? = null,
+    val touchstoneBusy: Boolean = false,
+    val touchstoneError: String? = null,
+    /** Studies as the facade advertises them — never hardcoded on this side. */
+    val studies: List<StudyMeta> = emptyList(),
+    val studyResults: Map<String, StudyResult> = emptyMap(),
+    /** Name of the study currently running, if any. */
+    val studyRunning: String? = null,
     val eye: EyeMap? = null,
     val eyeLoading: Boolean = false,
     val warnings: List<String> = emptyList(),
@@ -188,6 +203,7 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
                         busy = false,
                         sections = parseSections(r.data),
                         presets = names,
+                        studies = parseStudies(r.data),
                         configsDir = r.data.optString("configs_dir"),
                     )
                 }
@@ -224,8 +240,12 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
     fun select(name: String) = viewModelScope.launch {
         deriveJob?.cancel()
         _state.update {
+            // Study results belong to the config that produced them; keeping
+            // them across a preset change would show one link's curves under
+            // another link's name.
             it.copy(selected = name, busy = true, error = null, stat = null,
-                    channelIssue = null, fieldErrors = emptyMap())
+                    channelIssue = null, fieldErrors = emptyMap(),
+                    studyResults = emptyMap())
         }
         when (val p = HaloApi.preset(ctx, name)) {
             is ApiResult.Err -> _state.update { it.copy(busy = false, error = p) }
@@ -280,8 +300,10 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
                             ?.toStringMap() ?: it.derived,
                         channelIssue = ch
                             ?.takeIf { c -> !c.optBoolean("ok", true) }
-                            ?.optString("message")
-                            ?.ifBlank { "channel data unavailable" },
+                            ?.let { c ->
+                                c.stringOrNull("message")
+                                    ?: "channel data unavailable"
+                            },
                         envelope = env
                             ?.takeIf { e -> e.optString("message").isNotBlank() }
                             ?.let { e ->
@@ -357,6 +379,110 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
                             floor = r.data.optDouble("floor", -18.0),
                         ),
                     )
+                }
+            }
+        }
+    }
+
+    /**
+     * Inspect a picked Touchstone file. Nothing is adopted yet.
+     *
+     * Two steps, on two dispatchers: the copy is content-provider I/O and
+     * belongs on IO, while the read goes through the interpreter thread like
+     * every other Python call.
+     */
+    fun importTouchstone(uri: Uri) = viewModelScope.launch {
+        _state.update {
+            it.copy(touchstoneBusy = true, touchstoneError = null, touchstone = null)
+        }
+        val file = try {
+            withContext(Dispatchers.IO) { TouchstoneImport.copyIn(ctx, uri) }
+        } catch (t: Throwable) {
+            _state.update {
+                it.copy(touchstoneBusy = false,
+                        touchstoneError = t.message ?: t.toString())
+            }
+            return@launch
+        }
+        // The current values go along so the report can compare the file's
+        // span against *this* config's Nyquist — the number that decides
+        // whether the file answers the question being asked.
+        val payload = JSONObject()
+            .put("path", file.absolutePath)
+            .put("values", _state.value.values.toJson())
+        when (val r = HaloApi.call(ctx, "import_touchstone", payload)) {
+            is ApiResult.Err -> {
+                file.delete()
+                _state.update {
+                    it.copy(touchstoneBusy = false, touchstoneError = r.message)
+                }
+            }
+            is ApiResult.Ok -> _state.update {
+                it.copy(touchstoneBusy = false, touchstone = TouchstoneInfo(
+                    path = r.data.optString("file"),
+                    name = r.data.optString("name"),
+                    fileFMaxGhz = r.data.optDouble("file_f_max_ghz"),
+                    nyquistGhz = r.data.optDouble("nyquist_ghz"),
+                    ilDbAtNyquist = r.data.optDouble("il_db_at_nyquist"),
+                    nFreq = r.data.optInt("n_freq"),
+                    extrapolated = r.data.optBoolean("extrapolated"),
+                ))
+            }
+        }
+    }
+
+    /**
+     * Point the config at the imported file.
+     *
+     * Written through [setField] rather than into `values` directly, so the
+     * same debounce-and-derive path runs — an adopted channel is validated by
+     * exactly the code that validates a typed one.
+     */
+    fun adoptTouchstone(info: TouchstoneInfo) {
+        setField("channel.kind", "touchstone")
+        setField("channel.file", info.path)
+        _state.update { it.copy(touchstone = null) }
+    }
+
+    fun discardTouchstone() {
+        _state.update { it.copy(touchstone = null, touchstoneError = null) }
+    }
+
+    /**
+     * Run one sweep against the current parameters.
+     *
+     * Serialised by [LinkUiState.studyRunning] rather than queued: they all go
+     * through the one interpreter thread anyway, and letting several be
+     * started would only hide which one the spinner belonged to. The slowest
+     * (jtol, fixedpoint) are minutes, so this matters.
+     */
+    fun runStudy(name: String) = viewModelScope.launch {
+        if (_state.value.studyRunning != null) return@launch
+        _state.update { it.copy(studyRunning = name, error = null) }
+        val payload = JSONObject()
+            .put("name", name)
+            .put("values", _state.value.values.toJson())
+        when (val r = HaloApi.call(ctx, "study", payload)) {
+            is ApiResult.Err ->
+                _state.update { it.copy(studyRunning = null, error = r) }
+            is ApiResult.Ok -> {
+                val previous = _state.value.studyResults[name]?.handle
+                val result = StudyResult(
+                    name = name,
+                    // The spec that came back with the data, not the one from
+                    // schema: they are the same today, and reading it here
+                    // means they cannot disagree tomorrow.
+                    plots = parsePlots(r.data.optJSONArray("plots")),
+                    data = parseStudyData(r.data.optJSONObject("data")),
+                    note = r.data.stringOrNull("note"),
+                    handle = r.data.stringOrNull("handle"),
+                )
+                _state.update {
+                    it.copy(studyRunning = null,
+                            studyResults = it.studyResults + (name to result))
+                }
+                if (previous != null && previous != result.handle) {
+                    HaloApi.release(ctx, previous)
                 }
             }
         }

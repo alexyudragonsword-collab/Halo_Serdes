@@ -4,10 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.halo.serdes.probe.ui.HaloTheme
-import com.halo.serdes.probe.ui.LinkScreen
+import com.halo.serdes.probe.ui.HaloApp
 
 /**
- * The whole app: one screen, drawn by Compose, fed by the shared Python core.
+ * The whole app: two tabs, drawn by Compose, fed by the shared Python core.
  *
  * The M0 probe is no longer wired to a button — its job (does the embedded
  * stack load and compute the same numbers as the desktop?) is answered, and
@@ -19,6 +19,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { HaloTheme { LinkScreen() } }
+        setContent { HaloTheme { HaloApp() } }
     }
 }

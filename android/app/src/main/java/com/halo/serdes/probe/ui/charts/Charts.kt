@@ -2,7 +2,9 @@ package com.halo.serdes.probe.ui.charts
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -46,13 +48,14 @@ private const val AXIS_PAD_BOTTOM = 22f
 private const val AXIS_PAD_TOP = 8f
 private const val AXIS_PAD_RIGHT = 8f
 
+/** One named curve in a panel. */
+data class Series(val label: String, val y: List<Double>)
+
 /**
- * A BER curve on a log10 y axis.
+ * A BER curve on a log10 y axis. The bathtub's entry point.
  *
- * The y range comes from the data, not from a fixed 1e-30..1: a bathtub for a
- * comfortable link may only span five decades, and padding it out to thirty
- * would flatten the curve into the top edge. Decade gridlines are labelled so
- * the compression stays readable.
+ * A one-series shorthand for [MultiLineChart]; the axis handling is shared so
+ * a fix to decade labelling reaches both.
  */
 @Composable
 fun LogLineChart(
@@ -61,23 +64,59 @@ fun LogLineChart(
     modifier: Modifier = Modifier,
     xLabel: String = "",
     yLabel: String = "",
+) = MultiLineChart(x, listOf(Series("", y)), modifier, xLabel, yLabel,
+                   xLog = false, yLog = true)
+
+/**
+ * N curves sharing one pair of axes, either of which may be logarithmic.
+ *
+ * The axis choices are not made here. They come from `studies.STUDY_PLOTS`,
+ * next to the code that produces the data, because whether a series belongs on
+ * a log axis is a property of the quantity — and a client guessing would guess
+ * differently from the desktop one.
+ *
+ * Ranges come from the data. A fixed 1e-30..1 would flatten a comfortable
+ * link's five-decade bathtub into the top edge.
+ */
+@Composable
+fun MultiLineChart(
+    x: List<Double>,
+    series: List<Series>,
+    modifier: Modifier = Modifier,
+    xLabel: String = "",
+    yLabel: String = "",
+    xLog: Boolean = false,
+    yLog: Boolean = false,
 ) {
     val measurer = rememberTextMeasurer()
-    val line = MaterialTheme.colorScheme.primary
     val axis = MaterialTheme.colorScheme.onSurfaceVariant
     val grid = axis.copy(alpha = 0.25f)
+    val palette = seriesPalette()
 
-    val positive = y.filter { it > 0.0 }
-    if (x.size != y.size || positive.isEmpty()) {
+    // Points a log axis cannot represent are dropped, not clamped: a clamped
+    // zero draws a line down to the floor that no measurement supports.
+    val drawable = series.map { s ->
+        s to x.indices.filter { i ->
+            i < s.y.size && s.y[i].isFinite() && x[i].isFinite() &&
+                (!yLog || s.y[i] > 0.0) && (!xLog || x[i] > 0.0)
+        }
+    }.filter { it.second.size >= 2 }
+
+    if (drawable.isEmpty()) {
         Text("no curve to draw", style = MaterialTheme.typography.labelSmall, color = axis)
         return
     }
 
-    val logY = y.map { if (it > 0.0) log10(it) else log10(positive.min()) }
-    val yLo = floor(logY.min())
-    val yHi = ceil(logY.max()).coerceAtLeast(yLo + 1.0)
-    val xLo = x.min()
-    val xHi = x.max().coerceAtLeast(xLo + 1e-12)
+    fun tx(v: Double) = if (xLog) log10(v) else v
+    fun ty(v: Double) = if (yLog) log10(v) else v
+
+    val allX = drawable.flatMap { (_, idx) -> idx.map { tx(x[it]) } }
+    val allY = drawable.flatMap { (s, idx) -> idx.map { ty(s.y[it]) } }
+    val xLo = allX.min()
+    val xHi = allX.max().coerceAtLeast(xLo + 1e-12)
+    val yLo = if (yLog) floor(allY.min()) else allY.min()
+    val yHi = if (yLog) ceil(allY.max()).coerceAtLeast(yLo + 1.0)
+              else allY.max().coerceAtLeast(yLo + 1e-12)
 
     Column(modifier) {
         if (yLabel.isNotEmpty()) {
@@ -90,33 +129,78 @@ fun LogLineChart(
             fun py(v: Double) =
                 AXIS_PAD_TOP + (1.0 - (v - yLo) / (yHi - yLo)).toFloat() * plotH
 
-            // decade gridlines, one label each
-            var d = yLo
-            while (d <= yHi + 1e-9) {
-                val yy = py(d)
+            for ((value, label) in yGridlines(yLo, yHi, yLog)) {
+                val yy = py(value)
                 drawLine(grid, Offset(AXIS_PAD_LEFT, yy),
                          Offset(size.width - AXIS_PAD_RIGHT, yy))
-                drawTinyText(measurer, "1e${d.roundToInt()}", 2f, yy - 7f, axis)
-                d += 1.0
+                drawTinyText(measurer, label, 2f, yy - 7f, axis)
             }
 
-            val path = Path()
-            x.indices.forEach { i ->
-                val xx = px(x[i]); val yy = py(logY[i])
-                if (i == 0) path.moveTo(xx, yy) else path.lineTo(xx, yy)
+            drawable.forEachIndexed { n, (s, idx) ->
+                val path = Path()
+                idx.forEachIndexed { k, i ->
+                    val xx = px(tx(x[i])); val yy = py(ty(s.y[i]))
+                    if (k == 0) path.moveTo(xx, yy) else path.lineTo(xx, yy)
+                }
+                drawPath(path, palette[n % palette.size], style = Stroke(width = 3f))
             }
-            drawPath(path, line, style = Stroke(width = 3f))
 
-            drawTinyText(measurer, fmt(xLo), AXIS_PAD_LEFT,
+            val loLabel = if (xLog) fmt(Math.pow(10.0, xLo)) else fmt(xLo)
+            val hiLabel = if (xLog) fmt(Math.pow(10.0, xHi)) else fmt(xHi)
+            drawTinyText(measurer, loLabel, AXIS_PAD_LEFT,
                          size.height - AXIS_PAD_BOTTOM + 4f, axis)
-            drawTinyText(measurer, fmt(xHi), size.width - AXIS_PAD_RIGHT - 34f,
+            drawTinyText(measurer, hiLabel, size.width - AXIS_PAD_RIGHT - 40f,
                          size.height - AXIS_PAD_BOTTOM + 4f, axis)
         }
         if (xLabel.isNotEmpty()) {
             Text(xLabel, style = MaterialTheme.typography.labelSmall, color = axis)
         }
+        // A legend only where it carries information. One unnamed curve is
+        // already identified by the y-axis label above it.
+        if (drawable.size > 1 || drawable.first().first.label.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                drawable.forEachIndexed { n, (s, _) ->
+                    Text(s.label, style = MaterialTheme.typography.labelSmall,
+                         color = palette[n % palette.size])
+                }
+            }
+        }
     }
 }
+
+/**
+ * Gridline positions and their labels.
+ *
+ * Log axes get one line per decade, which is what makes a compressed BER
+ * curve readable. Linear axes get a fixed small count — the quantities on
+ * them here (dB, mV) have no natural decade structure to follow.
+ */
+private fun yGridlines(lo: Double, hi: Double, log: Boolean): List<Pair<Double, String>> {
+    if (log) {
+        // A wide span would otherwise draw a line every few pixels.
+        val step = maxOf(1.0, ceil((hi - lo) / 8.0))
+        val out = ArrayList<Pair<Double, String>>()
+        var d = lo
+        while (d <= hi + 1e-9) {
+            out += d to "1e${d.roundToInt()}"
+            d += step
+        }
+        return out
+    }
+    return (0..4).map { k ->
+        val v = lo + (hi - lo) * k / 4.0
+        v to fmt(v)
+    }
+}
+
+@Composable
+private fun seriesPalette(): List<Color> = listOf(
+    MaterialTheme.colorScheme.primary,
+    MaterialTheme.colorScheme.tertiary,
+    MaterialTheme.colorScheme.error,
+    MaterialTheme.colorScheme.secondary,
+)
 
 /**
  * The statistical eye, as a density image.
