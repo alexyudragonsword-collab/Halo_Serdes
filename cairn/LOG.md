@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-08-23 · M0 判定:通过(run #3 三个 job 全绿)
+
+- `assemble` / `wheel-versions` / `emulator` 全绿;仪器化测试
+  `Starting 5 tests` → `Finished 5 tests`,零失败,含 `rtol=1e-9` 的 golden 比对。
+  **Chaquopy 路线成立。**
+- **`wheel-versions` 消掉了版本这一维**:numpy 1.26.2 + scipy 1.8.1(手机拿到的版本)
+  下,BER 与现代版本只差 **1 ULP**(相对 1.6e-16),COM 与 post-FEC 逐位相同。
+  pip 报的不兼容只在元数据层面。今后 golden 若失配,可干净归因给平台。
+- **两格仍未知,只能由真机回答**:模拟器是 x86_64,证不了 ARM 浮点与 16 KB page;
+  真机性能同理。判定表见 `android/README.md`。
+- 上一条(下方)记的打包 bug 至此确认修复。
+
 ## 2026-08-23 · M0 在真机跑通到了"presets 没打包"这一层
 
 - **好消息(M0 的主要风险已排除)**:`assemble` job 绿 → Chaquopy 的 Py3.10 **有 SciPy

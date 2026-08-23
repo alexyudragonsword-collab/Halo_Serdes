@@ -101,7 +101,13 @@ kotlinVersion=2.0.21
 | 解释器能在真机启动吗 | **能** | 真机跑出了 Python traceback |
 | numpy/scipy 在真机加载并计算吗 | **能** | `erfc`/`erfcinv`/`binom`/`curve_fit` 全过 |
 | 门面能从 Kotlin 调用吗 | **能** | `jsonFacadeIsReachableFromKotlin` 通过 |
-| 计算核与桌面数值一致吗 | **仍未知** | 被下面两件事挡住 |
+| 计算核与桌面数值一致吗 | **x86_64 上一致** | 模拟器 5/5 通过,golden `rtol=1e-9` 无失配 |
+| **ARM 上一致吗** | **仍未知** | 模拟器是 x86_64;要真机装上修好的 APK 才知道 |
+| 真机性能如何 | **仍未知** | 同上 |
+
+M0 的判定(2026-08-23,run #3):`assemble` / `wheel-versions` / `emulator` 三个 job 全绿,
+`Starting 5 tests` → `Finished 5 tests`,零失败。**Chaquopy 路线成立**,剩下的两格
+只能由手上的机器回答。
 
 ### 第二次运行的结果:presets 没进 APK(已修)
 
@@ -147,8 +153,18 @@ ERROR: scipy 1.8.1 has requirement numpy<1.25.0,>=1.17.3,
 numpy/scipy 强行降到手机拿到的这两个版本,跑一遍手机会跑的计算路径 —— 比模拟器便宜得多,
 且失败时能指名原因,而不是等到 golden 比对时变成一个数字对不上。
 
-这也意味着 golden 比对(`rtol=1e-9`)现在跨的是**版本 + 平台**两个变量。若它报不一致,
-先看 `wheel-versions` 是绿是红再决定归因。
+**结果:版本这一维是干净的。** 该 job 全绿,只剩一条 numpy 版本区间的 `UserWarning`
+(pip 报的不兼容只在元数据层面,ABI 实际是兼容的)。跨版本数值对比:
+
+| | numpy 2.4.6 / scipy 1.17.1 | numpy 1.26.2 / scipy 1.8.1 |
+|---|---|---|
+| BER | 1.320132765231606e-06 | 1.3201327652316062e-06 |
+| COM | 3.349834252410304 dB | 3.349834252410304 dB |
+| post-FEC KP4 | 3.8061821319882705e-15 | 3.8061821319882705e-15 |
+
+BER 差 **1 ULP**(相对 1.6e-16),COM 与 FEC 逐位相同。所以 golden 比对的 `rtol=1e-9`
+虽然名义上跨"版本 + 平台"两个变量,**版本这一维实测只贡献 1 ULP**,留了约 7 个数量级余量 ——
+之后若报不一致,可以干净地归因给平台(libm、FMA 合并、OpenBLAS)。
 
 ### 首次 CI 运行的结果(已修)
 
