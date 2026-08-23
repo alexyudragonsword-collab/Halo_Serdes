@@ -32,7 +32,7 @@ class FormContractTest {
         (HaloApi.schema(ctx) as ApiResult.Ok).data
 
     @Test
-    fun everyDeclaredFieldKindHasAWidget() = runBlocking {
+    fun everyDeclaredFieldKindHasAWidget() = runBlocking<Unit> {
         val sections = parseSections(schema())
         assertTrue("no sections in schema", sections.isNotEmpty())
 
@@ -56,10 +56,10 @@ class FormContractTest {
      * type-mangled field would show up — the map must still validate.
      */
     @Test
-    fun presetRoundTripsThroughTheFormValueMap() = runBlocking {
+    fun presetRoundTripsThroughTheFormValueMap() = runBlocking<Unit> {
         val sections = parseSections(schema())
         val fields = sections.flatMap { it.fields }
-        val name = schema().getJSONArray("presets").getString(1)   // first real preset
+        val name = TestPresets.runnable(ctx)
 
         val raw = (HaloApi.preset(ctx, name) as ApiResult.Ok).data.getJSONObject("values")
         val values = raw.toFormValues(fields)
@@ -72,13 +72,13 @@ class FormContractTest {
 
     /** Editing a field must actually move the derived quantities. */
     @Test
-    fun editingSymbolRateChangesTheDerivedUi() = runBlocking {
+    fun editingSymbolRateChangesTheDerivedUi() = runBlocking<Unit> {
         val fields = parseSections(schema()).flatMap { it.fields }
-        val name = schema().getJSONArray("presets").getString(1)
+        val name = TestPresets.runnable(ctx)
         val values = (HaloApi.preset(ctx, name) as ApiResult.Ok)
             .data.getJSONObject("values").toFormValues(fields)
 
-        fun uiOf(v: Map<String, Any>) = runBlocking {
+        fun uiOf(v: Map<String, Any>) = runBlocking<Unit> {
             ((HaloApi.derive(ctx, v.toJson())) as ApiResult.Ok)
                 .data.getJSONObject("derived").getString("UI")
         }
@@ -92,9 +92,9 @@ class FormContractTest {
 
     /** An invalid entry comes back keyed by its own path, so the box can go red. */
     @Test
-    fun aBadFieldIsReportedAgainstItsOwnPath() = runBlocking {
+    fun aBadFieldIsReportedAgainstItsOwnPath() = runBlocking<Unit> {
         val fields = parseSections(schema()).flatMap { it.fields }
-        val name = schema().getJSONArray("presets").getString(1)
+        val name = TestPresets.runnable(ctx)
         val values = (HaloApi.preset(ctx, name) as ApiResult.Ok)
             .data.getJSONObject("values").toFormValues(fields)
 
@@ -113,12 +113,12 @@ class FormContractTest {
      * is what keeps them typed, so pin that it does.
      */
     @Test
-    fun boolFieldsStayBooleanThroughTheValueMap() = runBlocking {
+    fun boolFieldsStayBooleanThroughTheValueMap() = runBlocking<Unit> {
         val fields = parseSections(schema()).flatMap { it.fields }
         val bools = fields.filter { it.isBool }
         assertTrue("schema has no bool fields to check", bools.isNotEmpty())
 
-        val name = schema().getJSONArray("presets").getString(1)
+        val name = TestPresets.runnable(ctx)
         val values = (HaloApi.preset(ctx, name) as ApiResult.Ok)
             .data.getJSONObject("values").toFormValues(fields)
 

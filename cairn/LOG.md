@@ -12,6 +12,13 @@
   "没解出概率",不是"概率很小"。宿主测试钉住。
 - 两个渲染决定:纵轴按数据自适应(舒适链路只跨 5 个数量级);眼图走一张缩放位图而非
   32768 次 `drawRect`,位图按 run handle 缓存(用 `z` 做 key 的深比较比绘制还贵)。
+- **第一次 CI 红的原因不是我猜的那个**:我先假设是"取了跑不了的 touchstone 预设",
+  但 XML dump 显示 `InvalidTestClassError: Method ...() should be void` ——
+  `= runBlocking { ... }` 以 `release(...)` 收尾,推断返回类型不是 `Unit`,
+  **整个类在校验阶段被拒**,一个测试都没跑。计数脚本报 "1 tests, 1 failed"
+  (实际有 2 个)才让这件事可见。全部改为 `runBlocking<Unit>`。
+- 那个 touchstone 假设**是个潜伏问题**(类跑起来就会栽),一并修了:
+  "挑第一个预设"这个错我写了两遍,抽成 `TestPresets.runnable()` 一处。
 - 眼图**按需拉取**而非随每次 Run 一起返回:缩减后仍有约 4k 个数,而多数时候按 Run 只为看 BER。
 
 ## 2026-08-23 · M5:参数表单由 SECTIONS 自动生成

@@ -76,6 +76,15 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 **`connectedDebugAndroidTest` 跑零个测试也算成功。** 一个意思是"套件根本没执行"的绿勾
 比红叉更糟。`android/tools/run_instrumented.sh` 因此解析结果 XML,总数为零就退出非零。
 
+**Kotlin 表达式体的 `@Test` 必须显式声明返回 `Unit`。** `fun t() = runBlocking { ... }`
+的推断返回类型是**最后一个表达式的类型**;若它不是 `Unit`(例如以
+`HaloApi.release(...)` 收尾),JUnit 会以 "Method t() should be void" **在校验阶段
+拒绝整个测试类** —— 类里所有测试一个都不跑,只留一条 `initializationError`。
+后果是**测试数悄悄变少而不是变红**:那次 `ChartDataTest` 报的是 "1 tests, 1 failed",
+而它其实有 2 个测试。**统一写 `runBlocking<Unit> { ... }`。**
+(能看见这件事,靠的是 `run_instrumented.sh` 会打印每个类的测试数;否则只会看到
+一条含糊的失败。)
+
 **AGP 的仪器化结果 XML 每台设备只有一个,根 `<testsuite>` 聚合所有类。** 按根节点的
 `name` 归类会把整轮测试算到某一个类头上(实测:9 个测试全被标成 `LinkFacadeTest`)。
 要分类明细就遍历 `<testcase>` 的 `classname`。总数对但分类错,比不给分类更有害。

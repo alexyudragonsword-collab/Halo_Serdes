@@ -26,10 +26,9 @@ class ChartDataTest {
     private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     private suspend fun aRunHandle(): Pair<String, JSONObject> {
-        val schema = (HaloApi.schema(ctx) as ApiResult.Ok).data
-        val name = schema.getJSONArray("presets").getString(1)
-        val values = (HaloApi.preset(ctx, name) as ApiResult.Ok)
-            .data.getJSONObject("values")
+        // Must be a *runnable* preset: the touchstone ones validate fine and
+        // then fail in the engine, because this build ships no .s4p.
+        val values = TestPresets.values(ctx, TestPresets.runnable(ctx))
         val r = HaloApi.runStat(ctx, values)
         assertTrue("run_stat failed: $r", r is ApiResult.Ok)
         val d = (r as ApiResult.Ok).data
@@ -37,7 +36,7 @@ class ChartDataTest {
     }
 
     @Test
-    fun bathtubArrivesAsAPlottablePair() = runBlocking {
+    fun bathtubArrivesAsAPlottablePair() = runBlocking<Unit> {
         val (handle, d) = aRunHandle()
         val bt = d.getJSONObject("bathtub")
         val x = bt.getJSONArray("x")
@@ -57,7 +56,7 @@ class ChartDataTest {
     }
 
     @Test
-    fun eyeMapIsFiniteAndItsRangeMatchesItsContents() = runBlocking {
+    fun eyeMapIsFiniteAndItsRangeMatchesItsContents() = runBlocking<Unit> {
         val (handle, _) = aRunHandle()
         val payload = JSONObject().put("handle", handle).put("key", "stat_eye")
         val r = HaloApi.call(ctx, "series", payload)
