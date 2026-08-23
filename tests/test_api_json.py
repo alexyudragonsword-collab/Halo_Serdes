@@ -31,9 +31,16 @@ def values():
 # ------------------------------------------------------------- envelope ---
 
 def test_every_method_is_reachable_and_shaped():
+    """Pinned deliberately: the method set is the client's whole vocabulary.
+
+    Adding one is a decision, and this test is where it gets made rather than
+    noticed later. (Removing or renaming one is a breaking change and should
+    bump ``API_VERSION``.)
+    """
     assert set(api.methods()) == {
         "schema", "preset", "derive", "to_yaml", "from_yaml",
-        "run_stat", "run_com", "study", "series", "release"}
+        "run_stat", "run_com", "study", "series", "release",
+        "start_time_run", "poll", "cancel", "import_touchstone"}
 
 
 def test_unknown_method_is_data_not_an_exception():
@@ -267,3 +274,102 @@ def test_heatmap_reduction_uses_max_not_mean():
     out = api._reduce_heatmap(z, 128, 32)
     assert out.shape == (128, 32)
     assert out.max() == pytest.approx(1.0)   # a mean would have buried it
+
+
+# ------------------------------------------------- long-running jobs (M7) ---
+
+def _await_job(job, timeout=120.0):
+    """Poll to completion, returning the last poll payload."""
+    import time as _t
+    deadline = _t.monotonic() + timeout
+    while _t.monotonic() < deadline:
+        p = call("poll", job=job)["data"]
+        if p["state"] in ("done", "error", "cancelled"):
+            return p
+        _t.sleep(0.02)
+    raise AssertionError(f"job {job} did not finish within {timeout}s")
+
+
+def test_time_run_reports_stages_and_yields_a_handle(values):
+    r = call("start_time_run", values=values, quality="fast")
+    assert r["ok"], r
+    assert r["data"]["n_symbols"] == api.QUALITY_SYMBOLS["fast"]
+
+    p = _await_job(r["data"]["job"])
+    assert p["state"] == "done", p
+    assert p["stage"] == "done"
+    assert p["elapsed_s"] > 0
+    # the handle is a normal result handle: series/release work on it
+    assert call("series", handle=p["handle"], key="y_slicer",
+                max_points=32)["ok"]
+    assert call("release", handle=p["handle"])["ok"]
+
+
+def test_only_one_run_at_a_time(values):
+    first = call("start_time_run", values=values, quality="fast")["data"]["job"]
+    try:
+        second = call("start_time_run", values=values, quality="fast")
+        assert second["ok"] is False
+        assert "already in progress" in second["error"]["message"]
+    finally:
+        call("cancel", job=first)
+        _await_job(first)
+
+
+def test_cancel_is_distinguishable_from_failure(values):
+    """A cancelled run must not be reported as a broken one.
+
+    ``run_link`` turns every exception into a record error so a UI never sees a
+    crash — which swallowed the cancellation on the first attempt and reported
+    it as ``error``. ``runner.Cancelled`` is now re-raised past that handler,
+    and this pins both halves of the distinction.
+    """
+    job = call("start_time_run", values=values, quality="precise")["data"]["job"]
+    call("cancel", job=job)
+    assert _await_job(job)["state"] == "cancelled"
+
+    bad = call("start_time_run", values={**values, "osr": "0"},
+               quality="fast")["data"]["job"]
+    p = _await_job(bad)
+    assert p["state"] == "error"
+    assert "osr" in p["job_error"]["message"]
+
+
+def test_unknown_job_and_quality_are_data(values):
+    assert call("poll", job="nope")["ok"] is False
+    assert call("cancel", job="nope")["ok"] is False
+    r = call("start_time_run", values=values, quality="turbo")
+    assert r["ok"] is False and "turbo" in r["error"]["message"]
+
+
+# --------------------------------------------- touchstone import (M8) ---
+
+def test_touchstone_import_reports_the_file_span_not_just_a_loss(values):
+    """The span is the number that keeps someone honest.
+
+    A measured `.s4p` routinely stops below the Nyquist it gets pointed at, and
+    the channel model extrapolates past it without complaint — producing a
+    plot and a BER that look like data. ``extrapolated`` is what tells a client
+    the difference.
+    """
+    import glob
+
+    path = sorted(glob.glob("data/channels/*.s4p"))[0]
+    d = call("import_touchstone", path=path, values=values)["data"]
+    assert d["file_f_max_ghz"] > 0
+    assert d["extrapolated"] is (d["nyquist_ghz"] > d["file_f_max_ghz"])
+
+    # the same file against a Nyquist it does not cover
+    fast = call("preset", name="PAM4 224G ADC (106 GBd)")["data"]["values"]
+    d2 = call("import_touchstone", path=path, values=fast)["data"]
+    assert d2["extrapolated"] is True
+    # -inf dB must arrive as null, never as a value or a JSON error
+    assert d2["il_db_at_nyquist"] is None
+
+
+def test_bad_touchstone_paths_are_data(values, tmp_path):
+    assert call("import_touchstone", values=values)["ok"] is False
+    assert call("import_touchstone", path="/no/such.s4p", values=values)["ok"] is False
+    junk = tmp_path / "junk.s4p"
+    junk.write_text("not a touchstone")
+    assert call("import_touchstone", path=str(junk), values=values)["ok"] is False

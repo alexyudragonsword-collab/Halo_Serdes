@@ -25,9 +25,12 @@ Response envelope::
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import threading
 import time
 import traceback
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +59,10 @@ MAX_SERIES_POINTS = 2048
 #: Eye/PDF heatmaps are reduced to at most this grid before transport.
 MAX_HEATMAP_ROWS = 256
 MAX_HEATMAP_COLS = 128
+
+#: Symbol counts behind the quality tiers, defined here so every UI offers the
+#: same three and no client invents its own.
+QUALITY_SYMBOLS = {"fast": 20_000, "standard": 100_000, "precise": 500_000}
 
 #: log10 clamp for eye densities. Below this the statistical engine has not
 #: resolved a probability at all, so it marks absence rather than a value.
@@ -332,6 +339,163 @@ def _m_release(payload: dict) -> dict:
     return {"released": rid}
 
 
+# --------------------------------------------------- long-running jobs ---
+
+@dataclasses.dataclass
+class _Job:
+    id: str
+    state: str = "queued"           # queued | running | done | error | cancelled
+    stage: str = ""
+    handle: str | None = None
+    error: dict | None = None
+    started: float = 0.0
+    elapsed_s: float = 0.0
+    cancel: threading.Event = dataclasses.field(default_factory=threading.Event)
+
+
+_JOBS: dict[str, _Job] = {}
+_JOBS_LOCK = threading.Lock()
+
+
+def _m_start_time_run(payload: dict) -> dict:
+    """Start a time-domain run on a background thread and return its job id.
+
+    One at a time. Two concurrent runs would share one interpreter and thrash
+    the same registry for no gain — numpy releases the GIL, so a single worker
+    already leaves the UI thread responsive.
+    """
+    with _JOBS_LOCK:
+        busy = [j for j in _JOBS.values() if j.state in ("queued", "running")]
+        if busy:
+            raise RuntimeError(
+                f"a run is already in progress (job {busy[0].id}); "
+                "cancel it or wait for it to finish")
+
+    quality = str(payload.get("quality") or "fast")
+    if quality not in QUALITY_SYMBOLS:
+        raise ValueError(f"unknown quality {quality!r}; "
+                         f"expected one of {sorted(QUALITY_SYMBOLS)}")
+    values = dict(payload.get("values") or {})
+    values["sim.n_symbols"] = str(QUALITY_SYMBOLS[quality])
+
+    job = _Job(id=uuid.uuid4().hex[:12], started=time.perf_counter())
+    with _JOBS_LOCK:
+        _JOBS[job.id] = job
+
+    threading.Thread(target=_run_job, args=(job, values), daemon=True,
+                     name=f"halo-job-{job.id}").start()
+    return {"job": job.id, "quality": quality,
+            "n_symbols": QUALITY_SYMBOLS[quality]}
+
+
+def _run_job(job: _Job, values: dict) -> None:
+    def progress(stage: str) -> None:
+        if job.cancel.is_set():
+            raise runner.Cancelled()
+        job.stage = stage
+
+    job.state = "running"
+    try:
+        rec = runner.run_from_values(values, engines=("time",),
+                                     progress=progress)
+        if rec.ok:
+            job.handle, job.state = rec.id, "done"
+        else:
+            job.state = "error"
+            job.error = {"kind": "engine", "message": rec.error,
+                         "field": None, "traceback": rec.tb}
+    except runner.Cancelled:
+        job.state = "cancelled"
+    except Exception as exc:
+        job.state = "error"
+        job.error = {"kind": type(exc).__name__, "message": str(exc),
+                     "field": None, "traceback": traceback.format_exc()}
+    finally:
+        job.elapsed_s = time.perf_counter() - job.started
+
+
+def _m_poll(payload: dict) -> dict:
+    job = _JOBS.get(payload.get("job"))
+    if job is None:
+        raise KeyError(f"unknown job {payload.get('job')!r}")
+    return {"job": job.id, "state": job.state, "stage": job.stage,
+            "handle": job.handle, "elapsed_s": round(job.elapsed_s, 3),
+            "cancel_pending": job.cancel.is_set() and job.state == "running",
+            "job_error": job.error}
+
+
+def _m_cancel(payload: dict) -> dict:
+    """Request cancellation. Takes effect at the next stage boundary.
+
+    The receiver kernel is one uninterruptible call, so a cancel raised while
+    it is running is not honoured until it returns — which for a long run is
+    most of the wait. Say so rather than showing a button that appears to stop
+    the work: ``poll`` reports ``cancel_pending`` until the unwind actually
+    happens.
+    """
+    job = _JOBS.get(payload.get("job"))
+    if job is None:
+        raise KeyError(f"unknown job {payload.get('job')!r}")
+    job.cancel.set()
+    return {"job": job.id, "state": job.state,
+            "note": "takes effect at the next stage boundary; the receiver "
+                    "kernel cannot be interrupted mid-run"}
+
+
+# ------------------------------------------------------ touchstone import ---
+
+def _m_import_touchstone(payload: dict) -> dict:
+    """Describe a Touchstone file so a client can confirm before adopting it.
+
+    Read through the same loader the engine uses, so anything this accepts the
+    engine accepts.
+
+    The number that matters most is not the insertion loss — it is the file's
+    own frequency span. Measured `.s4p` files routinely stop well below the
+    Nyquist of the config they get pointed at (the bundled peters set ends near
+    15 GHz), and beyond it the channel model extrapolates conservatively. That
+    still produces a plot and a BER, so nothing on screen would otherwise say
+    the answer came from extrapolation rather than from data. `extrapolated`
+    does.
+    """
+    from halo_serdes.channel import ChannelModel, import_diff_network
+
+    path = str(payload.get("path") or "")
+    if not path:
+        raise ValueError("path is required")
+    if not Path(path).is_file():
+        raise FileNotFoundError(f"no such file: {path}")
+
+    cfg = build_config(payload.get("values") or {})
+
+    # The raw network first: once ChannelModel has interpolated onto its own
+    # grid the file's real span is gone.
+    sdd = import_diff_network(path, renumber=cfg.channel.renumber,
+                              lane=cfg.channel.lane)
+    file_f_max = float(np.max(sdd.f))
+    nyq = float(cfg.f_nyquist)
+
+    f_max = cfg.channel.f_max or (4.0 * nyq)
+    ch = ChannelModel.from_touchstone(
+        path, f_max=f_max, n_freq=cfg.channel.n_freq,
+        zs_diff=cfg.channel.zs_diff, zl_diff=cfg.channel.zl_diff,
+        renumber=cfg.channel.renumber, lane=cfg.channel.lane)
+
+    il = ch.insertion_loss_db()
+    idx = int(np.argmin(np.abs(ch.f - nyq)))
+    return _jsonable({
+        "file": path,
+        "name": ch.name,
+        "file_f_max_ghz": file_f_max / 1e9,
+        "n_freq": int(ch.f.size),
+        "nyquist_ghz": nyq / 1e9,
+        "il_db_at_nyquist": float(il[idx]),
+        # True when the config asks the model about frequencies the file does
+        # not contain, so the client can say where the number came from.
+        "extrapolated": bool(nyq > file_f_max),
+    })
+
+
 # --------------------------------------------------------------- dispatch ---
 
 class _RecordError(Exception):
@@ -347,6 +511,8 @@ _METHODS = {
     "to_yaml": _m_to_yaml, "from_yaml": _m_from_yaml,
     "run_stat": _m_run_stat, "run_com": _m_run_com, "study": _m_study,
     "series": _m_series, "release": _m_release,
+    "start_time_run": _m_start_time_run, "poll": _m_poll, "cancel": _m_cancel,
+    "import_touchstone": _m_import_touchstone,
 }
 
 

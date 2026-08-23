@@ -9,6 +9,8 @@ envelope) and optional-dependency errors are captured, not raised.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import time
 import traceback
 import uuid
@@ -54,6 +56,16 @@ class RunRecord:
         return self.error is None
 
 
+class Cancelled(Exception):
+    """Raised out of a ``progress`` callback to abandon a run.
+
+    It lives here rather than in the caller because this is the layer that has
+    to know *not* to swallow it: ``run_link`` turns every other exception into
+    a record error so a UI never sees a crash, and a cancellation caught that
+    way would be reported as a failed run.
+    """
+
+
 def engines_for(cfg: LinkConfig) -> tuple[str, ...]:
     """Map ``sim.engine`` to the concrete engines to run."""
     return {"time": ("time",), "stat": ("stat",),
@@ -62,8 +74,23 @@ def engines_for(cfg: LinkConfig) -> tuple[str, ...]:
 
 def run_link(cfg: LinkConfig, engines: tuple[str, ...] | None = None,
              collect_eye: bool = True, collect_jitter: bool = False,
-             channel: ChannelModel | None = None, **engine_kw) -> RunRecord:
-    """Run the requested engines on ``cfg`` and register the result."""
+             channel: ChannelModel | None = None,
+             progress: "Callable[[str], None] | None" = None,
+             **engine_kw) -> RunRecord:
+    """Run the requested engines on ``cfg`` and register the result.
+
+    ``progress`` is called with a stage name at each boundary. The stages are
+    deliberately coarse — building the channel, each engine, done — because
+    that is where this layer can see. Inside ``run_time_link`` the receiver is
+    one call into a numba/pure-Python kernel that runs the whole symbol loop;
+    reporting from within it would mean chunking that loop and carrying the
+    CDR and DFE state across the seams, which is exactly the code architecture
+    invariants #3 and #4 rest on. A progress bar is not worth reopening it.
+
+    A callback may raise :class:`Cancelled` to abandon the run; that one
+    exception is re-raised rather than recorded, so the caller can tell a
+    cancellation from a failure. It can only take effect at a stage boundary.
+    """
     engines = engines or engines_for(cfg)
     rid = uuid.uuid4().hex[:12]
     rec = RunRecord(id=rid, cfg=cfg, engines=tuple(engines))
@@ -72,19 +99,33 @@ def run_link(cfg: LinkConfig, engines: tuple[str, ...] | None = None,
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             if channel is None:
+                if progress:
+                    progress("channel")
                 channel = ChannelModel.from_config(cfg)
             if "time" in engines:
+                if progress:
+                    progress("time-domain engine")
                 rec.sim = run_time_link(cfg, channel=channel,
                                         collect_eye=collect_eye,
                                         collect_jitter=collect_jitter,
                                         **engine_kw)
             elif "static" in engines:
+                if progress:
+                    progress("static engine")
                 rec.sim = run_static_link(cfg, channel=channel,
                                           collect_eye=collect_eye)
             if "stat" in engines:
+                if progress:
+                    progress("statistical engine")
                 rec.stat = run_statistical(cfg, channel=channel)
+            if progress:
+                progress("done")
             rec.warnings = [str(w.message) for w in caught
                             if _keep_warning(str(w.message))]
+    except Cancelled:
+        # Deliberately not recorded as an error: the run was abandoned, not
+        # broken, and the caller distinguishes the two.
+        raise
     except Exception as exc:  # surfaced in the UI, never crashes the app
         rec.error = f"{type(exc).__name__}: {exc}"
         rec.tb = traceback.format_exc()
