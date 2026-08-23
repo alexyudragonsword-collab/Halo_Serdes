@@ -64,6 +64,13 @@ MAX_HEATMAP_COLS = 128
 #: same three and no client invents its own.
 QUALITY_SYMBOLS = {"fast": 20_000, "standard": 100_000, "precise": 500_000}
 
+#: Floor for series a plot spec declares logarithmic. The studies already
+#: bottom out here (reach and crosstalk emit 1e-300), but the concatenated-FEC
+#: projection underflows to exact zero — which a log axis cannot draw at all.
+#: Clamping belongs where the log axis is promised, not in the study, whose
+#: zero is an honest "below double precision".
+LOG_AXIS_FLOOR = 1e-300
+
 #: log10 clamp for eye densities. Below this the statistical engine has not
 #: resolved a probability at all, so it marks absence rather than a value.
 EYE_LOG_FLOOR = -18.0
@@ -266,7 +273,9 @@ def _m_study(payload: dict) -> dict:
     """
     name = payload.get("name")
     if name == "fec":
-        return {"name": name, "data": _jsonable(studies.fec_projection())}
+        plots = studies.STUDY_PLOTS["fec"]
+        return {"name": name, "plots": plots,
+                "data": _clamp_log_axes(_jsonable(studies.fec_projection()), plots)}
     fn = _STUDIES.get(name)
     if fn is None:
         raise ValueError(f"unknown study {name!r}; "
@@ -280,8 +289,23 @@ def _m_study(payload: dict) -> dict:
             raise _RecordError(rec)
     out = fn(rec)
     if "error" in out:
-        return {"name": name, "handle": rec.id, "note": out["error"], "data": {}}
-    return {"name": name, "handle": rec.id, "data": _jsonable(out)}
+        return {"name": name, "handle": rec.id, "note": out["error"],
+                "data": {}, "plots": []}
+    plots = studies.STUDY_PLOTS.get(name, [])
+    return {"name": name, "handle": rec.id,
+            "data": _clamp_log_axes(_jsonable(out), plots), "plots": plots}
+
+
+def _clamp_log_axes(data: dict, plots: list[dict]) -> dict:
+    """Lift series on declared-log axes off zero, so the axis is drawable."""
+    keys = {k for p in plots for k in ([p["x"]] if p.get("x_log") else [])
+            + (p["y"] if p.get("y_log") else [])}
+    for k in keys:
+        seq = data.get(k)
+        if isinstance(seq, list):
+            data[k] = [None if v is None else max(float(v), LOG_AXIS_FLOOR)
+                       for v in seq]
+    return data
 
 
 def _m_series(payload: dict) -> dict:

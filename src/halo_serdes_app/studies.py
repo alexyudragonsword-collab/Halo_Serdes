@@ -242,3 +242,37 @@ def jtol_study(rec) -> dict:
         return {"freqs": jt.freqs, "tol_ui": jt.tol_ui, "mask": mask,
                 "threshold": jt.ber_threshold}
     return _cached(("jtol", rec.id), compute)
+
+#: How each study's flat result should be plotted.
+#:
+#: The studies return ``{name: array}`` with no indication of which key is the
+#: x axis or which axes are logarithmic, so every client would otherwise guess
+#: — and two clients would guess differently. This is the same reasoning as
+#: ``config_bridge.SECTIONS``: presentation metadata belongs next to whatever
+#: produces the data, not copied into each UI.
+#:
+#: Always a *list* of panels, because a single study can produce series in
+#: different units (multilane yields both mV and dB, which share no axis).
+STUDY_PLOTS: dict[str, list[dict]] = {
+    "reach": [{"x": "loss", "y": ["pre", "kp4", "kr4"],
+               "x_label": "Nyquist loss [dB]", "y_label": "BER", "y_log": True}],
+    "crosstalk": [{"x": "coupling", "y": ["ber"],
+                   "x_label": "coupling", "y_label": "BER", "y_log": True}],
+    "multilane": [
+        {"x": "counts", "y": ["icn_mv"],
+         "x_label": "aggressors", "y_label": "ICN [mV]", "y_log": False},
+        {"x": "counts", "y": ["com_db"],
+         "x_label": "aggressors", "y_label": "COM [dB]", "y_log": False},
+    ],
+    "com": [{"x": "loss", "y": ["com_db", "com_93a"],
+             "x_label": "Nyquist loss [dB]", "y_label": "COM [dB]",
+             "y_log": False}],
+    "jtol": [{"x": "freqs", "y": ["tol_ui", "mask"],
+              "x_label": "SJ frequency [Hz]", "y_label": "tolerated SJ [UI]",
+              "x_log": True, "y_log": True}],
+    "fec": [{"x": "pre", "y": ["kp4", "kr4", "concat"],
+             "x_label": "pre-FEC BER", "y_label": "post-FEC BER",
+             "x_log": True, "y_log": True}],
+    "fixedpoint": [{"x": "bits", "y": ["ser"],
+                    "x_label": "weight bits", "y_label": "SER", "y_log": True}],
+}

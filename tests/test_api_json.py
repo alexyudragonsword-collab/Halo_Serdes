@@ -373,3 +373,60 @@ def test_bad_touchstone_paths_are_data(values, tmp_path):
     junk = tmp_path / "junk.s4p"
     junk.write_text("not a touchstone")
     assert call("import_touchstone", path=str(junk), values=values)["ok"] is False
+
+
+# ------------------------------------------------------- study plots (M9) ---
+
+def test_every_study_plot_names_keys_the_study_actually_returns(values):
+    """Axis metadata has to match the data it describes.
+
+    The studies return a flat ``{name: array}`` with nothing marking the x
+    axis, so without this each client would guess — and two clients would
+    guess differently. ``STUDY_PLOTS`` is the single answer; this checks it
+    stays true as the studies change, rather than pointing at a key that was
+    renamed.
+    """
+    from halo_serdes_app import studies
+
+    handle = call("run_stat", values=values)["data"]["handle"]
+    checked = 0
+    for name in sorted(studies.STUDY_PLOTS):
+        r = call("study", name=name, values=values, handle=handle)
+        assert r["ok"], r
+        d = r["data"]
+        if d.get("note"):
+            continue            # unsupported for this config; nothing to plot
+        assert d["plots"], f"{name} produced data but no plot spec"
+        for panel in d["plots"]:
+            keys = set(d["data"])
+            assert panel["x"] in keys, f"{name}: x key {panel['x']} not in {keys}"
+            n = len(d["data"][panel["x"]])
+            for y in panel["y"]:
+                assert y in keys, f"{name}: y key {y} not in {keys}"
+                assert len(d["data"][y]) == n, f"{name}: {y} length != x length"
+            assert panel["x_label"] and panel["y_label"]
+            checked += 1
+    assert checked >= 5, f"only {checked} panels exercised"
+
+
+def test_a_log_axis_is_only_declared_where_the_data_allows_it(values):
+    """A log axis needs strictly positive data, or the chart draws nothing.
+
+    The client takes ``y_log`` at face value; if a study can emit a zero on an
+    axis declared logarithmic, that is a spec bug here rather than a rendering
+    bug there.
+    """
+    from halo_serdes_app import studies
+
+    handle = call("run_stat", values=values)["data"]["handle"]
+    for name in sorted(studies.STUDY_PLOTS):
+        d = call("study", name=name, values=values, handle=handle)["data"]
+        if d.get("note"):
+            continue
+        for panel in d["plots"]:
+            axes = ([panel["x"]] if panel.get("x_log") else []) + \
+                   (panel["y"] if panel.get("y_log") else [])
+            for key in axes:
+                vals = [v for v in d["data"][key] if v is not None]
+                assert vals and all(v > 0 for v in vals), \
+                    f"{name}.{key} is declared logarithmic but contains {min(vals)}"
