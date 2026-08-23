@@ -60,8 +60,20 @@ for path in glob.glob(sys.argv[1] + "/**/*.xml", recursive=True):
 
 for name, n in sorted(per_class.items()):
     print(f"  {name}: {n} tests, {bad[name]} failed")
-print(f"instrumented totals: {total} tests, {fails} failures, "
-      f"{errors} errors, {skipped} skipped")
+summary = (f"instrumented totals: {total} tests, {fails} failures, "
+           f"{errors} errors, {skipped} skipped")
+print(summary)
+
+# Also as a workflow annotation. The plain line above sits a few hundred lines
+# deep in a log dominated by emulator boot messages and Gradle cache chatter,
+# which makes "how many tests actually ran?" expensive to answer after the
+# fact — and that number is the whole point of this script. An annotation is
+# attached to the run itself and readable without the log.
+detail = " | ".join(f"{n.rsplit('.', 1)[-1]} {c}/{bad[n]}f"
+                    for n, c in sorted(per_class.items()))
+level = "error" if (fails or errors or total == 0) else "notice"
+print(f"::{level} title=Instrumented tests::{summary}"
+      + (f" -- {detail}" if detail else ""))
 if total == 0:
     print("NO TESTS RAN - treating as failure; a green tick here would mean "
           "the suite never executed")
