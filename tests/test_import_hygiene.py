@@ -165,8 +165,18 @@ def test_touchstone_path_works_without_pandas():
     if not files:
         pytest.skip("no bundled .s4p to read")
     r = _run_isolated(("pandas", "matplotlib", "numba", "llvmlite", "galois"), f"""
+        import sys
         from halo_serdes.channel import ChannelModel, import_diff_network
         import numpy as np
+
+        # skrf's Network.interpolate uses scipy.interpolate.interp1d having
+        # only done `import scipy`, so the Touchstone path breaks unless that
+        # submodule is already loaded. Modern SciPy lazily loads subpackages
+        # and hides this; SciPy 1.8.1 — the version Chaquopy installs — does
+        # not, which is how CI caught it. touchstone.py imports it explicitly,
+        # and this is the assertion that keeps it there.
+        assert "scipy.interpolate" in sys.modules, \\
+            "scipy.interpolate must be imported by the touchstone module itself"
 
         path = {str(files[0])!r}
         sdd = import_diff_network(path)

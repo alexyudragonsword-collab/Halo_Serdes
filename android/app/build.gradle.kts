@@ -93,20 +93,18 @@ chaquopy {
             install("scipy")     // <-- the wheel whose existence M0 tests
             install("PyYAML")    // presets are YAML; loader imports it lazily
 
-            // --no-deps because scikit-rf declares pandas as a hard
-            // dependency it never actually needs on this path. Verified on a
-            // host by blocking the import outright: skrf loads, and the whole
-            // Touchstone read (import_diff_network -> se2mm -> ChannelModel)
-            // completes. Letting pip honour the declaration would drag in
-            // pandas — a large compiled wheel — to satisfy metadata alone.
+            // Touchstone import (M8). scikit-rf declares pandas as a hard
+            // dependency it never reaches for on this path — verified on a
+            // host by blocking the import outright and running the whole read
+            // the engine runs, which is what test_import_hygiene.py now pins.
             //
-            // The trade is real and stated: --no-deps means pip stops
-            // checking, so a future skrf that *does* import pandas would fail
-            // at runtime on the device rather than at build time.
-            // test_import_hygiene.py is what catches that, on the host, by
-            // blocking the same modules this build omits.
-            install("--no-deps", "scikit-rf")
-            install("typing-extensions")   // skrf's other declared dependency
+            // Installed anyway, deps and all. `install("--no-deps", "...")`
+            // is not a form Chaquopy accepts ("Invalid pip install format"),
+            // and its `options()` applies to *every* install — which would
+            // strip numpy and scipy of chaquopy-openblas and friends, i.e.
+            // break the thing this whole port rests on to save a package.
+            // Paying for pandas is the smaller price.
+            install("scikit-rf")
         }
 
         // Keep .py sources so a traceback on the device names real lines.

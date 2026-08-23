@@ -22,6 +22,15 @@ from __future__ import annotations
 from cmath import phase, rect
 
 import numpy as np
+
+# scikit-rf's Network.interpolate reaches for `scipy.interpolate.interp1d`
+# having only done `import scipy`, so it works whenever something else in the
+# process happened to import that submodule first — and raises
+# ``AttributeError: module 'scipy' has no attribute 'interpolate'`` when
+# nothing did. Modern SciPy hides the bug by lazily loading subpackages;
+# SciPy 1.8.1, which is what Chaquopy installs on Android, does not. Importing
+# it here makes the Touchstone path independent of what else is loaded.
+import scipy.interpolate  # noqa: F401  (imported for skrf's benefit, not ours)
 import skrf as rf
 
 # ---------------------------------------------------------------------------

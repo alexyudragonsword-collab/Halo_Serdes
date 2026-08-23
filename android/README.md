@@ -13,8 +13,9 @@ Compose UI  ──►  HaloApi (信封解析)  ──►  HaloPython (单线程 
                                     halo_serdes(计算核)
 ```
 
-**当前进度:M6。** 选预设 → 改任意参数 → 看派生量与包络告警 → 跑统计引擎 →
-读 BER **+ 浴盆曲线 + 统计眼**。时域长跑是 M7,Touchstone 导入是 M8。
+**当前进度:M9。** 选预设 → 改任意参数 → 看派生量与包络告警 → 跑统计引擎读 BER、
+浴盆曲线与统计眼 → **跑时域引擎(三档质量、前台服务、可取消)** →
+**导入自己的 Touchstone 文件** → **在第二个标签页跑七种扫描**。
 
 ### 图表是画出来的,没有引入图表库
 
@@ -56,6 +57,57 @@ kind 都接受字符串(`float(value)`),这正是"表单一律按文本编辑"�
 
 ---
 
+### 长跑不能靠"希望系统不杀它"
+
+时域引擎是这个进程里几分钟的计算。切到后台而没有前台服务,进程随时可被回收,
+**几分钟的结果无声消失,屏幕上不会留下任何痕迹** —— 这正是 M7 要防的那一件事,
+通知栏那条通知是 Android 收的过路费,顺带成了熄屏后唯一能看见的进度。
+
+- **`specialUse` 而不是 `dataSync`。** 没有任何东西在同步;`dataSync` 带着一份
+  为网络传输准备的每日运行时预算,这份计算会以一个不实的名义把它花掉。
+  Android 没有"长时间本地计算"这个类别,`specialUse` 就是为这种情况留的口子。
+- **`START_NOT_STICKY`。** run 是本进程里的一个 Python 线程,进程没了活也没了;
+  被系统重启的 service 只会去播报一个已经不存在的任务。
+- **进度条是不确定态,卡片和通知都是。** 接收机内核是一次调用,它跑完整个符号
+  循环 —— 要从里面报进度就得把那个循环切块、并把 CDR 与 DFE 状态跨接缝传递,
+  而铁律 #3 / #4 正建立在那段代码上。任何百分比都是编的。
+- **取消只在阶段边界生效,界面照实说。** `poll` 返回 `cancel_pending`,
+  卡片显示"stopping…"并说明内核不能中途打断,而不是给一个看着能立刻停的按钮。
+
+### 零错误不是 BER = 0
+
+`result` 把 `n_errors` / `n_checked` 摆在 BER 旁边,并给一个 `ber_is_upper_bound`。
+20 000 符号下一条舒适链路会跑出**零个错误**,引擎如实报 `ber == 0.0` —— 读起来是
+"完美",意思却是"低于这次运行看得见的下限"。界面因此显示 `BER < 5e-5` 而不是
+`0.000e+00`。**本项目已经在四个错误上算出过一个错误结论**(见
+`cairn/engineering-pitfalls.md` 的测量类),这一栏就是为那件事留的。
+
+同样地,`n_symbols` 与 `n_requested` 两个都报:引擎会丢掉热身与尾部不完整符号,
+所以"快速档"实测的是两万里的约一万四,只显示档位就是夸大了这次运行。
+
+### 导入 Touchstone 是"确认"而不是"直接采用"
+
+决定一个文件能不能回答当前这个问题的,不是插损,是**文件自己的频率跨度**:
+实测 `.s4p` 经常止步于远低于它被指向的那个 Nyquist(仓库里 peters 那组到 15 GHz
+就没了),越过之后信道模型会保守外插 —— 然后照样给出曲线和 BER,屏幕上没有任何
+东西说这个数来自外插而不是数据。`extrapolated` 就是那句话,卡片把它标红。
+
+SAF 的 `Uri` 不是文件:`content://…` 由别的 app 的 provider 经框架解析,而 Python
+手里只有 `open()`。所以字节必须先拷进本 app 的私有目录 —— 这不是绕路,是让那个
+路径对解释器有意义的唯一办法。拷贝保留扩展名(skrf 从 `.sNp` 读端口数),
+并有 64 MB 上限:仓库里最大的信道文件是 2.6 MB,超过这个数更可能是选错了文件。
+
+### 扫描页里没有任何一个 study 的名字
+
+列表、标题、说明、面板规格全部由 `schema` 送来 —— 也就是
+`studies.STUDY_LABELS` 与 `studies.STUDY_PLOTS`,和数据的产地放在一起。
+往 `studies.py` 加一个扫描,手机上就带着**正确的坐标轴**出现,Kotlin 零改动。
+这跟表单与 `SECTIONS` 是同一笔交易,也是"一个计算核撑两个 UI"能成立的原因。
+
+哪个 key 是 x 轴、哪些轴取对数,都不该由客户端猜 —— 两个客户端会猜出两种答案。
+没有规格的 study 直接列数字,不去替它编一套坐标轴;规格点名了一个 study 没返回的
+key,就把那个 key 报出来,而不是画一个空框。
+
 ## 跨界契约
 
 界面永远不碰 `ok` / `error.message` / `PyException`,只见 `ApiResult`:
@@ -71,14 +123,16 @@ kind 都接受字符串(`float(value)`),这正是"表单一律按文本编辑"�
 numpy 数组;`onCleared` 里用 `HaloPython.post` 而不是协程 —— 那时
 `viewModelScope` 已取消,协程根本不会跑。
 
-### 哪些预设在手机上能跑
+### 哪些预设在手机上能跑(M8 之后:全部)
 
-APK 带了 `configs/*.yaml`,但**没带** `data/channels/*.s4p`(4.4 MB,而且读它要
-scikit-rf,M0 起就没装)。所以 9 个预设里用 touchstone 信道的两个
-(`nrz_16g_ms` / `nrz_32g`)在手机上**跑不了**。
+M8 之前 APK 只带 `configs/*.yaml`,不带 `data/channels/*.s4p` —— 没有读它的东西,
+那 4.4 MB 就是纯负担。M8 装了 scikit-rf,信道文件也就一起打包了,九个预设现在
+**都能跑**。
 
-这本身是有意的取舍,但它必须**在按 Run 之前**就说清楚,否则用户看到的是"预设坏了"
-而不是"文件不在"。因此 `derive` 现在多返回一个 `channel: {ok, message}`:
+但这条契约保留,而且是**写成蕴含式**保留的:只要有配置指向一个这台设备上没有的
+文件(导入的文件被删、"Library defaults" 本身就无文件),就必须**在按 Run 之前**
+说清楚,否则用户看到的是"预设坏了"而不是"文件不在"。`derive` 因此返回
+`channel: {ok, message}`:
 
 - `valid` 仍然是 `true` —— 配置本身没问题,只是数据不在这台设备上;
 - 界面据此显示一张说明卡片并**禁用 Run**;
@@ -158,10 +212,18 @@ cd android
 
 - **不装 matplotlib** —— 核心库从不 import 它(只有 `examples/` 用)。
 - **不装 numba** —— Android 无 wheel,且铁律 #4 规定纯 Python 内核才是正确性基准。
-- **不装 scikit-rf** —— 它把 `pandas` 声明为硬依赖(尽管运行时从不 import)。
-  M0 的问题是 **scipy**,Touchstone 导入是后续里程碑的事;现在加进来只会让构建
-  可能挂在一个与本次提问无关的包上。探针已验证:skrf 缺失时它优雅报告 MISSING,
-  计算与 golden 比对照常通过。
+- **不装 scikit-rf(M0–M7)** —— 它把 `pandas` 声明为硬依赖(尽管 Touchstone
+  这条路上从不 import)。M0 的问题是 **scipy**,现在加进来只会让构建可能挂在一个
+  与本次提问无关的包上。探针已验证:skrf 缺失时它优雅报告 MISSING,计算与 golden
+  比对照常通过。
+- **M8 起装 scikit-rf,连依赖一起装。** 它把 `pandas` 声明为硬依赖而
+  Touchstone 这条路上从不 import —— 宿主测试
+  `test_touchstone_path_works_without_pandas` 屏蔽 pandas 后跑完整条读取链路
+  (解析 → 混合模式变换 → 建模 → 插损),这一点是钉住的。
+  但**不用 `--no-deps` 去省掉它**:`install("--no-deps", "...")` 不是 Chaquopy
+  接受的写法(`Invalid pip install format`),而它的 `options()` 是**全局**的 ——
+  那会连 numpy/scipy 的 `chaquopy-openblas` 一起剥掉,为省一个包去砸这个移植
+  赖以成立的东西。多背一个 pandas 是更便宜的那一边。
 
 ## 版本旋钮都在 `gradle.properties`
 
@@ -232,7 +294,9 @@ ValueError: channel.kind is 'touchstone' but channel.file is unset
 回归防线:`presetsSurvivedThePackaging`(仪器化,查 preset 数量并打印
 `configs_dir`)+ `test_host_can_relocate_the_data_dir`(宿主侧,钉住环境变量契约)。
 
-`data/channels/*.s4p`(4.4 MB)**故意不打包**:读 Touchstone 要 scikit-rf,而 M0 不装它。
+`data/channels/*.s4p`(4.4 MB)在 M0–M7 **故意不打包**:读 Touchstone 要 scikit-rf,
+而那时不装它。M8 装了之后一并打包 —— 也因此解压改成按包的 `lastUpdateTime` 打戳,
+每次启动重拷 4.4 MB 是白付的延迟(36 KB 的 YAML 时代无所谓)。
 
 ### 第二个发现:Chaquopy 给的版本比 pyproject 要求的老
 
