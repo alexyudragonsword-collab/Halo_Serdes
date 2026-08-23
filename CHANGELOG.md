@@ -6,6 +6,20 @@
 
 ---
 
+## [未发布] — Android M5：SECTIONS 自动生成参数表单
+
+### 新增
+- `ui/FormModel.kt` / `ui/FormFields.kt`：12 个分组、78 个字段全部由
+  `config_bridge.SECTIONS` 渲染，与桌面 Dash 同源。给配置层加字段，手机上自动出现。
+- 去抖校验（300 ms）→ 字段级错误标红、分组标题显示非法字段数（折叠不会藏住 Run 变灰的原因）。
+- `FormContractTest`（设备）+ `test_bool_fields_must_not_be_sent_as_text`（宿主）。
+
+### 已知
+- **bool 必须以 JSON 布尔过界**：`coerce_in` 对数值 kind 接受字符串，但 `bool("false")`
+  是 `True`，开关当文本发会静默取反。已由上述两个测试钉住。
+
+---
+
 ## [未发布] — Android M4：Compose 界面接上共用计算核
 
 ### 新增

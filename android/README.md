@@ -13,8 +13,23 @@ Compose UI  ──►  HaloApi (信封解析)  ──►  HaloPython (单线程 
                                     halo_serdes(计算核)
 ```
 
-**当前进度:M4。** 选预设 → 看派生量与包络告警 → 跑统计引擎 → 读 BER。
-参数逐项可编辑的表单(由 `SECTIONS` 自动生成)是 M5;图表是 M6。
+**当前进度:M5。** 选预设 → **改任意参数** → 看派生量与包络告警 → 跑统计引擎 → 读 BER。
+图表是 M6,Touchstone 导入是 M8。
+
+### 表单不是手写的
+
+12 个分组、78 个字段全部由 `config_bridge.SECTIONS` 生成 —— 和桌面 Dash 版读的是同一份
+规格。**给配置层加一个字段,手机上就会出现,Kotlin 一行都不用改。** 这是这一层存在的理由。
+
+一个必须守住的不对称:**bool 要以 JSON 布尔过界,不能当文本发。** Python 侧每个数值
+kind 都接受字符串(`float(value)`),这正是"表单一律按文本编辑"能成立的原因;但
+`bool("false")` 是 `True` —— 开关若当文本发会**静默取反**,配出一个没人要的配置且毫无迹象。
+`toFormValues` 因此保持 bool 的类型,设备侧 `boolFieldsStayBooleanThroughTheValueMap`
+与宿主侧 `test_bool_fields_must_not_be_sent_as_text` 两头钉住。
+
+校验是**去抖**的(300 ms):半个数字("1e"、"-")还不算用户犯的错,逐键闪红只会训练人无视
+标记。配置非法时 `derive` 只回 `valid` 与 `field_errors`,没有 `derived`/`envelope`/`channel`,
+所以界面保留上一次的派生量而不是在编辑中途清空面板。
 
 下面「M0」几节是**历史记录**,保留是因为那些结论(版本约束、打包陷阱)至今仍然管用。
 
@@ -283,11 +298,14 @@ android/
 ├── app/src/main/python/halo_probe.py     探针:版本/scipy 入口/计算核/golden 比对
 ├── app/src/main/java/.../HaloPython.kt   与 Python 的唯一接触面 + 单线程 dispatcher
 ├── app/src/main/java/.../api/HaloApi.kt  信封 -> ApiResult,跨界契约都在这
-├── app/src/main/java/.../ui/LinkViewModel.kt  状态与 handle 生命周期
+├── app/src/main/java/.../ui/FormModel.kt      SECTIONS -> 表单模型 + 值编解码
+├── app/src/main/java/.../ui/FormFields.kt     按 kind 渲染的控件
+├── app/src/main/java/.../ui/LinkViewModel.kt  状态、去抖校验、handle 生命周期
 ├── app/src/main/java/.../ui/LinkScreen.kt     Compose 界面
 ├── app/src/main/java/.../MainActivity.kt setContent 一行
 ├── app/src/androidTest/.../PythonStackTest.kt  M0 的判定(解释器与数值)
 ├── app/src/androidTest/.../LinkFacadeTest.kt   M4 的判定(界面走的那条路)
+├── app/src/androidTest/.../FormContractTest.kt M5 的判定(表单与 schema 不许漂移)
 ├── tools/run_instrumented.sh             跑仪器化测试 + 在日志里报出到底跑了几个
 └── tools/gen_probe_golden.py             在 CI 宿主上生成 golden
 ```

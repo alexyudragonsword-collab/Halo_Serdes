@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.halo.serdes.probe.HaloPython
 import com.halo.serdes.probe.api.ApiResult
 import com.halo.serdes.probe.api.HaloApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,12 +29,14 @@ data class StatSummary(
 data class Envelope(val level: String, val message: String)
 
 data class LinkUiState(
+    val sections: List<FormSection> = emptyList(),
     val presets: List<String> = emptyList(),
     val selected: String = "",
     val configsDir: String = "",
-    /** Flat `{path: value}` for the selected preset, passed back verbatim. */
-    val values: JSONObject? = null,
+    /** Flat `{path: value}` — Boolean for bool fields, String for the rest. */
+    val values: Map<String, Any> = emptyMap(),
     val derived: Map<String, String> = emptyMap(),
+    val fieldErrors: Map<String, String> = emptyMap(),
     val envelope: Envelope? = null,
     /**
      * Set when this config's channel data is not reachable — an Android build
@@ -44,9 +48,11 @@ data class LinkUiState(
     val stat: StatSummary? = null,
     val warnings: List<String> = emptyList(),
     val busy: Boolean = false,
+    val validating: Boolean = false,
     val error: ApiResult.Err? = null,
 ) {
-    val ready: Boolean get() = values != null && !busy && channelIssue == null
+    val ready: Boolean
+        get() = values.isNotEmpty() && !busy && channelIssue == null && fieldErrors.isEmpty()
 }
 
 /**
@@ -65,6 +71,9 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
 
     private val ctx get() = getApplication<Application>()
 
+    /** Cancelled and replaced on each keystroke, so typing runs one derive. */
+    private var deriveJob: Job? = null
+
     init {
         loadSchema()
     }
@@ -80,6 +89,7 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update {
                     it.copy(
                         busy = false,
+                        sections = parseSections(r.data),
                         presets = names,
                         configsDir = r.data.optString("configs_dir"),
                     )
@@ -115,30 +125,62 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun select(name: String) = viewModelScope.launch {
+        deriveJob?.cancel()
         _state.update {
             it.copy(selected = name, busy = true, error = null, stat = null,
-                    channelIssue = null)
+                    channelIssue = null, fieldErrors = emptyMap())
         }
         when (val p = HaloApi.preset(ctx, name)) {
             is ApiResult.Err -> _state.update { it.copy(busy = false, error = p) }
             is ApiResult.Ok -> {
-                val values = p.data.optJSONObject("values") ?: JSONObject()
+                val fields = _state.value.sections.flatMap { it.fields }
+                val values = (p.data.optJSONObject("values") ?: JSONObject())
+                    .toFormValues(fields)
                 _state.update { it.copy(values = values) }
                 derive(values)
             }
         }
     }
 
+    /**
+     * Edit one field.
+     *
+     * Validation is debounced rather than run per keystroke: a half-typed
+     * number ("1e", "-") is not an error the user has made yet, and flashing
+     * red between characters trains people to ignore the marker.
+     */
+    fun setField(path: String, value: Any) {
+        _state.update {
+            it.copy(values = it.values + (path to value), validating = true)
+        }
+        deriveJob?.cancel()
+        deriveJob = viewModelScope.launch {
+            delay(DERIVE_DEBOUNCE_MS)
+            derive(_state.value.values)
+        }
+    }
+
+    private suspend fun derive(values: Map<String, Any>) = derive(values.toJson())
+
     private suspend fun derive(values: JSONObject) {
         when (val d = HaloApi.derive(ctx, values)) {
-            is ApiResult.Err -> _state.update { it.copy(busy = false, error = d) }
+            is ApiResult.Err ->
+                _state.update { it.copy(busy = false, validating = false, error = d) }
             is ApiResult.Ok -> {
-                val env = d.data.optJSONObject("envelope")
-                val ch = d.data.optJSONObject("channel")
+                val data = d.data
+                val errs = data.optJSONObject("field_errors").toStringMap()
+                val env = data.optJSONObject("envelope")
+                val ch = data.optJSONObject("channel")
                 _state.update {
                     it.copy(
                         busy = false,
-                        derived = d.data.optJSONObject("derived").toStringMap(),
+                        validating = false,
+                        fieldErrors = errs,
+                        // An invalid config carries no derived quantities and no
+                        // channel verdict; keep the last good ones rather than
+                        // blanking the panel mid-edit.
+                        derived = data.optJSONObject("derived")
+                            ?.toStringMap() ?: it.derived,
                         channelIssue = ch
                             ?.takeIf { c -> !c.optBoolean("ok", true) }
                             ?.optString("message")
@@ -155,11 +197,12 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun run() = viewModelScope.launch {
-        val values = _state.value.values ?: return@launch
+        val values = _state.value.values
+        if (values.isEmpty()) return@launch
         val previous = _state.value.stat?.handle
         _state.update { it.copy(busy = true, error = null) }
 
-        when (val r = HaloApi.runStat(ctx, values)) {
+        when (val r = HaloApi.runStat(ctx, values.toJson())) {
             is ApiResult.Err -> _state.update { it.copy(busy = false, error = r) }
             is ApiResult.Ok -> {
                 val d = r.data
@@ -201,6 +244,7 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val LIBRARY_DEFAULTS = "Library defaults"
+        const val DERIVE_DEBOUNCE_MS = 300L
     }
 }
 

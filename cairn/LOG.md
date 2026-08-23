@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-08-23 · M5:参数表单由 SECTIONS 自动生成
+
+- 12 个分组、78 个字段全部从 `config_bridge.SECTIONS` 渲染,与桌面 Dash 读同一份规格 ——
+  **给配置层加字段,手机上自动出现,Kotlin 零改动**。
+- **踩到一个真陷阱并钉住**:Python 侧数值 kind 都接受字符串(所以表单可以一律按文本编辑),
+  但 `bool("false")` 是 `True` —— 开关当文本发会**静默取反**。`toFormValues` 保持 bool 类型;
+  宿主 `test_bool_fields_must_not_be_sent_as_text` + 设备
+  `boolFieldsStayBooleanThroughTheValueMap` 两头验证。
+- 校验去抖 300 ms(半个数字不算错);配置非法时 `derive` 只回 `valid` + `field_errors`,
+  界面保留上一次派生量而不是清空。
+- 新增 `FormContractTest`:schema 声明的 kind 必须都有控件、预设经表单值映射往返仍合法、
+  改 symbol_rate 派生量真的变、非法值按 path 报错。
+
 ## 2026-08-23 · M4:Compose 界面接上共用计算核
 
 - 分层:`Compose UI → HaloApi(信封解析)→ HaloPython(单线程 dispatcher)→ api.call`。

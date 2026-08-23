@@ -1,5 +1,7 @@
 package com.halo.serdes.probe.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +19,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
@@ -28,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,13 +43,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.halo.serdes.probe.api.ApiResult
 
 /**
- * M4: pick a preset, run the statistical engine, read a BER off the screen.
+ * Pick a preset, edit any of its parameters, run the statistical engine, read
+ * a BER.
  *
- * Everything shown is produced by the shared Python core through the JSON
- * facade — there is no number on this screen that the desktop build would
- * compute differently. Editing individual parameters (the auto-generated form
- * driven by `SECTIONS`) is the next milestone; for now the presets are the
- * whole input surface.
+ * The parameter form is generated from `config_bridge.SECTIONS` — the same
+ * spec the desktop Dash app renders — so a new config field appears here with
+ * no Kotlin change. Nothing on this screen is computed locally: derived
+ * quantities, the envelope banner and the field errors all come from `derive`,
+ * and the result from `run_stat`.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,37 +103,12 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
                 Button(onClick = vm::run, enabled = s.ready) {
                     Text("Run statistical engine")
                 }
-                if (s.busy) CircularProgressIndicator(Modifier.size(20.dp))
+                if (s.busy || s.validating) CircularProgressIndicator(Modifier.size(20.dp))
             }
 
             s.error?.let { ErrorCard(it) }
 
-            s.stat?.let { r ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(
-                            "BER %.3e".format(r.ber),
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                        if (r.ber == 0.0) {
-                            // Not a failed run: the comfortable presets really
-                            // do resolve no error probability at the best
-                            // phase. Say so, or an exact zero reads as "it
-                            // didn't run".
-                            Text(
-                                "no error probability resolved at the best phase",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        KeyValue("SER", "%.3e".format(r.ser))
-                        KeyValue("best phase", "${r.bestPhi}")
-                        KeyValue("bathtub points", "${r.bathtubPoints}")
-                        KeyValue("engine time", "%.0f ms".format(r.elapsedS * 1e3))
-                    }
-                }
-            }
+            s.stat?.let { r -> ResultCard(r) }
 
             s.warnings.forEach {
                 InfoCard(
@@ -138,14 +118,91 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
                 )
             }
 
+            HorizontalDivider()
+            Text(
+                "Parameters",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            s.sections.forEach { section ->
+                SectionCard(section, s, onChange = vm::setField)
+            }
+
             // Where the presets came from. Invisible plumbing until it breaks,
             // and when it breaks (nothing bundled) this line is the diagnosis.
             Text(
-                "${s.presets.size} presets · ${s.configsDir}",
+                "${s.presets.size} presets · ${s.sections.sumOf { it.fields.size }} " +
+                    "fields · ${s.configsDir}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/**
+ * One collapsible group.
+ *
+ * Collapsed by default: 78 fields open at once is a wall, and the presets
+ * already carry sensible values for all of them. A section holding an invalid
+ * field says so in its header, so a fold can never hide the reason Run is
+ * disabled.
+ */
+@Composable
+private fun SectionCard(
+    section: FormSection,
+    s: LinkUiState,
+    onChange: (String, Any) -> Unit,
+) {
+    var open by rememberSaveable(section.id) { mutableStateOf(false) }
+    val bad = section.fields.count { s.fieldErrors.containsKey(it.path) }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                Modifier.fillMaxWidth().clickable { open = !open },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "${if (open) "▾" else "▸"}  ${section.title}",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    if (bad > 0) "$bad invalid" else "${section.fields.size}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (bad > 0) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            AnimatedVisibility(visible = open) {
+                FormSectionBody(section, s.values, s.fieldErrors, onChange)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultCard(r: StatSummary) = Card(Modifier.fillMaxWidth()) {
+    Column(Modifier.padding(12.dp)) {
+        Text(
+            "BER %.3e".format(r.ber),
+            style = MaterialTheme.typography.headlineMedium,
+            fontFamily = FontFamily.Monospace,
+        )
+        if (r.ber == 0.0) {
+            // Not a failed run: the comfortable presets really do resolve no
+            // error probability at the best phase. Say so, or an exact zero
+            // reads as "it didn't run".
+            Text(
+                "no error probability resolved at the best phase",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        KeyValue("SER", "%.3e".format(r.ser))
+        KeyValue("best phase", "${r.bestPhi}")
+        KeyValue("bathtub points", "${r.bathtubPoints}")
+        KeyValue("engine time", "%.0f ms".format(r.elapsedS * 1e3))
     }
 }
 
@@ -185,23 +242,20 @@ private fun ErrorCard(e: ApiResult.Err) = Card(
 ) {
     Column(Modifier.padding(12.dp)) {
         Text(e.kind, fontWeight = FontWeight.Bold)
-        Text(e.message, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+        Text(e.message, fontFamily = FontFamily.Monospace,
+             style = MaterialTheme.typography.bodySmall)
         e.field?.let { Text("field: $it", style = MaterialTheme.typography.labelSmall) }
     }
 }
 
 @Composable
-private fun InfoCard(
-    bg: Color,
-    fg: Color,
-    title: String,
-    body: String,
-) = Card(
+private fun InfoCard(bg: Color, fg: Color, title: String, body: String) = Card(
     Modifier.fillMaxWidth(),
     colors = CardDefaults.cardColors(containerColor = bg, contentColor = fg),
 ) {
     Column(Modifier.padding(12.dp)) {
-        Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+        Text(title, fontWeight = FontWeight.Bold,
+             style = MaterialTheme.typography.labelMedium)
         Text(body, style = MaterialTheme.typography.bodySmall)
     }
 }

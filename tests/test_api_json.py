@@ -113,6 +113,25 @@ def test_derive_flags_an_unreachable_channel_without_invalidating_the_config():
     assert call("run_stat", values=gone)["ok"] is False
 
 
+def test_bool_fields_must_not_be_sent_as_text():
+    """The coercion is asymmetric, and a client has to know it.
+
+    Every numeric kind accepts a string (``float(value)``), which is what lets
+    a text-entry form send everything as text. ``bool`` does not: ``bool("false")``
+    is True, so a switch serialised as text would silently invert and produce a
+    config nobody asked for. The Android form keeps booleans typed; this pins the
+    reason it has to.
+    """
+    from halo_serdes_app.config_bridge import coerce_in
+
+    assert coerce_in({"kind": "bool"}, "false") is True     # the trap
+    assert coerce_in({"kind": "bool"}, False) is False
+    # ...while the kinds a form does send as text round-trip properly
+    assert coerce_in({"kind": "float", "scale": 1e9}, "28") == 28e9
+    assert coerce_in({"kind": "int"}, "32") == 32
+    assert coerce_in({"kind": "opt_float"}, "") is None
+
+
 def test_analytic_channels_need_no_file(values):
     d = call("derive", values={**values, "channel.kind": "analytic"})["data"]
     assert d["channel"] == {"ok": True, "message": ""}
