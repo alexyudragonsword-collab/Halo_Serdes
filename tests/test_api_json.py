@@ -90,6 +90,34 @@ def test_derive_reports_envelope_and_derived_quantities(values):
     assert {"UI", "dt", "Nyquist"} <= set(d["derived"])
 
 
+def test_derive_flags_an_unreachable_channel_without_invalidating_the_config():
+    """A missing ``.s4p`` is an availability fact, not a validation error.
+
+    The Android build ships the YAML presets but not the 4.4 MB of channel
+    files, so a client has to be able to tell which presets it can offer
+    *before* running an engine. Discovering it by catching a FileNotFoundError
+    from the engine reads to a user as a broken preset rather than as an absent
+    file — which is exactly how the first on-device run misread itself.
+    """
+    from halo_serdes_app.config_bridge import config_to_values, load_preset
+
+    vals = config_to_values(load_preset("NRZ 16G mixed-signal"))
+    assert call("derive", values=vals)["data"]["channel"]["ok"] is True
+
+    gone = {**vals, "channel.file": "data/channels/not_bundled.s4p"}
+    d = call("derive", values=gone)["data"]
+    assert d["valid"] is True                    # the config itself is fine
+    assert d["channel"]["ok"] is False
+    assert "not_bundled.s4p" in d["channel"]["message"]
+    # ...and the flag must actually predict the failure it is warning about
+    assert call("run_stat", values=gone)["ok"] is False
+
+
+def test_analytic_channels_need_no_file(values):
+    d = call("derive", values={**values, "channel.kind": "analytic"})["data"]
+    assert d["channel"] == {"ok": True, "message": ""}
+
+
 def test_derive_pins_a_bad_field_to_its_path(values):
     """The client marks the offending input, so the error must name the path."""
     d = call("derive", values={**values, "osr": "0"})["data"]

@@ -3,6 +3,20 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-08-23 · M4:Compose 界面接上共用计算核
+
+- 分层:`Compose UI → HaloApi(信封解析)→ HaloPython(单线程 dispatcher)→ api.call`。
+  信封只拆一次;`suspend` 强制切到解释器线程(一个解释器一个 GIL,顺带防 registry 交错)。
+- CI 回答了唯一的未知项:**Kotlin 编译通过**(Compose 插件版本跟随 `kotlinVersion`,
+  Kotlin 2.0 起没有独立的 composeCompiler 旋钮)。APK 产物 74.4 → 80.6 MB,Compose 约 +6.2 MB。
+- **第一版仪器化测试红了,原因是测试自己的 bug**:它取"第一个非 Library defaults 预设",
+  而那是 touchstone 的 `nrz_16g_ms`,`.s4p` 有意没打进 APK → `run_stat` 失败。app 行为正确。
+- 由此补了一个**产品侧**缺陷:`derive` 新增 `channel: {ok, message}`(`valid` 仍为 `true`),
+  界面显示说明卡片并禁用 Run,启动时选**第一个能跑的**预设。契约由
+  `unreachableChannelsAreFlaggedBeforeRunning`(设备)与两个宿主测试钉住。
+- 同时给 emulator job 加了失败时打印测试 XML —— 之前只能拿到打不开的 artifact,
+  红色构建从日志无法定位。
+
 ## 2026-08-23 · M0 判定:通过(run #3 三个 job 全绿)
 
 - `assemble` / `wheel-versions` / `emulator` 全绿;仪器化测试

@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import time
 import traceback
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -172,7 +173,29 @@ def _m_derive(payload: dict) -> dict:
     level, message = envelope_status(cfg)
     return {"valid": True, "field_errors": {},
             "derived": _jsonable(derived(cfg)),
+            "channel": _channel_status(cfg),
             "envelope": {"level": level, "message": message}}
+
+
+def _channel_status(cfg) -> dict:
+    """Whether this config's channel data is actually reachable, before running.
+
+    A touchstone preset names a repo-relative ``.s4p``; ``build_config`` has
+    already rewritten it to an absolute path if one was found. When none was
+    — an Android build ships the YAML presets but not the 4.4 MB of channel
+    files — the config is still perfectly valid, so ``valid`` stays true and
+    this reports separately. Without it a client can only discover the problem
+    by running the engine and catching the failure, which is how it reads to a
+    user: as a broken preset rather than as an absent file.
+    """
+    if cfg.channel.kind != "touchstone":
+        return {"ok": True, "message": ""}
+    if not cfg.channel.file:
+        return {"ok": False, "message": "channel.file is unset"}
+    if Path(cfg.channel.file).exists():
+        return {"ok": True, "message": ""}
+    return {"ok": False,
+            "message": f"touchstone file not available here: {cfg.channel.file}"}
 
 
 def _m_to_yaml(payload: dict) -> dict:

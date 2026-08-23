@@ -35,6 +35,26 @@ Compose UI  ──►  HaloApi (信封解析)  ──►  HaloPython (单线程 
 numpy 数组;`onCleared` 里用 `HaloPython.post` 而不是协程 —— 那时
 `viewModelScope` 已取消,协程根本不会跑。
 
+### 哪些预设在手机上能跑
+
+APK 带了 `configs/*.yaml`,但**没带** `data/channels/*.s4p`(4.4 MB,而且读它要
+scikit-rf,M0 起就没装)。所以 9 个预设里用 touchstone 信道的两个
+(`nrz_16g_ms` / `nrz_32g`)在手机上**跑不了**。
+
+这本身是有意的取舍,但它必须**在按 Run 之前**就说清楚,否则用户看到的是"预设坏了"
+而不是"文件不在"。因此 `derive` 现在多返回一个 `channel: {ok, message}`:
+
+- `valid` 仍然是 `true` —— 配置本身没问题,只是数据不在这台设备上;
+- 界面据此显示一张说明卡片并**禁用 Run**;
+- `LinkViewModel` 启动时选的是**第一个能跑的**预设,而不是第一个预设 ——
+  否则 app 一打开就是个按不动的按钮。
+
+M4 第一版的仪器化测试就栽在这:它取"第一个非 Library defaults 的预设",正好是
+touchstone 的那个,于是 `run_stat` 失败、测试红。**app 的行为是对的,是测试要求了
+做不到的事。** 现在 `unreachableChannelsAreFlaggedBeforeRunning` 把这条契约钉住:
+被标记为不可用的预设,`run_stat` 必须真的失败(写成蕴含式,所以将来若打包了
+`.s4p`,这条依然成立)。
+
 ---
 
 ## 为什么值得先做这一步

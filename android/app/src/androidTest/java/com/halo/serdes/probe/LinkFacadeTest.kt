@@ -24,18 +24,43 @@ class LinkFacadeTest {
 
     private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
 
-    /** First preset that is not the synthesised, deliberately-incomplete one. */
-    private fun aRealPreset(): String = runBlocking {
+    /** Real presets only — "Library defaults" is synthesised and incomplete. */
+    private suspend fun presetNames(): List<String> {
         val schema = HaloApi.schema(ctx)
         assertTrue("schema failed: $schema", schema is ApiResult.Ok)
         val arr = (schema as ApiResult.Ok).data.getJSONArray("presets")
-        (0 until arr.length()).map { arr.getString(it) }
-            .first { it != "Library defaults" }
+        return (0 until arr.length()).map { arr.getString(it) }
+            .filter { it != "Library defaults" }
+    }
+
+    private suspend fun valuesOf(name: String) =
+        (HaloApi.preset(ctx, name) as ApiResult.Ok).data.getJSONObject("values")
+
+    /** True when `derive` says this config's channel data is reachable here. */
+    private suspend fun channelOk(values: JSONObject): Boolean {
+        val d = HaloApi.derive(ctx, values) as? ApiResult.Ok ?: return false
+        val ch = d.data.optJSONObject("channel") ?: return true
+        return ch.optBoolean("ok", true)
+    }
+
+    /**
+     * First preset that can actually run **on this device**.
+     *
+     * Not simply the first preset: this build ships the YAML presets but not
+     * the 4.4 MB of `.s4p` channel files, so the touchstone ones cannot run
+     * here. Picking blindly is what made the first version of this test fail —
+     * the app was behaving correctly and the test was asking for the
+     * impossible.
+     */
+    private suspend fun aRunnablePreset(): String {
+        val names = presetNames()
+        return names.firstOrNull { channelOk(valuesOf(it)) }
+            ?: error("no preset can run here — presets: $names")
     }
 
     @Test
     fun presetFlowsThroughToABer() = runBlocking {
-        val name = aRealPreset()
+        val name = aRunnablePreset()
 
         val preset = HaloApi.preset(ctx, name)
         assertTrue("preset failed: $preset", preset is ApiResult.Ok)
@@ -73,13 +98,29 @@ class LinkFacadeTest {
      */
     @Test
     fun badInputArrivesAsDataNotAsACrash() = runBlocking {
-        val values = (HaloApi.preset(ctx, aRealPreset()) as ApiResult.Ok)
-            .data.getJSONObject("values")
+        val values = valuesOf(aRunnablePreset())
         values.put("osr", -4)          // negative oversampling -> negative dt
 
         val r = HaloApi.runStat(ctx, values)
         assertTrue("expected an error, got $r", r is ApiResult.Err)
         assertTrue((r as ApiResult.Err).message.isNotBlank())
+    }
+
+    /**
+     * An unreachable channel must be reported by `derive`, not discovered by
+     * running the engine.
+     *
+     * This is the contract that the packaging decision rests on: shipping the
+     * presets without their `.s4p` files is fine *provided* the client can
+     * tell which ones are usable before offering them. Asserted as an
+     * implication so it stays true on a build that does bundle the files.
+     */
+    @Test
+    fun unreachableChannelsAreFlaggedBeforeRunning() = runBlocking {
+        val flagged = presetNames().firstOrNull { !channelOk(valuesOf(it)) }
+            ?: return@runBlocking      // every channel present: nothing to check
+        val r = HaloApi.runStat(ctx, valuesOf(flagged))
+        assertTrue("$flagged was flagged unusable yet ran: $r", r is ApiResult.Err)
     }
 
     @Test

@@ -56,6 +56,13 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 要么用 `__loader__.get_data()`。项目里两条路都用了(`configs/` 走前者,
 `probe_golden.json` 走后者的回退)。
 
+**打包省掉的资源要在"用之前"报,不是"用的时候"报。** APK 有意不带
+`data/channels/*.s4p`,于是 9 个预设里 touchstone 的两个在手机上跑不了 ——
+第一版 M4 仪器化测试取"第一个预设"正好取中它,测试红了,而 **app 的行为是对的**。
+教训有两条:(1) 写测试时"第一个/任意一个"这种取法,要先确认它在目标环境里成立;
+(2) 产品侧该给出**运行前**的可用性信号 —— 现在 `derive` 返回 `channel: {ok, message}`,
+`valid` 保持 `true`(配置没问题,是数据不在),界面据此禁用 Run 并说明原因。
+
 **环境变量交接必须在 `Python.start()` 之前。** `config_bridge` 在 import 期就把
 `CONFIGS_DIR` 定死,晚一步设 `HALO_SERDES_DATA_DIR` 完全没用。
 

@@ -63,6 +63,20 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
         ) {
             PresetPicker(s, onSelect = vm::select)
 
+            s.channelIssue?.let { msg ->
+                // Distinct from an error card: nothing is wrong with the
+                // config, the data file simply is not on this device. Run is
+                // disabled rather than left to fail.
+                InfoCard(
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                    "CHANNEL DATA UNAVAILABLE",
+                    "$msg\n\nTouchstone presets need a .s4p this build does not " +
+                        "ship. Pick an analytic preset, or import a file (later " +
+                        "milestone).",
+                )
+            }
+
             s.envelope?.let { env ->
                 val (bg, fg) = envelopeColors(env.level)
                 InfoCard(bg, fg, env.level.uppercase(), env.message)

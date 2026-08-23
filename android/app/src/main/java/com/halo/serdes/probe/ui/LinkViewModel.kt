@@ -34,12 +34,19 @@ data class LinkUiState(
     val values: JSONObject? = null,
     val derived: Map<String, String> = emptyMap(),
     val envelope: Envelope? = null,
+    /**
+     * Set when this config's channel data is not reachable — an Android build
+     * ships the YAML presets but not the 4.4 MB of `.s4p` files. The config is
+     * valid; the data simply is not here, so say so up front instead of
+     * letting Run fail.
+     */
+    val channelIssue: String? = null,
     val stat: StatSummary? = null,
     val warnings: List<String> = emptyList(),
     val busy: Boolean = false,
     val error: ApiResult.Err? = null,
 ) {
-    val ready: Boolean get() = values != null && !busy
+    val ready: Boolean get() = values != null && !busy && channelIssue == null
 }
 
 /**
@@ -77,18 +84,40 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
                         configsDir = r.data.optString("configs_dir"),
                     )
                 }
-                // Skip the synthesised "Library defaults" when real presets
-                // exist — its channel is a touchstone with no file, so it is a
-                // starting point for editing, not something to run as-is.
-                names.firstOrNull { it != LIBRARY_DEFAULTS }
-                    ?.let { select(it) }
+                firstRunnable(names)?.let { select(it) }
             }
         }
     }
 
+    /**
+     * The preset to open on: the first that can actually run here.
+     *
+     * "Library defaults" is skipped because it is synthesised — its channel is
+     * a touchstone with no file, so it is a starting point for editing rather
+     * than something to run. The rest are skipped when their `.s4p` is absent,
+     * which on Android is most of the touchstone ones. Opening on a preset
+     * whose Run button is disabled would read as a broken app.
+     *
+     * Cheap to probe: `derive` builds a config and stats a path, no engine.
+     */
+    private suspend fun firstRunnable(names: List<String>): String? {
+        val candidates = names.filter { it != LIBRARY_DEFAULTS }
+        for (name in candidates) {
+            val p = HaloApi.preset(ctx, name) as? ApiResult.Ok ?: continue
+            val values = p.data.optJSONObject("values") ?: continue
+            val d = HaloApi.derive(ctx, values) as? ApiResult.Ok ?: continue
+            val ch = d.data.optJSONObject("channel")
+            if (ch == null || ch.optBoolean("ok", true)) return name
+        }
+        // Nothing runnable: still select something, so the screen explains why
+        // rather than showing an empty picker.
+        return candidates.firstOrNull()
+    }
+
     fun select(name: String) = viewModelScope.launch {
         _state.update {
-            it.copy(selected = name, busy = true, error = null, stat = null)
+            it.copy(selected = name, busy = true, error = null, stat = null,
+                    channelIssue = null)
         }
         when (val p = HaloApi.preset(ctx, name)) {
             is ApiResult.Err -> _state.update { it.copy(busy = false, error = p) }
@@ -105,10 +134,15 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
             is ApiResult.Err -> _state.update { it.copy(busy = false, error = d) }
             is ApiResult.Ok -> {
                 val env = d.data.optJSONObject("envelope")
+                val ch = d.data.optJSONObject("channel")
                 _state.update {
                     it.copy(
                         busy = false,
                         derived = d.data.optJSONObject("derived").toStringMap(),
+                        channelIssue = ch
+                            ?.takeIf { c -> !c.optBoolean("ok", true) }
+                            ?.optString("message")
+                            ?.ifBlank { "channel data unavailable" },
                         envelope = env
                             ?.takeIf { e -> e.optString("message").isNotBlank() }
                             ?.let { e ->
