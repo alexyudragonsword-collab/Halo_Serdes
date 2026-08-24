@@ -1,11 +1,11 @@
 ---
 type: project_topic
 status: active
-summary: "Halo_Serdes 的五条架构不变量与代码/文档约定 —— 破坏其中任何一条都会让某类结论失去可信度"
+summary: "Halo_Serdes 的六条架构不变量与代码/文档约定 —— 破坏其中任何一条都会让某类结论失去可信度"
 tags: [architecture, invariants, conventions, serdes]
 contains: [architecture-invariant, code-convention, doc-convention, validation-tradeoff]
 created: "2026-08-18"
-updated: "2026-08-18"
+updated: "2026-08-24"
 related: [engineering-pitfalls.md, knowledge-inventory.md]
 authoring_mode: ai_generated
 ---
@@ -56,6 +56,42 @@ mixed-signal 与 ADC-DSP **共享** Tx、信道、分析层、统计引擎骨架
 过采样连续域(`Waveform`)与波特率符号域(`SymbolStream`)之间只能经显式采样器
 (Farrow 分数相位插值)。隐式互转会引入 0.03 UI 量级的伪抖动而不报错。
 
+### 6. 桌面与 Android 必须同时验证
+
+**规则**:凡是改动了共用层(`src/halo_serdes/` 或 `src/halo_serdes_app/`),
+桌面与 Android **两端都跑通才算完成**。只验一端就宣布完成,是把一半的交付物
+建立在没有检查过的假设上。
+
+**为什么这条要单独立成铁律,而不是"记得多跑一次测试"**:两端跑的不是同一套东西。
+共用的只有 Python 源码,**运行它的环境有五处系统性差异**,每一处都已经在本项目
+真实咬过人:
+
+| 差异 | 咬过的具体形式 |
+|---|---|
+| **依赖版本不同** | Chaquopy 解析到 numpy 1.26.2 + **scipy 1.8.1**,而 `pyproject.toml` 要 `scipy>=1.11`;pip 自己都报这对不兼容 |
+| **子模块加载语义不同** | skrf 只 `import scipy` 就用 `scipy.interpolate` —— 现代 SciPy 惰性加载把它盖住,**手机上的 1.8.1 不会**,Touchstone 这条路能不能跑取决于 import 顺序 |
+| **依赖是否存在不同** | 手机上没有 matplotlib / numba / galois;M0–M7 连 scikit-rf 都没有 |
+| **文件系统语义不同** | Chaquopy 的 importer 不是文件系统,`Path(__file__).with_name(...)` 在设备上不成立;`configs/` 与 `data/channels/` 要走 assets + 解压 |
+| **生命周期不同** | `connectedAndroidTest` 跑完会**卸载两个 APK**,测试写出的文件随之消失 |
+
+前三条意味着:**桌面 `pytest` 全绿,不构成手机能跑的证据**。第四、五条意味着:
+**手机上跑通,也不构成桌面打包正确的证据**(桌面走 PyInstaller/Nuitka,另一套打包)。
+两端谁也替代不了谁。
+
+**"完整验证"的具体含义**:
+
+- **桌面**:`pytest -q` 全绿 + `ruff check src tests` 干净。动了 `halo_serdes_gui/`
+  或它 re-export 的东西,还要确认 GUI 能起来。
+- **Android**:CI 三个 job 全绿 —— `assemble`(能不能打包)、`wheel-versions`
+  (**在手机的 wheel 版本上跑一遍手机的计算路径**)、`emulator`(仪器化套件,
+  脚本在零测试或任一失败时退出非零)。
+- **判据不是"我跑过了",是"日志里那行数字"**:`instrumented totals: N tests, 0 failures`。
+  绿勾本身不够 —— `connectedDebugAndroidTest` 跑零个测试也算成功。
+
+**`wheel-versions` 这个 job 就是这条铁律的执行者。** 它在宿主上降到手机的
+numpy/scipy 版本跑同一条计算路径,把"版本"这一维从"平台差异"里摘出来。
+它已经兑现过一次:`scipy.interpolate` 那个 bug 是它抓到的,而桌面套件全绿。
+
 ## 实践指南
 
 ### 代码与文档约定
@@ -78,6 +114,17 @@ ruff check src/ tests/ examples/        # lint 门禁(CI 会跑)
 bash rtl/run_lockstep.sh                # SV vs Python 黄金模型逐位比对(需 iverilog)
 python -m halo_serdes_gui               # 启动 GUI
 ```
+
+Android 那一半(铁律 #6)**没有本地等价物** —— 这个沙箱没有 Android SDK,
+`dl.google.com` 也不通,所以 Kotlin 能不能编译、仪器化测试过不过,**只有 CI 能回答**。
+推送后去看 `android` workflow 的三个 job,判据是最后一步打印的那行:
+
+```
+instrumented totals: N tests, 0 failures, 0 errors, 0 skipped
+```
+
+绿勾本身不是判据:`connectedDebugAndroidTest` 跑零个测试也算成功,
+所以 `android/tools/run_instrumented.sh` 会在总数为零时退出非零。
 
 ### 提交尾注
 

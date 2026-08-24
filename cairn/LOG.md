@@ -3,6 +3,23 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-08-24 · 新增铁律 #6:桌面与 Android 必须同时验证
+
+- 规则本身一句话:**动了共用层(`src/halo_serdes/`、`src/halo_serdes_app/`)就两端都要跑通,
+  任一端未验证即未完成。** 写进 `AGENTS.md` 铁律清单(第 6 条,文件到 65 行预算上限)。
+- **为什么值得成为铁律,而不是"记得多跑一次"**:两端跑的不是同一套东西。共用的只有
+  Python 源码,运行它的环境有**五处系统性差异**,每一处都在本项目真实咬过人 ——
+  依赖版本(Chaquopy 给 scipy 1.8.1)、子模块加载语义(`scipy.interpolate` 那个 bug)、
+  依赖是否存在(手机上没有 matplotlib/numba/galois)、文件系统语义(Chaquopy 的
+  importer 不是文件系统)、生命周期(`connectedAndroidTest` 跑完卸载 APK)。
+  论证与"完整验证"的具体含义见 `cairn/architecture-invariants.md` 第 6 条。
+- **两端谁也替代不了谁**:前三条差异意味着桌面 `pytest` 全绿不构成手机能跑的证据;
+  后两条意味着手机跑通也不构成桌面打包正确的证据(桌面走 PyInstaller/Nuitka)。
+- **`wheel-versions` job 就是这条铁律的执行者**,它已经兑现过一次 ——
+  `scipy.interpolate` 那个 bug 是它抓到的,而当时桌面套件全绿。
+- 判据写清了:不是"我跑过了",是日志最后一行的
+  `instrumented totals: N tests, 0 failures` —— 绿勾本身不够。
+
 ## 2026-08-24 · 界面进 CI:32 项仪器化测试 + 6 张截图
 
 - **`UiRenderTest` 用 `createAndroidComposeRule` 起真 Activity、跑真 Python**,
