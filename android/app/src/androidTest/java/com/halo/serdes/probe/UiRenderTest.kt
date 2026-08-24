@@ -56,11 +56,18 @@ class UiRenderTest {
     private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     /**
-     * Where screenshots land. `getExternalFilesDir` rather than `filesDir`:
-     * adb can pull the former without root, and `run_instrumented.sh` does.
+     * Where screenshots land.
+     *
+     * `getExternalFilesDir` first, because adb can pull that without root and
+     * `run_instrumented.sh` does. It returns null when external storage is not
+     * mounted, and `File(null, name)` quietly yields a path relative to "/"
+     * that an app cannot write — so the fallback is explicit rather than left
+     * to produce a FileNotFoundException inside a test that is measuring
+     * something else entirely.
      */
     private val shots: File by lazy {
-        File(ctx.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+        val root = ctx.getExternalFilesDir(null) ?: ctx.filesDir
+        File(root, "screenshots").apply { mkdirs() }
     }
 
     /**

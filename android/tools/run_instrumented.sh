@@ -37,8 +37,20 @@ SHOTS=app/build/outputs/screenshots
 mkdir -p "$SHOTS"
 adb pull /sdcard/Android/data/com.halo.serdes.probe/files/screenshots \
     "$SHOTS" >/dev/null 2>&1 || true
+# The app falls back to internal storage when external is unmounted, so try
+# that too before giving up.
+adb exec-out run-as com.halo.serdes.probe \
+    tar c -C files screenshots 2>/dev/null | tar x -C "$SHOTS" 2>/dev/null || true
 n_shots=$(find "$SHOTS" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
 echo "screenshots captured: $n_shots"
+if [ "$n_shots" = "0" ]; then
+    # Zero is ambiguous on its own — never written, or written somewhere this
+    # could not reach. One listing settles it, and the first run without it
+    # cost a round trip.
+    echo "no screenshots pulled; what the device has under the app's dirs:"
+    adb shell ls -lR /sdcard/Android/data/com.halo.serdes.probe/files 2>&1 | head -20
+    adb exec-out run-as com.halo.serdes.probe ls -lR files 2>&1 | head -20
+fi
 
 if [ "$status" -ne 0 ]; then
     echo "::group::Instrumented test detail"
@@ -58,6 +70,7 @@ import collections, glob, sys, xml.etree.ElementTree as ET
 per_class = collections.Counter()
 bad = collections.Counter()
 total = fails = errors = skipped = 0
+failures = []
 
 for path in glob.glob(sys.argv[1] + "/**/*.xml", recursive=True):
     try:
@@ -71,8 +84,12 @@ for path in glob.glob(sys.argv[1] + "/**/*.xml", recursive=True):
     for case in root.iter("testcase"):
         name = case.get("classname") or "?"
         per_class[name] += 1
-        if case.find("failure") is not None or case.find("error") is not None:
+        problem = case.find("failure")
+        if problem is None:
+            problem = case.find("error")
+        if problem is not None:
             bad[name] += 1
+            failures.append((f"{name}#{case.get('name')}", problem.text or ""))
 
 for name, n in sorted(per_class.items()):
     print(f"  {name}: {n} tests, {bad[name]} failed")
@@ -90,6 +107,20 @@ detail = " | ".join(f"{n.rsplit('.', 1)[-1]} {c}/{bad[n]}f"
 level = "error" if (fails or errors or total == 0) else "notice"
 print(f"::{level} title=Instrumented tests::{summary}"
       + (f" -- {detail}" if detail else ""))
+
+# Then the failures themselves, compactly, as the last thing this step says.
+#
+# The raw XML dump above is thorough and unreachable: it is thousands of lines
+# deep in a log whose tail is all emulator teardown, so reading "why did it
+# fail" cost several round trips of guessing. What is actually wanted is the
+# assertion message, and it fits on a line or two.
+if failures:
+    print("::group::Failures")
+    for name, msg in failures:
+        first = " / ".join(l.strip() for l in msg.strip().splitlines()[:3] if l.strip())
+        print(f"  FAILED {name}")
+        print(f"         {first[:400]}")
+    print("::endgroup::")
 if total == 0:
     print("NO TESTS RAN - treating as failure; a green tick here would mean "
           "the suite never executed")
