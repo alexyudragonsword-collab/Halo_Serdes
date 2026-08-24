@@ -34,22 +34,27 @@ status=$?
 # `|| true` throughout because a build that failed before any test ran has no
 # screenshots to pull, and that is not a second failure.
 SHOTS=app/build/outputs/screenshots
+PKG=com.halo.serdes.probe
 mkdir -p "$SHOTS"
-adb pull /sdcard/Android/data/com.halo.serdes.probe/files/screenshots \
-    "$SHOTS" >/dev/null 2>&1 || true
-# The app falls back to internal storage when external is unmounted, so try
-# that too before giving up.
-adb exec-out run-as com.halo.serdes.probe \
-    tar c -C files screenshots 2>/dev/null | tar x -C "$SHOTS" 2>/dev/null || true
+# One file at a time through `run-as`, rather than `adb pull`.
+#
+# The first version pulled from /sdcard/Android/data/$PKG/files. Four
+# screenshots were written there and none came back: on API 30+ that path goes
+# through the scoped-storage FUSE layer, where adb pull does not reliably work.
+# `run-as` reaches a debuggable app's own directory with no such layer in the
+# way, and `cat` avoids depending on tar being present in that environment.
+for f in $(adb exec-out run-as "$PKG" ls files/screenshots 2>/dev/null | tr -d '\r'); do
+    adb exec-out run-as "$PKG" cat "files/screenshots/$f" > "$SHOTS/$f" 2>/dev/null \
+        || rm -f "$SHOTS/$f"
+done
 n_shots=$(find "$SHOTS" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
 echo "screenshots captured: $n_shots"
 if [ "$n_shots" = "0" ]; then
     # Zero is ambiguous on its own — never written, or written somewhere this
     # could not reach. One listing settles it, and the first run without it
     # cost a round trip.
-    echo "no screenshots pulled; what the device has under the app's dirs:"
-    adb shell ls -lR /sdcard/Android/data/com.halo.serdes.probe/files 2>&1 | head -20
-    adb exec-out run-as com.halo.serdes.probe ls -lR files 2>&1 | head -20
+    echo "no screenshots pulled; what the device has under the app's dir:"
+    adb exec-out run-as "$PKG" ls -lR files 2>&1 | head -20
 fi
 
 if [ "$status" -ne 0 ]; then

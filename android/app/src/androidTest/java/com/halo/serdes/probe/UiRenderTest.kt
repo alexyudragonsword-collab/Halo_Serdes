@@ -3,6 +3,7 @@ package com.halo.serdes.probe
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
@@ -56,18 +57,17 @@ class UiRenderTest {
     private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     /**
-     * Where screenshots land.
+     * Where screenshots land: internal storage, pulled with `run-as`.
      *
-     * `getExternalFilesDir` first, because adb can pull that without root and
-     * `run_instrumented.sh` does. It returns null when external storage is not
-     * mounted, and `File(null, name)` quietly yields a path relative to "/"
-     * that an app cannot write — so the fallback is explicit rather than left
-     * to produce a FileNotFoundException inside a test that is measuring
-     * something else entirely.
+     * Not `getExternalFilesDir`. Four screenshots were written there and none
+     * came back — `adb pull` of `/sdcard/Android/data/<pkg>` goes through the
+     * scoped-storage FUSE layer on API 30+ and does not reliably work, so the
+     * files existed on the device and the artifact was empty. `run-as` reaches
+     * a debuggable app's own directory directly and has no such layer in the
+     * way.
      */
     private val shots: File by lazy {
-        val root = ctx.getExternalFilesDir(null) ?: ctx.filesDir
-        File(root, "screenshots").apply { mkdirs() }
+        File(ctx.filesDir, "screenshots").apply { mkdirs() }
     }
 
     /**
@@ -141,7 +141,14 @@ class UiRenderTest {
         while (y < px.height && seen.size <= minColors) {
             var x = 0
             while (x < px.width && seen.size <= minColors) {
-                seen.add(px[x, y].value.toInt())
+                // toArgb(), NOT value.toInt(). Color is an inline class over a
+                // ULong that packs ARGB into the *top* 32 bits and the colour
+                // space id into the bottom ones, so `value.toInt()` keeps the
+                // half that is zero for every sRGB colour — every pixel hashes
+                // to the same number and the check reports "1 distinct colour"
+                // for any image whatsoever. It did, on a bathtub that had
+                // drawn perfectly well.
+                seen.add(px[x, y].toArgb())
                 x += 2
             }
             y += 2

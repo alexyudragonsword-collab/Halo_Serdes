@@ -97,6 +97,24 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 现在两条都做了 —— 断言"至少有一项被真正检查到",外加一个专门用 ADC 预设跑
 `fixedpoint` 的测试。
 
+**`Color.value.toInt()` 对任何 sRGB 颜色都是同一个数。** Compose 的 `Color` 是
+`ULong` 上的 inline class,ARGB 打包在**高 32 位**、色彩空间 id 在低位 ——
+`value.toInt()` 取的正是恒为 0 的那一半。用它做"这张图画了几种颜色"的判据,
+**任何图像都报 1 种颜色**。我加这条断言正是为了抓"图表画白了",而它自己是瞎的:
+浴盆图画得好好的,断言照样红。**用 `toArgb()`。**
+(这次红得对 —— 它没有假装通过。)
+
+**`adb pull /sdcard/Android/data/<pkg>/` 在 API 30+ 不可靠。** 那条路径走
+scoped storage 的 FUSE 层。四张截图确实写到了设备上,`adb pull` 一张都没拿回来,
+artifact 是空的 —— 现象是"没截图",原因是"拿不出来",两者差得很远。
+**调试版 app 用 `adb exec-out run-as <pkg> cat files/...`**:直达 app 私有目录,
+中间没有那一层;用 `cat` 而不是 `tar`,少依赖一个那个环境里未必有的命令。
+
+**诊断信息放在日志里读不到的位置,等于没有。** 脚本原本在失败时 dump 整份结果 XML,
+而那东西在日志里几千行深、尾部全是模拟器拆机输出 —— 我连取好几个窗口都落在它旁边,
+白白花掉几轮。改成在这一步**最后**打印一段紧凑的 `class#method + 断言消息`,
+一次就读到了。规则同上一条的精神:**产出证据的位置,要按"谁来读、怎么读"来选。**
+
 **Compose 测试的自动同步等的是"时钟空闲",而不定进度条永远不空闲。**
 `assertIsDisplayed` / `performClick` / `performScrollTo` 在动手之前都会先同步一次,
 而 `CircularProgressIndicator`(不定态)走的是 `rememberInfiniteTransition` ——
