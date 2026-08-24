@@ -3,6 +3,9 @@ package com.halo.serdes.probe
 import android.content.Context
 import com.halo.serdes.probe.api.ApiResult
 import com.halo.serdes.probe.api.HaloApi
+import com.halo.serdes.probe.ui.parseChannels
+import com.halo.serdes.probe.ui.parseStudies
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 /**
@@ -44,5 +47,27 @@ object TestPresets {
         val all = names(ctx)
         return all.firstOrNull { channelOk(ctx, values(ctx, it)) }
             ?: error("no preset can run here — presets: $all")
+    }
+
+    // --- blocking wrappers, for the Compose UI tests -------------------- //
+    //
+    // Those test bodies are plain functions: a Compose rule drives the clock
+    // and the assertions, so wrapping the whole body in runBlocking would put
+    // the UI waits inside a coroutine for no reason. Only the facade lookups
+    // need one, and it is taken here rather than at each call site.
+
+    /** The preset the screen should open on. */
+    fun firstRunnableName(ctx: Context): String = runBlocking { runnable(ctx) }
+
+    /** Chip labels for the Touchstone files this build ships. */
+    fun bundledChannelLabels(ctx: Context): List<String> = runBlocking {
+        val schema = HaloApi.schema(ctx) as ApiResult.Ok
+        parseChannels(schema.data).map { it.label }
+    }
+
+    /** Card titles for the studies the facade advertises. */
+    fun studyTitles(ctx: Context): List<String> = runBlocking {
+        val schema = HaloApi.schema(ctx) as ApiResult.Ok
+        parseStudies(schema.data).map { it.title }
     }
 }

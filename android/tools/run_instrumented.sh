@@ -16,6 +16,9 @@
 #    to pass having run nothing at all — a green tick that means "the suite did
 #    not execute" is worse than a red one, so zero tests is treated as failure
 #    here.
+#
+# It also pulls the screenshots UiRenderTest captures. Those are evidence for a
+# human, not an oracle: the assertions in that class are what fail the build.
 set -u
 
 cd "$(dirname "$0")/.." || exit 1
@@ -23,6 +26,19 @@ RESULTS=app/build/outputs/androidTest-results/connected
 
 ./gradlew --no-daemon connectedDebugAndroidTest
 status=$?
+
+# Screenshots the UI tests captured. Pulled whether or not the run passed:
+# a failed render is exactly when you want to look at one.
+#
+# getExternalFilesDir, not filesDir — adb can read the former without root.
+# `|| true` throughout because a build that failed before any test ran has no
+# screenshots to pull, and that is not a second failure.
+SHOTS=app/build/outputs/screenshots
+mkdir -p "$SHOTS"
+adb pull /sdcard/Android/data/com.halo.serdes.probe/files/screenshots \
+    "$SHOTS" >/dev/null 2>&1 || true
+n_shots=$(find "$SHOTS" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
+echo "screenshots captured: $n_shots"
 
 if [ "$status" -ne 0 ]; then
     echo "::group::Instrumented test detail"

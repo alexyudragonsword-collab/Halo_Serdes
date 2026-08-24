@@ -171,3 +171,14 @@ jobs:
           name: instrumented-test-report
           path: android/app/build/reports/androidTests/**
           retention-days: 14
+
+      # What the app actually looked like. CI can assert that a chart drew
+      # *something*; whether it drew the right thing still needs eyes, and
+      # this is what they look at instead of installing the APK.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-screenshots
+          path: android/app/build/outputs/screenshots/**
+          if-no-files-found: warn
+          retention-days: 14

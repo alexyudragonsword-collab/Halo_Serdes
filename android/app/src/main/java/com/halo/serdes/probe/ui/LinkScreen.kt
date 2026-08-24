@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -116,7 +117,10 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
             Button(onClick = vm::run, enabled = s.ready) {
                 Text("Run statistical engine")
             }
-            if (s.busy || s.validating) CircularProgressIndicator(Modifier.size(20.dp))
+            if (s.busy || s.validating) {
+                CircularProgressIndicator(
+                    Modifier.size(20.dp).testTag(TestTags.BUSY))
+            }
         }
 
         s.error?.let { ErrorCard(it) }
@@ -231,6 +235,7 @@ private fun ResultCard(
             LogLineChart(
                 x = r.bathtubX,
                 y = r.bathtubY,
+                modifier = Modifier.testTag(TestTags.BATHTUB),
                 yLabel = "BER vs sampling phase",
                 xLabel = "phase [UI]",
             )
@@ -248,6 +253,7 @@ private fun ResultCard(
                     zmin = s.eye.zmin,
                     zmax = s.eye.zmax,
                     floorValue = s.eye.floor,
+                    modifier = Modifier.testTag(TestTags.EYE),
                 )
                 Text(
                     "%.1f … %.1f, blank = no probability resolved"
@@ -256,7 +262,8 @@ private fun ResultCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            s.eyeLoading -> CircularProgressIndicator(Modifier.size(20.dp))
+            s.eyeLoading -> CircularProgressIndicator(
+                Modifier.size(20.dp).testTag(TestTags.BUSY))
             // Not fetched with the run: a reduced eye is still ~4k numbers and
             // most presses of Run are to read a BER.
             else -> TextButton(onClick = onShowEye) { Text("Show statistical eye") }

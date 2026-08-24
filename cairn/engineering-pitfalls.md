@@ -97,6 +97,22 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 现在两条都做了 —— 断言"至少有一项被真正检查到",外加一个专门用 ADC 预设跑
 `fixedpoint` 的测试。
 
+**Compose 测试的自动同步等的是"时钟空闲",而不定进度条永远不空闲。**
+`assertIsDisplayed` / `performClick` / `performScrollTo` 在动手之前都会先同步一次,
+而 `CircularProgressIndicator`(不定态)走的是 `rememberInfiniteTransition` ——
+只要它在屏幕上,时钟就不会空闲,那一行**会一直阻塞到整个 job 超时**,
+而不是给你一条能读的失败信息。本项目每一次调 Python 都会先亮一下 spinner,
+所以这不是边角情况,是主路径。
+**规则:所有不定进度条统一打 `TestTags.BUSY`,交互前先 `waitUntil { 没有 BUSY 节点 }`。**
+`waitUntil` 是轮询条件、不要求空闲的,这也是这道闸门能写出来的原因。
+(同理:单线程 Python dispatcher 不是 IdlingResource,启动路径也必须显式等,
+不能指望 `waitForIdle`。)
+
+**`androidTestImplementation` 不继承 `implementation`,BOM 要单独写一遍。**
+`implementation(platform(compose-bom))` 管不到测试配置,于是
+`androidTestImplementation("androidx.compose.ui:ui-test-junit4")` 解析不到版本、构建直接失败。
+`debugImplementation` 反而**是**继承的,不用重复。
+
 **`org.json` 的 `optString` 把显式 null 变成字符串 `"null"`。** 不是 `""`,
 所以 `optString(k).ifBlank { null }` 这个看着很稳的写法在**键存在且值为 null** 时
 返回四个字符的 `"null"`。Python 侧是**故意**发显式 null 的(非有限浮点、被取消的

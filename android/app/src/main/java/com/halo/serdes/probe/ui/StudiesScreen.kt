@@ -25,6 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -140,7 +141,8 @@ private fun StudyCard(
                         Button(onClick = onRun, enabled = enabled && !running) {
                             Text(if (result == null) "Run sweep" else "Re-run")
                         }
-                        if (running) CircularProgressIndicator(Modifier.size(20.dp))
+                        if (running) CircularProgressIndicator(
+                            Modifier.size(20.dp).testTag(TestTags.BUSY))
                     }
 
                     result?.note?.let {
@@ -189,6 +191,7 @@ private fun Panel(spec: PlotSpec, r: StudyResult) {
     }
     MultiLineChart(
         x = x, series = series,
+        modifier = Modifier.testTag(TestTags.STUDY_PANEL),
         xLabel = spec.xLabel, yLabel = spec.yLabel,
         xLog = spec.xLog, yLog = spec.yLog,
     )

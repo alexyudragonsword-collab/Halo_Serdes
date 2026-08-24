@@ -25,7 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import com.halo.serdes.probe.ui.BundledChannel
+import com.halo.serdes.probe.ui.TestTags
 
 /**
  * What a Touchstone file turned out to contain, before it is adopted.
@@ -81,7 +83,10 @@ fun TouchstoneCard(
                 Text("Bundled with this build",
                      style = MaterialTheme.typography.labelSmall,
                      color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    Modifier.testTag(TestTags.BUNDLED_CHANNELS),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     bundled.forEach { c ->
                         AssistChip(
                             onClick = { onUseBundled(c) },
@@ -100,7 +105,8 @@ fun TouchstoneCard(
                 verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = { pick.launch(TouchstoneImport.MIME_TYPES) },
                        enabled = !busy) { Text("Choose file…") }
-                if (busy) CircularProgressIndicator(Modifier.size(20.dp))
+                if (busy) CircularProgressIndicator(
+                    Modifier.size(20.dp).testTag(TestTags.BUSY))
             }
 
             error?.let {

@@ -32,12 +32,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.halo.serdes.probe.ui.TestTags
 import com.halo.serdes.probe.ui.TimeSummary
 
 /**
@@ -132,7 +134,7 @@ private fun RunningRow(s: TimeRunState, onCancel: () -> Unit) = Column {
     Row(Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        CircularProgressIndicator(Modifier.size(20.dp))
+        CircularProgressIndicator(Modifier.size(20.dp).testTag(TestTags.BUSY))
         Column(Modifier.weight(1f)) {
             Text(if (s.cancelPending) "stopping…" else s.stage.ifBlank { "running" },
                  style = MaterialTheme.typography.bodyMedium)
@@ -146,7 +148,8 @@ private fun RunningRow(s: TimeRunState, onCancel: () -> Unit) = Column {
     }
     // Indeterminate for the same reason the notification is: the receiver
     // kernel is one call, so a percentage would be invented.
-    LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+    LinearProgressIndicator(
+        Modifier.fillMaxWidth().padding(top = 8.dp).testTag(TestTags.BUSY))
     if (s.cancelPending) {
         Note("Cancellation lands at the next stage boundary; the receiver " +
              "kernel cannot be interrupted part-way.")

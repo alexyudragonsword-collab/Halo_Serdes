@@ -115,7 +115,8 @@ chaquopy {
 dependencies {
     // The BOM pins every compose-* artifact to one tested set, so individual
     // versions are never stated and cannot drift apart.
-    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
+    implementation(composeBom)
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -133,4 +134,18 @@ dependencies {
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+
+    // Compose UI tests. Until these, nothing in CI ever launched the Activity
+    // — the screen's appearance was verified only by installing the APK and
+    // looking, which is not a check that survives anyone forgetting to look.
+    // The BOM again, explicitly: androidTestImplementation does not extend
+    // implementation, so without this line ui-test-junit4 resolves to no
+    // version at all and the build fails. (debugImplementation below does
+    // extend it, which is why the manifest artifact needs no such line.)
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    // NOT ui-test-manifest. That exists to supply an empty Activity for
+    // createComposeRule(); these tests use createAndroidComposeRule<MainActivity>
+    // and launch the real one, so it would be a dependency carried on a
+    // justification that does not apply.
 }
