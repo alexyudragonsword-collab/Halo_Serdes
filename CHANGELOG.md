@@ -6,6 +6,27 @@
 
 ---
 
+## [未发布] — 界面进入 CI
+
+### 新增
+- **`UiRenderTest`**:`createAndroidComposeRule<MainActivity>` 起真 Activity、
+  跑真 Python,五个测试覆盖开屏预设 / 内置信道芯片 / 时域三档 / BER+浴盆+眼图 /
+  Sweeps 列表。图表用像素断言(数颜色种类),**不做 golden image**。
+- 截图经 `TestStorage` 交给 AGP,作为 `ui-screenshots` artifact 上传。
+- `run_instrumented.sh` 把计数与失败摘要写进 `ci-summary.txt`,workflow 最后一步
+  再打印一次 —— 让"谁来读、怎么读"决定证据放在哪。
+
+### 修复
+- **`assertDrew` 自己是瞎的**:`Color.value.toInt()` 对任何 sRGB 颜色都返回同一个数
+  (ARGB 在高 32 位),于是任何图像都报"1 种颜色"。改用 `toArgb()`。
+- **截图从来不是"没写出来"**:`connectedAndroidTest` 跑完卸载两个 APK,文件随 app 一起消失。
+- **证据类产物不再当闸门**:截图上传失败一次让 32 个测试全过的运行变红。
+
+### 已知
+- **`assertDrew` 只能判断"画了东西",不能判断"画对了"。** 截图是给人看的旁证,不是 oracle。
+
+---
+
 ## [未发布] — Android M7–M9：时域长跑、Touchstone 导入、通用扫描页
 
 ### 新增
