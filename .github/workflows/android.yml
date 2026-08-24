@@ -177,8 +177,12 @@ jobs:
       # this is what they look at instead of installing the APK.
       - uses: actions/upload-artifact@v4
         if: always()
+        # Screenshots are evidence, not a gate. A run where all 32 tests passed
+        # must not go red because the pictures could not be collected — which
+        # is exactly what happened once, and inverts what this artifact is for.
+        continue-on-error: true
         with:
           name: ui-screenshots
           path: android/app/build/outputs/screenshots/**
-          if-no-files-found: warn
+          if-no-files-found: ignore
           retention-days: 14

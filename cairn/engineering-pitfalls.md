@@ -104,6 +104,17 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 浴盆图画得好好的,断言照样红。**用 `toArgb()`。**
 (这次红得对 —— 它没有假装通过。)
 
+**`adb exec-out` 的退出码是本地 adb 的,不是远端命令的。** 远端命令失败它照样返回 0,
+所以 `adb exec-out ... > file || rm file` 这个守卫**永远不会触发**。
+实际后果:`run-as` 打了一句 `run-as: unknown package: com.halo.serdes.probe`,
+我那个 `for f in $(... ls ...)` 循环把这四个词当成了四个文件名建出来,
+其中 `package:` 带冒号被 upload-artifact 拒绝 —— **32 个测试全过的一次运行因此变红**。
+规则两条:(1) 从命令输出取文件名时**按模式过滤**(只收 `*.png`),别让错误文本变成文件名;
+(2) 取回的文件**验魔数**,空文件或错误文本比没有文件更糟 —— 它看起来像证据。
+
+**证据类产物不该当闸门。** 那次红的是截图上传,不是测试。截图是给人看的旁证,
+让它决定构建成败,等于把它的角色倒过来。已改为 `continue-on-error` + `if-no-files-found: ignore`。
+
 **`adb pull /sdcard/Android/data/<pkg>/` 在 API 30+ 不可靠。** 那条路径走
 scoped storage 的 FUSE 层。四张截图确实写到了设备上,`adb pull` 一张都没拿回来,
 artifact 是空的 —— 现象是"没截图",原因是"拿不出来",两者差得很远。
