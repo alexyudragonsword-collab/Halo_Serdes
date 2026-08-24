@@ -126,6 +126,12 @@ artifact 是空的 —— 现象是"没截图",原因是"拿不出来",两者差
 白白花掉几轮。改成在这一步**最后**打印一段紧凑的 `class#method + 断言消息`,
 一次就读到了。规则同上一条的精神:**产出证据的位置,要按"谁来读、怎么读"来选。**
 
+> 这条后来还不够:**"这一步的最后"仍然不是"这个 job 的最后"**。测试步骤之后还有
+> 约 120 行模拟器拆机、Gradle 缓存写入和 git 清理,而从外部读 job 日志只能读尾部 ——
+> 我又有四次取窗口落在计数旁边。最终解法是脚本把这几行同时写进
+> `ci-summary.txt`,workflow **最后一步**再 `cat` 一次。重复打印几行的代价是零,
+> 换掉的是一整类问题。
+
 **Compose 测试的自动同步等的是"时钟空闲",而不定进度条永远不空闲。**
 `assertIsDisplayed` / `performClick` / `performScrollTo` 在动手之前都会先同步一次,
 而 `CircularProgressIndicator`(不定态)走的是 `rememberInfiniteTransition` ——

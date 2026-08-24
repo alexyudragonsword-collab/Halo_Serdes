@@ -186,3 +186,12 @@ jobs:
           path: android/app/build/outputs/screenshots/**
           if-no-files-found: ignore
           retention-days: 14
+
+      # Last step on purpose. Reading a job log from outside GitHub means
+      # reading its tail, and the test step's own output sits ahead of ~120
+      # lines of emulator teardown and cache writes — four attempts to fetch a
+      # window containing the counts landed beside them instead. Repeating
+      # those few lines here puts them where they can always be read.
+      - name: Test summary, repeated where the log tail can reach it
+        if: always()
+        run: cat android/app/build/outputs/ci-summary.txt || echo "no summary written"

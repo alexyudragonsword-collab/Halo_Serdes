@@ -24,6 +24,19 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 RESULTS=app/build/outputs/androidTest-results/connected
 
+# Everything worth reading is also written here, and the workflow cats this
+# file as its very last step.
+#
+# Why: this script's output lands ahead of ~120 lines of emulator teardown,
+# Gradle cache writes and git cleanup, and reading a job log from the outside
+# means reading its tail. Four separate attempts to fetch a window containing
+# the totals landed beside them. Printing the same few lines again at the end
+# of the job costs nothing and ends that whole class of problem.
+SUMMARY=app/build/outputs/ci-summary.txt
+mkdir -p "$(dirname "$SUMMARY")"
+: > "$SUMMARY"
+say() { echo "$*"; echo "$*" >> "$SUMMARY"; }
+
 ./gradlew --no-daemon connectedDebugAndroidTest
 status=$?
 
@@ -69,14 +82,14 @@ pull_shots() {
 }
 pull_shots || true
 n_shots=$(find "$SHOTS" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
-echo "screenshots captured: $n_shots"
+say "screenshots captured: $n_shots"
 if [ "$n_shots" = "0" ]; then
     # Which of the two routes failed, and why. Zero on its own is ambiguous
     # and cost a round trip once already.
-    echo "no screenshots; run-as says:"
-    adb exec-out run-as "$PKG" ls -l files 2>&1 | head -10
-    echo "external dir says:"
-    adb shell ls -l "/sdcard/Android/data/$PKG/files/screenshots" 2>&1 | head -10
+    say "no screenshots. run-as sees:  $(adb exec-out run-as "$PKG" ls files 2>&1 \
+        | tr '\r\n' ' ' | cut -c1-160)"
+    say "               external sees: $(adb shell ls \
+        "/sdcard/Android/data/$PKG/files" 2>&1 | tr '\r\n' ' ' | cut -c1-160)"
 fi
 
 if [ "$status" -ne 0 ]; then
@@ -86,7 +99,7 @@ if [ "$status" -ne 0 ]; then
     echo "::endgroup::"
 fi
 
-python3 - "$RESULTS" <<'XML_SUMMARY'
+python3 - "$RESULTS" <<'XML_SUMMARY' | tee -a "$SUMMARY"
 import collections, glob, sys, xml.etree.ElementTree as ET
 
 # Group by each <testcase>'s classname rather than by the <testsuite> root:
@@ -153,7 +166,7 @@ if total == 0:
           "the suite never executed")
     sys.exit(1)
 XML_SUMMARY
-count_status=$?
+count_status=${PIPESTATUS[0]}
 
 [ "$status" -ne 0 ] && exit "$status"
 exit "$count_status"
