@@ -46,50 +46,24 @@ status=$?
 # getExternalFilesDir, not filesDir — adb can read the former without root.
 # `|| true` throughout because a build that failed before any test ran has no
 # screenshots to pull, and that is not a second failure.
+# Screenshots come off the device through TestStorage, which AGP drains while
+# the app is still installed. Nothing is pulled here.
+#
+# Two earlier versions did pull, from internal storage via `run-as` and from
+# the external files dir via `adb pull`, and both got nothing for the same
+# reason: connectedAndroidTest uninstalls both APKs when it finishes, so by
+# the time this script ran the package and all its storage were gone. The
+# diagnostics said exactly that once they were printed somewhere readable —
+# "run-as: unknown package" and "No such file or directory".
 SHOTS=app/build/outputs/screenshots
-PKG=com.halo.serdes.probe
 mkdir -p "$SHOTS"
-
-# Retrieving the screenshots has now failed twice, each time in a way that was
-# invisible until it did damage, so this is written defensively.
-#
-#  1. `adb exec-out` exits 0 even when the *remote* command failed, so a
-#     `|| rm` guard never fires. `run-as` printed "run-as: unknown package:
-#     com.halo.serdes.probe" and the loop below turned those four words into
-#     four filenames, one of which contained a colon — which upload-artifact
-#     rejects, failing a job whose 32 tests had all passed.
-#  2. Only *.png names are accepted, so error text cannot become a filename.
-#  3. Every retrieved file is checked for the PNG magic number, because an
-#     empty or error-filled file is worse than a missing one: it looks like
-#     evidence.
-#
-# Both routes are tried because neither is dependable on its own: `run-as`
-# needs the package to be visible to it, and `adb pull` of
-# /sdcard/Android/data/<pkg> goes through the scoped-storage layer on API 30+.
-pull_shots() {
-    for f in $(adb exec-out run-as "$PKG" ls files/screenshots 2>/dev/null \
-               | tr -d '\r' | grep -E '^[A-Za-z0-9._-]+\.png$'); do
-        adb exec-out run-as "$PKG" cat "files/screenshots/$f" > "$SHOTS/$f" 2>/dev/null
-    done
-    adb pull "/sdcard/Android/data/$PKG/files/screenshots/." "$SHOTS" >/dev/null 2>&1
-    # Anything that is not actually a PNG is discarded rather than uploaded.
-    for f in "$SHOTS"/*; do
-        [ -f "$f" ] || continue
-        if [ "$(head -c 4 "$f" | od -An -tx1 | tr -d ' \n')" != "89504e47" ]; then
-            rm -f "$f"
-        fi
-    done
-}
-pull_shots || true
+find app/build/outputs -path '*additional_output*' -name '*.png' \
+    -exec cp {} "$SHOTS/" \; 2>/dev/null || true
 n_shots=$(find "$SHOTS" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
 say "screenshots captured: $n_shots"
 if [ "$n_shots" = "0" ]; then
-    # Which of the two routes failed, and why. Zero on its own is ambiguous
-    # and cost a round trip once already.
-    say "no screenshots. run-as sees:  $(adb exec-out run-as "$PKG" ls files 2>&1 \
-        | tr '\r\n' ' ' | cut -c1-160)"
-    say "               external sees: $(adb shell ls \
-        "/sdcard/Android/data/$PKG/files" 2>&1 | tr '\r\n' ' ' | cut -c1-160)"
+    say "no screenshots; additional_output holds: $(find app/build/outputs \
+        -path '*additional_output*' 2>/dev/null | head -5 | tr '\n' ' ')"
 fi
 
 if [ "$status" -ne 0 ]; then

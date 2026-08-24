@@ -115,11 +115,17 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 **证据类产物不该当闸门。** 那次红的是截图上传,不是测试。截图是给人看的旁证,
 让它决定构建成败,等于把它的角色倒过来。已改为 `continue-on-error` + `if-no-files-found: ignore`。
 
-**`adb pull /sdcard/Android/data/<pkg>/` 在 API 30+ 不可靠。** 那条路径走
-scoped storage 的 FUSE 层。四张截图确实写到了设备上,`adb pull` 一张都没拿回来,
-artifact 是空的 —— 现象是"没截图",原因是"拿不出来",两者差得很远。
-**调试版 app 用 `adb exec-out run-as <pkg> cat files/...`**:直达 app 私有目录,
-中间没有那一层;用 `cat` 而不是 `tar`,少依赖一个那个环境里未必有的命令。
+**`connectedAndroidTest` 跑完会把两个 APK 都卸载掉。** 测试写出来的文件随之消失,
+所以**测试结束后再去设备上取文件,取到的一定是空**。我为此换过两条路径
+(内部存储 + `run-as`、外部 files 目录 + `adb pull`),两条都失败,而失败原因跟路径
+毫无关系 —— 诊断打出来是 `run-as: unknown package` 和 `No such file or directory`,
+两句话说的是同一件事:**包已经不在了**。
+**规则:仪器化测试要留下文件,必须在运行期间就把它交出去 —— 用 `TestStorage`**
+(`useTestStorageService=true` + `androidx.test.services`),AGP 会在 app 还装着的时候
+把它们抽到 `build/outputs/connected_android_test_additional_output/`。
+
+> 我在这上面换了两次路径都没先问"文件还在不在",这是**沿着现象找原因、没有先确认前提**。
+> 两条独立路径给出同一类错误时,该怀疑的是它们的共同前提,而不是各自的实现。
 
 **诊断信息放在日志里读不到的位置,等于没有。** 脚本原本在失败时 dump 整份结果 XML,
 而那东西在日志里几千行深、尾部全是模拟器拆机输出 —— 我连取好几个窗口都落在它旁边,

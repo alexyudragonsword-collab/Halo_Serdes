@@ -16,6 +16,13 @@ android {
         versionCode = 1
         versionName = "0.0.1-m0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Files a test writes must leave the device *during* the run. AGP
+        // uninstalls both APKs when connectedAndroidTest finishes, taking the
+        // app's storage with them — so screenshots written to filesDir or to
+        // the external files dir were already gone by the time the script
+        // tried to pull them, and every retrieval route was doomed regardless
+        // of where they had been put.
+        testInstrumentationRunnerArguments["useTestStorageService"] = "true"
 
         ndk {
             // arm64-v8a is the real target; x86_64 is here only so the CI
@@ -144,6 +151,11 @@ dependencies {
     // extend it, which is why the manifest artifact needs no such line.)
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    // TestStorage: the supported way for an instrumented test to emit files.
+    // AGP copies them off the device while the app is still installed, into
+    // build/outputs/connected_android_test_additional_output/.
+    androidTestImplementation("androidx.test.services:storage:1.5.0")
+    androidTestUtil("androidx.test.services:test-services:1.5.0")
     // NOT ui-test-manifest. That exists to supply an empty Activity for
     // createComposeRule(); these tests use createAndroidComposeRule<MainActivity>
     // and launch the real one, so it would be a dependency carried on a

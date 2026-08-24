@@ -18,12 +18,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.services.storage.TestStorage
 import com.halo.serdes.probe.ui.TestTags
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 
 /**
  * The screen, on a device, with the real Python behind it.
@@ -57,18 +57,20 @@ class UiRenderTest {
     private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     /**
-     * Where screenshots land: internal storage, pulled with `run-as`.
+     * Screenshots go through [TestStorage], not the app's own directories.
      *
-     * Not `getExternalFilesDir`. Four screenshots were written there and none
-     * came back — `adb pull` of `/sdcard/Android/data/<pkg>` goes through the
-     * scoped-storage FUSE layer on API 30+ and does not reliably work, so the
-     * files existed on the device and the artifact was empty. `run-as` reaches
-     * a debuggable app's own directory directly and has no such layer in the
-     * way.
+     * Both earlier attempts — internal storage read back with `run-as`, and
+     * the external files dir read with `adb pull` — failed identically and for
+     * a reason that had nothing to do with the path: `connectedAndroidTest`
+     * uninstalls both APKs when it finishes, so by the time the script looked,
+     * the package and all its storage were gone. "run-as: unknown package"
+     * and "No such file or directory" were both saying so.
+     *
+     * TestStorage writes through the test services process, and AGP copies
+     * what it holds off the device *during* the run, into
+     * build/outputs/connected_android_test_additional_output/.
      */
-    private val shots: File by lazy {
-        File(ctx.filesDir, "screenshots").apply { mkdirs() }
-    }
+    private val storage by lazy { TestStorage() }
 
     /**
      * Wait for a condition rather than for the tree to go idle.
@@ -119,8 +121,7 @@ class UiRenderTest {
             .fetchSemanticsNodes().isNotEmpty()
 
     private fun shoot(name: String) {
-        val png = File(shots, "$name.png")
-        png.outputStream().use { out ->
+        storage.openOutputFile("screenshots/$name.png").use { out ->
             compose.onRoot().captureToImage().asAndroidBitmap()
                 .compress(Bitmap.CompressFormat.PNG, 100, out)
         }
