@@ -66,6 +66,21 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 **环境变量交接必须在 `Python.start()` 之前。** `config_bridge` 在 import 期就把
 `CONFIGS_DIR` 定死,晚一步设 `HALO_SERDES_DATA_DIR` 完全没用。
 
+**交叉编译的目标版本要实测,不能照上游最新的挑。** Chaquopy 16.1.0 把
+`pythonVersion=3.10` 解析到 **3.10.15-1**,而 Maven Central 上最新的 3.10 是
+3.10.19-0 —— 照最新的挑就错了。**这个错误没有构建期症状**:按错版本头文件编出来的
+wheel,交叉编译干净、APK 照常 assemble,构建日志一个字都不说;Cython 生成的 C 取用
+CPython 内部头文件,后果全在设备上。所以要在 Gradle 跑过之后拿
+`~/.gradle/caches/modules-2/files-2.1/com.chaquo.python/target/` 里的实际值对一次。
+附带一条:缓存里若有多个 target 构建,「取版本号最高的那个」会让陈旧条目替真正在
+用的那个作答 —— 判据应为**多于一个就失败**。
+
+**从 srcDirs 换成 wheel,会让 `pyproject` 的依赖下限突然变成承重结构。** 解释版走
+Chaquopy 的 `srcDirs`,根本不做依赖解析,所以 `scipy>=1.11` 这条从来没有被读到过;
+换成装 wheel 之后 pip 会读 METADATA,而 Chaquopy 的源对 3.10 只有 scipy 1.8.1,
+诚实的 resolve 无法成功。分歧本身是旧的(`wheel-versions` job 就是为它存在的),
+新的是它变成了阻断构建的东西。
+
 **"编译后测试全绿"必须先证明跑的是编译版。** 把 wheel 装进 venv 再 `pytest`,如果编译版
 没装上、或者被 editable 安装的 `.pth` 抢先解析,套件照样全绿 —— 它只是又跑了一遍源码树。
 断言前先 `assert halo_serdes.__file__.endswith('.so')`。同理,`.so` 里 grep 不到 docstring

@@ -132,17 +132,6 @@ job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量�
 里有对 `halo_serdes_app` 的 re-export shim,桌面侧依赖它 —— 排除时要确认排的只是 APK
 的打包范围,不是别的。
 
-### 6d. Android 编译版(Cython):宿主侧已验收,是否落地待决
-
-宿主侧结论、编译集、两处结构性不匹配,全部见
-[`cairn/android-compiled-variant.md`](cairn/android-compiled-variant.md)
-(删掉 `.py` 后 **356 passed, 1 skipped**,与解释版基线一致)。
-
-**卡住的两件事**:(1) 要进 CI 就得把 skill 的 414 行 `android_wheel.py`(无 license 头)
-vendor 进这个公开仓库 —— 属于仓库所有者的决定;(2) **交叉编译从未跑过**,本机无 NDK,
-且验证跑在 3.11 而 Chaquopy 目标是 3.10,Cython 生成的 C 会用到内部头文件。
-干净的交叉编译不等于真机 `import` 成功。
-
 ## P3 — 能力扩展
 
 ### 7. 片上校准回路

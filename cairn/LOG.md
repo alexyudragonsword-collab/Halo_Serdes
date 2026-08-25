@@ -3,6 +3,27 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-08-25 · Cython 编译版 APK 落地:交叉编译 + 模拟器 32 项全过
+
+- **run #33 五个 job 全绿。** 编译版 APK 由 `compiled-apk` 出(交叉编译两个 ABI 用时
+  3 分 10 秒),`compiled-emulator` 拿它跑完整仪器化套件:**32 tests, 0 failures,
+  0 errors, 0 skipped**,6 张截图。干净的交叉编译不等于 `.so` import 得了,这一步
+  是 CI 里唯一能回答后者的东西。
+- **切换开关只有一件事**:`android/app/pysrc/` 里有没有 wheel。有就走 `--find-links`
+  + `install("halo-serdes")` 并从 srcDirs 里去掉 `../../src`;没有就是今天的解释版。
+  manifest、Kotlin、Compose、Gradle 任务一律不动。
+- **pip 按 tag 挑 wheel 这件事是被证据确认的,不是推断**:Chaquopy 安装日志里
+  `halo-serdes` 在两个 ABI 的列表里**各出现一次**,而 `scikit-rf`/`six`/`pytz`
+  这些纯 Python 包只出现一次。
+- **`chaquopyTarget` 我猜错了一次,而那次红是这套东西最值的一次。** Chaquopy 16.1.0
+  用 3.10.15-1,不是 Maven 上最新的 3.10.19-0。按错版本头文件编出来的 wheel,
+  **交叉编译干净、APK 也 assemble 成功,构建日志一个字都没说**。要不是装配之后加了
+  那道对照断言,下一步就是拿这个 APK 上模拟器,然后对着一个指向别处的崩溃查。
+- **vendor 了 skill 的两个脚本进 `android/tools/`**(CI 没装 skill),`android_wheel.py`
+  改了一处:wheel 组装不再按后缀丢 `.c`,只丢旁边有同名 `.so` 的。
+- 结论与"仍未验证"见 `cairn/android-compiled-variant.md`;ROADMAP 6d 已完成删除,
+  6b(edge-to-edge 未验证)与 6c(APK 打进 `halo_serdes_gui`)仍在。
+
 ## 2026-08-25 · Chaquopy 工程复审 + Cython 编译版宿主侧验证
 
 - **复审(照 `python-android-apk` skill 的坑表逐条对)**:大部分没踩到 —— `--no-index`、

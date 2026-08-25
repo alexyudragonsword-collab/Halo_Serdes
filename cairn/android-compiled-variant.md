@@ -1,7 +1,7 @@
 # Android 编译版(Cython → `.so`)评估
 
-> 状态:**宿主侧已验证,交叉编译未做**(本机没有 NDK)。是否落地取决于一个尚未
-> 回答的决定 —— 见文末「未决」。
+> 状态:**已落地。** 交叉编译 + 编译版 APK + 模拟器全套仪器化测试都在 CI 里,
+> 由 `compiled-apk` 与 `compiled-emulator` 两个 job 承担。
 
 ## 这件事买到的是什么(先说清楚,免得高估)
 
@@ -66,14 +66,42 @@ skill 的 `android_wheel.py` 假设「一个发行版 = 一个可导入包」,�
    `RuntimeError: reference ...`,离真正原因隔着两层。判据要改成「只丢**旁边有同名
    `.so`** 的 `.c`」—— 生成的 C 必然有,当数据发布的 C 必然没有。
 
-## 未决
+## 交叉编译:CI 的结果
 
-CI 里没有装 skill,要让编译版进 CI,就得把那个 414 行的 `android_wheel.py`
-**vendor 进本仓库**。它没有 license 头也没有版权声明,而本仓库是公开的 —— 这个决定
-留给仓库所有者。三条路:(a) vendor,CI 全自动;(b) 不 vendor,编译版只在装了 skill
-且有 NDK 的机器上手动出;(c) 只保留本文档的宿主侧结论,编译版暂缓。
+| | 结果 |
+|---|---|
+| 交叉编译两个 ABI(arm64-v8a + x86_64) | 3 分 10 秒 |
+| 编译版 APK assemble | 成功 |
+| `inspect_apk --native` | `engine` / `analysis` / `channel` 各 14/14/12 个 `.so`、0 个 source |
+| `inspect_apk --pure`(排除的模块) | `dsp/mlsd`、`cdr/kernels` 各 1 source、0 native |
+| 模拟器上的仪器化测试 | **32 tests, 0 failures, 0 errors, 0 skipped**,6 张截图 |
 
-**另外,交叉编译本身还没被证明过。** 干净的交叉编译和一个长得对的 wheel,都不等于
-在真机上 `import` 成功 —— 尤其 Chaquopy 的目标是 Python 3.10 而本次验证跑在 3.11,
-Cython 生成的 C 会用到内部头文件。真要落地,`--target-version` 必须对齐 Chaquopy
-实际下载的那个 target 构建,并且**在设备上跑一次真实计算**才算数。
+APK 里 `halo_serdes` 是 7 source / 82 native、`halo_serdes_app` 是 0 source / 10 native ——
+82 = 41 × 2 个 ABI,10 = 5 × 2,7 个 source 正是上表排除的那 7 个。
+
+**pip 确实按 tag 挑了 wheel**,这不是推断:Chaquopy 的安装日志里 `halo-serdes`
+在 arm64-v8a 和 x86_64 两个列表里**各出现一次**,而 `scikit-rf`/`six`/`pytz`
+这些纯 Python 包只出现一次。按路径装 wheel 会完全跳过这一步,把一个 ABI 的
+`.so` 塞进两个包里,报的是 ELF 头错误。
+
+## `chaquopyTarget` 必须实测,不能照 Maven 上最新的挑
+
+Chaquopy 16.1.0 把 `pythonVersion=3.10` 解析到 **3.10.15-1**,不是 Maven Central 上
+最新的 3.10.19-0。第一次就是照最新的猜的,猜错了。
+
+**这条错误的形状值得记**:按 3.10.19 头文件编出来的 wheel,交叉编译干净、APK 也
+照常装配完成,**构建全程没有任何一行说这里不对**。Cython 生成的 C 会取用 CPython
+内部头文件,所以错配的后果在设备上,不在构建里。`compiled-apk` 因此在装配之后、
+上模拟器之前拿 `~/.gradle/caches/.../com.chaquo.python/target/` 里的实际值对一次,
+不一致就红并把两个版本号都写出来 —— 这条断言在它第一次运行时就兑现了。
+
+同一处还有个更隐蔽的坑:缓存里若有多个 target 构建,「取版本号最高的那个」会让
+陈旧条目替真正在用的那个作答。判据改成:**多于一个就失败**。
+
+## 仍未验证
+
+- **真机。** 模拟器是 x86_64、API 34;手机是 arm64、可能是 16 KB page。
+  两者都跑通不构成第三种情况的证据。
+- **体积代价**没有单独测量 —— 上传的 `halo-compiled-apk` 是 109 MB,但那是
+  debug + androidTest 两个 APK、两个 ABI 打成的 zip,不能直接当作编译版单个 APK
+  相对解释版的增量。要这个数得单独量。
