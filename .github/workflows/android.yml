@@ -209,14 +209,23 @@ jobs:
         # compare and fail naming both.
         run: |
           cache=~/.gradle/caches/modules-2/files-2.1/com.chaquo.python/target
-          actual=$(ls "$cache" 2>/dev/null | sort -V | tail -1)
+          found=$(ls "$cache" 2>/dev/null)
+          n=$(echo "$found" | grep -c . || true)
           pinned=${{ steps.pin.outputs.target }}
-          echo "pinned=$pinned  chaquopy downloaded=$actual"
-          if [ -z "$actual" ]; then
+          echo "pinned=$pinned  chaquopy downloaded: $(echo $found)"
+          if [ "$n" -eq 0 ]; then
             echo "::error::could not read $cache -- the assertion that the "\
                  "compile target matches Chaquopy's did not actually run"
             exit 1
           fi
+          if [ "$n" -ne 1 ]; then
+            # Picking the highest would let a stale cache entry answer for the
+            # live one, which is the failure this assertion is here to prevent.
+            echo "::error::$n target builds in the cache ($(echo $found)) -- "\
+                 "cannot tell which one this build used"
+            exit 1
+          fi
+          actual=$found
           if [ "$actual" != "$pinned" ]; then
             echo "::error title=CPython target drift::chaquopyTarget=$pinned "\
                  "but Chaquopy downloaded $actual. Update chaquopyTarget in "\
