@@ -5,6 +5,34 @@ plugins {
     id("com.chaquo.python")
 }
 
+// --- interpreted vs compiled ------------------------------------------------
+//
+// Two builds come out of this one file, and which one you get is decided by
+// whether android/tools/build_compiled_wheels.sh has put wheels in pysrc/.
+// Nothing else moves: same manifest, same Kotlin, same Compose, same tasks.
+//
+//   (nothing in pysrc/)  Chaquopy takes the repository's own src/ as a Python
+//                        source dir. Desktop and phone run the same files,
+//                        which is what ironclad rule #1 asks for.
+//
+//   (wheels in pysrc/)   The same packages arrive as .so inside a wheel, and
+//                        ../../src is dropped from srcDirs -- with both in
+//                        place the interpreted tree would shadow the compiled
+//                        wheel and the APK would be the interpreted one under
+//                        a different name. That failure is invisible in the
+//                        build log, which is why CI gates both artifacts with
+//                        android/tools/inspect_apk.py --native / --pure.
+val pysrc = file("pysrc")
+val compiledWheels = pysrc.listFiles { f: File -> f.name.matches(Regex("""halo_serdes-.*\.whl""")) }
+    ?.sorted() ?: emptyList()
+val compiledVariant = compiledWheels.isNotEmpty()
+if (compiledVariant) {
+    logger.lifecycle("Chaquopy: compiled variant, ${compiledWheels.size} wheel(s) in ${pysrc.path}")
+    compiledWheels.forEach { logger.lifecycle("  ${it.name}") }
+} else {
+    logger.lifecycle("Chaquopy: interpreted variant (no wheels in ${pysrc.path})")
+}
+
 android {
     namespace = "com.halo.serdes.probe"
     compileSdk = 35
@@ -15,6 +43,11 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.0.1-m0"
+        // So an APK on disk says which variant it is. The dangerous failure
+        // here is two builds that differ in filename only; this at least makes
+        // `aapt dump badging` able to tell them apart, and the inspect_apk
+        // gate in CI is what actually enforces the difference.
+        versionNameSuffix = if (compiledVariant) "-compiled" else null
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Files a test writes must leave the device *during* the run. AGP
         // uninstalls both APKs when connectedAndroidTest finishes, taking the
@@ -81,7 +114,13 @@ chaquopy {
     // the Python is the real package tree and not a copy — desktop and phone
     // must never diverge (project invariant #1).
     sourceSets.getByName("main") {
-        setSrcDirs(listOf("src/main/python", "../../src"))
+        // The compiled variant must NOT list ../../src: Chaquopy would then
+        // ship the .py alongside the wheel's .so and Python would import
+        // whichever it found first. See the note at the top of this file.
+        setSrcDirs(
+            if (compiledVariant) listOf("src/main/python")
+            else listOf("src/main/python", "../../src")
+        )
     }
 
     defaultConfig {
@@ -112,6 +151,21 @@ chaquopy {
             // break the thing this whole port rests on to save a package.
             // Paying for pandas is the smaller price.
             install("scikit-rf")
+
+            if (compiledVariant) {
+                // --find-links, never install-by-path. pip matches a wheel to
+                // the build by its *tag*, and it only does that when it is
+                // choosing from a link set; given a path it installs whatever
+                // it was handed, so the arm64 wheel lands in the x86_64 APK
+                // too and fails at import with an ELF-header error that points
+                // nowhere near here.
+                //
+                // --find-links is additive and scoped. --no-index would not be:
+                // it is a global pip option and numpy/scipy/scikit-rf above are
+                // resolved from Chaquopy's own index in this same pass.
+                options("--find-links", pysrc.absolutePath)
+                install("halo-serdes")
+            }
         }
 
         // Keep .py sources so a traceback on the device names real lines.

@@ -28,3 +28,9 @@ android/app/src/main/python/probe_golden.json
 build/
 build-android-wheel/
 dist/
+
+# Wheels for the Cython-compiled APK variant, produced by
+# android/tools/build_compiled_wheels.sh. Their presence is what switches the
+# Gradle build to the compiled variant, so they must never be committed: the
+# interpreted build is the default and a stray wheel would silently change it.
+android/app/pysrc/
