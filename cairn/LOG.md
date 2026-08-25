@@ -3,6 +3,28 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-08-25 · Chaquopy 工程复审 + Cython 编译版宿主侧验证
+
+- **复审(照 `python-android-apk` skill 的坑表逐条对)**:大部分没踩到 —— `--no-index`、
+  多行 `run:` 折行、管道退出码、陈旧 sdist(本项目结构上免疫:走 `setSrcDirs` 而非
+  sdist/pysrc)、`install("../..")`、缺 loading 状态、skip 冒充 pass,全部不适用或已避开。
+  **两条成立**:(1) `targetSdk = 35` 却没有 `enableEdgeToEdge`/WindowInsets 处理,
+  完全靠 Material3 `Scaffold`/`TopAppBar`/`NavigationBar` 的默认值 —— **未经验证**,
+  因为模拟器是 API 34;(2) APK 里打进了 `halo_serdes_gui`(680 K 的 Dash 桌面 UI 源码),
+  手机永远不会 import 它 —— `setSrcDirs(listOf("src/main/python", "../../src"))` 是整棵 `src/`。
+- **编译版:宿主侧验收通过。** 53 个模块编 46 个,删掉 `.py` 后
+  **356 passed, 1 skipped —— 与解释版基线逐项一致**;12 个 `.so` 里 grep docstring 0 命中。
+  排除的 7 个各有具体原因(1 个 Cython 自身崩溃 + 6 个 numba 层),见
+  `cairn/android-compiled-variant.md`。
+- **两处结构性不匹配**:skill 脚本假设「一发行版一包」,本仓库一个发行版三个包 ——
+  两次调用产出同名 wheel,得合并并**重算 `RECORD`**;组装时无条件丢 `.c`,
+  连带丢掉当 package data 发布的手写 `io/ami_c/halo_fir_ami.c`。
+- **两次控制组都是必需的,不是仪式**:不先断言 `__file__` 是 `.so`,"全绿"可能只证明
+  编译版根本没装上;不先在未编译模块的 `.pyc` 里 grep 命中,`.so` 里的 0 命中什么也不说明。
+- **未决:要让编译版进 CI 就得把 skill 的 414 行脚本 vendor 进这个公开仓库**
+  (无 license 头),这个决定不由我做。另外**交叉编译从未跑过** —— 本机无 NDK,
+  且本次验证在 3.11、Chaquopy 目标是 3.10。
+
 ## 2026-08-24 · 新增铁律 #6:桌面与 Android 必须同时验证
 
 - 规则本身一句话:**动了共用层(`src/halo_serdes/`、`src/halo_serdes_app/`)就两端都要跑通,

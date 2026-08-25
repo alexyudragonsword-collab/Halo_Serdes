@@ -21,3 +21,10 @@ android/build/
 android/app/build/
 android/local.properties
 android/app/src/main/python/probe_golden.json
+
+# setuptools / wheel build trees. `build-android-wheel/` is the work tree the
+# Cython cross-compile script creates when run from the repo root; both are
+# regenerated per build and neither belongs in history.
+build/
+build-android-wheel/
+dist/

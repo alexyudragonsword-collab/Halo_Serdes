@@ -108,6 +108,41 @@ job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量�
 
 ---
 
+### 6b. Android:`targetSdk = 35` 但没有 edge-to-edge / WindowInsets 处理
+
+**现状**:`MainActivity.onCreate` 只有 `setContent { HaloTheme { HaloApp() } }`,
+没有 `enableEdgeToEdge()`,界面完全依赖 Material3 `Scaffold` / `TopAppBar` /
+`NavigationBar` 自带的 inset 默认值。
+
+**为什么要紧**:API 35 起 edge-to-edge 是强制的,系统栏后面会画内容。默认值大概率够用,
+但**这件事目前没有被任何测试或任何一次运行验证过** —— CI 的模拟器是 API 34,
+真机验证只在 M0 探针那次做过。带挖孔/手势条的机器上,最上面一个控件被状态栏压住是
+典型症状,且只在设备上看得见。
+
+**怎么做**:模拟器矩阵加一档 API 35,或在真机上跑一次并截图;确认后按需补
+`enableEdgeToEdge()` + `WindowInsets` 内边距。
+
+### 6c. Android:APK 打进了 `halo_serdes_gui`(手机永远不 import)
+
+**现状**:`android/app/build.gradle.kts` 的
+`setSrcDirs(listOf("src/main/python", "../../src"))` 把整棵 `src/` 交给 Chaquopy,
+其中 `halo_serdes_gui` 是 680 K 的 Dash 桌面 UI 源码,手机侧没有任何代码路径会 import 它。
+
+**为什么不是"顺手就改"**:动了打包内容就要按铁律 #6 两端重验,而 `halo_serdes_gui`
+里有对 `halo_serdes_app` 的 re-export shim,桌面侧依赖它 —— 排除时要确认排的只是 APK
+的打包范围,不是别的。
+
+### 6d. Android 编译版(Cython):宿主侧已验收,是否落地待决
+
+宿主侧结论、编译集、两处结构性不匹配,全部见
+[`cairn/android-compiled-variant.md`](cairn/android-compiled-variant.md)
+(删掉 `.py` 后 **356 passed, 1 skipped**,与解释版基线一致)。
+
+**卡住的两件事**:(1) 要进 CI 就得把 skill 的 414 行 `android_wheel.py`(无 license 头)
+vendor 进这个公开仓库 —— 属于仓库所有者的决定;(2) **交叉编译从未跑过**,本机无 NDK,
+且验证跑在 3.11 而 Chaquopy 目标是 3.10,Cython 生成的 C 会用到内部头文件。
+干净的交叉编译不等于真机 `import` 成功。
+
 ## P3 — 能力扩展
 
 ### 7. 片上校准回路

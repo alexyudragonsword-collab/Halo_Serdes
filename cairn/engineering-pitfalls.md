@@ -66,6 +66,22 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 **环境变量交接必须在 `Python.start()` 之前。** `config_bridge` 在 import 期就把
 `CONFIGS_DIR` 定死,晚一步设 `HALO_SERDES_DATA_DIR` 完全没用。
 
+**"编译后测试全绿"必须先证明跑的是编译版。** 把 wheel 装进 venv 再 `pytest`,如果编译版
+没装上、或者被 editable 安装的 `.pth` 抢先解析,套件照样全绿 —— 它只是又跑了一遍源码树。
+断言前先 `assert halo_serdes.__file__.endswith('.so')`。同理,`.so` 里 grep 不到 docstring
+这件事,只有在**先于一个未编译模块的 `.pyc` 里 grep 到同类短语**之后才有意义。
+两次都是控制组:少了它,得到的是一个没有信息量的绿。
+
+**"一个发行版一个包"是打包工具的普遍假设,本仓库不满足。** `halo-serdes` 这一个发行版下
+有三个可导入包。任何按包产出 wheel 的工具都会给出**同名同 dist-info** 的多个 wheel,
+装第二个会卸掉第一个;合并时还必须**重算 `RECORD`** —— 后解开的那份覆盖了前一份、
+只列一半文件,而 pip 装的时候会校验它。
+
+**丢弃中间产物的规则要按来源判,不能按后缀判。** 打 wheel 时无条件跳过 `.c` 是为了丢掉
+Cython 生成的中间 C,却连带丢掉了 `io/ami_c/halo_fir_ami.c` —— 本项目当 package data
+发布的**手写** C。现象离原因很远:wheel 正常产出、脚本自检通过,只有 `test_ami_c.py`
+报 `RuntimeError: reference ...`。判据应为「只丢**旁边有同名 `.so`** 的 `.c`」。
+
 **GitHub Action 的 `script` 输入不是 shell 脚本。** `reactivecircus/android-emulator-runner`
 是用 `sh -c "<script>"` 执行它的,所以内嵌的双引号会闭合外层包裹,命令当场畸形。
 把一条无引号命令改成多行带引号的块之后,连续两次在 ~90 秒挂掉且**没有任何测试报告**。
