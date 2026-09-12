@@ -17,6 +17,7 @@ def render(rec: RunRecord):
         return common.need_run_message()
     cfg = rec.cfg
     cards = []
+    note = None
     if cfg.rx.ctle.enable:
         try:
             from halo_serdes.afe import Ctle
@@ -26,9 +27,15 @@ def render(rec: RunRecord):
                                        f"target {cfg.rx.ctle.peak_db:.1f} dB"),
                      theme.metric_card("DC gain", f"{cfg.rx.ctle.gdc_db:.1f} dB",
                                        "muted")]
-        except Exception:
-            pass
+        except Exception as exc:
+            # `pass` here dropped the cards with no trace, so an unbuildable
+            # CTLE (fz above fp1, say) looked identical to one that had simply
+            # not been configured.
+            note = theme.banner(
+                "warn", f"Cannot build the CTLE from this config, so realized "
+                        f"peaking is unknown: {type(exc).__name__}: {exc}")
     return html.Div([
+        note,
         common.cards_row(cards),
         common.graph(figures.ctle_bode_fig(cfg, height=420)),
         html.Div("CTLE zero/poles default from the peaking target and Nyquist; "

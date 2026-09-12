@@ -25,6 +25,7 @@ from ..afe import Ctle
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
+from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp import channel_cursors
 
@@ -89,9 +90,7 @@ def train_tx_fir(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     for rounds in range(1, max_rounds + 1):
         # RX-side measurement: pulse response with the current Tx FIR
-        fir_up = np.zeros((n_taps - 1) * osr + 1)
-        fir_up[::osr] = taps
-        h = np.convolve(h_base, fir_up)
+        h = np.convolve(h_base, upsampled_taps(taps, osr))
         pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
         peak = int(np.argmax(np.abs(pulse.y)))
         c = channel_cursors(pulse, osr, n_pre, n_post, peak_idx=peak)

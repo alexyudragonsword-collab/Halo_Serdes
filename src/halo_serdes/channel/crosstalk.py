@@ -26,6 +26,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..core.mapping import nrz_levels, pam4_levels
+from ..core.sampler import baud_samples, hold
 from ..core.waveform import Waveform
 from .response import pulse_from_impulse
 
@@ -84,7 +85,7 @@ class XtalkAggressor:
             lv = nrz_levels(self.swing)
             sym = rng.integers(0, 2, size=n_sym)
         v = lv[sym]
-        agg_tx = np.repeat(v, osr)
+        agg_tx = hold(v, osr)
         y = np.convolve(agg_tx, self.coupling)[:n_samples]
         if y.size < n_samples:
             y = np.pad(y, (0, n_samples - y.size))
@@ -168,7 +169,9 @@ def icn_rms(aggressors, osr: int, *, modulation: str = "nrz") -> float:
     for agg in aggressors:
         p = agg.pulse(osr).y
         pk = int(np.argmax(np.abs(p)))
-        cursors = p[pk % osr::osr]             # baud-spaced cursors
+        # baud-spaced cursors: samples of a response, not a symbol
+        # sequence, so the array primitive rather than sample_baud
+        cursors = baud_samples(p, osr, pk % osr)
         # each aggressor carries its own Tx swing — scale per lane, not once
         # over the whole sum (mixed-swing banks would otherwise depend on order)
         swing = float(getattr(agg, "swing", 1.0))

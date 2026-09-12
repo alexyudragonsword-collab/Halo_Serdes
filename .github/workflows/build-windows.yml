@@ -8,8 +8,20 @@ on:
   workflow_dispatch:
   push:
     paths:
+      # The shared layers are in here on purpose, and they are the reason
+      # ironclad rule #6 ("desktop and Android must both be verified") was only
+      # half enforced: a change to the engine core triggered the pytest suite
+      # and the Android jobs, but not this one -- and PyInstaller/Nuitka are
+      # sensitive to core changes in a way pytest cannot see. A new lazy import
+      # inside a function, a module reached only by name, a data file the
+      # freezer does not follow: all of those pass every test and produce a
+      # desktop build that dies on launch.
+      - "src/halo_serdes/**"
+      - "src/halo_serdes_app/**"
       - "src/halo_serdes_gui/**"
+      - "configs/**"
       - "packaging/**"
+      - "pyproject.toml"
       - ".github/workflows/build-windows.yml"
 
 jobs:

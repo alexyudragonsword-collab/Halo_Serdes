@@ -35,6 +35,8 @@ from pathlib import Path
 
 import numpy as np
 
+from ..core.sampler import upsampled_taps
+
 _AMI_C_DIR = Path(__file__).resolve().parent / "ami_c"
 
 # --------------------------------------------------------------------------- #
@@ -104,9 +106,7 @@ class NativeFirAmi(AmiModel):
         if self.sample_spaced:
             return self.taps
         osr = int(round(ui / dt))
-        g = np.zeros((self.taps.size - 1) * osr + 1)
-        g[:: osr] = self.taps
-        return g
+        return upsampled_taps(self.taps, osr)
 
     def init(self, impulse: np.ndarray, dt: float, ui: float,
              **params: object) -> np.ndarray:

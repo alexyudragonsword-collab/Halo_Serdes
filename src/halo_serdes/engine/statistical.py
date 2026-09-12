@@ -29,6 +29,7 @@ from ..afe import Ctle
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
+from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
 from .static_link import _levels
@@ -109,14 +110,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: 2 * h.size]
     h = h * cfg.rx.vga_gain
     if len(cfg.tx.fir_taps) > 1:
-        fir_up = np.zeros((len(cfg.tx.fir_taps) - 1) * osr + 1)
-        fir_up[::osr] = cfg.tx.fir_taps
-        h = np.convolve(h, fir_up)
+        h = np.convolve(h, upsampled_taps(cfg.tx.fir_taps, osr))
     noise_sigma = cfg.rx.noise_rms
     if ffe_taps is not None and len(ffe_taps) > 1:
-        w_up = np.zeros((len(ffe_taps) - 1) * osr + 1)
-        w_up[::osr] = ffe_taps
-        h = np.convolve(h, w_up)
+        h = np.convolve(h, upsampled_taps(ffe_taps, osr))
         noise_sigma = noise_sigma * float(np.linalg.norm(ffe_taps))
     pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
 

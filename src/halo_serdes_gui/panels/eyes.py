@@ -35,11 +35,17 @@ def _small(cfg, cap=4000):
 
 
 def _fe_eye(cfg):
+    """Reconstructed front-end eye, or ``(None, reason)`` when it cannot be built.
+
+    Returning a bare ``None`` made a reconstruction failure indistinguishable
+    from "nothing to show yet", which is the difference between a bug and an
+    empty state.
+    """
     from halo_serdes.analysis.reconstruct import front_end_eye
     try:
-        return front_end_eye(_small(cfg))
-    except Exception:
-        return None
+        return front_end_eye(_small(cfg)), None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
 
 
 def _post_ffe_eye_fig(rec):
@@ -50,8 +56,9 @@ def _post_ffe_eye_fig(rec):
         return figures.placeholder("run the time engine (needs converged FFE taps)")
     try:
         eye = post_ffe_eye(_small(rec.cfg), sim.ffe_taps)
-    except Exception:
-        return figures.placeholder("post-FFE eye reconstruction failed")
+    except Exception as exc:
+        return figures.placeholder(
+            f"post-FFE eye reconstruction failed — {type(exc).__name__}: {exc}")
     return figures.eye_fig(eye, title="Reconstructed post-FFE eye (digital EQ)")
 
 
@@ -67,10 +74,12 @@ def render(rec: RunRecord):
         return common.error_block(rec)
     cfg = rec.cfg
     is_adc = cfg.rx.arch == "adc_dsp"
-    fe = _fe_eye(cfg)
+    fe, fe_err = _fe_eye(cfg)
     fe_label = ("Analog ADC-input eye (Tx+channel+CTLE) — closed by design"
                 if is_adc else "Analog front-end eye (CTLE output)")
-    left = common.graph(figures.eye_fig(fe, title=fe_label))
+    left = (common.graph(figures.placeholder(
+                f"front-end eye reconstruction failed — {fe_err}"))
+            if fe_err else common.graph(figures.eye_fig(fe, title=fe_label)))
 
     if is_adc:
         # digital domain: reconstructed FFE-output eye + true slicer cloud

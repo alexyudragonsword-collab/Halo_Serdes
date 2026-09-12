@@ -53,8 +53,31 @@ mixed-signal 与 ADC-DSP **共享** Tx、信道、分析层、统计引擎骨架
 
 ### 5. 波形与符号是两个域,不能隐式互转
 
-过采样连续域(`Waveform`)与波特率符号域(`SymbolStream`)之间只能经显式采样器
-(Farrow 分数相位插值)。隐式互转会引入 0.03 UI 量级的伪抖动而不报错。
+过采样连续域(`Waveform`)与波特率符号域(`SymbolStream`)之间只能经显式采样器。
+隐式互转会引入 0.03 UI 量级的伪抖动而不报错。
+
+**这条曾经只是一句话。** 2026-09 审计发现:没有采样器模块;`SymbolStream` 定义了
+但**全仓库零次构造**;11 个调用点各自就地用 `[::osr]` 切片或 `np.repeat` 跨域。
+**没有任何东西执行的不变量就是一条注释。**
+
+现在的执行方式:
+
+| | |
+|---|---|
+| 唯一允许跨域的地方 | `src/halo_serdes/core/sampler.py` |
+| 波形 → 符号 | `sample_baud(wave, osr, phase) -> SymbolStream`(带 UI 与相位的类型化边界);`baud_samples(y, osr, phase)`(结果不是符号序列时用,如脉冲响应的 baud 间隔 cursor) |
+| 符号 → 波形(零阶保持) | `hold(values, osr)` |
+| 波特率滤波器系数 → 采样网格 | `upsampled_taps(taps, osr, length=None)` |
+| 执行者 | `tests/test_domain_boundary.py` 扫描 `src/halo_serdes`,断言 `[...::osr]` 与 `np.repeat(..., osr)` **只出现在 sampler.py 里** |
+
+**判据诚实声明**:那条扫描匹配的是**惯用写法**,不是所有可能的隐式转换 ——
+把 `osr` 别名成另一个名字仍能绕过。它买到的是「按最自然的方式写这个 bug 会让构建变红」,
+绕过必须是刻意的。测试文件里自带一条"种一个违例、要求扫描能看见"的自检,
+因为**匹配不到任何东西的正则能通过任何建立在它之上的断言** —— 本项目已经出过一次
+瞎断言(`assertDrew` 走 `Color.value.toInt()`)。
+
+**这次改造不允许改变任何数值**:9 个预设 × 4 条引擎路径共 469 个标量与数组哈希,
+重构前后逐位一致。
 
 ### 6. 桌面与 Android 必须同时验证
 

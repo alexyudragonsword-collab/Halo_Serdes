@@ -16,6 +16,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..config.schema import LinkConfig
+from ..core.sampler import hold
 from ..core.waveform import Waveform
 
 
@@ -60,7 +61,7 @@ def jittered_zoh(v_baud: np.ndarray, osr: int, jitter_s: np.ndarray,
     n_sym = v_baud.size
     dt = ui / osr
     n = n_sym * osr
-    y = np.repeat(v_baud, osr).astype(np.float64)  # base fill (tail/edges)
+    y = hold(v_baud, osr).astype(np.float64)  # base fill (tail/edges)
     b = (np.arange(n_sym + 1) * ui + jitter_s) / dt  # boundaries [samples]
     cur_start = b[0]
     for k in range(1, n_sym + 1):

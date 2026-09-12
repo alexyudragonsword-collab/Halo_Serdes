@@ -3,6 +3,29 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-09-12 · 体检后的五项整改:铁律 #2/#3/#5 从文字变成执行
+
+- **铁律 #5 以前只是一句话。** `SymbolStream` 定义了却**全仓库零次构造**,没有采样器模块,
+  11 个调用点各自就地 `[::osr]` 或 `np.repeat` 跨域。新建 `core/sampler.py` 作为唯一入口
+  (`sample_baud` / `baud_samples` / `hold` / `upsampled_taps`),`tests/test_domain_boundary.py`
+  扫描 `src/halo_serdes` 断言这些惯用写法只出现在 sampler 里。**没有东西执行的不变量就是注释。**
+- **铁律 #2 有结构性风险:两条 RX 路径的打分是约 35 行复制粘贴**,slicer SNR 公式另有 3 处内联
+  版本与正本 `metrics.slicer_snr_db` 并存。抽出 `engine/scoring.py`,三条引擎路径
+  (mixed-signal / ADC / static)现在共用同一个 `score()`。
+- **两次重构都以「不许改变任何数值」为验收**:9 个预设 × 4 条引擎路径 = **469 个标量与数组哈希,
+  前后逐位一致**。"测试通过"是更弱的说法,所以先建了指纹基线再动手。
+- **铁律 #3 的失败在界面上是不可见的**:`dual_engine` 把统计引擎异常变成 `rec.stat = None`,
+  与"根本没跑"渲染完全一样 —— 而那个页面**就是**双引擎交叉校验。新增 `RunRecord.stat_error`,
+  连同另外 4 处吞异常(坏 YAML 粘贴毫无反应、CTLE 卡片静默消失、两处眼图重建返回裸 None)一起改成显示原因。
+- **写测试时又踩了本仓库已记过的坑**:`preset_names()[0]` 是 "Library defaults",信道建不起来,
+  三个测试因此红在信道上而不是被测对象上。已改成"取第一个信道能建起来的预设"。
+- **测试还抓到我自己修得不完整**:给 CTLE 卡片加了保护,但下一行的 Bode 图仍在裸调
+  `Ctle.from_config`,整个 tab 照样崩 —— 提示渲染出来又被丢掉。
+- **铁律 #6 有执行缺口**:`build-windows.yml` 只在 GUI/packaging 改动时触发,改核心引擎不验证
+  桌面打包,而 PyInstaller 对核心变动最敏感。已补上 `src/halo_serdes/**` 等触发路径。
+- 补 `LICENSE`(pyproject 早已声明 MIT,文件一直不存在)。**默认分支仍是工作分支**,
+  那是 GitHub 仓库设置,需要仓库所有者点一下。
+
 ## 2026-08-25 · Cython 编译版 APK 落地:交叉编译 + 模拟器 32 项全过
 
 - **run #33 五个 job 全绿。** 编译版 APK 由 `compiled-apk` 出(交叉编译两个 ABI 用时

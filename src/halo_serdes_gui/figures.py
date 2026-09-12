@@ -164,7 +164,14 @@ def ctle_bode_fig(cfg, title="CTLE frequency response", height=320):
 
     if not cfg.rx.ctle.enable:
         return placeholder("CTLE disabled", height)
-    ctle = Ctle.from_config(cfg.rx.ctle, cfg.f_nyquist)
+    try:
+        ctle = Ctle.from_config(cfg.rx.ctle, cfg.f_nyquist)
+    except Exception as exc:
+        # The panel above guards its metric cards; without the same guard here
+        # an unbuildable CTLE took the whole tab down with a traceback instead
+        # of showing why. Same reason, stated in the place the reader is looking.
+        return placeholder(f"CTLE cannot be built from this config — "
+                           f"{type(exc).__name__}: {exc}", height)
     f = np.linspace(1e7, 2.5 * cfg.f_nyquist, 800)
     mag = 20 * np.log10(np.abs(ctle.transfer(f)) + 1e-12)
     fig = lines_fig([{"x": f / 1e9, "y": mag, "name": "|H_CTLE| [dB]",

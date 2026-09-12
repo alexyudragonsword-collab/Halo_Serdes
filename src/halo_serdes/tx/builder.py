@@ -8,6 +8,7 @@ import numpy as np
 
 from ..config.schema import LinkConfig
 from ..core.mapping import nrz_levels, pam4_levels
+from ..core.sampler import hold
 from ..core.waveform import Waveform
 
 
@@ -40,7 +41,7 @@ def build_tx_waveform(symbols: np.ndarray, cfg: LinkConfig) -> Waveform:
     v = symbols_to_voltages(symbols, cfg)
     if len(cfg.tx.fir_taps) > 1:
         v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
-    y = np.repeat(v, cfg.osr)
+    y = hold(v, cfg.osr)
     wave = Waveform(y, cfg.dt)
     if cfg.tx.bw is not None:
         wave = apply_single_pole(wave, cfg.tx.bw)

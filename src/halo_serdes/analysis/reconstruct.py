@@ -18,6 +18,7 @@ from ..afe import Ctle
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
+from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..engine.lti import fft_filter
 from ..engine.static_link import fold_eye, make_pattern
@@ -94,7 +95,6 @@ def post_ffe_eye(cfg: LinkConfig, ffe_taps: np.ndarray,
         return fold_eye(wave.y, cfg.osr, phase, n_traces=n_traces)
     osr = cfg.osr
     tap_pre = cfg.rx.ffe.n_pre
-    w_up = np.zeros((w.size - 1) * osr + 1)
-    w_up[::osr] = w
-    post = np.convolve(wave.y, w_up)[tap_pre * osr: tap_pre * osr + wave.y.size]
+    post = np.convolve(wave.y, upsampled_taps(w, osr))[
+        tap_pre * osr: tap_pre * osr + wave.y.size]
     return fold_eye(post, osr, phase, n_traces=n_traces)

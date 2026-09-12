@@ -72,6 +72,11 @@ def _sidebar():
                 dbc.Button("Import ↓", id="yaml-import", size="sm", color="light",
                            className="border"),
             ], className="mt-1 w-100"),
+            # Import used to fail silently: a malformed paste returned no_update
+            # for every field, so the button did nothing and said nothing. The
+            # error lands here rather than in the textarea because overwriting
+            # the textarea would destroy the text the user is trying to fix.
+            html.Div(id="yaml-status"),
         ]), id="yaml-collapse", is_open=False, className="mb-2"),
 
         theme.section_title("Configuration"),
@@ -140,16 +145,24 @@ def _register_callbacks(app: Dash) -> None:
 
     @app.callback(Output({"type": "cfg", "path": ALL}, "value",
                          allow_duplicate=True),
+                  Output("yaml-status", "children"),
                   Input("yaml-import", "n_clicks"),
                   State("yaml-text", "value"),
                   State({"type": "cfg", "path": ALL}, "id"),
                   prevent_initial_call=True)
     def _import_yaml(_n, text, ids):
+        if not (text or "").strip():
+            return [no_update] * len(ids), theme.banner(
+                "warn", "Nothing to import — paste a config into the box first.")
         try:
-            cfg = cb.yaml_to_config(text or "")
-        except Exception:
-            return [no_update] * len(ids)
-        return _aligned(cb.config_to_values(cfg), ids)
+            cfg = cb.yaml_to_config(text)
+        except Exception as exc:
+            # The reason, not just a failure: a schema rejection names the
+            # offending field, and that is the whole value of the message.
+            return [no_update] * len(ids), theme.banner(
+                "crit", f"Import failed, fields unchanged. {type(exc).__name__}: {exc}")
+        return _aligned(cb.config_to_values(cfg), ids), theme.banner(
+            "ok", "Config imported into the form.")
 
     @app.callback(Output("yaml-text", "value"),
                   Input("yaml-export", "n_clicks"),

@@ -46,6 +46,13 @@ class RunRecord:
     engines: tuple[str, ...]
     sim: Any = None            # SimResult (time or static)
     stat: Any = None           # StatResult
+    # Why `stat` is absent, when something tried to produce it and failed.
+    # Without this the Dual-Engine view could only render empty charts: a
+    # statistical engine that raised looked exactly like one that was never
+    # asked to run, which reads as "the cross-check says nothing" rather than
+    # "the cross-check is broken". Invariant #3 is the whole point of that
+    # view, so its failure has to be visible.
+    stat_error: str | None = None
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
     tb: str | None = None

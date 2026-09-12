@@ -36,6 +36,7 @@ from ..afe import Ctle
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
+from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..engine.statistical import _shift_add, gaussian_kernel, isi_pdf
 from ..engine.static_link import _levels
@@ -92,9 +93,7 @@ def _apply_ctle(h: np.ndarray, cfg: LinkConfig, peak_db: float) -> np.ndarray:
 def _apply_tx_fir(h: np.ndarray, taps, osr: int) -> np.ndarray:
     if taps is None or len(taps) <= 1:
         return h
-    fir_up = np.zeros((len(taps) - 1) * osr + 1)
-    fir_up[::osr] = taps
-    return np.convolve(h, fir_up)
+    return np.convolve(h, upsampled_taps(taps, osr))
 
 
 def _baud_cursors(pulse_y: np.ndarray, peak: int, phase: int, osr: int,

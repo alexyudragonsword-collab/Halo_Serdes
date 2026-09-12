@@ -20,8 +20,6 @@ from ..afe import Ctle
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
-from ..core import prbs as prbs_mod
-from ..core.prbs import BerResult
 from ..core.waveform import Waveform
 from ..cdr import ms_rx
 from ..dsp import channel_cursors
@@ -29,7 +27,20 @@ from ..tx.builder import symbols_to_voltages, tx_fir
 from ..tx.jitter import build_jittered_tx
 from .lti import fft_filter
 from .result import SimResult
+from .scoring import (
+    cdr_gains,
+    score,
+    training_schedule,
+    warmup_symbols,
+)
 from .static_link import _levels, fold_eye, make_pattern
+
+
+#: Symbols per data-aided LMS averaging batch, handed to the mixed-signal
+#: kernel and reported in ``extras`` so a plot of the tap trajectory can be
+#: labelled. It was written as a bare ``100`` in both places, one an argument
+#: and one a reported value, which is two chances to disagree.
+LMS_BATCH_SYMBOLS = 100
 
 
 def _stage_jitter(cfg: LinkConfig, stages: dict[str, np.ndarray]) -> dict | None:
@@ -58,22 +69,13 @@ def _tx_symbols(cfg: LinkConfig, symbols: np.ndarray) -> np.ndarray:
     With ``cfg.precode`` the user symbols pass through the 1/(1+D) mod-N
     precoder; the slicer then decides *precoded* symbols (so data-aided
     training must reference these), and the Rx undoes it in
-    :func:`_user_decisions`.
+    :func:`~halo_serdes.engine.scoring.user_decisions`.
     """
     if not cfg.precode:
         return symbols
     from ..core.mapping import precode_1plusd
 
     return precode_1plusd(symbols, 2 ** cfg.bits_per_symbol)
-
-
-def _user_decisions(cfg: LinkConfig, dec: np.ndarray) -> np.ndarray:
-    """Undo the precoder, mapping slicer decisions back to user symbols."""
-    if not cfg.precode:
-        return dec
-    from ..core.mapping import unprecode_1plusd
-
-    return unprecode_1plusd(dec, 2 ** cfg.bits_per_symbol)
 
 
 def _residual_ratios(eq_cursors: np.ndarray, eq_pre: int, n_dfe: int,
@@ -253,23 +255,18 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     ref_idx = line_symbols[:n_sym].astype(np.int64)
     user_idx = symbols[:n_sym].astype(np.int64)
 
-    settle = min(cfg.sim.cdr_settle, n_sym // 4)
-    train = min(cfg.sim.train_symbols, n_sym // 4)
-    train_end = settle + train
+    # training uses reference decisions from the start; adaptation begins
+    # after CDR settling
+    sched = training_schedule(cfg, n_sym, ref_idx)
+    settle, train_end = sched.settle, sched.train_end
 
     sum_alpha = 1.0
     if cfg.rx.dfe.sum_bw is not None:
         sum_alpha = float(1.0 - np.exp(-2.0 * np.pi * cfg.rx.dfe.sum_bw * cfg.ui))
 
-    kp = osr * 2.0 ** (-cfg.rx.cdr.kp_shift)
-    ki = osr * 2.0 ** (-cfg.rx.cdr.ki_shift)
-    clamp = cfg.rx.cdr.clamp * osr if cfg.rx.cdr.clamp else 0.0
+    kp, ki, clamp = cdr_gains(cfg.rx.cdr, osr)
 
     mu = cfg.rx.dfe.mu if cfg.rx.dfe.adapt != "none" else 0.0
-    # training uses reference decisions from the start; adaptation begins
-    # after CDR settling
-    ref_arr = np.full(n_sym, -1, dtype=np.int64)
-    ref_arr[:train_end] = ref_idx[:train_end]
 
     # per-branch comparator offsets for the unrolled tap-1 slicer bank
     if tap1_unrolled and cfg.rx.dfe.comparator_offset_sigma > 0:
@@ -281,8 +278,8 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = ms_rx(
         rx_y, osr, float(peak), n_sym,
         levels.astype(np.float64), np.asarray(w_dfe0, dtype=np.float64),
-        float(mu), 100, float(kp), float(ki), float(clamp),
-        float(sum_alpha), ref_arr, int(train_end), int(settle),
+        float(mu), LMS_BATCH_SYMBOLS, float(kp), float(ki), float(clamp),
+        float(sum_alpha), sched.reference, int(train_end), int(settle),
         int(tap1_unrolled), branch_off)
 
     n_run = dec.size
@@ -291,39 +288,24 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     dec_slicer = dec
     dec = _mlsd_post_detect(cfg, y_sum[:n_run], dec, levels, resid_ratios)
 
-    warm = cfg.sim.warmup_discard if cfg.sim.warmup_discard is not None else train_end
-    warm = min(warm, n_run - 1)
-
-    dec_user = _user_decisions(cfg, dec)
-    dec_c = dec_user[warm:n_run]
-    ref_c = user_idx[warm:n_run]
-
-    ser = float(np.mean(dec_c != ref_c))
-    if cfg.modulation == "pam4":
-        ber = prbs_mod.symbol_checker(ref_c, dec_c, gray=True)
-    else:
-        idx = np.nonzero(dec_c != ref_c)[0]
-        ber = BerResult(n_checked=dec_c.size, n_errors=idx.size, error_idx=idx)
-
-    # SNR is a slicer-input metric: reference the line symbols the slicer saw
-    ideal = levels[ref_idx[warm:n_run]]
-    err_v = y_sum[warm:n_run] - ideal
-    snr_db = 10.0 * np.log10(np.mean(ideal ** 2) / max(np.mean(err_v ** 2), 1e-30))
+    warm = warmup_symbols(cfg, train_end, n_run)
+    sc = score(cfg, dec=dec, dec_slicer=dec_slicer, y_slicer=y_sum,
+               levels=levels, line_idx=ref_idx, user_idx=user_idx,
+               n_run=n_run, warmup=warm)
 
     eye = fold_eye(rx_y, osr, int(phase0) % osr, n_traces=2000) if collect_eye else None
 
     return SimResult(
-        ber=ber, ser=ser, slicer_snr_db=snr_db, n_symbols=dec_c.size,
+        ber=sc.ber, ser=sc.ser, slicer_snr_db=sc.snr_db, n_symbols=sc.n_scored,
         ffe_taps=None, dfe_taps=w_dfe, sample_phase=int(phase0) % osr,
-        eye_data=eye, y_slicer=y_sum[warm: warm + 20000],
+        eye_data=eye, y_slicer=sc.y_slicer,
         extras={"phase_track": phase, "pd_hist": pd_hist, "main_cursor": main,
                 "levels": levels, "warmup": warm, "w_dfe0": np.asarray(w_dfe0),
                 "settle": settle, "train_end": train_end,
-                "w_dfe_hist": w_dfe_hist, "n_ave": 100,
+                "w_dfe_hist": w_dfe_hist, "n_ave": LMS_BATCH_SYMBOLS,
                 "jitter_budget": jitter_budget,
                 "mlsd_resid": resid_ratios,
-                "ser_slicer": float(np.mean(
-                    _user_decisions(cfg, dec_slicer)[warm:n_run] != ref_c)),
+                "ser_slicer": sc.ser_slicer,
                 "precode": cfg.precode})
 
 
@@ -411,16 +393,11 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     enob_noise = (rng.normal(scale=adc.noise_sigma, size=n_sym + fcfg.n_pre + 2)
                   if adc.noise_sigma > 0 else np.zeros(n_sym + fcfg.n_pre + 2))
 
-    settle = min(cfg.sim.cdr_settle, n_sym // 4)
-    train = min(cfg.sim.train_symbols, n_sym // 4)
-    train_end = settle + train
-    ref_arr = np.full(n_sym, -1, dtype=np.int64)
-    ref_arr[:train_end] = ref_idx[:train_end]
+    sched = training_schedule(cfg, n_sym, ref_idx)
+    settle, train_end = sched.settle, sched.train_end
 
     ccfg = cfg.rx.cdr
-    kp = osr * 2.0 ** (-ccfg.kp_shift)
-    ki = osr * 2.0 ** (-ccfg.ki_shift)
-    clamp = ccfg.clamp * osr if ccfg.clamp else 0.0
+    kp, ki, clamp = cdr_gains(ccfg, osr)
     lat_blocks = max(0, ccfg.loop_latency_symbols // max(cfg.rx.adc.n_lanes, 1))
 
     mu_f = fcfg.mu if fcfg.adapt != "none" else 0.0
@@ -434,7 +411,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         np.asarray(w_dfe0, dtype=np.float64), float(mu_d),
         float(kp), float(ki), float(clamp), float(ccfg.pd_offset),
         1 if ccfg.pd_input == "ffe" else 0, lat_blocks,
-        ref_arr, int(train_end), int(settle))
+        sched.reference, int(train_end), int(settle))
 
     n_run = dec.size
     # --- optional MLSD over the residual the FFE/DFE left behind ---
@@ -444,24 +421,12 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     dec_slicer = dec
     dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios)
 
-    warm = cfg.sim.warmup_discard if cfg.sim.warmup_discard is not None else train_end
-    warm = min(warm, n_run - 1)
-    # undo the precoder before scoring: the slicer decided line symbols
-    dec_user = _user_decisions(cfg, dec)
-    dec_c = dec_user[warm:n_run]
-    ref_c = user_idx[warm:n_run]
-
-    ser = float(np.mean(dec_c != ref_c))
-    if cfg.modulation == "pam4":
-        ber = prbs_mod.symbol_checker(ref_c, dec_c, gray=True)
-    else:
-        idx = np.nonzero(dec_c != ref_c)[0]
-        ber = BerResult(n_checked=dec_c.size, n_errors=idx.size, error_idx=idx)
-
-    # SNR is a slicer-input metric: reference the line symbols the slicer saw
-    ideal = levels[ref_idx[warm:n_run]]
-    err_v = y_sl[warm:n_run] - ideal
-    snr_db = 10.0 * np.log10(np.mean(ideal ** 2) / max(np.mean(err_v ** 2), 1e-30))
+    warm = warmup_symbols(cfg, train_end, n_run)
+    # score() undoes the precoder first: the slicer decided line symbols
+    sc = score(cfg, dec=dec, dec_slicer=dec_slicer, y_slicer=y_sl,
+               levels=levels, line_idx=ref_idx, user_idx=user_idx,
+               n_run=n_run, warmup=warm)
+    dec_c, ref_c = sc.decisions, sc.reference
 
     # per-lane SER (TI mismatch diagnostics)
     lane_c = lane_of[warm:n_run]
@@ -471,9 +436,9 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         for ln in range(adc.n_lanes)])
 
     return SimResult(
-        ber=ber, ser=ser, slicer_snr_db=snr_db, n_symbols=dec_c.size,
+        ber=sc.ber, ser=sc.ser, slicer_snr_db=sc.snr_db, n_symbols=sc.n_scored,
         ffe_taps=w_ffe, dfe_taps=w_dfe, sample_phase=peak % osr,
-        eye_data=None, y_slicer=y_sl[warm: warm + 20000],
+        eye_data=None, y_slicer=sc.y_slicer,
         extras={"phase_track": phase, "levels": levels, "main_cursor": main,
                 "warmup": warm, "settle": settle, "train_end": train_end,
                 "w_ffe0": np.asarray(w_ffe0), "w_dfe0": np.asarray(w_dfe0),
@@ -482,6 +447,5 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "mlsd_resid": resid_ratios,
                 # SER of the raw slicer, before the sequence detector — the
                 # baseline the MLSD gain is measured against
-                "ser_slicer": float(np.mean(
-                    _user_decisions(cfg, dec_slicer)[warm:n_run] != ref_c)),
+                "ser_slicer": sc.ser_slicer,
                 "precode": cfg.precode})

@@ -12,7 +12,13 @@ from . import common
 TITLE = "Backchannel"
 TAB_ID = "backchannel"
 
+# Bounded, and deliberately so: training is seconds of work per record, which
+# is worth caching, but this used to be an unbounded dict keyed by run id --
+# one entry per run for the lifetime of the process, holding a result object
+# each. Same eviction shape as halo_serdes_app.studies.
 _CACHE: dict[str, object] = {}
+_ORDER: list[str] = []
+_MAX = 16
 
 
 def _train(rec: RunRecord):
@@ -24,8 +30,14 @@ def _train(rec: RunRecord):
         res = train_tx_fir(rec.cfg, channel=ChannelModel.from_config(rec.cfg),
                            n_pre=1, n_post=2, dfe_covered=rec.cfg.rx.dfe.n_taps)
     except Exception as exc:
+        # Cached like any other outcome: training the same config twice gives
+        # the same answer, so a failure here is a property of the config, not a
+        # transient. `render` shows the reason.
         res = exc
     _CACHE[rec.id] = res
+    _ORDER.append(rec.id)
+    while len(_ORDER) > _MAX:
+        _CACHE.pop(_ORDER.pop(0), None)
     return res
 
 

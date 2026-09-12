@@ -30,12 +30,13 @@ from ..channel import ChannelModel
 from ..config.schema import LinkConfig
 from ..core import prbs as prbs_mod
 from ..core.mapping import nrz_levels, pam4_levels
-from ..core.prbs import BerResult
+from ..core.sampler import sample_baud
 from ..core.waveform import Waveform
 from ..dsp import apply_ffe, channel_cursors, dfe_static, mmse_ffe
 from ..dsp.ffe import equalized_cursors
 from ..tx import build_tx_waveform
 from .result import SimResult
+from .scoring import score
 
 
 def make_pattern(cfg: LinkConfig) -> np.ndarray:
@@ -109,7 +110,9 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak)
 
     # --- baud sampling at the pulse-peak phase ---
-    y_baud = rx_wave.y[phase::osr]
+    # The one domain crossing on this path, and now the only thing that
+    # constructs a SymbolStream: the UI and the instant travel with it.
+    y_baud = sample_baud(rx_wave, osr, phase).y
     # symbol alignment: pulse peak at sample `peak` means symbol k lands at
     # baud index k + peak//osr
     delay = peak // osr
@@ -137,31 +140,20 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     dec, y_eq = dfe_static(y_ffe.astype(np.float64), w_dfe.astype(np.float64), levels)
 
     # --- metrics ---
-    ideal = levels[ref_symbols]
-    err_v = y_eq - ideal
-    snr_db = 10.0 * np.log10(np.mean(ideal ** 2) / max(np.mean(err_v ** 2), 1e-30))
-
-    dec_user = dec
-    if cfg.precode:
-        from ..core.mapping import unprecode_1plusd
-
-        dec_user = unprecode_1plusd(dec, 2 ** cfg.bits_per_symbol)
-
-    ser = float(np.mean(dec_user != user_symbols))
-    if cfg.modulation == "pam4":
-        ber = prbs_mod.symbol_checker(user_symbols, dec_user, gray=True)
-    else:
-        n_err = int(np.sum(dec_user != user_symbols))
-        idx = np.nonzero(dec_user != user_symbols)[0]
-        ber = BerResult(n_checked=n_sym, n_errors=n_err, error_idx=idx)
+    # warmup=0: nothing here adapts, so there is no startup transient to wait
+    # out. dec_slicer=dec: no sequence detector on this path.
+    sc = score(cfg, dec=dec, dec_slicer=dec, y_slicer=y_eq, levels=levels,
+               line_idx=ref_symbols, user_idx=user_symbols,
+               n_run=n_sym, warmup=0)
 
     eye = None
     if collect_eye:
         eye = fold_eye(rx_wave.y, osr, phase, n_traces=min(2000, n_sym - 2))
 
-    return SimResult(ber=ber, ser=ser, slicer_snr_db=snr_db, n_symbols=n_sym,
+    return SimResult(ber=sc.ber, ser=sc.ser, slicer_snr_db=sc.snr_db,
+                     n_symbols=n_sym,
                      ffe_taps=w_ffe, dfe_taps=w_dfe, sample_phase=phase,
-                     eye_data=eye, y_slicer=y_eq[: 20000],
+                     eye_data=eye, y_slicer=sc.y_slicer,
                      extras={"cursors": cursors, "eq_cursors": eq_cursors,
                              "eq_pre": eq_pre, "main_cursor": main,
                              # the solved FFE is the link's total linear-EQ
