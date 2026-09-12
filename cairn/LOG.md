@@ -23,8 +23,15 @@
   `Ctle.from_config`,整个 tab 照样崩 —— 提示渲染出来又被丢掉。
 - **铁律 #6 有执行缺口**:`build-windows.yml` 只在 GUI/packaging 改动时触发,改核心引擎不验证
   桌面打包,而 PyInstaller 对核心变动最敏感。已补上 `src/halo_serdes/**` 等触发路径。
-- 补 `LICENSE`(pyproject 早已声明 MIT,文件一直不存在)。**默认分支仍是工作分支**,
-  那是 GitHub 仓库设置,需要仓库所有者点一下。
+- 补 `LICENSE`(pyproject 早已声明 MIT,文件一直不存在)。
+- **三个 workflow 全绿后 main 已 fast-forward 到 `b6e15ca`**:`test`、`android`
+  (5 个 job 全部实际执行,含两个模拟器与 `--native`/`--pure` 两道闸门)、
+  `build-windows`(PyInstaller + Nuitka standalone + onefile,各带 smoke test;
+  Nuitka 单步编译 1 小时 48 分)。**默认分支仍是工作分支** —— 那是 GitHub
+  仓库设置,没有对应 API,需要仓库所有者手动切。
+- **一处不能声称已验证的**:`build-windows.yml` 这次被触发**不证明**新加的核心层路径
+  生效 —— 这个提交同时改了 `src/halo_serdes_gui/**`,旧条件本来就会命中。
+  真正的验证要等下一个只碰 `src/halo_serdes/**` 的提交。
 
 ## 2026-08-25 · Cython 编译版 APK 落地:交叉编译 + 模拟器 32 项全过
 
