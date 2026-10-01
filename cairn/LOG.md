@@ -21,8 +21,9 @@
   `profile_from_preset`(函数内 import pllsim,缺失时 ImportError 指向 `[pll]` extra);
   对 sibling 检出的 pllsim(931cfaf)重现七个内置文件逐位一致(|ΔL| = 0.000 dB),
   `rms_jitter_s(int_band)` == `ar.jitter_fs`。手机计算路径不 import 它(测试钉着)。
-- `config_bridge` 加 `rx.clock.kind/file/f0_hz/rj_ui`(桌面/Android 自动出现,铁律 6 触发,
-  Android CI 见 PR);文档:`docs/clock_profile.md` 阶段 3 节、USAGE §9、README、CHANGELOG;
+- `config_bridge` 加 `rx.clock.kind/file/f0_hz/rj_ui`(桌面/Android 自动出现,铁律 6 触发);
+  Android CI(ec32bf3,run 36860768206):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`
+  (FormContractTest 6/0f 含阶段 2 的剖面选择用例),解释型与编译型 APK 都过;文档:`docs/clock_profile.md` 阶段 3 节、USAGE §9、README、CHANGELOG;
   坑进 `engineering-pitfalls.md`。
 
 ## 2026-10-01 · PLL 时钟相噪剖面,阶段 2:CDR 追踪 + 双引擎交叉校验(feat/clock-profile-cdr)
