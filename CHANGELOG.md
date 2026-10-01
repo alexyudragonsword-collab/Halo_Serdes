@@ -6,6 +6,24 @@
 
 ---
 
+## [未发布] — PLL 时钟相噪剖面(阶段 1:TX 有色抖动)
+
+### 新增
+- **`ClockConfig`**(`tx.clock`):`kind: white | profile`。`profile` 读一份时钟相噪剖面文件
+  (`docs/clock_profile.md` 定义;pll_simulator 导出),在 1/UI 采样率上合成有色逐沿时间偏移,
+  杂散逐条叠加;三项白噪抖动仍可叠加其上。`rj_ui`/`sj_ui`/`sj_freq`/`dcd_ui` 从 `TxConfig`
+  迁入,旧 YAML 由 loader 自动迁移。
+- `data/clock_profiles/`:pll_simulator 七个 JSSC 基准 PLL 的剖面(ex22 导出)。
+- `src/halo_serdes/vendor/pllsim/`:`synth_from_psd`、`integrate_pn` 的逐字节 vendor 副本;
+  `tools/vendor_check.py` + CI `vendor-drift` job。
+- `tests/test_clock_profile.py`(40 项闭式验收)。
+
+### 修复
+- `apply_overrides` 按 dataclass 分组一次替换;此前联合校验的字段按表单顺序逐键应用会被拒绝。
+
+### 不变
+- `kind="white"`(默认)下所有引擎输出逐位不变(469 个数值指纹)。
+
 ## [未发布] — 界面进入 CI
 
 ### 新增

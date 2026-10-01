@@ -3,6 +3,7 @@ from .schema import (
     AdcConfig,
     CdrConfig,
     ChannelConfig,
+    ClockConfig,
     CtleConfig,
     DfeConfig,
     FfeConfig,
@@ -15,7 +16,7 @@ from .schema import (
 )
 
 __all__ = [
-    "AdcConfig", "CdrConfig", "ChannelConfig", "CtleConfig", "DfeConfig",
+    "AdcConfig", "CdrConfig", "ChannelConfig", "ClockConfig", "CtleConfig", "DfeConfig",
     "FfeConfig", "LinkConfig", "NumericConfig", "QFormat", "RxConfig",
     "SimConfig", "TxConfig",
     "load_config", "dump_config", "apply_overrides",

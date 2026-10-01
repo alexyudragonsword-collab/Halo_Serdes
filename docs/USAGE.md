@@ -277,11 +277,36 @@ compute_com(ch, cfg, params=ComParams(target_der=1e-5, n_dfe=2, b_max=0.85,
 
 ```yaml
 tx:
-  rj_ui: 0.005       # 随机抖动 sigma [UI]
-  sj_ui: 0.05        # 正弦抖动幅度 [UI]
-  sj_freq: 10.0e6    # 正弦抖动频率 [Hz]
-  dcd_ui: 0.01       # 占空比失真 [UI]
+  clock:             # 发送时钟(见 docs/clock_profile.md)
+    kind: white      # white | profile
+    rj_ui: 0.005     # 随机抖动 sigma [UI]
+    sj_ui: 0.05      # 正弦抖动幅度 [UI]
+    sj_freq: 10.0e6  # 正弦抖动频率 [Hz]
+    dcd_ui: 0.01     # 占空比失真 [UI]
 ```
+
+**PLL 相噪剖面时钟**(`kind: profile`):用 pll_simulator 导出的 L(f) + 杂散表合成
+*有色*的逐沿时间偏移,代替"一个 `rj_ui` 数字"。格式与单位约定见
+[`docs/clock_profile.md`](clock_profile.md);随库附带 `data/clock_profiles/` 下七个
+JSSC 基准 PLL 的剖面。
+
+```yaml
+tx:
+  clock:
+    kind: profile
+    file: data/clock_profiles/bench_wu19_spll_frac_52m_6p253g.yaml
+    # f0_hz: 6.253e9     # 可选:覆盖文件里的载波(只改相位→秒的换算,不改曲线)
+    # sj_ui: 0.02        # 三项白噪抖动仍可叠加在剖面之上(例如做 JTOL)
+```
+
+```python
+from halo_serdes.tx.clock import ClockProfile
+prof = ClockProfile.load("data/clock_profiles/bench_wu19_spll_frac_52m_6p253g.yaml")
+prof.rms_jitter_s(1e5, prof.f0_hz / 2)       # 剖面连续部分在某频带上的 RMS 抖动 [s]
+```
+
+> 旧写法 `tx.rj_ui` 等四个字段仍能加载(loader 自动迁到 `tx.clock.*`),
+> 但新写的配置请直接放在 `tx.clock` 下。
 
 **逐级分解**(需要重复码型,≥4 个周期,如 `prbs7`):
 

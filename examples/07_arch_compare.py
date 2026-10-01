@@ -28,7 +28,7 @@ from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig,
-    RxConfig, SimConfig, TxConfig,
+    RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.engine import run_time_link  # noqa: E402
 from halo_serdes.fec import pre_to_post_fec_ber  # noqa: E402
@@ -83,7 +83,7 @@ for L in lengths:
         cfg = LinkConfig(
             modulation="pam4", symbol_rate=RATE, osr=16,
             channel=ch_cfg,
-            tx=TxConfig(swing=1.0, rj_ui=0.004, fir_taps=(-0.05, 1.0), fir_n_pre=1),
+            tx=TxConfig(swing=1.0, fir_taps=(-0.05, 1.0), fir_n_pre=1, clock=ClockConfig(rj_ui=0.004)),
             rx=rx,
             sim=SimConfig(n_symbols=N_SYM, seed=21, pattern="prbs13q"),
         )

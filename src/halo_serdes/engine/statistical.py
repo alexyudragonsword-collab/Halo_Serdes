@@ -234,8 +234,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         eye_pdf[:, pi] = eye_col
 
     # sampling-jitter smearing on the phase axis (RJ only for now)
-    if cfg.tx.rj_ui > 0:
-        sig_phi = cfg.tx.rj_ui * osr
+    if cfg.tx.clock.rj_ui > 0:
+        sig_phi = cfg.tx.clock.rj_ui * osr
         k = gaussian_kernel(sig_phi, 1.0)
         pad = k.size // 2
         bp = np.pad(ber_phi, pad, mode="edge")

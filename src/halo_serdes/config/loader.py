@@ -20,6 +20,17 @@ from .schema import SCHEMA_VERSION, LinkConfig
 # Field-name migrations from older schema versions: {old_name: new_name}.
 _MIGRATIONS: dict[str, str] = {}
 
+# Fields that moved one level down. ``tx.rj_ui`` and its three siblings became
+# ``tx.clock.*`` when the Tx clock grew a second kind (a PLL phase-noise
+# profile); every YAML written before that still carries them flat under
+# ``tx``, and those files must keep loading to the same LinkConfig they
+# always did -- which the invariant-#1 promise ("the config is the single
+# source of truth") makes a correctness requirement, not a convenience.
+# {(owner dataclass name, old flat key): new sub-key}
+_NESTED_MIGRATIONS: dict[tuple[str, str], str] = {
+    ("TxConfig", k): "clock" for k in ("rj_ui", "sj_ui", "sj_freq", "dcd_ui")
+}
+
 
 def _unwrap_optional(tp: Any) -> Any:
     origin = typing.get_origin(tp)
@@ -37,6 +48,7 @@ def _build(cls: type, data: dict[str, Any], path: str) -> Any:
     hints = typing.get_type_hints(cls)
     fields = {f.name: f for f in dataclasses.fields(cls)}
     kwargs: dict[str, Any] = {}
+    data = _apply_nested_migrations(cls, data)
     for key, value in data.items():
         key = _MIGRATIONS.get(key, key)
         if key not in fields:
@@ -49,6 +61,30 @@ def _build(cls: type, data: dict[str, Any], path: str) -> Any:
         else:
             kwargs[key] = _coerce(tp, value, f"{path}.{key}")
     return cls(**kwargs)
+
+
+def _apply_nested_migrations(cls: type, data: dict[str, Any]) -> dict[str, Any]:
+    """Move flat keys that now live one level down, without clobbering a
+    value the file already states at the new location (the new one wins:
+    it is the one the author wrote knowing the current schema)."""
+    moves = {k: sub for (owner, k), sub in _NESTED_MIGRATIONS.items()
+             if owner == cls.__name__ and k in data}
+    if not moves:
+        return data
+    out = dict(data)
+    for key, sub in moves.items():
+        value = out.pop(key)
+        child = out.get(sub)
+        if child is None:
+            child = {}
+        elif not isinstance(child, dict):
+            raise TypeError(f"{cls.__name__}.{sub}: expected mapping to migrate "
+                            f"{key!r} into, got {type(child).__name__}")
+        else:
+            child = dict(child)
+        child.setdefault(key, value)
+        out[sub] = child
+    return out
 
 
 def _coerce(tp: Any, value: Any, path: str) -> Any:
@@ -92,20 +128,41 @@ def load_config(path: str | Path, overrides: dict[str, Any] | None = None) -> Li
 
 
 def apply_overrides(cfg: LinkConfig, overrides: dict[str, Any]) -> LinkConfig:
-    """Return a copy of ``cfg`` with dotted-path overrides applied."""
+    """Return a copy of ``cfg`` with dotted-path overrides applied.
+
+    All overrides land in one ``dataclasses.replace`` per dataclass, not one
+    at a time. The difference is visible only when two fields are validated
+    together: ``tx.clock.kind="profile"`` is illegal without a
+    ``tx.clock.file``, so applying the pair sequentially raised on the first
+    key whenever it happened to come first -- which it does in the form's
+    field order, so the GUI and the Android app could not build a profile
+    clock at all. Grouping makes the result independent of dict order.
+    """
+    tree: dict[str, Any] = {}
     for dotted, value in overrides.items():
         parts = dotted.split(".")
-        cfg = _replace_path(cfg, parts, value)
-    return cfg
+        node = tree
+        for part in parts[:-1]:
+            node = node.setdefault(part, {})
+            if not isinstance(node, dict):
+                raise KeyError(f"override {dotted!r} descends into a field that "
+                               f"another override already sets whole")
+        node[parts[-1]] = value
+    return _replace_tree(cfg, tree)
 
 
-def _replace_path(obj: Any, parts: list[str], value: Any) -> Any:
-    if len(parts) == 1:
-        if not any(f.name == parts[0] for f in dataclasses.fields(obj)):
-            raise KeyError(f"unknown config field {parts[0]!r} on {type(obj).__name__}")
-        return dataclasses.replace(obj, **{parts[0]: value})
-    child = getattr(obj, parts[0])
-    return dataclasses.replace(obj, **{parts[0]: _replace_path(child, parts[1:], value)})
+def _replace_tree(obj: Any, tree: dict[str, Any]) -> Any:
+    names = {f.name for f in dataclasses.fields(obj)}
+    kwargs: dict[str, Any] = {}
+    for key, value in tree.items():
+        if key not in names:
+            raise KeyError(f"unknown config field {key!r} on {type(obj).__name__}")
+        child = getattr(obj, key)
+        if isinstance(value, dict) and dataclasses.is_dataclass(child):
+            kwargs[key] = _replace_tree(child, value)
+        else:
+            kwargs[key] = value
+    return dataclasses.replace(obj, **kwargs)
 
 
 def dump_config(cfg: LinkConfig, path: str | Path) -> None:

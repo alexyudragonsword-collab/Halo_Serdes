@@ -30,7 +30,7 @@ from halo_serdes.analysis.com import compute_com  # noqa: E402
 from halo_serdes.channel import ChannelModel, aggressor_bank, icn_rms  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
-    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, TxConfig,
+    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 
 OUT = REPO / "examples" / "output"
@@ -40,7 +40,7 @@ cfg = LinkConfig(
     modulation="pam4", symbol_rate=53.125e9, osr=32,
     channel=ChannelConfig(kind="analytic", length_m=0.16, rdc=5.0, r_skin=2e-3,
                           loss_tangent=0.012, n_freq=8192),
-    tx=TxConfig(swing=1.0, fir_taps=(-0.1, 1.0, -0.15), fir_n_pre=1, rj_ui=0.005),
+    tx=TxConfig(swing=1.0, fir_taps=(-0.1, 1.0, -0.15), fir_n_pre=1, clock=ClockConfig(rj_ui=0.005)),
     rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=4.0),
                 dfe=DfeConfig(n_taps=1), noise_rms=0.002),
     sim=SimConfig(n_symbols=1000, seed=1, pattern="prbs13q"))

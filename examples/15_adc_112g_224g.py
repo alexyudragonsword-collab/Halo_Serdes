@@ -28,7 +28,7 @@ from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig,
-    RxConfig, SimConfig, TxConfig,
+    RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.engine import run_time_link  # noqa: E402
 from halo_serdes.fec import pre_to_post_fec_ber  # noqa: E402
@@ -44,7 +44,7 @@ def make_cfg(rate_gbps: float) -> LinkConfig:
     return LinkConfig(
         modulation="pam4", symbol_rate=rate_gbps * 1e9 / 2, osr=16,
         channel=TRACE,
-        tx=TxConfig(swing=1.0, rj_ui=0.005, fir_taps=(-0.05, 1.0, -0.1), fir_n_pre=1),
+        tx=TxConfig(swing=1.0, fir_taps=(-0.05, 1.0, -0.1), fir_n_pre=1, clock=ClockConfig(rj_ui=0.005)),
         rx=RxConfig(arch="adc_dsp",
                     ctle=CtleConfig(enable=True, peak_db=4.0),
                     adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5, fullscale=0.6,

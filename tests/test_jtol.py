@@ -6,7 +6,7 @@ from halo_serdes.analysis import jitter_tolerance, jtol_mask
 from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
     ChannelConfig, CdrConfig, CtleConfig, DfeConfig, FfeConfig, RxConfig,
-    SimConfig, TxConfig,
+    SimConfig, ClockConfig, TxConfig,
 )
 
 
@@ -15,8 +15,7 @@ def _cfg():
         modulation="nrz", symbol_rate=28e9, osr=16,
         channel=ChannelConfig(kind="analytic", length_m=0.28, rdc=5.0,
                               r_skin=2e-3, loss_tangent=0.012, n_freq=8192),
-        tx=TxConfig(swing=1.0, fir_taps=(-0.08, 0.85, -0.05), fir_n_pre=1,
-                    rj_ui=0.004),
+        tx=TxConfig(swing=1.0, fir_taps=(-0.08, 0.85, -0.05), fir_n_pre=1, clock=ClockConfig(rj_ui=0.004)),
         rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=True, peak_db=7.0),
                     ffe=FfeConfig(n_pre=4, n_post=12), dfe=DfeConfig(n_taps=2),
                     cdr=CdrConfig(kind="bang_bang", kp_shift=5, ki_shift=12),

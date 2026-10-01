@@ -3,7 +3,7 @@
 import numpy as np
 
 from halo_serdes.config import LinkConfig
-from halo_serdes.config.schema import TxConfig
+from halo_serdes.config.schema import ClockConfig, TxConfig
 from halo_serdes.tx.jitter import edge_jitter_seq, jittered_zoh
 
 
@@ -18,7 +18,7 @@ def test_rj_sigma_recovered():
     ui = 1 / 32e9
     osr = 64  # fine grid for accurate crossing timing
     cfg = LinkConfig(modulation="nrz", symbol_rate=32e9, osr=osr,
-                     tx=TxConfig(rj_ui=0.02))
+                     tx=TxConfig(clock=ClockConfig(rj_ui=0.02)))
     rng = np.random.default_rng(9)
     n_sym = 20_000
     sym = rng.integers(0, 2, size=n_sym)
@@ -37,7 +37,7 @@ def test_dcd_shifts_rise_fall_apart():
     osr = 64
     dcd = 0.1
     cfg = LinkConfig(modulation="nrz", symbol_rate=32e9, osr=osr,
-                     tx=TxConfig(dcd_ui=dcd))
+                     tx=TxConfig(clock=ClockConfig(dcd_ui=dcd)))
     rng = np.random.default_rng(10)
     n_sym = 5_000
     sym = rng.integers(0, 2, size=n_sym)
@@ -95,7 +95,7 @@ def test_stage_budget_recovers_injected_rj():
     cfg = LinkConfig(
         modulation="nrz", symbol_rate=16e9, osr=32,
         channel=ChannelConfig(kind="analytic", length_m=0.25),
-        tx=TxConfig(swing=1.0, rj_ui=rj),
+        tx=TxConfig(swing=1.0, clock=ClockConfig(rj_ui=rj)),
         rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=True, peak_db=6.0),
                     dfe=DfeConfig(n_taps=3), noise_rms=0.0),
         sim=SimConfig(n_symbols=127 * 12, seed=2, pattern="prbs7"))
@@ -124,7 +124,7 @@ def test_budget_none_when_pattern_too_short():
     cfg = LinkConfig(
         modulation="nrz", symbol_rate=16e9, osr=16,
         channel=ChannelConfig(kind="analytic", length_m=0.2),
-        tx=TxConfig(swing=1.0, rj_ui=0.01),
+        tx=TxConfig(swing=1.0, clock=ClockConfig(rj_ui=0.01)),
         rx=RxConfig(arch="mixed_signal", noise_rms=0.0),
         sim=SimConfig(n_symbols=200, seed=1, pattern="prbs7"))
     res = run_time_link(cfg, collect_jitter=True)

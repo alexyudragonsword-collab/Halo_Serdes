@@ -11,7 +11,7 @@ import pytest
 from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
     AdcConfig, CdrConfig, ChannelConfig, DfeConfig, FfeConfig, QFormat,
-    SimConfig, TxConfig,
+    SimConfig, ClockConfig, TxConfig,
 )
 
 
@@ -26,7 +26,18 @@ from halo_serdes.config.schema import (
     (lambda: TxConfig(swing=-1.0), "swing"),
     (lambda: TxConfig(rlm=1.5), "rlm"),
     (lambda: TxConfig(rlm=0.0), "rlm"),
-    (lambda: TxConfig(rj_ui=-0.01), "rj_ui"),
+    (lambda: TxConfig(clock=ClockConfig(rj_ui=-0.01)), "rj_ui"),
+    # ClockConfig: every field has an illegal value, and the profile kind
+    # without a file must fail *here* -- at construction, so load_config names
+    # the field -- not as a FileNotFoundError out of the engine.
+    (lambda: ClockConfig(kind="pll"), "tx.clock.kind"),
+    (lambda: ClockConfig(kind="profile"), "tx.clock.file"),
+    (lambda: ClockConfig(kind="profile", file=""), "tx.clock.file"),
+    (lambda: ClockConfig(f0_hz=0.0), "f0_hz"),
+    (lambda: ClockConfig(f0_hz=-1e9), "f0_hz"),
+    (lambda: ClockConfig(sj_ui=-0.1), "sj_ui"),
+    (lambda: ClockConfig(sj_freq=-1.0), "sj_freq"),
+    (lambda: ClockConfig(dcd_ui=-0.01), "dcd_ui"),
     (lambda: TxConfig(fir_taps=(0.1, 1.0), fir_n_pre=2), "fir_n_pre"),
     (lambda: AdcConfig(n_bits=0), "n_bits"),
     (lambda: AdcConfig(n_lanes=0), "n_lanes"),
@@ -55,6 +66,11 @@ def test_valid_configs_still_construct():
     """Validation must not reject legitimate configurations."""
     c = LinkConfig()                        # library defaults (a GUI preset)
     assert c.ui > 0 and c.dt > 0
+    # a profile clock is legal with a file; validation does not open the file
+    # (that is the engine's job, with a path the app layer has resolved)
+    ck = ClockConfig(kind="profile", file="data/clock_profiles/x.yaml", f0_hz=10e9)
+    assert ck.kind == "profile" and ck.f0_hz == 10e9
+    assert TxConfig().clock == ClockConfig()      # white, all zero: the old default
     c2 = LinkConfig(modulation="pam4", symbol_rate=106.25e9, osr=16)
     assert c2.dt > 0 and c2.bits_per_symbol == 2
     # a 1-tap FIR is a passthrough: its n_pre is unused and unconstrained

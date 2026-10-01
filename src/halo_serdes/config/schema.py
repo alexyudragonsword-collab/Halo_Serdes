@@ -104,16 +104,62 @@ class ChannelConfig:
 
 
 @dataclass(frozen=True)
+class ClockConfig:
+    """The clock a transmitter launches its edges on.
+
+    Two kinds. ``"white"`` is the spec-sheet picture that was the whole model
+    before this existed: independent Gaussian edge jitter (``rj_ui``), one
+    sinusoidal tone (``sj_ui`` at ``sj_freq``) and duty-cycle distortion
+    (``dcd_ui``). ``"profile"`` is the clock a PLL actually makes: a phase-noise
+    profile file -- L(f) in dBc/Hz on an offset grid, a spur table and the
+    carrier -- synthesised into *coloured* per-edge timing, with the three
+    white-kind terms still added on top. A CDR is a high-pass to clock jitter,
+    so two clocks of equal RMS leave very different residues behind it; one
+    ``rj_ui`` number cannot ask that question, a profile can.
+
+    The profile is a file, not an object, on purpose: a frozen ``LinkConfig``
+    can name a file (invariant #1), and the producer (pll_simulator) and this
+    consumer then need no import of each other. ``f0_hz`` overrides the
+    carrier the file states; it is the frequency the *phase* is measured
+    against, and timing is phase / (2 pi f0) -- a half-rate clock carries
+    twice the seconds for the same dBc/Hz, which is why neither side derives
+    f0 from the baud rate.
+    """
+
+    kind: Literal["white", "profile"] = "white"
+    file: Optional[str] = None             # profile path (profile kind); repo-relative resolves like channel.file
+    f0_hz: Optional[float] = None          # carrier override [Hz]; None takes the file's f0_hz
+    rj_ui: float = 0.0                     # random jitter sigma [UI]
+    sj_ui: float = 0.0                     # sinusoidal jitter amplitude [UI]
+    sj_freq: float = 0.0                   # sinusoidal jitter frequency [Hz]
+    dcd_ui: float = 0.0                    # duty-cycle distortion [UI]
+
+    def __post_init__(self):
+        _require_in(self.kind, {"white", "profile"}, "tx.clock.kind")
+        # Caught here, at construction, so a profile clock with no file fails
+        # in load_config with its field named -- not as a FileNotFoundError
+        # out of the engine three layers down.
+        _require(self.kind != "profile" or bool(self.file),
+                 "tx.clock.file is required when tx.clock.kind is 'profile'")
+        _require(self.f0_hz is None or self.f0_hz > 0,
+                 f"tx.clock.f0_hz must be > 0 when set, got {self.f0_hz}")
+        for nm in ("rj_ui", "sj_ui", "dcd_ui", "sj_freq"):
+            _require(getattr(self, nm) >= 0,
+                     f"tx.clock.{nm} must be >= 0, got {getattr(self, nm)}")
+
+
+@dataclass(frozen=True)
 class TxConfig:
     fir_taps: tuple[float, ...] = (1.0,)   # main cursor inferred: last-but-pre convention set in Phase 1
     fir_n_pre: int = 0
     swing: float = 1.0                     # differential peak-to-peak [V]
     rlm: float = 1.0                       # PAM4 level mismatch ratio
     bw: Optional[float] = None             # single-pole driver bandwidth [Hz]
-    rj_ui: float = 0.0                     # random jitter sigma [UI]
-    sj_ui: float = 0.0                     # sinusoidal jitter amplitude [UI]
-    sj_freq: float = 0.0                   # sinusoidal jitter frequency [Hz]
-    dcd_ui: float = 0.0                    # duty-cycle distortion [UI]
+    # Edge timing lives on the clock. The four jitter fields that used to sit
+    # here (rj_ui, sj_ui, sj_freq, dcd_ui) moved into ClockConfig when a clock
+    # became something that could be a PLL profile rather than three numbers;
+    # the YAML loader still accepts them at tx.* and migrates them.
+    clock: ClockConfig = field(default_factory=ClockConfig)
 
     def __post_init__(self):
         _require(self.swing > 0, f"tx.swing must be > 0, got {self.swing}")
@@ -128,9 +174,6 @@ class TxConfig:
                  or self.fir_n_pre < len(self.fir_taps),
                  f"tx.fir_n_pre must be < len(fir_taps)={len(self.fir_taps)}, "
                  f"got {self.fir_n_pre}")
-        for nm in ("rj_ui", "sj_ui", "dcd_ui"):
-            _require(getattr(self, nm) >= 0,
-                     f"tx.{nm} must be >= 0, got {getattr(self, nm)}")
 
 
 @dataclass(frozen=True)

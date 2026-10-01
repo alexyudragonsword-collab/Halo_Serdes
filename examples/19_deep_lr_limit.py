@@ -35,7 +35,7 @@ from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig,
-    RxConfig, SimConfig, TxConfig,
+    RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.core.prbs import symbol_checker  # noqa: E402
 from halo_serdes.dsp import viterbi_mlsd  # noqa: E402
@@ -55,7 +55,7 @@ def evaluate(length_m, n_pre, n_post, n_dfe, peak, mem, enob, noise,
         modulation="pam4", symbol_rate=112e9, osr=16,
         channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=5.0,
                               r_skin=2.0e-3, loss_tangent=0.012, n_freq=8192),
-        tx=TxConfig(swing=1.0, rj_ui=0.004, fir_taps=(-0.06, 1.0, -0.12), fir_n_pre=1),
+        tx=TxConfig(swing=1.0, fir_taps=(-0.06, 1.0, -0.12), fir_n_pre=1, clock=ClockConfig(rj_ui=0.004)),
         rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=peak),
                     adc=AdcConfig(n_bits=8, n_lanes=16, enob=enob, fullscale=0.6),
                     ffe=FfeConfig(n_pre=n_pre, n_post=n_post, adapt="lms", mu=3e-5),

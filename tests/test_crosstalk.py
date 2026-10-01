@@ -7,7 +7,7 @@ from halo_serdes.channel import ChannelModel, synthetic_aggressor
 from halo_serdes.channel.crosstalk import XtalkAggressor, inject_crosstalk
 from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
-    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, TxConfig,
+    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.engine import run_time_link
 from halo_serdes.engine.statistical import run_statistical
@@ -53,8 +53,7 @@ def _cfg(noise=0.004, n=60_000):
         modulation="nrz", symbol_rate=28e9, osr=16,
         channel=ChannelConfig(kind="analytic", length_m=0.30, rdc=5.0,
                               r_skin=2e-3, loss_tangent=0.012, n_freq=8192),
-        tx=TxConfig(swing=1.0, fir_taps=(-0.08, 0.85, -0.05), fir_n_pre=1,
-                    rj_ui=0.004),
+        tx=TxConfig(swing=1.0, fir_taps=(-0.08, 0.85, -0.05), fir_n_pre=1, clock=ClockConfig(rj_ui=0.004)),
         rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=True, peak_db=7.0),
                     dfe=DfeConfig(n_taps=2), noise_rms=noise),
         sim=SimConfig(n_symbols=n, seed=5, pattern="prbs13"))

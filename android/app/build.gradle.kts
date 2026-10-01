@@ -96,6 +96,10 @@ android {
 val stageHaloAssets by tasks.registering(Copy::class) {
     from(rootProject.file("../configs")) { into("halo_data/configs") }
     from(rootProject.file("../data/channels")) { into("halo_data/data/channels") }
+    // Clock phase-noise profiles (144 KB): what tx.clock.kind="profile" reads.
+    // Resolved through the same resolve_data_file roots as channels, so a
+    // preset naming data/clock_profiles/x.yaml works on the phone too.
+    from(rootProject.file("../data/clock_profiles")) { into("halo_data/data/clock_profiles") }
     into(layout.buildDirectory.dir("generated/haloAssets"))
 }
 

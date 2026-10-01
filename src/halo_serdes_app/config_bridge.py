@@ -184,10 +184,13 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("tx.swing", "Swing [V pp]", "float"),
         _f("tx.rlm", "RLM (PAM4)", "float"),
         _f("tx.bw", "Driver BW [GHz]", "opt_float", scale=1e9),
-        _f("tx.rj_ui", "RJ sigma [UI]", "float"),
-        _f("tx.sj_ui", "SJ amplitude [UI]", "float"),
-        _f("tx.sj_freq", "SJ freq [GHz]", "float", scale=1e9),
-        _f("tx.dcd_ui", "DCD [UI]", "float"),
+        _f("tx.clock.kind", "Clock", "enum", options=["white", "profile"]),
+        _f("tx.clock.file", "Phase-noise profile", "opt_str"),
+        _f("tx.clock.f0_hz", "Profile carrier f0 [GHz]", "opt_float", scale=1e9),
+        _f("tx.clock.rj_ui", "RJ sigma [UI]", "float"),
+        _f("tx.clock.sj_ui", "SJ amplitude [UI]", "float"),
+        _f("tx.clock.sj_freq", "SJ freq [GHz]", "float", scale=1e9),
+        _f("tx.clock.dcd_ui", "DCD [UI]", "float"),
     ]),
     ("rx", "Receiver", [
         _f("rx.arch", "Architecture", "enum",
@@ -351,11 +354,23 @@ def build_config(values: dict[str, Any]) -> LinkConfig:
 
 
 def _resolve_channel(cfg: LinkConfig) -> LinkConfig:
-    """Rewrite a touchstone channel file to an absolute, existing path."""
+    """Rewrite data-file fields to absolute, existing paths.
+
+    Covers the touchstone channel and the clock phase-noise profile alike:
+    both are repo-relative in presets (``data/channels/...``,
+    ``data/clock_profiles/...``) and both live beside the executable in a
+    frozen bundle or under ``$HALO_SERDES_DATA_DIR`` on a phone. The engine
+    opens whatever path it is handed, so resolution has to happen here, in
+    the layer that knows where data lives.
+    """
     if cfg.channel.kind == "touchstone" and cfg.channel.file:
         resolved = resolve_data_file(cfg.channel.file)
         if resolved != cfg.channel.file:
             cfg = apply_overrides(cfg, {"channel.file": resolved})
+    if cfg.tx.clock.kind == "profile" and cfg.tx.clock.file:
+        resolved = resolve_data_file(cfg.tx.clock.file)
+        if resolved != cfg.tx.clock.file:
+            cfg = apply_overrides(cfg, {"tx.clock.file": resolved})
     return cfg
 
 

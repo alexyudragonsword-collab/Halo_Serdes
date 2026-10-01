@@ -1,10 +1,15 @@
-"""Tx jitter injection: RJ / SJ / DCD via sub-sample edge placement.
+"""Tx jitter injection: RJ / SJ / DCD (and a PLL profile) via sub-sample edge placement.
 
 Each symbol boundary k (between symbol k-1 and k) is moved by
 
-    dt_k = rj[k] + A_sj * sin(2*pi*f_sj * k*UI + phi) + dcd_shift(edge polarity)
+    dt_k = profile[k] + rj[k] + A_sj * sin(2*pi*f_sj * k*UI + phi) + dcd_shift(edge polarity)
 
-and the oversampled waveform is rebuilt with *fractional* (area-conserving)
+where ``profile[k]`` is present only for ``tx.clock.kind == "profile"``: the
+coloured timing a PLL phase-noise profile synthesises (``tx/clock.py``). The
+three spec-sheet terms are then *added on top*, so a profile clock can still
+carry an extra SJ tone for a JTOL sweep.
+
+The oversampled waveform is then rebuilt with *fractional* (area-conserving)
 edges: samples fully inside a symbol take that symbol's value, and the one
 sample straddling a boundary takes the length-weighted average of the two
 adjacent values. This preserves jitter to sub-sample accuracy (replacing
@@ -18,6 +23,7 @@ import numpy as np
 from ..config.schema import LinkConfig
 from ..core.sampler import hold
 from ..core.waveform import Waveform
+from .clock import ClockProfile
 
 
 def edge_jitter_seq(n_symbols: int, cfg: LinkConfig,
@@ -26,20 +32,27 @@ def edge_jitter_seq(n_symbols: int, cfg: LinkConfig,
     """Per-boundary time offsets [s], length n_symbols+1 (boundary k starts
     symbol k). DCD sign follows edge polarity (rising +, falling -)."""
     ui = cfg.ui
-    tx = cfg.tx
+    clk = cfg.tx.clock
     jit = np.zeros(n_symbols + 1)
-    if tx.rj_ui > 0:
-        jit += rng.normal(scale=tx.rj_ui * ui, size=n_symbols + 1)
-    if tx.sj_ui > 0 and tx.sj_freq > 0:
+    # The profile draws its random numbers first and only when asked for, so
+    # the white-kind draws below happen in the same order, from the same
+    # generator state, as before profiles existed: kind="white" stays
+    # byte-identical to the pre-profile engine, which tests/golden/ pins.
+    if clk.kind == "profile":
+        profile = ClockProfile.load(clk.file, f0_hz=clk.f0_hz)
+        jit += profile.edge_offsets_s(n_symbols + 1, ui, rng)
+    if clk.rj_ui > 0:
+        jit += rng.normal(scale=clk.rj_ui * ui, size=n_symbols + 1)
+    if clk.sj_ui > 0 and clk.sj_freq > 0:
         k = np.arange(n_symbols + 1)
-        jit += tx.sj_ui * ui * np.sin(2 * np.pi * tx.sj_freq * k * ui)
-    if tx.dcd_ui > 0 and v_baud is not None:
+        jit += clk.sj_ui * ui * np.sin(2 * np.pi * clk.sj_freq * k * ui)
+    if clk.dcd_ui > 0 and v_baud is not None:
         prev = np.concatenate([[v_baud[0]], v_baud[:-1]])
         rising = v_baud > prev
         falling = v_baud < prev
         shift = np.zeros(n_symbols)
-        shift[rising[:n_symbols]] = +tx.dcd_ui * ui / 2
-        shift[falling[:n_symbols]] = -tx.dcd_ui * ui / 2
+        shift[rising[:n_symbols]] = +clk.dcd_ui * ui / 2
+        shift[falling[:n_symbols]] = -clk.dcd_ui * ui / 2
         jit[:n_symbols] += shift
     return jit
 
