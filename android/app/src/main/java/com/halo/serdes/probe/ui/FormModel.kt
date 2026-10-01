@@ -22,6 +22,9 @@ data class FormField(
 
     /** True where the value crosses the boundary as a JSON boolean, not a string. */
     val isBool: Boolean get() = kind == "bool"
+
+    /** Drawn as a drop-down. `opt_enum` adds a blank entry the loader reads as None. */
+    val isEnum: Boolean get() = kind == "enum" || kind == "opt_enum"
 }
 
 /**
@@ -33,7 +36,7 @@ data class FormField(
  * flag it.
  */
 val RENDERABLE_KINDS = setOf(
-    "float", "int", "bool", "enum", "str", "opt_str",
+    "float", "int", "bool", "enum", "opt_enum", "str", "opt_str",
     "opt_float", "opt_int", "tuple_float", "opt_tuple_float",
 )
 

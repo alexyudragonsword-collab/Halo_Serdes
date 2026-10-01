@@ -6,6 +6,24 @@
 
 ---
 
+## [未发布] — PLL 时钟相噪剖面(阶段 2:CDR 追踪与双引擎交叉校验)
+
+### 新增
+- **`cdr/linear.py`**:两个数字 CDR 环路的小信号模型(PI 环路 `|1−H(f)|`、`|H(f)|`;BB 鉴相器
+  增益自洽定点 + 自噪声;MM 鉴相器增益/噪声在锁定点游标集上做种子化期望)。锁定点由
+  `lock_offset_samples` 搜出,不再假设在脉冲峰值。
+- **统计引擎**:`tx.clock.kind: profile` 时相位轴模糊 σ = 环路未追踪的剖面功率 ⊕ 环路自噪声,
+  自 1/(N·UI) 起积分;`StatResult.extras["clock_loop"]` 给出模型参数;漂移速率接近 `kp`
+  时发 `slew-limited` 警告。`kind: white` 路径与指纹逐位不变。
+- `ClockProfile.untracked_sigma_s / rms_rate_ui_per_s / scaled_to_rms / save`;
+  `analysis/cdr_tracking.py`(时域恢复时钟 − 发送时钟的实测残余)。
+- `examples/31_pll_clock_profile.py`:PAM4 112 GBd,三个 200 fs 时钟 × `kp_shift` 扫描。
+- GUI Jitter 面板:剖面 L(f) 叠 `20 log|1−H|`,模型 σ 与实测残余并列。
+- `tx.clock.file` 变为 `opt_enum`(内置剖面下拉),桌面 GUI 与 Android 表单同时支持;
+  Android `FormContractTest` 多一条"能选中剖面并通过校验"。
+- `tests/test_clock_profile_cdr.py`(20 项:模型 vs 内核实测、双引擎 2×、同 RMS 白噪 vs 1/f²、
+  滑移警告、JTOL、ADC/MM、GUI)。
+
 ## [未发布] — PLL 时钟相噪剖面(阶段 1:TX 有色抖动)
 
 ### 新增

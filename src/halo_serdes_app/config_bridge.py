@@ -124,6 +124,28 @@ def bundled_channels() -> list[dict]:
             for n, p in sorted(seen.items())]
 
 
+def bundled_clock_profiles() -> list[dict]:
+    """Clock phase-noise profiles shipped with this build, as ``{name, path, rel, bytes}``.
+
+    Same reasoning as :func:`bundled_channels`: on a phone the files sit in
+    private storage no picker can browse, so the UI needs the list. ``rel``
+    is the repo-relative spelling presets use (``data/clock_profiles/x.yaml``)
+    and what the form stores; ``resolve_data_file`` turns it back into a path
+    on whichever platform is running.
+    """
+    seen: dict[str, Path] = {}
+    for root in _data_roots():
+        d = root / "data" / "clock_profiles"
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if f.suffix.lower() in (".yaml", ".yml") and f.is_file():
+                seen.setdefault(f.name, f)
+    return [{"name": n, "path": str(p), "rel": f"data/clock_profiles/{n}",
+             "bytes": p.stat().st_size}
+            for n, p in sorted(seen.items())]
+
+
 def resolve_data_file(rel: str) -> str:
     """Resolve a (possibly relative) channel file against candidate roots.
 
@@ -141,8 +163,12 @@ def resolve_data_file(rel: str) -> str:
     return rel
 
 # --- field kinds -----------------------------------------------------------
-# float / int / bool / enum / str / opt_float / opt_int / tuple_float /
-# opt_tuple_float.  `scale` (optional) presents a Hz value in GHz/GBd etc.
+# float / int / bool / enum / opt_enum / str / opt_str / opt_float / opt_int /
+# tuple_float / opt_tuple_float.  `scale` (optional) presents a Hz value in
+# GHz/GBd etc.  `opt_enum` is an enum that may be blank (-> None): the one
+# kind here whose options are discovered, not declared -- the clock profiles
+# this build ships -- so a UI on any platform can offer them as a pick list
+# rather than asking for a path it cannot browse to.
 
 
 def _f(path, label, kind, **kw):
@@ -185,7 +211,8 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("tx.rlm", "RLM (PAM4)", "float"),
         _f("tx.bw", "Driver BW [GHz]", "opt_float", scale=1e9),
         _f("tx.clock.kind", "Clock", "enum", options=["white", "profile"]),
-        _f("tx.clock.file", "Phase-noise profile", "opt_str"),
+        _f("tx.clock.file", "Phase-noise profile", "opt_enum",
+           options=[p["rel"] for p in bundled_clock_profiles()]),
         _f("tx.clock.f0_hz", "Profile carrier f0 [GHz]", "opt_float", scale=1e9),
         _f("tx.clock.rj_ui", "RJ sigma [UI]", "float"),
         _f("tx.clock.sj_ui", "SJ amplitude [UI]", "float"),
@@ -289,6 +316,8 @@ def coerce_in(field: dict, value: Any) -> Any:
         return bool(value)
     if kind == "enum":
         return str(value)
+    if kind == "opt_enum":
+        return None if _empty(value) else str(value)
     if kind in ("str", "opt_str"):
         if _empty(value):
             return None if kind == "opt_str" else ""

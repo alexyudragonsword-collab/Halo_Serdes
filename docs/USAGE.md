@@ -308,6 +308,24 @@ prof.rms_jitter_s(1e5, prof.f0_hz / 2)       # 剖面连续部分在某频带上
 > 旧写法 `tx.rj_ui` 等四个字段仍能加载(loader 自动迁到 `tx.clock.*`),
 > 但新写的配置请直接放在 `tx.clock` 下。
 
+**剖面时钟经过 CDR**:时域引擎直接跑环路;统计引擎用 `cdr/linear.py` 的线性化环路
+算出"环路追不上的剖面功率 + 环路自身噪声"作为采样时刻抖动 σ,代替 `rj_ui` 模糊
+(双引擎在 1/f² 时钟下 BER 仍在 2× 内;模型假设清单在 `engine/statistical.py` 顶部)。
+
+```python
+from halo_serdes.analysis.cdr_tracking import cdr_tracking_error_s
+res = run_time_link(cfg, channel=ch)                 # kind: profile 的配置
+err = cdr_tracking_error_s(cfg, res)                 # 恢复时钟 − 发送时钟,逐判决 [s]
+st = run_statistical(cfg, channel=ch)
+sol = st.extras["clock_loop"]                        # 环路模型:k_pd、带宽、未追踪 σ、自噪声 σ
+print(err.std() * 1e15, sol.sigma_ui * cfg.ui * 1e15)   # 实测 vs 模型 [fs]
+prof.scaled_to_rms(200e-15, f_lo=cfg.symbol_rate / cfg.sim.n_symbols).save("x_200fs.yaml")
+```
+
+剖面在环路带宽内的漂移速率接近 `kp` 时 BB-CDR 会失锁(周期滑移),统计引擎会给出
+`slew-limited` 警告 —— 这时线性模型不再描述内核在做什么。`examples/31` 用三个 200 fs
+时钟(白噪 / SSPLL / CPPLL)扫 `kp_shift`,出 BER、眼高、残余抖动实测与模型的对照表。
+
 **逐级分解**(需要重复码型,≥4 个周期,如 `prbs7`):
 
 ```python

@@ -3,6 +3,33 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-01 · PLL 时钟相噪剖面,阶段 2:CDR 追踪 + 双引擎交叉校验(feat/clock-profile-cdr)
+
+- **统计引擎学会了 CDR。** `cdr/linear.py` 把两个内核跑的 PI 环路写成 `|1−H(f)|`、`|H(f)|`;
+  剖面时钟的采样时刻 σ² = ∫S_φ|1−H|² + var(q)/k_pd²·mean|H|²(环路未追踪的 + 环路自己加的),
+  自 1/(N·UI) 起积分(两引擎看同一频带)。`kind=white` 路径与 469 个指纹逐位不变。
+- **BB 鉴相器增益不是常数**:k_pd = ρ√(2/π)/σ_e,σ_e 是鉴相器输入抖动 = 未追踪 ⊕ 自噪声 ⊕
+  边沿噪声(AWGN+ISI 经边沿斜率换成 UI),自洽定点求解。安静时钟上自噪声收敛到 ~0.8 kp —— 经典
+  的 BB 猎振,是推出来的不是假设的。实测 vs 模型:有损+噪声信道 kp_shift 4/6/8 为 0.97/0.99/1.00;
+  干净信道 0.82/0.95/1.08(极限环不是白噪,余差在此)。
+- **MM 鉴相器的闭式解在重 ISI 下错 3.7×**(斜率×E|ℓ| 对 112G 预 FFE 样本),改成在锁定点游标集上
+  对随机符号做种子化期望(60k 符号,毫秒级,逐位可复现)—— 对实际波形:斜率 0.0144 vs 0.0148,
+  方差 0.00322 vs 0.0032。112G ADC 链路实测/模型 kp 5/7/9:0.96/0.96/0.73(ki_shift 15 欠阻尼)。
+- **锁定点 ≠ 脉冲峰值。** 短信道 NRZ 脉冲是 1 UI 平台,argmax 在前沿角,Alexander 边沿锁在平台
+  中点(实测 +6~+11 样本)。第一版在峰值取斜率/ISI,边沿噪声估计差好几倍;`lock_offset_samples`
+  先搜过零再取值后与实测边沿统计一致(干净 0.0031 vs 0.0032 UI,有损 0.051 vs 0.050 UI)。
+- **验收(`tests/test_clock_profile_cdr.py`,20 项)**:LTI+AWGN+1/f²+BB-CDR 双引擎 BER
+  比 1.33–1.49(kp 4/6/8,≤ 2×);同 0.11 UI RMS 白噪 vs 1/f² 残余 0.119 vs 0.013 UI(模型 0.120 /
+  0.015)—— 接入的存在理由写成了断言;JTOL 在 profile 下可跑,10 MHz 容限 1.64→1.26 UI、
+  100/400 MHz 不变;滑移警告在实测失锁处(速率/极限 ≥0.4)触发、锁定处(≤0.3)不触发。
+- **ex31**:PAM4 112 GBd 三时钟(白噪/SSPLL/CPPLL 各 200 fs)× kp_shift 4–9,18 次跑 20 s;
+  三个时钟最优都在 kp_shift 4,白噪 BER 2.1e-3 / SSPLL 3.9e-3 / CPPLL 3.2e-3。
+- **两端选剖面**:`tx.clock.file` 改 `opt_enum`(选项 = 内置剖面),桌面 Select 与 Android
+  下拉同时得到,Kotlin 只加了 `isEnum` 与空项;`FormContractTest` 新增一条。铁律 6 触发,Android
+  CI 见 PR。
+- 文档:`docs/clock_profile.md` "Through the CDR" 节、USAGE §9、CHANGELOG;坑进
+  `engineering-pitfalls.md`(锁定点、MM 闭式解、滑移、残余测量要跳过捕获瞬态)。
+
 ## 2026-10-01 · PLL 时钟相噪剖面接入,阶段 1:TX 有色抖动(feat/clock-profile-tx)
 
 - **接口是一份文件,不是 import。** `tx.clock.kind: profile` + `tx.clock.file` 指向一份

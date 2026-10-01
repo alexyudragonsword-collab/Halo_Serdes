@@ -55,6 +55,31 @@ class FormContractTest {
     }
 
     /**
+     * The clock profile is chosen, not typed: `tx.clock.file` is an optional
+     * enum listing the profiles this APK ships, and picking one with
+     * `kind = profile` is a valid config on the device -- which is the whole
+     * of "the jitter panel can select a profile on Android" (invariant #6).
+     */
+    @Test
+    fun aShippedClockProfileCanBeSelectedAndValidates() = runBlocking<Unit> {
+        val fields = parseSections(schema()).flatMap { it.fields }
+        val file = fields.single { it.path == "tx.clock.file" }
+        assertEquals("opt_enum", file.kind)
+        assertTrue("no clock profiles shipped in this APK", file.options.isNotEmpty())
+        assertTrue(file.options.all { it.startsWith("data/clock_profiles/") })
+
+        val name = TestPresets.runnable(ctx)
+        val values = (HaloApi.preset(ctx, name) as ApiResult.Ok)
+            .data.getJSONObject("values").toFormValues(fields)
+        val d = HaloApi.derive(
+            ctx,
+            (values + ("tx.clock.kind" to "profile") + ("tx.clock.file" to file.options.first())).toJson(),
+        )
+        assertTrue("profile clock did not derive: $d", d is ApiResult.Ok)
+        assertTrue((d as ApiResult.Ok).data.getBoolean("valid"))
+    }
+
+    /**
      * A preset survives the trip into the form's value map and back.
      *
      * The form edits everything as text, so this is where a lost or

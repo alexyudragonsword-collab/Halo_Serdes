@@ -162,7 +162,7 @@ def test_schema_drives_a_generated_form(values):
             kinds.add(f["kind"])
             paths.add(f["path"])
     # a client must handle exactly these widget kinds
-    assert kinds <= {"float", "int", "bool", "enum", "str", "opt_str",
+    assert kinds <= {"float", "int", "bool", "enum", "opt_enum", "str", "opt_str",
                      "opt_float", "opt_int", "tuple_float", "opt_tuple_float"}
     # every field the schema advertises is present in a preset's values
     assert paths == set(values)
@@ -173,6 +173,26 @@ def test_enum_fields_carry_their_options():
         for f in fields:
             if f["kind"] == "enum":
                 assert f.get("options"), f
+
+
+def test_clock_profile_is_a_pick_list_of_the_shipped_files():
+    """``tx.clock.file`` is an ``opt_enum`` whose options are the bundled
+    profiles -- a path a phone cannot type must be something it can choose --
+    and choosing one with ``kind=profile`` derives a valid config; choosing
+    blank leaves the field None."""
+    fields = {f["path"]: f for _s, _t, fs in call("schema")["data"]["sections"] for f in fs}
+    f = fields["tx.clock.file"]
+    assert f["kind"] == "opt_enum"
+    assert f["options"] and all(o.startswith("data/clock_profiles/") for o in f["options"])
+    assert f["options"] == [p["rel"] for p in call("schema")["data"]["clock_profiles"]]
+    vals = call("preset", name=api.preset_names()[1])["data"]["values"]
+    d = call("derive", values={**vals, "tx.clock.kind": "profile",
+                               "tx.clock.file": f["options"][0]})["data"]
+    assert d["valid"], d
+    d = call("derive", values={**vals, "tx.clock.kind": "white", "tx.clock.file": ""})["data"]
+    assert d["valid"], d
+    text = call("to_yaml", values={**vals, "tx.clock.file": ""})["data"]["text"]
+    assert "file" not in text.split("clock:")[1].split("\n")[1:6].__str__() or "null" in text
 
 
 @pytest.mark.parametrize("name", api.preset_names())

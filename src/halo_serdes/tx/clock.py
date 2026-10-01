@@ -158,6 +158,82 @@ class ClockProfile:
         return float(np.sqrt(integrate_pn(self.f_hz, sphi_from_ldbc(self.l_dbc_hz), f1, f2))
                      / (TWOPI * self.f0_hz))
 
+    def untracked_sigma_s(self, err_fn, f_lo: float, f_hi: float | None = None,
+                          points_per_decade: int = 60) -> float:
+        """RMS jitter [s] a CDR leaves behind: sqrt(integral S_phi |E|^2 df + spurs).
+
+        ``err_fn(f)`` is the loop's error response |1 - H(f)| (see
+        ``cdr/linear.py``); passing ``lambda f: 1`` gives the open-loop
+        figure :meth:`rms_jitter_s` would. The band is ``[f_lo, f_hi]`` with
+        ``f_hi`` defaulting to f0/2, on a log grid like the producer's --
+        ``f_lo`` is the caller's: a link run of N UI resolves nothing under
+        1/(N UI), and the statistical engine integrates from there so the two
+        engines see the same band (the time engine's residual has no DC term
+        either; the loop locks the mean away). Spurs enter as sinusoids,
+        ``A^2/2`` each, weighted by |E| at their offset.
+        """
+        f_hi = self.f0_hz / 2.0 if f_hi is None else min(float(f_hi), self.f0_hz / 2.0)
+        if not f_hi > f_lo > 0:
+            return 0.0
+        n = max(int(np.ceil(np.log10(f_hi / f_lo) * points_per_decade)), 2)
+        f = np.geomspace(f_lo, f_hi, n)
+        e = np.asarray(err_fn(f), dtype=np.float64)
+        var_phi = integrate_pn(f, self.s_phi(f) * e ** 2, f_lo, f_hi)
+        for (f_spur, _dbc), (_f, amp_s) in zip(self.spurs, self.spur_amplitudes_s()):
+            if f_lo <= f_spur <= f_hi:
+                a_phi = amp_s * TWOPI * self.f0_hz * float(np.asarray(err_fn(np.array([f_spur])))[0])
+                var_phi += a_phi ** 2 / 2.0
+        return float(np.sqrt(var_phi) / (TWOPI * self.f0_hz))
+
+    def rms_rate_ui_per_s(self, f_lo: float, f_hi: float | None = None) -> float:
+        """RMS rate of the timing wander [UI per second... in units of 1/s]: sqrt(integral (2 pi f)^2 S_t df).
+
+        Returned as a fraction of UI per second is not meaningful without a
+        UI, so this is the RMS of d(phase)/dt divided by 2 pi f0 -- seconds
+        per second, i.e. the RMS fractional frequency error. Multiply by a
+        baud rate to get UI per UI. A bang-bang CDR can follow at most ``kp``
+        UI per update, which makes this the number that says whether the
+        loop stays locked on a wandering clock.
+        """
+        f_hi = self.f0_hz / 2.0 if f_hi is None else min(float(f_hi), self.f0_hz / 2.0)
+        if not f_hi > f_lo > 0:
+            return 0.0
+        f = np.geomspace(f_lo, f_hi, max(int(np.ceil(np.log10(f_hi / f_lo) * 60)), 2))
+        var = integrate_pn(f, self.s_phi(f) * (TWOPI * f) ** 2, f_lo, f_hi)
+        for (f_spur, _dbc), (_f, amp_s) in zip(self.spurs, self.spur_amplitudes_s()):
+            if f_lo <= f_spur <= f_hi:
+                var += (amp_s * TWOPI * self.f0_hz * TWOPI * f_spur) ** 2 / 2.0
+        return float(np.sqrt(var) / (TWOPI * self.f0_hz))
+
+    def scaled_to_rms(self, rms_s: float, f_lo: float, f_hi: float | None = None) -> "ClockProfile":
+        """The same clock, its whole spectrum (spurs included) shifted in dB so
+        that the continuous part integrates to ``rms_s`` over ``[f_lo, f_hi]``.
+
+        For "the same 200 fs from two different PLLs" comparisons: a uniform
+        dB shift keeps the shape, which is the thing being compared.
+        """
+        f_hi = self.f0_hz / 2.0 if f_hi is None else float(f_hi)
+        have = self.rms_jitter_s(f_lo, f_hi)
+        if not (have > 0 and rms_s > 0):
+            raise ValueError("scaled_to_rms needs a non-zero profile and target")
+        shift_db = 20.0 * np.log10(rms_s / have)
+        return ClockProfile(f0_hz=self.f0_hz, f_hz=self.f_hz, l_dbc_hz=self.l_dbc_hz + shift_db,
+                            spurs=tuple((fs, dbc + shift_db) for fs, dbc in self.spurs),
+                            source=self.source)
+
+    def save(self, path: str | Path, *, source: str | None = None) -> Path:
+        """Write the profile in the file format ``load`` reads (``docs/clock_profile.md``)."""
+        import yaml
+
+        p = Path(path)
+        data = {"f0_hz": float(self.f0_hz), "f_hz": [float(x) for x in self.f_hz],
+                "l_dbc_hz": [float(x) for x in self.l_dbc_hz],
+                "spurs": [{"f_hz": float(a), "dbc": float(b)} for a, b in self.spurs],
+                "source": str(source if source is not None else self.source)}
+        with p.open("w", encoding="utf-8") as fh:
+            yaml.safe_dump(data, fh, sort_keys=False)
+        return p
+
     def spur_amplitudes_s(self) -> list[tuple[float, float]]:
         """``(offset_hz, peak_amplitude_s)`` per spur.
 

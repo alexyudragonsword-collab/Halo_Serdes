@@ -159,7 +159,7 @@ def _m_schema(_payload: dict) -> dict:
     it ships verbatim — the client builds every widget from it and no field
     definition is duplicated outside Python.
     """
-    from .config_bridge import CONFIGS_DIR, bundled_channels
+    from .config_bridge import CONFIGS_DIR, bundled_channels, bundled_clock_profiles
 
     return {"sections": _jsonable(SECTIONS),
             "presets": preset_names(),
@@ -168,6 +168,9 @@ def _m_schema(_payload: dict) -> dict:
             # private storage, which the system document picker cannot browse,
             # and only one of the three is named by any preset.
             "channels": bundled_channels(),
+            # Clock phase-noise profiles this build ships; the same list the
+            # ``tx.clock.file`` pick list is built from, with sizes.
+            "clock_profiles": bundled_clock_profiles(),
             # Advertised, not hardcoded by the client. Adding a study to
             # studies.py with a label and a plot spec makes it appear in every
             # UI with no change on the other side of the bridge.
