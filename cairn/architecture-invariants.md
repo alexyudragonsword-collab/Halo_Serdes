@@ -46,6 +46,12 @@ mixed-signal 与 ADC-DSP **共享** Tx、信道、分析层、统计引擎骨架
 是**近似**,`engine/statistical.py` 顶部逐条列了假设清单。**新增近似必须往那儿补一条**,
 否则下一个人无法判断偏差是 bug 还是已知近似。
 
+剖面时钟(`tx.clock.kind: profile`)的交叉校验口径(2026-10-01 阶段 2):统计引擎用
+`cdr/linear.py` 的线性化环路算采样时刻 σ,**时域引擎是裁判,不为迎合统计引擎而改**;
+比较的量是恢复时钟 − 发送时钟的实测残余(`analysis/cdr_tracking.py`)与模型 σ,其次才是 BER。
+实测基线:BB 环路锁定时 σ 比 0.95–1.08,BER 比 1.3–1.5×;环路进入滑移区(剖面漂移速率
+≥ ~0.4 kp/update)后线性模型失效,统计引擎必须警告而不是给数。
+
 ### 4. numba 是性能层,不是正确性层
 
 热核写成纯 Python 函数,再用 `numba.njit` 包一层;`ImportError` 或 `HALO_NO_JIT=1`

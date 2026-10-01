@@ -15,6 +15,17 @@ Non-LTI approximations (each cross-checked against the time engine):
 - DFE: ideal cancellation of the covered postcursors (weights assumed exact);
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
 - sampling jitter: BER(phi) smeared with the RJ Gaussian on the phase axis;
+- coloured clock (``tx.clock.kind = "profile"``): the CDR is linearised
+  (``cdr/linear.py``) and the smear sigma is the profile power the loop does
+  not track plus the jitter it acquires from its own detector noise, both
+  integrated from 1/(N UI). The bang-bang detector's gain is set by the
+  jitter at its input, which here is the untracked clock, the loop's own
+  hunting, and AWGN + ISI at the edge sample converted through the edge
+  slope of the pre-DFE pulse (first order; a lossy channel's data-dependent
+  edge shape is only in it as variance). A loop driven past its slew limit
+  slips cycles, which no linear model has; a warning says so. The white kind
+  keeps its RJ-only smear (no CDR self-noise), which is also what keeps it
+  byte-identical to the pre-profile engine;
 - crosstalk: aggressor cursor sets convolved in as independent stationary
   interference.
 """
@@ -26,6 +37,10 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..afe import Ctle
+from ..cdr.linear import (
+    LoopParams, LoopSolution, bb_loop_fixed_point, lock_offset_samples, mm_loop_solution,
+    mm_pd_statistics,
+)
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
@@ -112,6 +127,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     if len(cfg.tx.fir_taps) > 1:
         h = np.convolve(h, upsampled_taps(cfg.tx.fir_taps, osr))
     noise_sigma = cfg.rx.noise_rms
+    h_pre_ffe = h
     if ffe_taps is not None and len(ffe_taps) > 1:
         h = np.convolve(h, upsampled_taps(ffe_taps, osr))
         noise_sigma = noise_sigma * float(np.linalg.norm(ffe_taps))
@@ -233,9 +249,15 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             _shift_add(eye_col, pdf, lv[j] / dv, 1.0 / n_levels)
         eye_pdf[:, pi] = eye_col
 
-    # sampling-jitter smearing on the phase axis (RJ only for now)
-    if cfg.tx.clock.rj_ui > 0:
-        sig_phi = cfg.tx.clock.rj_ui * osr
+    # sampling-jitter smearing on the phase axis. White clock: the RJ sigma
+    # as stated. Profile clock: what the CDR leaves of it, plus the loop's own
+    # noise -- see _sampling_jitter_ui and the assumption list above.
+    sigma_ui, loop_sol = _sampling_jitter_ui(
+        cfg, pulse if cfg.rx.cdr.pd_input == "ffe" else
+        pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr), levels_norm, swing,
+        cfg.rx.noise_rms)
+    if sigma_ui > 0:
+        sig_phi = sigma_ui * osr
         k = gaussian_kernel(sig_phi, 1.0)
         pad = k.size // 2
         bp = np.pad(ber_phi, pad, mode="edge")
@@ -249,4 +271,109 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         ber=float(ber_phi[best]), ser=float(ser_phi[best]),
         eye_pdf=eye_pdf, v_centers=v_centers,
         phi_ui=phi_offsets / osr,
-        extras={"peak": peak, "noise_sigma": noise_sigma})
+        extras={"peak": peak, "noise_sigma": noise_sigma,
+                "jitter_sigma_ui": sigma_ui,
+                "clock_loop": loop_sol})
+
+
+def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
+                        swing: float, noise_sigma: float) -> tuple[float, LoopSolution | None]:
+    """RMS sampling-instant jitter [UI] to smear the bathtub with, and the loop model behind it.
+
+    A white clock returns ``rj_ui`` and no model, exactly as before profiles
+    existed. A profile clock is integrated through the linearised CDR of the
+    configured architecture (bang-bang for mixed-signal, Mueller-Muller for
+    ADC, matching which kernel the time engine would run) from ``1/(N UI)``,
+    the lowest offset a run of ``N`` symbols resolves, so both engines look at
+    the same band. The white-kind RJ terms a profile clock may carry on top
+    ride through the same error response.
+    """
+    from ..tx.clock import ClockProfile
+
+    clk = cfg.tx.clock
+    if clk.kind != "profile":
+        return float(clk.rj_ui), None
+    prof = ClockProfile.load(clk.file, f0_hz=clk.f0_hz)
+    loop = LoopParams.from_config(cfg)
+    ui = cfg.ui
+    f_lo = cfg.symbol_rate / max(int(cfg.sim.n_symbols), 2)
+    f_nyq = cfg.symbol_rate / 2.0
+    f_white = np.linspace(f_lo, f_nyq, 2048)
+
+    def untracked(err_fn) -> float:
+        coloured = prof.untracked_sigma_s(err_fn, f_lo) / ui
+        white = clk.rj_ui * float(np.sqrt(np.mean(np.asarray(err_fn(f_white)) ** 2)))
+        return float(np.hypot(coloured, white))
+
+    if cfg.rx.arch == "adc_dsp":
+        peak = int(np.argmax(np.abs(pulse_pd.y)))
+        k_pd, var = mm_pd_statistics(pulse_pd.y, cfg.osr, peak, levels_norm * swing, noise_sigma)
+        var /= max(int(cfg.rx.adc.n_lanes), 1)        # block average per update
+        if k_pd <= 0:
+            # no timing gradient: the loop does not move, nothing is tracked
+            return untracked(lambda f: np.ones_like(np.asarray(f, dtype=np.float64))), None
+        sol = mm_loop_solution(loop, k_pd, var, untracked)
+    else:
+        sol = bb_loop_fixed_point(
+            loop, untracked,
+            sigma_edge_ui=_bb_edge_noise_ui(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm))
+    _warn_if_slew_limited(prof, loop, f_lo, sol, cfg)
+    return sol.sigma_ui, sol
+
+
+def _bb_edge_noise_ui(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
+                      levels_norm: np.ndarray, n_pre: int = 24, n_post: int = 64) -> float:
+    """What randomises the Alexander edge comparison besides clock jitter, in UI.
+
+    The edge sample sits half a UI before the data sample on the raw (pre-DFE)
+    waveform, and the loop locks where, for a transition, its mean is zero:
+    where this symbol's half-cursor equals the previous symbol's
+    (``lock_offset_samples``). The slope of that difference with timing is
+    the edge slope; AWGN and the ISI of every other symbol add voltage noise
+    on top. Voltage noise over edge slope is timing noise, which the
+    bang-bang detector cannot tell from clock jitter.
+    """
+    y = np.asarray(pulse_pd.y, dtype=np.float64)
+    peak = int(np.argmax(np.abs(y)))
+    half = osr // 2
+    lock = lock_offset_samples(y, peak, osr, half)
+    data = peak + int(round(lock))
+    e0, e1 = data - half, data + half           # this symbol's and the previous symbol's cursor
+
+    def at(i: int) -> float:
+        return float(y[i]) if 0 <= i < y.size else 0.0
+
+    amp = swing * float(np.mean(np.abs(levels_norm)))
+    # d/dtau [c0(tau) - c1(tau)] * amplitude, volts per sample
+    slope = amp * ((at(e0 + 1) - at(e0 - 1)) - (at(e1 + 1) - at(e1 - 1))) / 2.0
+    if abs(slope) < 1e-18:
+        return 0.0
+    idx = e0 + np.arange(-n_pre, n_post + 1) * osr
+    others = [at(int(i)) for i in idx if 0 <= i < y.size and i not in (e0, e1)]
+    isi_var = swing ** 2 * float(np.mean(levels_norm ** 2)) * float(np.sum(np.square(others)))
+    sigma_v = float(np.sqrt(isi_var + noise_sigma ** 2))
+    return sigma_v / (abs(slope) * osr)
+
+
+def _warn_if_slew_limited(prof, loop: LoopParams, f_lo: float, sol: LoopSolution,
+                          cfg: LinkConfig) -> None:
+    """A bang-bang loop moves at most ``kp`` per update on half the updates
+    (transitions); a Mueller-Muller loop is linear but clamps. The wander the
+    loop *tries* to follow is the profile inside its bandwidth, so the rate is
+    integrated up to there -- the fast part of a 1/f^2 profile is left on the
+    sampler, not chased. If that rate is a sizeable part of the slew limit the
+    kernel slips cycles and the linear model is not describing what it does.
+    Measured on the 16 GBd NRZ cross-check link: locked up to ~0.3 of the
+    limit, slipping observed from ~0.4; the warning starts at 0.3 for margin."""
+    import warnings
+
+    rate = prof.rms_rate_ui_per_s(f_lo, sol.bandwidth_hz)      # s/s = UI/UI
+    rate_per_update = rate * cfg.symbol_rate / loop.f_update   # UI per loop update
+    limit = loop.kp_ui * 0.5
+    if rate_per_update > 0.3 * limit:
+        warnings.warn(
+            f"tx.clock profile wanders at {rate_per_update:.2e} UI per CDR update (RMS, "
+            f"inside the {sol.bandwidth_hz / 1e6:.1f} MHz loop bandwidth) against a loop "
+            f"that can follow {limit:.2e}: the time-domain CDR is in or near its "
+            "slew-limited regime, where the statistical engine's linearised loop model "
+            "does not apply", stacklevel=3)

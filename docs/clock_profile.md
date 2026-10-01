@@ -138,9 +138,76 @@ two-line attribution header. `tools/vendor_check.py` re-derives that against a
 sibling checkout and the `vendor-drift` CI job fails on any undeclared edit.
 See `src/halo_serdes/vendor/__init__.py`.
 
+## Through the CDR (phase 2)
+
+A CDR is a high-pass to the clock: wander inside its bandwidth is followed,
+the rest lands on the sampling instant, and the loop adds some jitter of its
+own. The time engine gets this for free by running the loop. The statistical
+engine cannot run anything, so `cdr/linear.py` gives it the loop in closed
+form and `engine/statistical.py` smears its bathtub with the result instead
+of with `rj_ui`:
+
+```
+sigma_sampling^2 = integral S_phi(f) |1 - H(f)|^2 df / (2 pi f0)^2   (what the loop left)
+                 + var(q) / k_pd^2 * mean |H(f)|^2                    (what the loop added)
+```
+
+`H` is the closed-loop response of the PI loop the kernels actually run
+(`kp = 2^-kp_shift`, `ki = 2^-ki_shift`, one update per symbol for the
+mixed-signal kernel, one per interleave block for the ADC kernel), `k_pd` the
+linearised detector gain and `q` the detector's noise. The band starts at
+1/(N·UI), the lowest offset a run of N symbols resolves, so both engines look
+at the same part of the profile. The two detectors differ only in `k_pd` and
+`var(q)`:
+
+| detector | gain | noise | how |
+|---|---|---|---|
+| bang-bang (mixed-signal) | `rho sqrt(2/pi) / sigma_e`, `sigma_e` = jitter at its input | `rho - rho^2/3` per update | fixed point on `sigma_e^2 = untracked^2 + self^2 + edge^2`; `edge` is AWGN + ISI at the edge sample over the edge slope, read off the pre-DFE pulse at the lock point |
+| Mueller-Muller (ADC) | mean slope of `x (sign x+ - sign x-)` | its variance, over `n_lanes` | seeded Monte-Carlo over random symbols on the pulse's cursor set at the lock point |
+
+Both read the pulse *at the lock point*, not at its peak: an NRZ pulse through
+a short channel is a 1-UI plateau whose argmax is its leading corner, and the
+Alexander edge locks half a UI into it. Reading at the peak was a factor of
+several in the first cut.
+
+**How well it holds** (`tests/test_clock_profile_cdr.py`, all time-engine
+measurements of the recovered clock minus the Tx clock, mean removed):
+
+| link | kp_shift | measured / model sigma |
+|---|---|---|
+| 16 GBd NRZ, lossy + AWGN, 5 MHz-corner 1/f² at 0.11 UI | 4 / 6 / 8 | 0.97 / 0.99 / 1.00 |
+| same, clean channel, no noise | 4 / 6 / 8 | 0.82 / 0.95 / 1.08 |
+| 112 GBd PAM4 ADC, SSPLL scaled to 200 fs | 5 / 7 / 9 | 0.96 / 0.96 / 0.73 |
+
+The MM figure degrades with the resonance Q of that preset's loop
+(`ki_shift 15` with a tiny detector gain makes it integrator-dominated and
+underdamped); the bang-bang figure on a quiet clock is limited by the limit
+cycle not being white noise. On the cross-check link the two engines' BER
+agree to 1.3–1.5× with the profile clock (invariant #3 asks for 2×).
+
+**What it cannot say.** A bang-bang loop moves at most `kp` per update on the
+half of updates that see a transition. A profile whose RMS phase *rate* inside
+the loop bandwidth is a sizeable part of that makes the kernel slip cycles
+(measured: BER 0.2–0.5, tracking error of several UI); the statistical engine
+warns (`slew-limited`) from 0.3 of the limit, where the kernel was still locked,
+and the kernel slipped from about 0.4.
+
+The same-RMS comparison the feature exists for, as measured on the clean
+16 GBd link at `kp_shift 6`: 0.11 UI of white phase noise leaves 0.119 UI on
+the sampler (model 0.120); the same 0.11 UI as a 5 MHz-corner 1/f² profile
+leaves 0.013 UI (model 0.015). `examples/31_pll_clock_profile.py` does the
+PAM4 112 GBd version with three clocks and a `kp_shift` sweep.
+
+**Measuring it yourself.** `analysis/cdr_tracking.py::cdr_tracking_error_s(cfg, res)`
+returns the per-decision sampling error off a time run's `phase_track`
+(skip the acquisition transient — the default skips the engine's settling
+count; a slow ADC loop needs more). `StatResult.extras["clock_loop"]` carries
+the model's `k_pd`, bandwidth, untracked and self-noise sigmas; the GUI's
+Jitter tab draws L(f) with `20 log|1 − H|` over it and lists both numbers
+beside the measurement.
+
 ## Not in this phase
 
-The statistical engine still smears the bathtub with `rj_ui` alone ("RJ only
-for now"); the CDR-untracked residue ∫S_φ·|1−H_cdr|² that would let the two
-engines cross-check a profile clock is phase 2. The receiver's own sampling
-clock is phase 3.
+The receiver's own sampling clock — a second profile on `RxConfig.clock`,
+added to the sampling positions inside the kernels — is phase 3, as is the
+live bridge that builds a profile from a `pllsim` object without a file.

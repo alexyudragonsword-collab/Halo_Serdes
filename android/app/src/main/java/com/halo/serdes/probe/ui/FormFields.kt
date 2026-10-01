@@ -50,7 +50,7 @@ fun FieldRow(
             Switch(checked = value == true, onCheckedChange = onChange)
         }
 
-        field.kind == "enum" -> EnumField(field, value?.toString().orEmpty(), onChange)
+        field.isEnum -> EnumField(field, value?.toString().orEmpty(), onChange)
 
         else -> OutlinedTextField(
             value = value?.toString().orEmpty(),
@@ -82,17 +82,28 @@ fun FieldRow(
 private fun FormField.keyboardType(): KeyboardType =
     if (kind == "int") KeyboardType.Number else KeyboardType.Text
 
+/** Shown for the blank choice of an optional enum; the value sent is "". */
+private const val NONE_LABEL = "(none)"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EnumField(field: FormField, value: String, onChange: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    // An optional enum may be blank, and a value that arrived from a preset
+    // or YAML but is not among the shipped options still has to be shown
+    // rather than silently replaced by blank.
+    val options = buildList {
+        if (field.optional) add("")
+        addAll(field.options)
+        if (value.isNotEmpty() && value !in field.options) add(value)
+    }
     ExposedDropdownMenuBox(
         expanded = open,
         onExpandedChange = { open = !open },
         modifier = Modifier.padding(vertical = 4.dp),
     ) {
         OutlinedTextField(
-            value = value,
+            value = if (field.optional && value.isEmpty()) NONE_LABEL else value,
             onValueChange = {},
             readOnly = true,
             label = { Text(field.label) },
@@ -102,9 +113,9 @@ private fun EnumField(field: FormField, value: String, onChange: (String) -> Uni
                 .fillMaxWidth(),
         )
         ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            field.options.forEach { option ->
+            options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option) },
+                    text = { Text(if (option.isEmpty()) NONE_LABEL else option) },
                     onClick = { open = false; onChange(option) },
                 )
             }

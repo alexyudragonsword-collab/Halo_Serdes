@@ -30,6 +30,16 @@ def _control(field: dict, value: Any):
     if kind == "enum":
         opts = [{"label": o, "value": o} for o in field["options"]]
         return dbc.Select(id=cid, options=opts, value=value, size="sm")
+    if kind == "opt_enum":
+        # Blank is a legitimate choice (-> None). A value loaded from YAML
+        # that is not among the shipped options still has to be displayed,
+        # so it is appended rather than silently replaced by blank.
+        options = list(field["options"])
+        if value not in (None, "") and value not in options:
+            options.append(str(value))
+        opts = [{"label": "(none)", "value": ""}] + [{"label": o, "value": o} for o in options]
+        return dbc.Select(id=cid, options=opts, value="" if value is None else str(value),
+                          size="sm")
     if kind in _NUMERIC:
         return dbc.Input(id=cid, type="number", value=value, size="sm",
                          step=1 if kind in ("int", "opt_int") else "any",
