@@ -84,7 +84,7 @@ def run_cdr(cfg, rx, pos0, w_dfe, levels):
                  np.asarray(w_dfe, float), 0.0, 100, kp, ki, 0.0, 1.0,
                  ref, 0, 0,
                  1 if cfg.rx.dfe.tap1_mode == "unrolled" else 0,
-                 np.zeros(levels.size))
+                 np.zeros(levels.size), np.zeros(N_SYM))
 
 
 def lock_metric(ph, osr, peak, win=200, thresh_ui=0.2):

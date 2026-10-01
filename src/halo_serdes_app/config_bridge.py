@@ -224,6 +224,11 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
            options=["mixed_signal", "adc_dsp"]),
         _f("rx.vga_gain", "VGA gain", "float"),
         _f("rx.noise_rms", "Input noise RMS [V]", "float"),
+        _f("rx.clock.kind", "Sampling clock", "enum", options=["white", "profile"]),
+        _f("rx.clock.file", "Sampling-clock profile", "opt_enum",
+           options=[p["rel"] for p in bundled_clock_profiles()]),
+        _f("rx.clock.f0_hz", "Sampling-clock carrier f0 [GHz]", "opt_float", scale=1e9),
+        _f("rx.clock.rj_ui", "Sampling RJ sigma [UI]", "float"),
     ]),
     ("ctle", "CTLE", [
         _f("rx.ctle.enable", "Enable", "bool"),
@@ -385,7 +390,7 @@ def build_config(values: dict[str, Any]) -> LinkConfig:
 def _resolve_channel(cfg: LinkConfig) -> LinkConfig:
     """Rewrite data-file fields to absolute, existing paths.
 
-    Covers the touchstone channel and the clock phase-noise profile alike:
+    Covers the touchstone channel and both clock phase-noise profiles alike:
     both are repo-relative in presets (``data/channels/...``,
     ``data/clock_profiles/...``) and both live beside the executable in a
     frozen bundle or under ``$HALO_SERDES_DATA_DIR`` on a phone. The engine
@@ -396,10 +401,12 @@ def _resolve_channel(cfg: LinkConfig) -> LinkConfig:
         resolved = resolve_data_file(cfg.channel.file)
         if resolved != cfg.channel.file:
             cfg = apply_overrides(cfg, {"channel.file": resolved})
-    if cfg.tx.clock.kind == "profile" and cfg.tx.clock.file:
-        resolved = resolve_data_file(cfg.tx.clock.file)
-        if resolved != cfg.tx.clock.file:
-            cfg = apply_overrides(cfg, {"tx.clock.file": resolved})
+    for side in ("tx", "rx"):
+        clk = getattr(cfg, side).clock
+        if clk.kind == "profile" and clk.file:
+            resolved = resolve_data_file(clk.file)
+            if resolved != clk.file:
+                cfg = apply_overrides(cfg, {f"{side}.clock.file": resolved})
     return cfg
 
 

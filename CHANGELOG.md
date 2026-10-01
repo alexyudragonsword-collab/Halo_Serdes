@@ -6,6 +6,21 @@
 
 ---
 
+## [未发布] — PLL 时钟相噪剖面(阶段 3:RX 采样时钟 + 活桥)
+
+### 新增
+- **`RxConfig.clock`**(`ClockConfig`,默认理想全零):接收端采样时钟的剖面 / 白噪 RJ / SJ。
+  两个内核(`cdr/kernels.py`、`cdr/adc_kernel.py`)新增 `rx_clock_offset_samples` 入参,逐符号加到
+  环路相位上再采样,`phase_track` 报告实际采样位置;**全零时与改动前逐位一致**(两条 JIT 路径
+  哈希相同,409 值引擎指纹不变)。`cdr/rx_clock.py` 合成偏移,理想时钟不消耗随机数。
+- 统计引擎:TX、RX 两份剖面经同一条 `|1−H|` 功率相加;全白噪时 σ = rj_tx ⊕ rj_rx。
+- **`io/pll_bridge.py`**:`profile_from_analysis(AnalysisResult)`(无需 import)与
+  `profile_from_preset(name)`(函数内 `import pllsim`,缺失时 ImportError 指向 `[pll]` extra);
+  pyproject 加 `pll` extra。对 sibling 检出的 pllsim,活桥与 ex22 导出的七个文件逐位一致。
+- `config_bridge`:`rx.clock.kind / file / f0_hz / rj_ui` 四个字段(桌面与 Android 自动出现,
+  `rx.clock.file` 同为内置剖面下拉)。
+- `tests/test_rx_clock.py`。
+
 ## [未发布] — PLL 时钟相噪剖面(阶段 2:CDR 追踪与双引擎交叉校验)
 
 ### 新增

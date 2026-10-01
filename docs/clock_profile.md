@@ -206,8 +206,52 @@ the model's `k_pd`, bandwidth, untracked and self-noise sigmas; the GUI's
 Jitter tab draws L(f) with `20 log|1 − H|` over it and lists both numbers
 beside the measurement.
 
-## Not in this phase
+## The receiver's own clock (phase 3)
 
-The receiver's own sampling clock — a second profile on `RxConfig.clock`,
-added to the sampling positions inside the kernels — is phase 3, as is the
-live bridge that builds a profile from a `pllsim` object without a file.
+A receiver samples with a clock of its own, usually a second PLL. `rx.clock`
+is the same `ClockConfig` as `tx.clock` (profile file, white RJ, SJ; `dcd_ui`
+is meaningless for a sampler and ignored) and defaults to ideal. Both
+kernels take the per-symbol offsets it produces (`cdr/rx_clock.py`) as a new
+argument, `rx_clock_offset_samples`, and add them to the loop phase before
+every data and edge sample; `phase_track` reports where the sampler actually
+fired. A CDR therefore tracks the *difference* between the two clocks, as a
+real one does, and the statistical engine puts both profiles through the same
+`|1 − H(f)|` (their untracked powers add; white RJ adds in power on both
+sides). An all-zero offset array reproduces the pre-change kernels bit for
+bit on both JIT paths — pinned by output hashes in `tests/test_rx_clock.py` and
+by the engine fingerprint over every preset — and an ideal clock draws no
+random numbers, so every older configuration is unchanged.
+
+Two things measured while pinning this:
+
+- **Independent clocks add in power only where the loop is linear.** On the
+  Mueller-Muller loop the residual power above the ideal-clock floor with both
+  clocks is the sum of the two alone (0.98–1.09 over seeds and gains, with
+  broadband profiles so one realisation converges). On the bang-bang loop the
+  detector gain falls with its *total* input jitter, so a second clock also
+  narrows the loop: the two-clock residual is superadditive (1.24× the sum on
+  the clean 16 GBd link) while the model, which carries that dependence,
+  still lands within 10% of it.
+- **A bang-bang detector drowned in broadband jitter loses lock**, and the
+  slew check (wander inside the bandwidth) does not see it: 0.08 UI RMS of
+  phase error at the detector stayed locked, 0.14 UI slipped. The statistical
+  engine warns (`noise-limited`) from 0.1 UI.
+
+### The live bridge
+
+`io/pll_bridge.py` builds a `ClockProfile` straight from pll_simulator for the
+desktop loop that does not want a file in between: `profile_from_analysis(ar)`
+reads an `AnalysisResult` the way the exporter does (no import of pllsim at
+all); `profile_from_preset(name)` builds the preset and analyses it on the
+format's grid, importing `pllsim` inside the function — absent, it raises an
+`ImportError` naming `pip install "halo-serdes[pll]"`. Against a sibling
+checkout of pll_simulator the bridge reproduces the seven shipped files to
+the last digit and its jitter over pllsim's own integration band equals
+`ar.jitter_fs`. Nothing on the phone's compute path imports the module.
+
+## Still open
+
+Whether the two clocks share a reference (correlated low-frequency wander
+the CDR need not follow) — both are independent here. Multi-phase clocks are
+full-rate here: `f0_hz` gets the seconds right, the correlation between
+phases is not modelled.

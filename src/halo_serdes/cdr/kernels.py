@@ -34,7 +34,8 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
               n_ave: int, kp: float, ki: float, clamp: float,
               sum_alpha: float, ref_idx: np.ndarray, train_len: int,
               adapt_start: int, tap1_unrolled: int,
-              branch_offsets: np.ndarray):
+              branch_offsets: np.ndarray,
+              rx_clock_offset_samples: np.ndarray):
     """Joint DFE + Alexander bang-bang CDR loop.
 
     Args:
@@ -61,10 +62,17 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
         branch_offsets: per-branch comparator offset [V], one entry per level
             hypothesis of the previous symbol (unrolled mode only; pass zeros
             of length len(levels) otherwise).
+        rx_clock_offset_samples: the receiver's own sampling-clock error per
+            symbol [samples] (length >= n_symbols). Added to the loop's
+            phase for both the data and the edge sample, so the loop sees
+            and tracks the *difference* between the two clocks, exactly as a
+            real CDR does; zeros give the pre-existing ideal-clock behaviour
+            bit for bit.
 
     Returns:
         dec (int64[n]), y_sum (float64[n] summing-node values),
-        phase (float64[n] data sample positions), w_out, pd_hist (int8[n]),
+        phase (float64[n] actual data sample positions, offset included),
+        w_out, pd_hist (int8[n]),
         w_hist (float64[n_batches, nt] tap trajectory, one row per n_ave).
     """
     nl = levels.size
@@ -92,8 +100,16 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
                 w_hist[h_i, i] = w[i]
             h_i += 1
         # --- data & edge samples (fractional positions) ---
-        y_d = _farrow(y, pos)
-        y_e = _farrow(y, pos - osr / 2.0)
+        # The sampler fires where the loop says plus where its own clock
+        # wandered to. The guard only exists for a non-zero offset: with an
+        # ideal clock the end-of-iteration check below is the one that ran
+        # before this parameter existed, and its truncation semantics stay.
+        off = rx_clock_offset_samples[k]
+        p_d = pos + off
+        if off != 0.0 and (p_d + osr + 2 >= y.size or p_d - osr < 1):
+            return (dec[:k], y_sum[:k], phase[:k], w, pd_hist[:k], w_hist[:h_i])
+        y_d = _farrow(y, p_d)
+        y_e = _farrow(y, p_d - osr / 2.0)
 
         # --- DFE feedback ---
         # direct mode: all taps through the summing node (sum_alpha settling).
@@ -112,7 +128,7 @@ def _ms_rx_py(y: np.ndarray, osr: int, phase0: float, n_symbols: int,
             prev = dec[k - 1]
             v = v - w[0] * levels[prev] + branch_offsets[prev]
         y_sum[k] = v
-        phase[k] = pos
+        phase[k] = p_d
 
         # --- slicer (nearest level) ---
         best = 0

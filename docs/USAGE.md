@@ -326,6 +326,27 @@ prof.scaled_to_rms(200e-15, f_lo=cfg.symbol_rate / cfg.sim.n_symbols).save("x_20
 `slew-limited` 警告 —— 这时线性模型不再描述内核在做什么。`examples/31` 用三个 200 fs
 时钟(白噪 / SSPLL / CPPLL)扫 `kp_shift`,出 BER、眼高、残余抖动实测与模型的对照表。
 
+**接收端采样时钟**(`rx.clock`,与 `tx.clock` 同一个 `ClockConfig`;默认理想,全零):
+两个内核把它逐符号加到环路相位上再采样,CDR 追踪的是两只时钟之差;统计引擎把两份剖面
+经同一条 `|1−H|` 相加功率。`dcd_ui` 对采样时钟无意义,忽略。
+
+```yaml
+rx:
+  clock:
+    kind: profile
+    file: data/clock_profiles/bench_dadalt03_cppll_311m_2p488g.yaml
+    # rj_ui: 0.003     # 或只给白噪采样抖动
+```
+
+**不经文件的活桥**(桌面,需 `pip install "halo-serdes[pll]"`,手机构建不含):
+
+```python
+from halo_serdes.io.pll_bridge import profile_from_preset, profile_from_analysis
+prof = profile_from_preset("bench_wu19_spll_frac_52m_6p253g")   # 函数内 import pllsim
+prof = profile_from_analysis(pll.analyze(f=profile_grid(pll.cfg.fout)))  # 或直接给 AnalysisResult
+prof.save("my_pll.yaml")                                          # 之后照常走 file
+```
+
 **逐级分解**(需要重复码型,≥4 个周期,如 `prbs7`):
 
 ```python
