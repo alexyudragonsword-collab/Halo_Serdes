@@ -10,7 +10,8 @@ model for the desktop loop that does not want a file in between.
 Pinned here:
 
 * an ideal receiver clock (the default) changes nothing -- both kernels
-  reproduce their pre-change output hash to the byte on both JIT paths;
+  reproduce the pre-change kernels (frozen in ``tests/golden/``) bit for
+  bit on the same inputs;
 * a receiver profile is tracked like a transmit profile (same loop, same
   residual to within the model's accuracy), and the two add in power where
   the loop is linear: on the Mueller-Muller loop the untracked residual of
@@ -32,7 +33,6 @@ from __future__ import annotations
 
 import builtins
 import dataclasses
-import hashlib
 import sys
 import warnings
 from pathlib import Path
@@ -54,15 +54,6 @@ REPO = Path(__file__).resolve().parents[1]
 PROFILES = REPO / "data" / "clock_profiles"
 FB = 16e9
 UI = 1.0 / FB
-
-#: sha256 over (phase_track, y_slicer, dfe_taps) of a 6000-symbol run of each
-#: preset, recorded on the tree *before* the kernels took a receiver-clock
-#: argument (JIT and no-JIT agreed). The default RxConfig.clock must land here.
-GOLDEN = {
-    "NRZ 16G mixed-signal": "480e3f4f2f2c97b837052e0cef406ee7db64f8cff44b545389d6e57f06f664f4",
-    "PAM4 224G ADC (112 GBd stress)": "cae5c78ba982950a83d9468f75258cd07d3f539a269540b55f018bfcb5e7914a",
-}
-
 
 def _slope_profile(f0: float, l1_dbc: float, f1: float, corner: float) -> ClockProfile:
     f = np.geomspace(100.0, f0 / 2.0, 400)
@@ -121,19 +112,48 @@ def test_an_ideal_receiver_clock_draws_no_random_numbers():
 
 # -------------------------------------------------------- the kernels
 
-@pytest.mark.parametrize("name", list(GOLDEN))
-def test_ideal_receiver_clock_is_bit_identical_to_the_pre_change_kernels(name):
-    from halo_serdes_app.config_bridge import load_preset
+@pytest.mark.parametrize("arch", ["mixed_signal", "adc_dsp"])
+def test_ideal_receiver_clock_is_bit_identical_to_the_pre_change_kernels(arch):
+    """The kernels as they were before the receiver-clock argument existed
+    are frozen in ``tests/golden/kernels_prechange.py``; with an all-zero
+    offset array the new ones must reproduce them to the bit, on the same
+    inputs, in the same process (a stored hash was version-dependent)."""
+    import importlib.util
 
-    base = load_preset(name)
-    cfg = dataclasses.replace(base, sim=dataclasses.replace(base.sim, n_symbols=6000))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        res = run_time_link(cfg, channel=ChannelModel.from_config(cfg))
-    h = hashlib.sha256()
-    for arr in (res.extras["phase_track"], res.y_slicer, res.dfe_taps):
-        h.update(np.ascontiguousarray(np.asarray(arr, dtype=np.float64)).tobytes())
-    assert h.hexdigest() == GOLDEN[name]
+    from halo_serdes.cdr.adc_kernel import _adc_rx_py
+    from halo_serdes.cdr.kernels import _ms_rx_py
+    from halo_serdes.tx.jitter import jittered_zoh
+
+    spec = importlib.util.spec_from_file_location(
+        "kernels_prechange", REPO / "tests" / "golden" / "kernels_prechange.py")
+    old = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(old)
+
+    osr, n = 16, 4000
+    rng = np.random.default_rng(11)
+    levels = np.array([-0.5, -0.5 / 3, 0.5 / 3, 0.5])
+    v = levels[rng.integers(0, 4, size=n)]
+    v[1:] += 0.3 * v[:-1]                                   # a post-cursor to give the loops work
+    y = jittered_zoh(v, osr, rng.normal(scale=0.02 / 32e9, size=n + 1), 1 / 32e9)
+    y = np.concatenate([np.zeros(4 * osr), y, np.zeros(4 * osr)]) + rng.normal(scale=0.01, size=n * osr + 8 * osr)
+    n_sym = n - 200
+    ref = np.full(n_sym, -1, dtype=np.int64)
+    zeros = np.zeros(n_sym)
+    if arch == "mixed_signal":
+        args = (y, osr, 4 * osr + osr / 2.0, n_sym, levels, np.array([0.3]), 1e-3, 100,
+                osr / 64, osr / 4096, 0.0, 1.0, ref, 0, 100, 1, np.zeros(4))
+        new, ref_out = _ms_rx_py(*args, zeros), old._ms_rx_py(*args)
+    else:
+        noise = rng.normal(scale=0.002, size=n_sym + 8)
+        args = (y, osr, 4 * osr + osr / 2.0, n_sym, levels, 4, np.zeros(4), np.ones(4),
+                np.array([0.0, 0.3, -0.2, 0.1]), 2.0 / 4096, 2047, noise,
+                np.array([0.05, 1.0, -0.2]), 1, 1e-4, np.array([0.3]), 1e-4,
+                osr / 128, osr / 8192, 0.0, 0.0, 0, 1, ref, 0, 100)
+        new, ref_out = _adc_rx_py(*args, zeros), old._adc_rx_py(*args)
+    assert len(new) == len(ref_out)
+    for a, b in zip(new, ref_out):
+        assert np.array_equal(np.asarray(a), np.asarray(b))
+    assert new[0].size == n_sym
 
 
 def test_kernels_sample_where_the_receiver_clock_says():
