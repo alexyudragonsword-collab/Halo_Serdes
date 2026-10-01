@@ -44,7 +44,8 @@ res = run_time_link(cfg, channel=channel)
 print(" ", res.summary())
 
 # --- waveform reconstruction (jitter off for clean folding) ---
-c = dataclasses.replace(cfg, tx=dataclasses.replace(cfg.tx, rj_ui=0.0))
+c = dataclasses.replace(cfg, tx=dataclasses.replace(
+    cfg.tx, clock=dataclasses.replace(cfg.tx.clock, rj_ui=0.0)))
 rng = np.random.default_rng(c.sim.seed)
 symbols = make_pattern(c)
 v = symbols_to_voltages(symbols, c)

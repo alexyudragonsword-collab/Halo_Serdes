@@ -1,8 +1,8 @@
 """Jitter tolerance (JTOL): the max sinusoidal jitter the receiver tolerates
 vs SJ frequency, at a target BER.
 
-Standard SerDes compliance deliverable. Inject Tx sinusoidal jitter (``tx.sj_ui``
-amplitude at ``tx.sj_freq``) and binary-search the amplitude where BER crosses a
+Standard SerDes compliance deliverable. Inject Tx sinusoidal jitter (``tx.clock.sj_ui``
+amplitude at ``tx.clock.sj_freq``) and binary-search the amplitude where BER crosses a
 threshold. Below the CDR loop bandwidth the recovered clock tracks the jitter →
 large tolerance; above it the sampling point drifts → tolerance falls to the
 intrinsic timing margin. The tolerated amplitude vs frequency is compared to a
@@ -40,7 +40,8 @@ class JtolResult:
 def _ber_at(cfg: LinkConfig, sj_freq: float, sj_ui: float, channel) -> float:
     from ..engine import run_time_link
 
-    tx = dataclasses.replace(cfg.tx, sj_ui=float(sj_ui), sj_freq=float(sj_freq))
+    clock = dataclasses.replace(cfg.tx.clock, sj_ui=float(sj_ui), sj_freq=float(sj_freq))
+    tx = dataclasses.replace(cfg.tx, clock=clock)
     c = dataclasses.replace(cfg, tx=tx)
     import warnings
 

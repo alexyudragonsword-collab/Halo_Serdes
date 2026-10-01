@@ -61,7 +61,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 配置 | `config/` | YAML → frozen dataclass 参数单源;严格键校验、dotted-path 覆盖、字段级合法性校验 |
 | 信号 | `core/` | `Waveform`/`SymbolStream`/`ResponseSet`(h/s/p/H 四响应);PRBS7-31、PRBS13Q/31Q、PRQS10 + 自同步检错;定点 QFormat |
 | 信道 | `channel/` | Touchstone(1/2/4/8/12 端口)导入、混模转换、保守外推、广义端接、解析 RLGC;FEXT/NEXT 串扰与多 lane 侵略者组 + ICN |
-| 发端 | `tx/` | FIR 预加重、驱动器带宽、RJ/SJ/DCD 抖动注入(Farrow 边沿) |
+| 发端 | `tx/` | FIR 预加重、驱动器带宽、RJ/SJ/DCD 抖动注入(Farrow 边沿);**PLL 相噪剖面时钟**(`tx.clock.kind: profile`,从 pll_simulator 导出的 L(f)+杂散合成有色逐沿抖动,见 [`docs/clock_profile.md`](docs/clock_profile.md)) |
 | 前端 | `afe/` | CTLE、VGA、求和节点有限带宽;时间交织 ADC(offset/gain/skew 失配、ENOB) |
 | 均衡 | `dsp/` | ZF/MMSE FFE、自适应 DFE(LMS/sign-sign)、Viterbi MLSE 与 sliding-detector MLSD、定点数据通路 |
 | 时钟 | `cdr/` | bang-bang 与 Mueller-Müller CDR(二阶环、环路延迟、相位钳位) |
@@ -115,6 +115,7 @@ IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
 | [`CHANGELOG.md`](CHANGELOG.md) | 更新日志:按里程碑组织的完整演进 |
 | [`CLAUDE.md`](CLAUDE.md) | 贡献者须知:架构不变量、易踩的坑、代码与文档约定 |
 | [`docs/USAGE.md`](docs/USAGE.md) | **使用指南**:按任务组织(跑链路、扫参数、串扰、COM、AMI、定点、导出) |
+| [`docs/clock_profile.md`](docs/clock_profile.md) | 时钟相噪剖面文件格式:pll_simulator 与本库之间唯一的接缝(f0、L(f)、杂散、单位约定、读取算法) |
 | [`docs/GUI.md`](docs/GUI.md) | GUI 安装/启动/各标签页用法、桌面版打包 |
 | [`docs/GUI_tour.md`](docs/GUI_tour.md) | GUI 图文导览(实拍截图) |
 | [`docs/SUMMARY.md`](docs/SUMMARY.md) | 工程总结:三次架构探索与结论 |

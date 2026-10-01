@@ -186,8 +186,8 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
                 if 0 < si < pulse.y.size - 1:
                     slope = abs(pulse.y[si + 1] - pulse.y[si - 1]) / (2 * cfg.dt)
                 slope *= swing
-                a_dd_v = slope * cfg.tx.dcd_ui * cfg.ui         # dual-Dirac half
-                sig_rj_v = slope * cfg.tx.rj_ui * cfg.ui        # RJ sigma
+                a_dd_v = slope * cfg.tx.clock.dcd_ui * cfg.ui         # dual-Dirac half
+                sig_rj_v = slope * cfg.tx.clock.rj_ui * cfg.ui        # RJ sigma
                 sig_j = float(np.sqrt(sig_rj_v ** 2 + a_dd_v ** 2))
 
                 sig_tot = np.sqrt(sig_isi ** 2 + sig_xt ** 2 + sig_n ** 2

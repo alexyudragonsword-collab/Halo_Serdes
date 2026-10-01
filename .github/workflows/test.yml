@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install ruff
-      - run: ruff check src/ tests/ examples/ android/tools/ android/app/src/main/python/
+      - run: ruff check src/ tests/ examples/ tools/ android/tools/ android/app/src/main/python/
 
   test:
     runs-on: ubuntu-latest
@@ -66,6 +66,36 @@ jobs:
           pip install -e ".[test]"
       - name: Import hygiene + facade contract
         run: pytest -q tests/test_import_hygiene.py tests/test_api_json.py
+
+  # Vendor drift: src/halo_serdes/vendor must still be byte-identical to the
+  # pinned pll_simulator commit (minus the two attribution lines). The copies
+  # exist because pllsim cannot be a dependency (it needs matplotlib; the
+  # phone carries numpy + scipy), and a vendored file is exactly the kind of
+  # code that gets "fixed in place" and then silently diverges from upstream.
+  # --fail-on-skip: if the sibling checkout fails, a skipped file must read as
+  # red, not as a pass -- a green job that checked nothing is the failure
+  # mode this job exists to prevent.
+  vendor-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Halo_Serdes
+      - name: Checkout pll_simulator (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: alexyudragonsword-collab/pll_simulator
+          ref: 931cfaf48aaaf693eefa7088d41c608ee3450b97
+          path: _siblings/pll_simulator
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Vendor drift check
+        working-directory: Halo_Serdes
+        run: >
+          python tools/vendor_check.py --fail-on-skip
+          --siblings pll_simulator=${{ github.workspace }}/_siblings/pll_simulator
 
   rtl-lockstep:
     # Bit-exact check: the SystemVerilog fixed-point datapath vs the Python

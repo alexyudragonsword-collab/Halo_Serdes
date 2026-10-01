@@ -3,6 +3,40 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-01 · PLL 时钟相噪剖面接入,阶段 1:TX 有色抖动(feat/clock-profile-tx)
+
+- **接口是一份文件,不是 import。** `tx.clock.kind: profile` + `tx.clock.file` 指向一份
+  剖面 YAML(`f0_hz`、`f_hz[]`、`l_dbc_hz[]`、`spurs[]`、`source`,格式定义在
+  `docs/clock_profile.md`);pllsim 的导出器在它的 `feat/clock-profile-export`(67fe1c7)上
+  已按此格式实现。本库只 vendor 了 `synth_from_psd` 与 `integrate_pn` 两个纯 numpy 函数
+  (`vendor/pllsim/`,逐字节同 pll_simulator@931cfaf,`tools/vendor_check.py` + CI
+  `vendor-drift` job 守着,2 verbatim / 0 DRIFT)。
+- **`ClockConfig` 新增,四个抖动字段从 `TxConfig` 搬入。** loader 加了嵌套迁移,旧 YAML 的
+  `tx.rj_ui` 仍加载到同一个 `LinkConfig`;22 个测试/示例文件的 `TxConfig(rj_ui=...)` 用 AST
+  重写成 `clock=ClockConfig(...)`。**`kind="white"` 逐位不变**:9 个预设 × 4 条引擎路径
+  469 个标量与数组哈希,与 main 完全一致。关键在 rng 顺序 —— 剖面合成只在 profile 时、
+  且在白噪三项之前取随机数。
+- **`tx/clock.py` 是本库唯一知道剖面长什么样的地方**:(log f, dB) 线性插值到 1/UI 采样率的
+  FFT 网格,f0/2 以上置零(时钟自己的 Nyquist 之外剖面什么也没说),合成 φ[k] 后
+  除以 2π·f0 得秒;杂散按 pllsim 的单边带定义 A = 2·10^(dbc/20) 逐条加正弦。
+- **验收全部是闭式断言**(`tests/test_clock_profile.py`,40 项):平坦剖面 σ 与等效 rj_ui
+  差 −0.34%(≤ 3%);1/f² 相邻差方差随滞后线性(R² > 0.99);−60 dBc 杂散从合成相位谱读回
+  −60.0 ± 0.1 dB;f0/2 以上功率 < 1e-9;f0 减半秒数加倍相位不变;七个剖面各跑通
+  PAM4 112G ADC 链路。
+- **三条实测后改写的验收,都如实写成了测试而不是放宽容差**:(1) 纯 1/f² 单次实现与
+  `integrate_pn` 的比天然散布 0.49–5.36,期望值比积分大 π²/6 —— 环路整形的剖面才有
+  "单次 ≤ 10%",七个真实剖面都是;(2) `calc_jitter` 把有色低频抖动归到 Pj,Rj 只剩真 σ 的 6%,
+  和积分比的是 `std(tie)`(实测 2.3%);(3) 过零检测对亚样本音读数减半,经引擎的 Pj ≤ 1 dB
+  用 −20 dBc 验,约定在合成相位上用 −60 dBc 钉。五条坑进 `engineering-pitfalls.md`。
+- **顺手修了一个会让 GUI/Android 建不出 profile 时钟的 bug**:`apply_overrides` 逐键应用,
+  `kind=profile` 先于 `file` 到达就被校验拒绝。改成按 dataclass 分组一次 `replace`。
+- **剖面文件的来源要说清**:本机没有 `examples/out/clock_profiles/`(gitignored),七个 yaml 是
+  在 pllsim `feat/clock-profile-export`@67fe1c7 的隔离 venv 里跑它自己的 ex22 生成的,
+  `source` 字段带 commit —— 不是手编数据,但也不是用户给的路径。
+- 测试:jit `434 passed, 1 skipped,`,no-JIT `432 passed, 3 skipped,`(基线 380 / 378),ruff clean。"剖面文件是唯一接缝"进 `architecture-invariants.md` 1b;
+  Android 侧 `config_bridge` 字段路径改了、`stageHaloAssets` 多打包 `data/clock_profiles/`,
+  铁律 6 触发,CI 的 Android job 见 PR。
+
 ## 2026-09-12 · 体检后的五项整改:铁律 #2/#3/#5 从文字变成执行
 
 - **铁律 #5 以前只是一句话。** `SymbolStream` 定义了却**全仓库零次构造**,没有采样器模块,

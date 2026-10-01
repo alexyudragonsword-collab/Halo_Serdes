@@ -5,7 +5,7 @@ import numpy as np
 from halo_serdes.analysis.jitter import calc_jitter
 from halo_serdes.analysis.metrics import qfunc
 from halo_serdes.config import LinkConfig
-from halo_serdes.config.schema import TxConfig
+from halo_serdes.config.schema import ClockConfig, TxConfig
 from halo_serdes.dsp.kernels import slice_nearest
 from halo_serdes.dsp.mlsd import (
     mlse_gain_over_dfe_db,
@@ -208,8 +208,7 @@ def test_jitter_decomposition_recovers_injected():
     osr = 64
     rj_in, sj_in, dcd_in = 0.008, 0.03, 0.04  # UI units
     cfg = LinkConfig(modulation="nrz", symbol_rate=32e9, osr=osr,
-                     tx=TxConfig(rj_ui=rj_in, sj_ui=sj_in, sj_freq=50e6,
-                                 dcd_ui=dcd_in))
+                     tx=TxConfig(clock=ClockConfig(rj_ui=rj_in, sj_ui=sj_in, sj_freq=50e6, dcd_ui=dcd_in)))
     rng = np.random.default_rng(17)
     n_sym = 40_000
     pattern_len = 127

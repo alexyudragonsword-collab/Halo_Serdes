@@ -34,7 +34,7 @@ sys.path.insert(0, str(REPO / "src"))
 from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
-    ChannelConfig, CtleConfig, DfeConfig, FfeConfig, RxConfig, SimConfig, TxConfig,
+    ChannelConfig, CtleConfig, DfeConfig, FfeConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.engine import run_time_link  # noqa: E402
 from halo_serdes.io import NativeCom, NativeFirAmi, load_ami_model  # noqa: E402
@@ -48,7 +48,7 @@ def cfg_for(length_m, fir, noise=0.004):
         modulation="nrz", symbol_rate=28e9, osr=16,
         channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=5.0,
                               r_skin=2e-3, loss_tangent=0.012, n_freq=8192),
-        tx=TxConfig(swing=1.0, fir_taps=fir, fir_n_pre=1, rj_ui=0.005),
+        tx=TxConfig(swing=1.0, fir_taps=fir, fir_n_pre=1, clock=ClockConfig(rj_ui=0.005)),
         rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=True, peak_db=7.0),
                     ffe=FfeConfig(n_pre=4, n_post=12), dfe=DfeConfig(n_taps=2),
                     noise_rms=noise),

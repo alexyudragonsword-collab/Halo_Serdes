@@ -19,7 +19,8 @@ tx:
   fir_taps: [-0.06, 1.0, -0.12]
   fir_n_pre: 1
   swing: 1.0
-  rj_ui: 0.004
+  clock:
+    rj_ui: 0.004
 rx:
   arch: adc_dsp
   ctle:

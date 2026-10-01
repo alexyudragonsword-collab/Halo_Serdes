@@ -24,7 +24,7 @@ sys.path.insert(0, str(REPO / "src"))
 
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
-    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, TxConfig,
+    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.engine import run_time_link, train_tx_fir  # noqa: E402
 
@@ -35,7 +35,7 @@ cfg = LinkConfig(
     modulation="nrz", symbol_rate=32e9, osr=16,
     channel=ChannelConfig(kind="analytic", length_m=0.2, rdc=3.0,
                           r_skin=2.5e-3, loss_tangent=0.015),  # ~-13 dB @ Nyq
-    tx=TxConfig(swing=1.0, rj_ui=0.01),
+    tx=TxConfig(swing=1.0, clock=ClockConfig(rj_ui=0.01)),
     rx=RxConfig(arch="mixed_signal",
                 ctle=CtleConfig(enable=True, peak_db=9.0),
                 dfe=DfeConfig(n_taps=3, adapt="sign_sign", mu=1e-3),

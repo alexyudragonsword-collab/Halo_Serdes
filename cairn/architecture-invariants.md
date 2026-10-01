@@ -79,6 +79,23 @@ mixed-signal 与 ADC-DSP **共享** Tx、信道、分析层、统计引擎骨架
 **这次改造不允许改变任何数值**:9 个预设 × 4 条引擎路径共 469 个标量与数组哈希,
 重构前后逐位一致。
 
+### 1b. 剖面文件是 pll_simulator 与本库之间唯一的接缝(铁律 1 的推论)
+
+**规则**:PLL 的时钟进入链路只能以一份**时钟相噪剖面文件**(`f0_hz`、`f_hz[]`、
+`l_dbc_hz[]`、`spurs[]`、`source`,格式定义在 `docs/clock_profile.md`)的形式,
+由 `tx.clock.kind: profile` + `tx.clock.file` 指向。两个库在 import 层面互不依赖:
+pllsim 写文件,本库读文件;本库只 vendor 了 `synth_from_psd` 与 `integrate_pn`
+两个纯 numpy 函数(`src/halo_serdes/vendor/pllsim/`,`tools/vendor_check.py` 守着)。
+
+**为什么是文件不是 import**:(1) 铁律 1 要求一切由 frozen `LinkConfig` 决定 —— 一个
+PLL 对象进不了 YAML,一张表可以;(2) Android 只带 numpy + scipy,pllsim 硬依赖
+matplotlib;(3) 格式由消费方定义,生产方遵守,pllsim 的导出器
+(`export/clock_profile.py`)已按此实现。
+
+**本库里只有 `tx/clock.py` 知道剖面长什么样。** 它把相位除以 2π·f0 变成秒之后,
+下游 `tx/jitter.py` 与两个引擎看到的仍是原来那个逐沿偏移数组。阶段 2(统计引擎的
+CDR 高通残余 σ)与阶段 3(RX 时钟)都在这条接缝之内扩展,不新开接口。
+
 ### 6. 桌面与 Android 必须同时验证
 
 **规则**:凡是改动了共用层(`src/halo_serdes/` 或 `src/halo_serdes_app/`),

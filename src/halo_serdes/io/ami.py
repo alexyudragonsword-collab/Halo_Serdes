@@ -487,7 +487,7 @@ class NativeCom(ComAdapter):
 
         # jitter: Tx RJ (+ DCD as bounded) converted to voltage via pulse slope
         slope = float(np.max(np.abs(np.diff(pulse.y)))) / cfg.dt  # V/s at edge
-        rj_s = cfg.tx.rj_ui * cfg.ui
+        rj_s = cfg.tx.clock.rj_ui * cfg.ui
         sigma_j = slope * rj_s * cfg.tx.swing / max(abs(pulse.y[peak]), 1e-12)
 
         q = self._q_target()

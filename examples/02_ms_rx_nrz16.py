@@ -28,7 +28,7 @@ cfg = load_config(REPO / "configs" / "nrz_16g_ms.yaml", overrides={
     "channel.file": str(REPO / "data/channels/TEC_Whisper42p8in_Meg6_THRU_C8C9.s4p"),
 })
 # add sinusoidal jitter on top of the canonical config to exercise the CDR
-cfg = apply_overrides(cfg, {"tx.sj_ui": 0.02, "tx.sj_freq": 5.0e6})
+cfg = apply_overrides(cfg, {"tx.clock.sj_ui": 0.02, "tx.clock.sj_freq": 5.0e6})
 
 res = run_time_link(cfg, collect_eye=True)
 print("== 16G NRZ, product mixed-signal RX (canonical default config) ==")

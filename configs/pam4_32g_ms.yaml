@@ -16,7 +16,8 @@ tx:
   fir_taps: [1.0]
   fir_n_pre: 0
   swing: 1.0
-  rj_ui: 0.01
+  clock:
+    rj_ui: 0.01
 rx:
   arch: mixed_signal
   ctle:

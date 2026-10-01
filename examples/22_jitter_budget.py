@@ -37,7 +37,7 @@ from halo_serdes.analysis import (  # noqa: E402
 from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
-    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, TxConfig,
+    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.engine import run_time_link  # noqa: E402
 
@@ -51,7 +51,7 @@ cfg = LinkConfig(
     modulation="nrz", symbol_rate=16e9, osr=32,
     channel=ChannelConfig(kind="analytic", length_m=0.30, rdc=5.0,
                           r_skin=2.0e-3, loss_tangent=0.012, n_freq=8192),
-    tx=TxConfig(swing=1.0, rj_ui=0.008, sj_ui=0.012, sj_freq=4e6, dcd_ui=0.020),
+    tx=TxConfig(swing=1.0, clock=ClockConfig(rj_ui=0.008, sj_ui=0.012, sj_freq=4e6, dcd_ui=0.020)),
     rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=True, peak_db=7.0),
                 dfe=DfeConfig(n_taps=4), noise_rms=0.004),
     sim=SimConfig(n_symbols=PERIOD * 16, seed=3, pattern="prbs7"))

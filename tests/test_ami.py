@@ -6,7 +6,7 @@ import pytest
 from halo_serdes.channel import ChannelModel
 from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
-    ChannelConfig, CtleConfig, DfeConfig, FfeConfig, RxConfig, TxConfig,
+    ChannelConfig, CtleConfig, DfeConfig, FfeConfig, RxConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.engine import run_time_link
 from halo_serdes.io import (
@@ -57,7 +57,7 @@ def _cfg(length_m=0.30, peak_db=6.0, fir=(-0.1, 0.85, -0.05), noise=0.005):
         modulation="nrz", symbol_rate=32e9, osr=16,
         channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=5.0,
                               r_skin=2e-3, loss_tangent=0.012, n_freq=8192),
-        tx=TxConfig(swing=1.0, fir_taps=fir, fir_n_pre=1, rj_ui=0.005),
+        tx=TxConfig(swing=1.0, fir_taps=fir, fir_n_pre=1, clock=ClockConfig(rj_ui=0.005)),
         rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=True, peak_db=peak_db),
                     ffe=FfeConfig(n_pre=4, n_post=10), dfe=DfeConfig(n_taps=1),
                     noise_rms=noise))

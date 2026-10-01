@@ -6,7 +6,7 @@ from halo_serdes.analysis.com import ComParams, compute_com
 from halo_serdes.channel import ChannelModel, synthetic_aggressor
 from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
-    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, TxConfig,
+    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.io import Com93a, ComResult
 
@@ -16,8 +16,7 @@ def _cfg(length=0.20, modulation="pam4", rate=53.125e9, n_dfe=1, rj=0.0, dcd=0.0
         modulation=modulation, symbol_rate=rate, osr=32,
         channel=ChannelConfig(kind="analytic", length_m=length, rdc=5.0,
                               r_skin=2e-3, loss_tangent=0.012, n_freq=8192),
-        tx=TxConfig(swing=1.0, fir_taps=(-0.1, 1.0, -0.15), fir_n_pre=1,
-                    rj_ui=rj, dcd_ui=dcd),
+        tx=TxConfig(swing=1.0, fir_taps=(-0.1, 1.0, -0.15), fir_n_pre=1, clock=ClockConfig(rj_ui=rj, dcd_ui=dcd)),
         rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=4.0),
                     dfe=DfeConfig(n_taps=n_dfe)),
         sim=SimConfig(n_symbols=1000, seed=1, pattern="prbs13q"))

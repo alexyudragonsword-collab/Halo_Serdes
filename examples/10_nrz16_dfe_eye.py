@@ -32,7 +32,7 @@ from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.channel.response import pulse_from_impulse  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
-    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, TxConfig,
+    ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
 from halo_serdes.core.waveform import Waveform  # noqa: E402
 from halo_serdes.dsp import channel_cursors, dfe_static  # noqa: E402
@@ -48,7 +48,7 @@ S4P = str(REPO / "data/channels/TEC_Whisper42p8in_Meg6_THRU_C8C9.s4p")
 cfg = LinkConfig(
     modulation="nrz", symbol_rate=16e9, osr=32,
     channel=ChannelConfig(kind="touchstone", file=S4P, n_freq=4096),
-    tx=TxConfig(swing=1.0, rj_ui=0.01),
+    tx=TxConfig(swing=1.0, clock=ClockConfig(rj_ui=0.01)),
     rx=RxConfig(arch="mixed_signal",
                 ctle=CtleConfig(enable=True, peak_db=7.0),
                 dfe=DfeConfig(n_taps=4, adapt="sign_sign", mu=5e-4,
@@ -127,14 +127,16 @@ fig, axes = plt.subplots(1, 3, figsize=(15, 4.2))
 titles_data = []
 # panel 1: CTLE out (trained FIR case)
 rx_t, h_t, _ = build_rx_wave(dataclasses.replace(
-    cfg_t, tx=dataclasses.replace(cfg_t.tx, rj_ui=0.0)))
+    cfg_t, tx=dataclasses.replace(
+        cfg_t.tx, clock=dataclasses.replace(cfg_t.tx.clock, rj_ui=0.0))))
 eye_ctle = fold_eye(rx_t, cfg.osr, int(np.argmax(np.abs(pulse_from_impulse(
     Waveform(h_t, cfg.dt), cfg.osr).y))) % cfg.osr, n_traces=2500)
 plot_eye(axes[0], eye_ctle, cfg.ui * 1e12, title="CTLE out (trained Tx FIR)")
 
 # panel 2: post-DFE, no Tx FIR
 rx_0, h_0, _ = build_rx_wave(dataclasses.replace(
-    cfg, tx=dataclasses.replace(cfg.tx, rj_ui=0.0)))
+    cfg, tx=dataclasses.replace(
+        cfg.tx, clock=dataclasses.replace(cfg.tx.clock, rj_ui=0.0))))
 y_d0, ph0, lv0 = post_dfe_wave(cfg, rx_0, h_0)
 eye_d0 = fold_eye(y_d0, cfg.osr, ph0, n_traces=2500)
 eh0 = eye_height(fold_eye(y_d0, cfg.osr, ph0, n_traces=4000))
