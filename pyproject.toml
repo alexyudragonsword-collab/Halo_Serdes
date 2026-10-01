@@ -28,6 +28,9 @@ gui = [
     "diskcache>=5.6",
 ]
 desktop = ["pywebview>=5.0"]           # native-window packaged build (no-JIT)
+# The live bridge to pll_simulator (io/pll_bridge.py). Desktop only: the
+# phone build never imports it, and pllsim brings matplotlib along.
+pll = ["pllsim @ git+https://github.com/alexyudragonsword-collab/pll_simulator.git"]
 package = ["pyinstaller>=6.0", "nuitka>=2.0"]
 
 [project.scripts]

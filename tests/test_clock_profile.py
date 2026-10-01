@@ -102,7 +102,7 @@ def test_a_profile_clock_without_a_file_fails_in_load_config(tmp_path):
     as a FileNotFoundError out of the engine three layers down."""
     p = tmp_path / "bad.yaml"
     p.write_text("tx:\n  clock:\n    kind: profile\n")
-    with pytest.raises(ValueError, match="tx.clock.file"):
+    with pytest.raises(ValueError, match="clock.file"):
         load_config(p)
 
 
@@ -161,7 +161,7 @@ def test_kind_and_file_can_be_overridden_in_either_order():
     assert a == b and a.tx.clock.kind == "profile"
     with pytest.raises(KeyError, match="unknown config field"):
         apply_overrides(LinkConfig(), {"tx.clock.nope": 1})
-    with pytest.raises(ValueError, match="tx.clock.file"):
+    with pytest.raises(ValueError, match="clock.file"):
         apply_overrides(LinkConfig(), {"tx.clock.kind": "profile"})
 
 

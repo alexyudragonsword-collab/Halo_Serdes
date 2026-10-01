@@ -135,17 +135,19 @@ class ClockConfig:
     dcd_ui: float = 0.0                    # duty-cycle distortion [UI]
 
     def __post_init__(self):
-        _require_in(self.kind, {"white", "profile"}, "tx.clock.kind")
+        # One dataclass serves tx.clock and rx.clock, so the messages name
+        # the field without its owner.
+        _require_in(self.kind, {"white", "profile"}, "clock.kind")
         # Caught here, at construction, so a profile clock with no file fails
         # in load_config with its field named -- not as a FileNotFoundError
         # out of the engine three layers down.
         _require(self.kind != "profile" or bool(self.file),
-                 "tx.clock.file is required when tx.clock.kind is 'profile'")
+                 "clock.file is required when clock.kind is 'profile' (tx.clock / rx.clock)")
         _require(self.f0_hz is None or self.f0_hz > 0,
-                 f"tx.clock.f0_hz must be > 0 when set, got {self.f0_hz}")
+                 f"clock.f0_hz must be > 0 when set, got {self.f0_hz}")
         for nm in ("rj_ui", "sj_ui", "dcd_ui", "sj_freq"):
             _require(getattr(self, nm) >= 0,
-                     f"tx.clock.{nm} must be >= 0, got {getattr(self, nm)}")
+                     f"clock.{nm} must be >= 0, got {getattr(self, nm)}")
 
 
 @dataclass(frozen=True)
@@ -313,6 +315,12 @@ class RxConfig:
     cdr: CdrConfig = field(default_factory=CdrConfig)
     mlsd: MlsdConfig = field(default_factory=MlsdConfig)
     noise_rms: float = 0.0              # input-referred AWGN sigma [V]
+    # The receiver's own sampling clock. Default: ideal (white, all zero), so
+    # every configuration written before this field existed is unchanged.
+    # ``rj_ui``/``sj_ui``/``sj_freq``/``file`` move the sampling instants the
+    # CDR hands the sampler; ``dcd_ui`` has no meaning for a sampler and is
+    # ignored (edge polarity is a transmit-side notion).
+    clock: ClockConfig = field(default_factory=ClockConfig)
 
     @staticmethod
     def product_mixed_signal(noise_rms: float = 0.003) -> "RxConfig":

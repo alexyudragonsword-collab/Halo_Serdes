@@ -22,10 +22,16 @@ Non-LTI approximations (each cross-checked against the time engine):
   jitter at its input, which here is the untracked clock, the loop's own
   hunting, and AWGN + ISI at the edge sample converted through the edge
   slope of the pre-DFE pulse (first order; a lossy channel's data-dependent
-  edge shape is only in it as variance). A loop driven past its slew limit
-  slips cycles, which no linear model has; a warning says so. The white kind
-  keeps its RJ-only smear (no CDR self-noise), which is also what keeps it
-  byte-identical to the pre-profile engine;
+  edge shape is only in it as variance). A receiver clock (``rx.clock``)
+  rides through the same error response, since the loop tracks the
+  difference of the two clocks; on the bang-bang loop that also means the
+  bandwidth shrinks with the *total* input, so two clocks' residues do not
+  simply add there (they do on the linear Mueller-Muller loop). A loop
+  driven past its slew limit slips cycles, as does a bang-bang loop whose
+  detector sees more than ~0.1 UI of phase error; neither is in a linear
+  model and both raise a warning. The white kind keeps its RJ-only smear
+  (no CDR self-noise), which is also what keeps it byte-identical to the
+  pre-profile engine;
 - crosstalk: aggressor cursor sets convolved in as independent stationary
   interference.
 """
@@ -280,30 +286,38 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
                         swing: float, noise_sigma: float) -> tuple[float, LoopSolution | None]:
     """RMS sampling-instant jitter [UI] to smear the bathtub with, and the loop model behind it.
 
-    A white clock returns ``rj_ui`` and no model, exactly as before profiles
-    existed. A profile clock is integrated through the linearised CDR of the
+    White clocks on both sides return their RJ in power sum and no model,
+    exactly as before profiles existed. A profile on either side (transmit
+    or receiver -- the loop tracks their difference, so they are
+    interchangeable here) is integrated through the linearised CDR of the
     configured architecture (bang-bang for mixed-signal, Mueller-Muller for
     ADC, matching which kernel the time engine would run) from ``1/(N UI)``,
     the lowest offset a run of ``N`` symbols resolves, so both engines look at
-    the same band. The white-kind RJ terms a profile clock may carry on top
-    ride through the same error response.
+    the same band. The white-kind RJ terms either clock carries on top ride
+    through the same error response.
     """
     from ..tx.clock import ClockProfile
 
-    clk = cfg.tx.clock
-    if clk.kind != "profile":
-        return float(clk.rj_ui), None
-    prof = ClockProfile.load(clk.file, f0_hz=clk.f0_hz)
+    clocks = (cfg.tx.clock, cfg.rx.clock)
+    if all(c.kind != "profile" for c in clocks):
+        # white on both sides: the historical RJ-only smear, the two clocks'
+        # independent Gaussians adding in power
+        return float(np.hypot(cfg.tx.clock.rj_ui, cfg.rx.clock.rj_ui)), None
+    # The loop tracks the *difference* between the two clocks, so both ride
+    # through the same error response and their untracked powers add.
+    profs = [ClockProfile.load(c.file, f0_hz=c.f0_hz) if c.kind == "profile" else None
+             for c in clocks]
     loop = LoopParams.from_config(cfg)
     ui = cfg.ui
     f_lo = cfg.symbol_rate / max(int(cfg.sim.n_symbols), 2)
     f_nyq = cfg.symbol_rate / 2.0
     f_white = np.linspace(f_lo, f_nyq, 2048)
+    rj_white = float(np.hypot(cfg.tx.clock.rj_ui, cfg.rx.clock.rj_ui))
 
     def untracked(err_fn) -> float:
-        coloured = prof.untracked_sigma_s(err_fn, f_lo) / ui
-        white = clk.rj_ui * float(np.sqrt(np.mean(np.asarray(err_fn(f_white)) ** 2)))
-        return float(np.hypot(coloured, white))
+        var = sum((p.untracked_sigma_s(err_fn, f_lo) / ui) ** 2 for p in profs if p is not None)
+        white = rj_white * float(np.sqrt(np.mean(np.asarray(err_fn(f_white)) ** 2)))
+        return float(np.sqrt(var + white ** 2))
 
     if cfg.rx.arch == "adc_dsp":
         peak = int(np.argmax(np.abs(pulse_pd.y)))
@@ -317,7 +331,18 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
         sol = bb_loop_fixed_point(
             loop, untracked,
             sigma_edge_ui=_bb_edge_noise_ui(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm))
-    _warn_if_slew_limited(prof, loop, f_lo, sol, cfg)
+    for p in profs:
+        if p is not None:
+            _warn_if_slew_limited(p, loop, f_lo, sol, cfg)
+    if cfg.rx.arch != "adc_dsp" and sol.sigma_ui > 0.1:
+        import warnings
+
+        warnings.warn(
+            f"the bang-bang detector sees {sol.sigma_ui:.3f} UI RMS of phase error "
+            "(clock jitter it cannot track plus its own hunting); its linearisation "
+            "assumes a small error, and the kernel loses lock from about 0.1 UI "
+            "(measured: locked at 0.08, slipping at 0.14) -- the statistical engine's "
+            "sampling-jitter model is noise-limited here", stacklevel=3)
     return sol.sigma_ui, sol
 
 

@@ -3,6 +3,29 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-01 · PLL 时钟相噪剖面,阶段 3:RX 采样时钟 + 活桥(feat/clock-profile-rx)
+
+- **接收端有了自己的时钟。** `RxConfig.clock`(同一个 `ClockConfig`,默认理想全零);两个内核
+  新增 `rx_clock_offset_samples`,逐符号加到环路相位再采样,`phase_track` 报告实际采样位置;
+  CDR 追踪的是两只时钟之差。**全零时与改动前内核逐位相同**(改动前纯 Python 内核冻结在
+  `tests/golden/kernels_prechange.py`,同进程比对;最初的 sha256 版本在 CI 3.10 上就不一致),409 值引擎指纹不变;
+  理想时钟不消耗随机数(RX 抽样排在所有既有抽样之后)。统计引擎把两份剖面经同一条 |1−H| 功率
+  相加;全白噪时 σ = rj_tx ⊕ rj_rx。
+- **"TX/RX 各自 1/f² 独立时残余功率相加 ±10%"只在线性环路上成立。** MM(ADC)环路实测
+  0.98–1.09(两个种子、两个增益,宽带剖面让单次实现收敛);BB 环路鉴相器增益随总输入下降,
+  第二只时钟同时收窄环路,实测超加性 1.24×,而模型(带这个依赖)仍与实测差 <10%。写验收时
+  原话不能照搬到 BB 上 —— 改成"MM 相加、BB 超加且模型吻合"两条断言。
+- **宽带抖动淹没 BB 鉴相器会失锁,slew 警告看不见。** σ_e 0.08 UI 锁定、0.14 UI 滑移;统计引擎
+  从 0.1 UI 起发 `noise-limited` 警告。
+- **活桥 `io/pll_bridge.py`**:`profile_from_analysis`(鸭子类型读 AnalysisResult,不 import)、
+  `profile_from_preset`(函数内 import pllsim,缺失时 ImportError 指向 `[pll]` extra);
+  对 sibling 检出的 pllsim(931cfaf)重现七个内置文件逐位一致(|ΔL| = 0.000 dB),
+  `rms_jitter_s(int_band)` == `ar.jitter_fs`。手机计算路径不 import 它(测试钉着)。
+- `config_bridge` 加 `rx.clock.kind/file/f0_hz/rj_ui`(桌面/Android 自动出现,铁律 6 触发);
+  Android CI(ec32bf3,run 36860768206):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`
+  (FormContractTest 6/0f 含阶段 2 的剖面选择用例),解释型与编译型 APK 都过;文档:`docs/clock_profile.md` 阶段 3 节、USAGE §9、README、CHANGELOG;
+  坑进 `engineering-pitfalls.md`。
+
 ## 2026-10-01 · PLL 时钟相噪剖面,阶段 2:CDR 追踪 + 双引擎交叉校验(feat/clock-profile-cdr)
 
 - **统计引擎学会了 CDR。** `cdr/linear.py` 把两个内核跑的 PI 环路写成 `|1−H(f)|`、`|H(f)|`;

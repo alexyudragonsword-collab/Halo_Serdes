@@ -30,9 +30,9 @@ from halo_serdes.config.schema import (
     # ClockConfig: every field has an illegal value, and the profile kind
     # without a file must fail *here* -- at construction, so load_config names
     # the field -- not as a FileNotFoundError out of the engine.
-    (lambda: ClockConfig(kind="pll"), "tx.clock.kind"),
-    (lambda: ClockConfig(kind="profile"), "tx.clock.file"),
-    (lambda: ClockConfig(kind="profile", file=""), "tx.clock.file"),
+    (lambda: ClockConfig(kind="pll"), "clock.kind"),
+    (lambda: ClockConfig(kind="profile"), "clock.file"),
+    (lambda: ClockConfig(kind="profile", file=""), "clock.file"),
     (lambda: ClockConfig(f0_hz=0.0), "f0_hz"),
     (lambda: ClockConfig(f0_hz=-1e9), "f0_hz"),
     (lambda: ClockConfig(sj_ui=-0.1), "sj_ui"),

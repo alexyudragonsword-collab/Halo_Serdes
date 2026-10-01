@@ -68,7 +68,7 @@ def test_unrolled_escapes_summing_node_bandwidth():
     def run(unrolled, sum_alpha):
         return ms_rx(y, OSR, 4 * OSR + OSR / 2.0, n - 1000, levels,
                      np.array([post]), 0.0, 100, OSR / 32, OSR / 2048, 0.0,
-                     sum_alpha, ref, 0, 0, unrolled, np.zeros(2))
+                     sum_alpha, ref, 0, 0, unrolled, np.zeros(2), np.zeros(n - 1000))
 
     slow = 0.5  # summing node settles to 50% in 1 UI
     dec_d, ys_d, *_ = run(0, slow)

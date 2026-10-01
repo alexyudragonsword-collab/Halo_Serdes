@@ -24,6 +24,7 @@ from ..core.waveform import Waveform
 from ..cdr import ms_rx
 from ..dsp import channel_cursors
 from ..tx.builder import symbols_to_voltages, tx_fir
+from ..cdr.rx_clock import rx_clock_offsets_samples
 from ..tx.jitter import build_jittered_tx
 from .lti import fft_filter
 from .result import SimResult
@@ -275,12 +276,15 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     else:
         branch_off = np.zeros(levels.size)
 
+    # the receiver's own clock, drawn last so an ideal clock changes nothing
+    rx_clk = rx_clock_offsets_samples(n_sym, cfg, rng)
+
     dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = ms_rx(
         rx_y, osr, float(peak), n_sym,
         levels.astype(np.float64), np.asarray(w_dfe0, dtype=np.float64),
         float(mu), LMS_BATCH_SYMBOLS, float(kp), float(ki), float(clamp),
         float(sum_alpha), sched.reference, int(train_end), int(settle),
-        int(tap1_unrolled), branch_off)
+        int(tap1_unrolled), branch_off, rx_clk)
 
     n_run = dec.size
     # --- optional MLSD over the postcursors the DFE left behind ---
@@ -403,6 +407,9 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     mu_f = fcfg.mu if fcfg.adapt != "none" else 0.0
     mu_d = cfg.rx.dfe.mu if cfg.rx.dfe.adapt != "none" else 0.0
 
+    # the receiver's own clock, drawn last so an ideal clock changes nothing
+    rx_clk = rx_clock_offsets_samples(n_sym, cfg, rng)
+
     dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = adc_rx(
         rx_y, osr, float(peak), n_sym, levels.astype(np.float64),
         adc.n_lanes, adc.offsets, adc.gains, adc.skews,
@@ -411,7 +418,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         np.asarray(w_dfe0, dtype=np.float64), float(mu_d),
         float(kp), float(ki), float(clamp), float(ccfg.pd_offset),
         1 if ccfg.pd_input == "ffe" else 0, lat_blocks,
-        sched.reference, int(train_end), int(settle))
+        sched.reference, int(train_end), int(settle), rx_clk)
 
     n_run = dec.size
     # --- optional MLSD over the residual the FFE/DFE left behind ---

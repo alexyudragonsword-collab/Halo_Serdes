@@ -29,8 +29,15 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
                w_dfe: np.ndarray, mu_dfe: float,
                kp: float, ki: float, clamp: float, pd_offset: float,
                pd_use_ffe: int, loop_latency_blocks: int,
-               ref_idx: np.ndarray, train_len: int, adapt_start: int):
-    """Returns (dec, y_slicer, phase, w_ffe_out, w_dfe_out, lane_of, q_codes)."""
+               ref_idx: np.ndarray, train_len: int, adapt_start: int,
+               rx_clock_offset_samples: np.ndarray):
+    """Returns (dec, y_slicer, phase, w_ffe_out, w_dfe_out, lane_of, q_codes).
+
+    ``rx_clock_offset_samples[k]`` is the receiver sampling clock's own error
+    at symbol ``k`` [samples], added to the loop phase before the lane skew;
+    ``phase`` reports the position actually sampled (offset included). Zeros
+    reproduce the ideal-clock kernel bit for bit.
+    """
     nl = levels.size
     nf = w_ffe.size
     nd = w_dfe.size
@@ -55,7 +62,8 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
     pos = pos0
     for k in range(n_symbols):
         lane = k % n_lanes
-        p = pos + skews[lane]
+        p_clk = pos + rx_clock_offset_samples[k]
+        p = p_clk + skews[lane]
         if p + osr + 2 >= y.size or p < 1:
             n_symbols = k
             break
@@ -68,7 +76,7 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
             code = -code_max - 1
         q = (code + 0.5) * q_step
         q_hist[k] = q
-        phase[k] = pos
+        phase[k] = p_clk
         lane_of[k] = lane
 
         # FFE produces symbol s = k - n_pre_ffe
