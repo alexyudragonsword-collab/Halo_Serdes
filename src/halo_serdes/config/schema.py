@@ -375,6 +375,119 @@ class NumericConfig:
 
 
 @dataclass(frozen=True)
+class OpticalConfig:
+    """The three optical blocks between two electrical segments: E/O, fibre, O/E.
+
+    Stage 1 of the optical-interconnect model: every block is a small-signal
+    transfer function cascaded into the channel, plus the noise the photodiode
+    and TIA add, which depends on the optical power of the level being
+    received. No retiming, no L-I nonlinearity, no TDECQ.
+
+    Two kinds. ``"vcsel_mmf"`` is the 100G/lambda short-reach picture (IEEE
+    802.3db 100GBASE-SR1: 850 nm VCSEL over OM4/OM5): a second-order laser
+    response with relaxation-oscillation frequency ``f_r_hz`` and damping
+    ``damping_hz``, a Gaussian modal-bandwidth fibre set by
+    ``modal_bw_mhz_km`` / ``length_m``. ``"eml_smf"`` is the 200G/lambda
+    picture (802.3dj 200GBASE-DR1/FR1: 1310 nm EML over G.652): a single-pole
+    modulator whose 3 dB bandwidth is ``f_r_hz`` (``damping_hz`` is unused),
+    and chromatic dispersion ``dispersion_ps_nm_km`` with chirp ``chirp_alpha``.
+
+    The optical power scale comes from ``oma_dbm`` and ``er_db`` alone:
+    P_low = OMA / (ER - 1), P_high = ER * OMA / (ER - 1). The electrical
+    waveform is never rescaled by it; it only sets how much shot and RIN noise
+    each level carries (``optical/noise.py``). Values are standards magnitudes,
+    not a particular device; see the docstrings in ``optical/`` for the
+    clause each default is taken from.
+    """
+
+    kind: Literal["none", "vcsel_mmf", "eml_smf"] = "none"
+    # electro-optic (E/O)
+    f_r_hz: float = 22.0e9              # VCSEL relaxation-oscillation frequency, or EML 3 dB bandwidth [Hz]
+    damping_hz: float = 30.0e9          # VCSEL damping rate gamma / 2 pi [Hz]
+    er_db: float = 4.0                  # extinction ratio P_high / P_low [dB]
+    oma_dbm: float = 0.0                # outer optical modulation amplitude P_high - P_low [dBm]
+    rin_db_hz: float = -140.0           # relative intensity noise [dB/Hz]
+    # fibre
+    length_m: float = 100.0
+    modal_bw_mhz_km: Optional[float] = None       # MMF effective modal bandwidth (vcsel_mmf)
+    dispersion_ps_nm_km: Optional[float] = None   # SMF chromatic dispersion (eml_smf)
+    chirp_alpha: float = 0.0                      # transmitter linewidth-enhancement (chirp) factor
+    wavelength_nm: float = 1310.0                 # carrier wavelength (dispersion phase only)
+    # opto-electric (O/E): photodiode + TIA
+    responsivity_a_w: float = 0.7
+    tia_bw_hz: float = 40.0e9           # second-order (Butterworth) 3 dB bandwidth [Hz]
+    tia_noise_pa_sqrthz: float = 12.0   # input-referred current noise density [pA/sqrt(Hz)]
+    tz_ohm: float = 2000.0              # transimpedance, for reporting the physical output swing [ohm]
+
+    def __post_init__(self):
+        _require_in(self.kind, {"none", "vcsel_mmf", "eml_smf"}, "optical.kind")
+        if self.kind == "none":
+            return
+        for nm in ("f_r_hz", "damping_hz", "er_db", "responsivity_a_w",
+                   "tia_bw_hz", "tz_ohm", "wavelength_nm"):
+            _require(getattr(self, nm) > 0,
+                     f"optical.{nm} must be > 0, got {getattr(self, nm)}")
+        _require(self.length_m >= 0.0,
+                 f"optical.length_m must be >= 0, got {self.length_m}")
+        _require(self.tia_noise_pa_sqrthz >= 0.0,
+                 f"optical.tia_noise_pa_sqrthz must be >= 0, got {self.tia_noise_pa_sqrthz}")
+        _require(self.rin_db_hz < 0.0,
+                 f"optical.rin_db_hz must be < 0 dB/Hz, got {self.rin_db_hz}")
+        if self.kind == "vcsel_mmf":
+            _require(self.modal_bw_mhz_km is not None and self.modal_bw_mhz_km > 0,
+                     "optical.modal_bw_mhz_km must be set (> 0) for kind 'vcsel_mmf'")
+        else:
+            _require(self.dispersion_ps_nm_km is not None,
+                     "optical.dispersion_ps_nm_km must be set for kind 'eml_smf'")
+
+    # -- derived optical power scale [W] ------------------------------------
+
+    @property
+    def oma_w(self) -> float:
+        return 10.0 ** (self.oma_dbm / 10.0) * 1e-3
+
+    @property
+    def p_low_w(self) -> float:
+        er = 10.0 ** (self.er_db / 10.0)
+        return self.oma_w / (er - 1.0)
+
+    @property
+    def p_high_w(self) -> float:
+        return self.p_low_w + self.oma_w
+
+
+def _analytic_segment() -> ChannelConfig:
+    # A segment defaults to a lossless analytic trace, not to the library's
+    # touchstone default: a topology with no file named must still build.
+    return ChannelConfig(kind="analytic")
+
+
+@dataclass(frozen=True)
+class TopologyConfig:
+    """Host TX -> electrical segment A -> E/O -> fibre -> O/E -> segment B -> host RX.
+
+    LPO, CPO and a retimed module are this one chain cut at different places;
+    at stage 1 they differ only in what segments A and B lose, the optical
+    blocks are shared. ``LinkConfig.topology`` set replaces ``channel`` with
+    this cascade; left ``None`` the link is the electrical one it always was.
+    """
+
+    seg_a: ChannelConfig = field(default_factory=_analytic_segment)
+    optical: OpticalConfig = field(default_factory=OpticalConfig)
+    seg_b: ChannelConfig = field(default_factory=_analytic_segment)
+
+    def __post_init__(self):
+        # The cascade multiplies H(f) point by point, so both segments must
+        # be evaluated on one grid; the grid is seg_a's and seg_b must agree.
+        _require(self.seg_a.n_freq == self.seg_b.n_freq,
+                 f"topology.seg_b.n_freq must equal seg_a.n_freq "
+                 f"({self.seg_a.n_freq}), got {self.seg_b.n_freq}")
+        _require(self.seg_a.f_max == self.seg_b.f_max,
+                 f"topology.seg_b.f_max must equal seg_a.f_max "
+                 f"({self.seg_a.f_max}), got {self.seg_b.f_max}")
+
+
+@dataclass(frozen=True)
 class LinkConfig:
     # defaults define the product mixed-signal anchor point: 16 GBd NRZ
     # (the canonical validated configuration, well inside the comfort zone)
@@ -391,9 +504,17 @@ class LinkConfig:
     rx: RxConfig = field(default_factory=RxConfig)
     sim: SimConfig = field(default_factory=SimConfig)
     numeric: NumericConfig = field(default_factory=NumericConfig)
+    # Optical interconnect: segment A -> E/O -> fibre -> O/E -> segment B in
+    # place of ``channel``. None is the electrical link, byte for byte.
+    topology: Optional[TopologyConfig] = None
 
     def __post_init__(self):
         _require_in(self.modulation, {"nrz", "pam4"}, "modulation")
+        # A form needs an "off" state it can express as a field value, so a
+        # topology whose optics are "none" is accepted and normalised here to
+        # the one representation the engines test for: topology is None.
+        if self.topology is not None and self.topology.optical.kind == "none":
+            object.__setattr__(self, "topology", None)
         _require(self.symbol_rate > 0,
                  f"symbol_rate must be > 0 Baud, got {self.symbol_rate}")
         # a non-positive osr silently yields a negative/infinite dt

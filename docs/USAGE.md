@@ -525,3 +525,53 @@ bash rtl/run_lockstep.sh          # -> LOCKSTEP PASS  n=1985  errors=0
 
 **`galois` / `skrf` / `pyibisami` 缺失** —— 都是可选依赖,缺了只影响对应功能
 (真实 FEC 编解码 / Touchstone / 厂商 AMI 模型),核心链路不受影响。
+
+---
+
+## 16. 光互联:LPO / CPO 作为同一条链
+
+`LinkConfig.topology` 把信道换成 **电段 A → E/O → 光纤 → O/E → 电段 B**;留 `None` 就是原来的电链路
+(逐字节不变)。LPO、CPO、retimed 模块在阶段 1 只差两个电段的损耗,光路三个块共用。
+
+```yaml
+topology:
+  seg_a: {kind: analytic, length_m: 0.08, rdc: 5.0, r_skin: 2.0e-3, loss_tangent: 0.012}
+  optical:
+    kind: vcsel_mmf          # none | vcsel_mmf | eml_smf
+    f_r_hz: 22.0e9           # VCSEL 弛豫振荡频率;eml_smf 时是单极点 3 dB 带宽
+    damping_hz: 30.0e9       # VCSEL 阻尼(γ/2π)
+    er_db: 4.0               # 消光比 → 与 oma_dbm 一起唯一决定四个电平的光功率
+    oma_dbm: -3.0            # OMA_outer(802.3db SR1 下限 −3 dBm)
+    rin_db_hz: -140.0
+    length_m: 100.0
+    modal_bw_mhz_km: 4700.0  # OM4 EMB(vcsel_mmf 必填);EMB/L 是 −3 dBo 点(|H| = 0.5,电 −6 dB)
+    # dispersion_ps_nm_km: -1.9   # eml_smf 必填;H = cos θ − α sin θ
+    # chirp_alpha: 0.0
+    responsivity_a_w: 0.7
+    tia_bw_hz: 40.0e9        # PD+TIA 二阶 Butterworth
+    tia_noise_pa_sqrthz: 12.0
+    tz_ohm: 2000.0           # 只用于报告物理输出摆幅,仿真保持电尺度
+  seg_b: {kind: analytic, length_m: 0.08, rdc: 5.0, r_skin: 2.0e-3, loss_tangent: 0.012}
+```
+
+```python
+cm = ChannelModel.from_config(cfg)      # seg_a × eo × fiber × oe × seg_b,带 cm.optical
+cm.loss_at(cfg.f_nyquist)               # 相对"理想级联"的插损(两段理想电信道 = 0 dB,H = 0.25)
+cm.optical.noise.sigma_per_level()      # 四个电平各自的 PD 节点噪声 σ(上电平最吵)
+t = run_time_link(cfg, channel=cm)      # 两段卷积,光电二极管节点注入随功率变化的噪声
+s = run_statistical(cfg, channel=cm, ffe_taps=t.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+s.extras["level_sigma"]                 # 统计引擎实际用的每电平判决 σ
+```
+
+**尺度约定**:电波形不按光功率重标;`oma_dbm`/`er_db` 只决定噪声。到达光电二极管的直流外电平间距
+对应光电流 R·OMA。噪声注入在 PD 电流节点(O/E 之前),所以 TIA 带宽决定噪声带宽,与 `osr` 无关。
+
+**两引擎**:统计引擎每个发送电平一个高斯核,σ 取判决样本沿接收滤波器记忆的光功率二阶矩;
+铁律 3 在 ER 3 / 4.5 / 6 dB 三点 2× 内(ADC PAM4 0.88 / 0.71 / 0.63,MS NRZ 0.92 / 0.84 / 0.86,
+`tests/test_optical.py`)。剩余差来自每电平噪声其实是高斯尺度混合(σ 随 ISI 图样摆动),见
+`cairn/光互联建模.md`。
+
+**不做的**(阶段 1):重定时、L-I 非线性 / TDECQ、功耗;AMI 模型与 `topology` 互斥。
+示例 `examples/32_lpo_vs_cpo.py`:同一光路,电段 4/8/12/16 dB,光纤长度扫到 reach,
+再在 100 m 上比 CPO 与 LPO 的 OMA 裕度。
+

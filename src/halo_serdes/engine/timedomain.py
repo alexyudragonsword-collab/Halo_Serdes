@@ -137,6 +137,31 @@ def _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami):
     return h, tx_y
 
 
+def _optical_stages(cfg: LinkConfig, channel: ChannelModel, tx_ami, rx_ami):
+    """(stage-1, stage-2) impulses for an optical topology, else None.
+
+    The cut is made in ``optical_stage`` so the statistical engine cuts in
+    the same place. AMI models fold into one response or one waveform and
+    have no notion of a node in the middle, so stage 1 declines them.
+    """
+    if getattr(channel, "optical", None) is None:
+        return None
+    if tx_ami is not None or rx_ami is not None:
+        raise ValueError("AMI models are not supported together with an optical "
+                         "topology (stage 1 has no AMI node between the segments)")
+    from .optical_stage import split_impulses
+
+    return split_impulses(cfg, channel)
+
+
+def _optical_pass(tx_y: np.ndarray, stages, channel: ChannelModel,
+                  rng: np.random.Generator) -> np.ndarray:
+    """Tx waveform -> photodiode node -> level-dependent noise -> receiver."""
+    h1, h2 = stages
+    y_pd = channel.optical.noise.inject(fft_filter(tx_y, h1), rng)
+    return fft_filter(y_pd, h2)
+
+
 def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False,
                   collect_jitter: bool = False,
@@ -198,11 +223,16 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         f = np.fft.rfftfreq(nfft, d=cfg.dt)
         h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: h.size * 2]
     h = h * cfg.rx.vga_gain
+    # optical topology: the response is the two stages' convolution, so it
+    # lines up with the waveform that is built in two stages below
+    stages = _optical_stages(cfg, channel, tx_ami, rx_ami)
+    if stages is not None:
+        h = np.convolve(*stages)
 
     # --- optional AMI Tx/Rx models (Init folds into h, GetWave into the wave) ---
     h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
 
-    rx_y = fft_filter(tx_y, h)
+    rx_y = fft_filter(tx_y, h) if stages is None else _optical_pass(tx_y, stages, channel, rng)
     if rx_ami is not None and rx_ami.has_getwave:
         rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
 
@@ -349,10 +379,13 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         f = np.fft.rfftfreq(nfft, d=cfg.dt)
         h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: h.size * 2]
     h = h * cfg.rx.vga_gain
+    stages = _optical_stages(cfg, channel, tx_ami, rx_ami)
+    if stages is not None:
+        h = np.convolve(*stages)
 
     h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
 
-    rx_y = fft_filter(tx_y, h)
+    rx_y = fft_filter(tx_y, h) if stages is None else _optical_pass(tx_y, stages, channel, rng)
     if rx_ami is not None and rx_ami.has_getwave:
         rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
 

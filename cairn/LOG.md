@@ -3,6 +3,27 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-01 · 光互联链路,阶段 1:光路作为信道段 + 电平相关噪声(feat/optical-link-stage1)
+
+- **一条链三种拓扑。** `LinkConfig.topology = TopologyConfig(seg_a, optical, seg_b)`(None = 电链路,
+  409 值引擎指纹逐位不变);`optical/{eo,fiber,oe,noise}.py` 只依赖 numpy;`ChannelModel.cascade`
+  (`ref_gain` 连乘,两段理想电信道 H = 0.25、`loss_at` 0 dB)+ `from_topology` 挂 `.optical`;
+  两个引擎在 `engine/optical_stage.py` 共用同一切点(光电二极管电流节点,**O/E 之前** —— 计划写的是之后,
+  改的理由:三项噪声都是 TIA 输入电流,放在之前才由 TIA 带宽而非 osr 决定噪声带宽)。
+- **统计引擎每电平一核,σ 改了一次。** 名义功率 σ 在 ER 6 dB 悲观 1.4–2.15×;改成判决样本沿接收滤波器
+  记忆的光功率二阶矩后,对时域判决流分电平实测四个电平 2% 内。铁律 3(`tests/test_optical.py`):
+  ADC PAM4 0.88 / 0.71 / 0.63,MS NRZ 0.92 / 0.84 / 0.86(ER 3 / 4.5 / 6 dB)。剩余乐观来自每电平
+  噪声是高斯尺度混合;**判决:逐电平 σ 近似三点都过 2×,ISI 分箱核进 ROADMAP P3-11。**
+  MS **PAM4** 的统计/时域在纯电 AWGN 下就只有 0.15–0.78(既有缺口),所以 MS 断言用 NRZ。
+- **被推翻:"OM4 100 m 的 3 dB 点 = 47 GHz"** —— 47 GHz 是 −3 dBo(|H| = 0.5,电 −6 dB),按计划措辞会把
+  光纤带宽高估 1.41×。器件参数核验表(标准原文域名被出口代理拦截,来源是基线提案 / 数据手册 / G.652 推算)在
+  `cairn/光互联建模.md` §5:SR1 ER min 2.5 dB、RIN12OMA −131 dB/Hz、OMA −3…+3.5 dBm;DR1 ER min 3.5 dB、
+  RIN×OMA −139;TIA 40–43 GHz / 10–13 pA/√Hz(Renesas);C2M 13 dB(OIF)→ 16 dB(LPO MSA)。
+- 示例 32(LPO vs CPO,VCSEL + OM4,ADC + KP4,电段 4/8/12/16 dB):电段 4/8/12/16 dB(总 8/16/24/32 dB @26.56 GHz),OMA +1 dBm、ER 4 dB、RIN −145 dB/Hz,ADC 10 bit + CTLE 3 dB + FFE 4/12,KP4 1e-15:reach **209 / 153 / 0 / 0 m**(单调递减;12 dB 在 30 m 时 pre-FEC 3.9e-4 刚过 KP4 瀑布,16 dB 在 30 m SNR 14 dB);100 m 处 OMA 裕度 8.6 / 5.6 / — / — dB → **CPO 比 8 dB 段的 LPO 多 3.0 dB 光裕度**;12/16 dB 段在 SR1 OMA 窗口内任何 OMA 都关不上 —— 链路是 RIN 限制的(噪声随光功率涨),电损耗经 FFE 放大噪声才是决定量,OMA 几乎不动结果(+1 与 +3 dBm 同 SNR)。
+- `config_bridge` 加 `topology.*` 27 个字段(桌面 / Android 自动出现,铁律 6 触发);
+  Android CI:待 PR CI 跑完后补记 instrumented totals;文档:USAGE §16、README、CHANGELOG、COMPARISON §③、ROADMAP P3-11、
+  `cairn/光互联建模.md`(新)、pitfalls 三条。
+
 ## 2026-10-01 · PLL 时钟相噪剖面,阶段 3:RX 采样时钟 + 活桥(feat/clock-profile-rx)
 
 - **接收端有了自己的时钟。** `RxConfig.clock`(同一个 `ClockConfig`,默认理想全零);两个内核

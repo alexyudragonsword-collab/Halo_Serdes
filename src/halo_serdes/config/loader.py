@@ -158,6 +158,12 @@ def _replace_tree(obj: Any, tree: dict[str, Any]) -> Any:
         if key not in names:
             raise KeyError(f"unknown config field {key!r} on {type(obj).__name__}")
         child = getattr(obj, key)
+        if isinstance(value, dict) and child is None:
+            # an optional subtree that is unset (``topology``): overrides
+            # descend into a default instance of its type
+            tp = _unwrap_optional(typing.get_type_hints(type(obj))[key])
+            if dataclasses.is_dataclass(tp):
+                child = tp()
         if isinstance(value, dict) and dataclasses.is_dataclass(child):
             kwargs[key] = _replace_tree(child, value)
         else:

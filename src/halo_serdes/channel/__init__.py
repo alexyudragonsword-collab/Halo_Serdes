@@ -6,7 +6,7 @@ from .crosstalk import (
     inject_crosstalk,
     synthetic_aggressor,
 )
-from .model import ChannelModel
+from .model import ChannelModel, OpticalStages
 from .response import freq2impulse, impulse2freq, pulse_from_impulse, trim_impulse, zero_pad_to_dt
 
 # The touchstone helpers are resolved lazily (PEP 562) because importing them
@@ -29,7 +29,7 @@ def __getattr__(name):
 
 
 __all__ = [
-    "ChannelModel",
+    "ChannelModel", "OpticalStages",
     "freq2impulse", "impulse2freq", "zero_pad_to_dt", "trim_impulse", "pulse_from_impulse",
     "import_diff_network", "interp_s2p", "se2mm", "sdd_2port",
     "terminate_gamma", "terminate_renormalize",

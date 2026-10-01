@@ -6,6 +6,26 @@
 
 ---
 
+## [未发布] — 光互联链路(阶段 1:光路作为信道段 + 电平相关噪声)
+
+### 新增
+- **`LinkConfig.topology`**(`TopologyConfig(seg_a, optical, seg_b)`,默认 None = 电链路,逐字节不变):
+  Host TX → 电段 A → E/O → 光纤 → O/E → 电段 B → Host RX。LPO / CPO / retimed 是同一条链的不同切法。
+- **`optical/`**(只依赖 numpy):`eo`(VCSEL 二阶小信号 f_r / damping;EML 单极点)、`fiber`(OM4 高斯模式带宽,
+  EMB/L 为 −3 dBo;SMF 色散 cos θ − α sin θ)、`oe`(PD+TIA 二阶 Butterworth;OMA+ER → 四电平光功率)、
+  `noise.OpticalNoise`(散粒 2qRP + RIN(RP)² + TIA i_n²,`inject` 给时域、`sigma_per_level` 给统计,一个对象两个引擎)。
+- `ChannelModel.cascade(*m)`(同网格点乘,`ref_gain` 连乘:两段理想电信道 H = 0.25 而 `loss_at` 为 0 dB;
+  Touchstone 自级联 `loss_at` 恰为 2 倍),`from_topology` 挂 `.optical = OpticalStages(pre_pd, post_pd, noise)`。
+- 时域引擎:有 topology 时两段卷积,在光电二极管电流节点注入噪声(O/E 之前,TIA 带宽决定噪声带宽),两种 RX 架构同一路径。
+- 统计引擎:每个发送电平一个高斯核(`level_sigma`);核相同时与单核逐位相同。电平 σ 取判决样本沿接收滤波器记忆的
+  光功率二阶矩(`engine/optical_stage.py`),对时域判决流分电平实测 2% 内。
+- `config_bridge`:`topology.*` 27 个字段(桌面 / Android 共用);示例 `32_lpo_vs_cpo.py`;`tests/test_optical.py`;
+  `cairn/光互联建模.md`(功率尺度约定、器件参数核验表、被推翻的判断)。
+
+### 验证
+- 铁律 3 在光路上:ADC PAM4 统计/时域 0.88 / 0.71 / 0.63(ER 3 / 4.5 / 6 dB),mixed-signal NRZ 0.92 / 0.84 / 0.86;
+  409 值电链路引擎指纹不变。
+
 ## [未发布] — PLL 时钟相噪剖面(阶段 3:RX 采样时钟 + 活桥)
 
 ### 新增

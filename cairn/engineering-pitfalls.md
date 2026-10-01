@@ -5,7 +5,7 @@ summary: "开发中真实踩过、并付出返工代价的坑 —— 每条都�
 tags: [pitfalls, measurement, mlsd, benchmarking, packaging, android, serdes]
 contains: [pitfall, measurement-trap, api-trap, packaging-trap, statistical-significance]
 created: "2026-08-18"
-updated: "2026-08-23"
+updated: "2026-10-01"
 related: [architecture-invariants.md]
 authoring_mode: ai_generated
 ---
@@ -26,6 +26,19 @@ authoring_mode: ai_generated
 "1.33× 增益"是噪声。断言任何增益前先确认错误数(几百以上),并用 Poisson σ ≈ √N
 判断差异是否显著。实测例:MLSD 的 m=1 与 m=4 相差 65 个错误,合并 σ≈53,**不到 1.2σ**,
 不构成"更深 memory 更好"的证据。
+
+### 建模约定类
+
+**"光纤带宽 X GHz"先问是 −3 dBo 还是 −3 dBe。** OM4 的 EMB 4700 MHz·km 是光功率调制传递的
+−3 dB(|H| = 0.5),电域读作 −6 dB;按"电 3 dB 点 = EMB/L"实现会把光纤带宽高估 1.41×。
+计划文稿里就是这么写的,实现时按物理定义改了并在测试里钉死(`tests/test_optical.py`)。
+
+**噪声注入点决定噪声带宽。** 把白噪声注在滤波器之后,噪声带宽就是采样率的一半 —— 一个随 `osr`
+变的伪量。散粒 / RIN / TIA 噪声都是 TIA 输入电流,注在 O/E 之前才让 TIA 带宽说了算。
+
+**σ 对了 BER 未必对。** 光路每电平的判决噪声是高斯尺度混合(σ 随 ISI 图样 ±30% 摆动);
+按二阶矩匹配的单高斯把 σ 对到 2% 内,BER 仍乐观 1.6×(Q≈3.2)。比值不是 1 不一定是 σ 算错,
+先看噪声是不是高斯。
 
 ### API 类
 

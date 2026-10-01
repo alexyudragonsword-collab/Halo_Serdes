@@ -129,3 +129,38 @@ def test_extrapolates_below_mc_floor():
     res = run_statistical(cfg, channel=_flat_channel())
     assert 0.0 <= res.ber < 1e-15
     assert np.isfinite(res.ber_phi).all()
+
+
+def test_equal_level_kernels_reproduce_the_single_kernel_engine():
+    """``level_sigma`` of zeros makes every level's kernel the receiver's
+    own: the per-level path must then be bit-identical to the electrical
+    engine -- that is what keeps the electrical results frozen while the
+    optical topology shares the loop."""
+    ch = _one_post_channel(0.25, 0.06)
+    for mod, pattern in (("nrz", "prbs31"), ("pam4", "prbs13q")):
+        cfg = _cfg(mod, 0.03, pattern=pattern)
+        n_levels = 2 if mod == "nrz" else 4
+        a = run_statistical(cfg, channel=ch)
+        b = run_statistical(cfg, channel=ch, level_sigma=np.zeros(n_levels))
+        assert np.array_equal(a.ber_phi, b.ber_phi)
+        assert np.array_equal(a.ser_phi, b.ser_phi)
+        assert np.array_equal(a.eye_pdf, b.eye_pdf)
+        assert a.best_phi == b.best_phi and a.ber == b.ber
+
+
+def test_level_dependent_noise_hits_the_noisier_level():
+    """PAM4 with noise only on the top level: SER must be the top level's
+    share of an AWGN SER at that sigma plus nothing from the quiet levels
+    (one neighbour threshold, 1/4 of the symbols) -- and not change when the
+    same sigma is moved to the bottom level."""
+    sigma = (0.25 / 3.0) / 4.0
+    cfg = _cfg("pam4", 0.0, pattern="prbs13q")
+    top = run_statistical(cfg, channel=_flat_channel(),
+                          level_sigma=np.array([0.0, 0.0, 0.0, sigma]))
+    bottom = run_statistical(cfg, channel=_flat_channel(),
+                             level_sigma=np.array([sigma, 0.0, 0.0, 0.0]))
+    expected = 0.25 * qfunc((0.25 / 3.0) / sigma)
+    assert abs(top.ser / expected - 1.0) < 0.10, (top.ser, expected)
+    # the upper and lower tails are read off the grid with opposite half-bin
+    # bias (searchsorted on each side), so the two differ at the bin level
+    assert abs(bottom.ser / top.ser - 1.0) < 0.10
