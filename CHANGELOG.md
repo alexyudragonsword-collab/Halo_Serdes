@@ -6,6 +6,24 @@
 
 ---
 
+## [未发布] — 光互联链路(阶段 3:E/O 大信号曲线 + TDECQ)
+
+### 新增
+- **`OpticalConfig.li_compression`**(0 = 线性,默认):E/O 静态大信号曲线 `optical.StaticCurve` —— VCSEL 二阶 L-I
+  带热翻转(凹,压缩顶电平,κ = c / (2(2 − c)),R_LM = 1 − 8κ/3)、EML 指数型 EAM 吸收(凸,压缩底电平);两端外电平钉住,
+  OMA / ER 不变;零光功率下限、翻转峰后保持。`optical_rlm`(802.3 120D.3.1.2 的 R_LM)让 `tx.rlm` 成为驱动器设定、光域
+  R_LM 成为导出量;`oe.level_powers` 与接收机电平(`_levels`)随曲线移动。
+- 时域引擎在曲线开启时三段卷积:驱动(段 A × E/O)→ 曲线 → 光纤 → PD 节点噪声 → 接收端;曲线关闭时与阶段 2 逐位相同
+  (475 值引擎指纹含光链路预置)。统计引擎在曲线开启时发 warning(不在铁律 3 的保证内)。
+- **`analysis/tdecq.py`**:802.3 121.8.5 的 TDECQ —— 0.5×baud BT4 参考接收机、抽头和为 1 的 T 间隔 FFE(5 抽头 /
+  802.3dj 15 抽头)、0.45 / 0.55 UI 两个 0.04 UI 直方图、阈值 P_ave ± OMA/3、OMA 取游程中心 2 UI、SER 4.8e-4
+  (Q_t = 3.414)、C_eq;来源与简化逐条写在模块 docstring。`engine.optical_stage.transmitter_power` 给出 TP2(或过光纤后)
+  的光功率波形,含激光 RIN。
+- `ChannelModel.band_limited()`:单独使用的块(SMF 色散幅度全通、单极点 EAM)在网格顶端四分之一滚降并延时 32/f_max,
+  避免零相位砖墙 sinc 绕回。
+- 表单 `topology.optical.li_compression`;`studies.tdecq_study`(桌面与 Android 同一份 study 广告);GUI「Optical」页加
+  TDECQ / 光域 R_LM / C_eq 卡片与 ER、激光带宽两条扫描;示例 `34_tdecq.py`;`tests/test_tdecq.py` 与 `test_optical.py` 增补。
+
 ## [未发布] — 光互联链路(阶段 2:重定时串联)
 
 ### 新增

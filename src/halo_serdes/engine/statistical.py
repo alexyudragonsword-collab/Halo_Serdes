@@ -34,6 +34,10 @@ Non-LTI approximations (each cross-checked against the time engine):
   pre-profile engine;
 - crosstalk: aggressor cursor sets convolved in as independent stationary
   interference;
+- optical topology with a large-signal E/O curve (``li_compression`` > 0):
+  the curve's steady-state levels stand in for the transmitted ones and the
+  chain stays linear; the curve's bending of ISI is the time engine's alone
+  and a warning says so;
 - optical topology (``cfg.topology``): the photodiode's shot and RIN noise
   depend on the optical power of the level being received, so the Gaussian
   kernel becomes one kernel per level, each at the *nominal* level power
@@ -142,6 +146,15 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: 2 * h.size]
     h = h * cfg.rx.vga_gain
     if getattr(channel, "optical", None) is not None:
+        if channel.optical.curve is not None:
+            import warnings
+
+            warnings.warn(
+                "optical topology with a large-signal E/O curve (li_compression > 0): "
+                "the statistical engine takes the curve's steady-state levels through a "
+                "linear chain and does not see how the curve bends ISI; it is not "
+                "covered by the 2x cross-check (invariant #3) -- use the time engine",
+                stacklevel=2)
         # same two-stage split as the time engine (engine/optical_stage.py)
         from .optical_stage import slicer_sigma_per_level, split_impulses
 

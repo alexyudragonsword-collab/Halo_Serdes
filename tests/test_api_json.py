@@ -142,6 +142,7 @@ def test_optical_spec_is_checked_on_the_lpo_preset():
     fixed-point case above)."""
     vals = call("preset", name="PAM4 100G/λ LPO (VCSEL + OM4)")["data"]["values"]
     assert _spec_matches_data("optical", vals), "optical study declined the LPO preset"
+    assert _spec_matches_data("tdecq", vals), "TDECQ study declined the LPO preset"
     # the new field group round-trips like every other preset
     assert call("derive", values=vals)["data"]["valid"]
 

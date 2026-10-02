@@ -80,9 +80,26 @@ def check_symbols(cfg: LinkConfig, symbols: np.ndarray) -> np.ndarray:
 
 
 def _levels(cfg: LinkConfig) -> np.ndarray:
+    """The levels a receiver expects, in Tx volts.
+
+    The driver's levels, unless an optical topology bends them with a
+    large-signal E/O curve: then the levels that arrive are the curve's image
+    of the driver's, and a receiver that adapts its references (every ADC
+    DSP does) slices against those. The Tx itself keeps the driver's levels
+    (``tx/builder.py``); only what the receiver and the statistical engine
+    assume changes.
+    """
     if cfg.modulation == "pam4":
-        return pam4_levels(cfg.tx.swing, cfg.tx.rlm)
-    return nrz_levels(cfg.tx.swing)
+        lv = pam4_levels(cfg.tx.swing, cfg.tx.rlm)
+    else:
+        lv = nrz_levels(cfg.tx.swing)
+    if cfg.topology is not None and cfg.topology.optical.li_compression > 0.0:
+        from ..optical import static_curve
+
+        curve = static_curve(cfg.topology.optical)
+        a = cfg.tx.swing / 2.0
+        lv = a * curve(lv / a)
+    return lv
 
 
 def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,

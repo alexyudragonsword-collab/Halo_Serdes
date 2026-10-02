@@ -72,11 +72,12 @@
 
 ## ③ 还没做到(真实缺口)
 
-**光互联**:阶段 1、2 已做 —— 光路(E/O、光纤、O/E)作为级联 H(f) 进信道,O/E 噪声随电平光功率变化,
+**光互联**:阶段 1–3 已做 —— 光路(E/O、光纤、O/E)作为级联 H(f) 进信道,O/E 噪声随电平光功率变化,
 两引擎在 ER 3 / 4.5 / 6 dB 三点 2× 内吻合(`tests/test_optical.py`,示例 32 回答 LPO vs CPO);
 重定时器把链路切成三段串联,每段判决作下一段符号源,端到端 BER 与 1 − ∏(1 − pᵢ) 在置信区间内
-(`engine/cascade.py`,示例 33 LPO / retimed / CPO 同台)。
-**未做**:L-I 非线性与 TDECQ(阶段 3)、功耗。三个参考库都没有光路。
+(`engine/cascade.py`,示例 33 LPO / retimed / CPO 同台);E/O 大信号曲线(VCSEL L-I / EAM)与 802.3
+TDECQ(`analysis/tdecq.py`,示例 34)。
+**未做**:功耗、802.3dj TDECQ 的 DFE、LPO 模块内线性 EQ。三个参考库都没有光路。
 
 **相对 PyBERT**
 

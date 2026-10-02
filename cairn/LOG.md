@@ -3,6 +3,24 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-02 · 光互联链路,阶段 3:E/O 大信号曲线 + TDECQ(feat/optical-link-stage3)
+
+- **`OpticalConfig.li_compression`** → `optical.StaticCurve`:VCSEL 凹(热翻转)/ EML 凸(EAM 指数吸收),外电平钉住、OMA/ER 不变;
+  `optical_rlm` 让光域 R_LM 成为导出量。验收:c = 0 时 R_LM = 1,c 增大单调降(VCSEL 与闭式 1 − 8κ/3 逐位同)。
+- **被推翻:VCSEL 曲线放在 E/O 动态之前(Hammerstein)** → 两种器件都放在 E/O 小信号输出之后(Wiener);初稿让理想段 A
+  单独卷积,2×baud 网格上的砖墙 sinc 绕回,TDECQ 读成 23 dB。修法 + `ChannelModel.band_limited()` 见 `cairn/光互联建模.md` §8 与 pitfalls。
+- 时域引擎曲线开启时三段卷积(驱动 → 曲线 → 光纤);曲线关闭时 475 值指纹与 main 逐位同。统计引擎对曲线开启的配置发 warning
+  (铁律 3 不保证;实测 ADC PAM4 统计/时域 0.61–0.70)。
+- **`analysis/tdecq.py`**(802.3 121.8.5,标准原文被代理拦截,来源逐条在 docstring):理想眼 0.001 dB;已知 σ 的眼与闭式 0.969 dB
+  差 0.07–0.14 dB(4 个种子,门槛 0.2);理想发射机过 BT4 0.34 dB。
+- 示例 34:VCSEL 100G/λ 4.59 dB(SR1 4.4,刚好不过;ER ≥ 4.2 dB 或 f_r ≥ 22.3 GHz 过),EML 200G/λ 2.08 dB(DR1 3.4;带宽 ≥ 34.6 GHz);
+  压缩 0.5 VCSEL +5.07 / EML +0.85 dB,VCSEL 的代价随带宽收缩 —— 部分已拆,剩余未验证。写进 SUMMARY §05。
+- **更正阶段 2 条目**:「Optical」页交付时桌面点开即 `AttributeError`(GUI 兼容层没再导出 `optical_study`);已修 + 守卫测试,坑进 pitfalls。
+  专题文档的「被推翻的判断」标题在阶段 2 被误删,已恢复并加更正说明。
+- 表单 `topology.optical.li_compression`、`tdecq` study(桌面 + Android 同一份广告)、Optical 页 TDECQ 卡片;ROADMAP P3-11 改为余项(dj DFE、
+  统计引擎曲线 ISI、LPO 线性 EQ)。本地 jit 550 passed / 2 skipped,nojit 548 passed / 4 skipped;Android CI(0b76f2e,run 36962844384;之后只改 tests/ 与文档):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`
+  (解释型与编译型 APK 都过,StudyContractTest 2/0f 含 tdecq 广告);指纹 475 值与 main 逐位同。
+
 ## 2026-10-02 · 光互联链路,阶段 2:重定时串联(feat/optical-link-stage2)
 
 - **重定时 = 三条链路串联。** `TopologyConfig.retimer: none | both` + `retimer_rx` / `retimer_tx`;`engine/cascade.py`

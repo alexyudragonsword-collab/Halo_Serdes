@@ -595,8 +595,33 @@ run_time_link(cfg, symbols=my_symbols)   # 任何引擎都能接外部符号流(
 注意全刻度:未重定时时 host RX 看到整条链(增益 0.25),重定时后每个 RX 只看一段电线(0.5)或光路(0.25),
 `adc.fullscale` 要跟着设(预置 `pam4_100g_lpo_vcsel.yaml` 里 host 0.3、重定时器 0.6)。
 
-**不做的**:L-I 非线性 / TDECQ、功耗、重定时器内的 FEC 终结;AMI 模型与 `topology` 互斥。
+**大信号曲线与 TDECQ(阶段 3)**:`topology.optical.li_compression`(0 = 线性)给 E/O 一条静态大信号曲线 ——
+VCSEL 是二阶 L-I 带热翻转(压缩顶电平),EML 是指数型 EAM 吸收曲线(压缩底电平);两端外电平钉住,OMA / ER 不变,
+内电平移动,`tx.rlm` 成为"驱动器设定",光域 R_LM 由曲线导出。曲线作用在 E/O 小信号输出上(Wiener 顺序),
+时域引擎按样本过曲线;接收机按曲线后的电平切片(ADC DSP 自适应参考电平的行为),统计引擎用同样的电平但链路
+仍线性,并发 warning —— 曲线开启时不在铁律 3 的 2× 保证内。
+
+```python
+from halo_serdes.optical import optical_rlm, static_curve
+optical_rlm(cfg.topology.optical)                 # 曲线导出的 802.3 R_LM(120D.3.1.2)
+
+from halo_serdes.engine.optical_stage import transmitter_power
+from halo_serdes.analysis.tdecq import tdecq
+P, line = transmitter_power(cfg, include_seg_a=False, through_fibre=True)   # TP2 光功率 [W],含激光 RIN
+r = tdecq(P, cfg.dt, cfg.symbol_rate, line)                                 # 100G/λ:5 抽头
+r = tdecq(P, cfg.dt, cfg.symbol_rate, line, n_taps=15, pre_options=(1, 2, 3),
+          f_ref_hz=53.125e9)                                                # 200G/λ(802.3dj,DFE 未建)
+r.tdecq_db, r.oma_outer_w, r.er_db, r.rlm, r.ceq, r.taps
+```
+
+TDECQ 按 802.3 121.8.5:0.5×baud 四阶 Bessel-Thomson 参考接收机、抽头和为 1 的 T 间隔 FFE、0.45 / 0.55 UI
+两个 0.04 UI 宽直方图、阈值 P_ave 与 ±OMA/3、OMA 取 7 个 3 / 6 个 0 连续游程中心 2 UI、目标 SER 4.8e-4
+(Q_t = 3.414)、C_eq 噪声增益。理想眼 0 dB;理想发射机过参考接收机约 0.3 dB。GUI「Optical」页与 Android 的
+「TDECQ」study 给出配置点与 ER / 激光带宽两条扫描。
+
+**不做的**:功耗、重定时器内的 FEC 终结、802.3dj TDECQ 的 1 抽头 DFE;AMI 模型与 `topology` 互斥。
 示例 `examples/32_lpo_vs_cpo.py`(同一光路,电段 4/8/12/16 dB,光纤长度扫到 reach,100 m 上比
 CPO 与 LPO 的 OMA 裕度)、`examples/33_three_topologies.py`(LPO / retimed / CPO 同台 + 三杠杆表);
+`examples/34_tdecq.py`(VCSEL 100G/λ 与 EML 200G/λ 的 TDECQ 对 ER / 激光带宽 / L-I 压缩,对着 802.3 上限);
 GUI「Optical」页与 Android 的「Optical reach」study 用统计级联画同一张 reach 图。
 

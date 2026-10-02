@@ -149,17 +149,33 @@ def _optical_stages(cfg: LinkConfig, channel: ChannelModel, tx_ami, rx_ami):
     if tx_ami is not None or rx_ami is not None:
         raise ValueError("AMI models are not supported together with an optical "
                          "topology (stage 1 has no AMI node between the segments)")
-    from .optical_stage import split_impulses
+    from .optical_stage import split_impulses, split_impulses_nonlinear
 
+    if channel.optical.curve is not None:
+        return split_impulses_nonlinear(cfg, channel)
     return split_impulses(cfg, channel)
+
+
+def _chain(stages) -> np.ndarray:
+    """The small-signal impulse the stages make together (cursors, levels)."""
+    h = stages[0]
+    for s in stages[1:]:
+        h = np.convolve(h, s)
+    return h
 
 
 def _optical_pass(tx_y: np.ndarray, stages, channel: ChannelModel,
                   rng: np.random.Generator) -> np.ndarray:
-    """Tx waveform -> photodiode node -> level-dependent noise -> receiver."""
-    h1, h2 = stages
-    y_pd = channel.optical.noise.inject(fft_filter(tx_y, h1), rng)
-    return fft_filter(y_pd, h2)
+    """Tx waveform -> [drive -> E/O curve ->] photodiode node ->
+    level-dependent noise -> receiver."""
+    opt = channel.optical
+    if len(stages) == 3:
+        hd, ho, h2 = stages
+        y_pd = fft_filter(opt.curve.apply(fft_filter(tx_y, hd), opt.drive_amplitude), ho)
+    else:
+        h1, h2 = stages
+        y_pd = fft_filter(tx_y, h1)
+    return fft_filter(opt.noise.inject(y_pd, rng), h2)
 
 
 def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
@@ -233,7 +249,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # lines up with the waveform that is built in two stages below
     stages = _optical_stages(cfg, channel, tx_ami, rx_ami)
     if stages is not None:
-        h = np.convolve(*stages)
+        h = _chain(stages)
 
     # --- optional AMI Tx/Rx models (Init folds into h, GetWave into the wave) ---
     h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
@@ -389,7 +405,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     h = h * cfg.rx.vga_gain
     stages = _optical_stages(cfg, channel, tx_ami, rx_ami)
     if stages is not None:
-        h = np.convolve(*stages)
+        h = _chain(stages)
 
     h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
 

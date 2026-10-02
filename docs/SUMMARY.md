@@ -183,6 +183,27 @@ pre-FEC 地板 ~1e-5 来自时域引擎尾部 2–3 个无效判决(ROADMAP P1-1
 Fibre length and OMA on the x axis, never "loss in dB"; the ~1e-5 pre-FEC floor of every ladder is the engine's 2-3 invalid
 tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
 
+**发射机这一侧:TDECQ / The transmitter side: TDECQ**(示例 34,802.3 121.8.5 的 BT4 参考接收机 + 参考 FFE,
+过各自光纤后测 / example 34, measured after each transmitter's own fibre):
+
+![TDECQ](../examples/output/34_tdecq.png)
+
+| 发射机 / Transmitter | TDECQ | 上限 / limit | 最小 ER / min ER | 最小带宽 / min bandwidth |
+|---|---|---|---|---|
+| VCSEL 100G/λ,f_r 22 GHz,ER 4 dB,100 m OM4 | 4.59 dB | SR1 4.4 dB | 4.20 dB | f_r 22.3 GHz |
+| EML 200G/λ,55 GHz,ER 4.5 dB,500 m SMF | 2.08 dB | DR1 3.4 dB | ≤ 2.5 dB | 34.6 GHz |
+
+> 与上面三拓扑同一颗 VCSEL(f_r 22 GHz、ER 4 dB;RIN 取 −140 dB/Hz)按 SR1 的 TDECQ 刚好不过,ER 升到 4.2 dB 或
+> f_r 升到 22.3 GHz 就过;它对带宽最敏感:f_r 每降 2 GHz 涨 3–8 dB。L-I 压缩 0.5(曲线 R_LM
+> 0.52–0.56)时,VCSEL 的 TDECQ +5.1 dB、EML 只 +0.85 dB;VCSEL 的代价随带宽收缩(f_r 60 GHz 时 +1.9 dB),
+> 部分原因是 ISI 限的眼对内电平移动更敏感,其余未拆。
+>
+> The same VCSEL as the three-topology ladders (f_r 22 GHz, ER 4 dB; RIN taken at -140 dB/Hz) just fails SR1 on TDECQ and
+> passes at ER 4.2 dB or f_r 22.3 GHz; bandwidth is what it is most sensitive to, every 2 GHz of f_r lost costing 3-8 dB.
+> An L-I compression of 0.5 (curve R_LM 0.52-0.56) costs the VCSEL +5.1 dB of TDECQ and the EML only +0.85 dB; the VCSEL's
+> penalty shrinks with bandwidth (+1.9 dB at f_r 60 GHz), so part of it is an ISI-limited eye reacting more to inner levels
+> moving; the rest is not yet split out.
+
 ---
 
 ## 06 · 工程结论 / Engineering conclusions

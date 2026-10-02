@@ -44,6 +44,15 @@ authoring_mode: ai_generated
 (`error_idx` 贴着 `n_checked`),给每条曲线垫了 3/(2N) 的地板;60k 符号时 5.6e-5、200k 时 1e-5。
 不是链路性质,是引擎尾部余量(ROADMAP P1-1b)。
 
+**一个单独拿出来卷积的块,先看它的 |H| 到网格顶端有没有掉下去。** ChannelModel 的网格只到 2×baud,补零到采样率后,
+到顶端还不衰减的块(理想/零长电段、SMF 色散的全通幅度、单极点 EAM)就是砖墙,零相位 sinc 一半主瓣绕到数组末尾,
+卷积就把几千 UI 之前的符号混进来。在完整级联里邻居的滚降把它盖住了;阶段 3 在 E/O 曲线处切开、在 TP2 单测发射机时,
+它就单独出现 —— 现象是 TDECQ 23 dB、测出的 OMA 比配置小 30%。修法是 `band_limited()`(顶端四分之一滚降 + 32/f_max 延时),
+延时只给 4/f_max 时滚降自身的振铃仍会绕回(1e-2 尾巴,trimmer 保留全长)。
+
+**TDECQ 闭式测试的噪声要带限。** 每个样本独立的白噪声会被直方图窗口里的线性插值平均掉一半方差,TDECQ 读低 0.3 dB;
+真实眼图的噪声带限,相邻样本相关,不会被平均。测试用每 UI 一个噪声值。
+
 ### API 类
 
 **`SimResult.ber` 是 `BerResult` 不是 float。** 要数值用 `res.ber.ber`;`res.ser` 才是
@@ -68,6 +77,11 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 **给一个失败点加保护时,要检查同一屏上还有谁在裸调它。** 给 CTLE 指标卡加了 try 之后,
 下一行的 Bode 图仍在裸调 `Ctle.from_config`,整个 tab 照样崩溃 ——
 **提示渲染出来了,然后连同页面一起被丢掉**。是新写的测试抓到的,不是我看出来的。
+
+**新 study 要在 `halo_serdes_gui/studies.py` 兼容层里再导出一次。** GUI 面板还是 `from .. import studies`,
+那是一份写死名字的再导出;study 只加在 `halo_serdes_app.studies` + `api._STUDIES` 时,app 层测试和 Android 合同全绿,
+桌面页面点开才 `AttributeError`。光互联阶段 2 的「Optical」页就这样交付了(阶段 3 发现并修复)。现在有守卫测试:`api._STUDIES` 里每个 study 都必须能从
+兼容层拿到;Optical 页另有一条渲染测试,其它页仍只测 study 函数(`tests/test_gui_studies.py`)。
 
 **测试里"取第一个预设"要先确认它在这个用途下成立。** `preset_names()[0]` 是
 "Library defaults",信道是无文件的 touchstone。这条坑本文件下方已经记过一次(M4 仪器化测试),

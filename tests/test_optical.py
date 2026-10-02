@@ -6,6 +6,8 @@ per-level noise kernels against the time engine's per-sample noise, at
 three extinction ratios, on both receiver architectures.
 """
 
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -284,3 +286,118 @@ def test_ami_is_refused_with_a_topology():
     cfg = _adc_cfg(4.5, -6.0, n_sym=2_000)
     with pytest.raises(ValueError, match="AMI"):
         run_time_link(cfg, tx_ami=NativeFirAmi([1.0]))
+
+
+# ------------------------------------------- stage 3: large-signal curve ---
+
+def test_static_curve_keeps_oma_and_er_and_derives_rlm():
+    """Outer levels pinned (OMA, ER unchanged), R_LM = 1 without compression
+    and falling monotonically with it; the VCSEL curve has the closed form
+    R_LM = 1 - 8 kappa / 3."""
+    from halo_serdes.optical import optical_rlm, static_curve
+
+    for kind, extra in (("vcsel_mmf", dict(modal_bw_mhz_km=4700.0)),
+                        ("eml_smf", dict(dispersion_ps_nm_km=-1.9))):
+        assert static_curve(OpticalConfig(kind=kind, **extra)) is None
+        assert optical_rlm(OpticalConfig(kind=kind, **extra)) == pytest.approx(1.0)
+        prev = 1.0
+        for c in (0.1, 0.3, 0.5, 0.7):
+            o = OpticalConfig(kind=kind, li_compression=c, **extra)
+            g = static_curve(o)
+            assert g(np.array([-1.0, 1.0])) == pytest.approx([-1.0, 1.0])
+            u = np.linspace(-1, 1, 201)
+            assert np.all(np.diff(g(u)) > 0)                    # monotonic over the drive range
+            r = optical_rlm(o)
+            assert r < prev
+            prev = r
+            if kind == "vcsel_mmf":
+                assert r == pytest.approx(1 - 8 * g.kappa / 3, abs=1e-12)
+                # VCSEL compresses the top, EAM the bottom
+                assert g(np.array([1 / 3]))[0] > 1 / 3
+            else:
+                assert g(np.array([-1 / 3]))[0] < -1 / 3
+    # zero optical power is a floor, overdrive past the rollover peak holds
+    o = OpticalConfig(kind="vcsel_mmf", li_compression=0.5, modal_bw_mhz_km=4700.0, er_db=4.0)
+    g = static_curve(o)
+    er = 10 ** 0.4
+    assert g(np.array([-10.0]))[0] == pytest.approx(-(er + 1) / (er - 1))
+    assert g(np.array([1 / (2 * g.kappa) + 5.0]))[0] == pytest.approx(g(np.array([1 / (2 * g.kappa)]))[0])
+
+
+def test_curve_moves_the_level_powers_and_the_receiver_levels():
+    from halo_serdes.engine.static_link import _levels
+    from halo_serdes.optical import oe, static_curve
+
+    cfg = _adc_cfg(4.5, -6.0, n_sym=2_000)
+    lin = oe.level_powers(cfg.topology.optical, "pam4")
+    squeezed = dataclasses.replace(cfg.topology.optical, li_compression=0.3)
+    nl = oe.level_powers(squeezed, "pam4")
+    assert nl[0] == pytest.approx(lin[0]) and nl[3] == pytest.approx(lin[3])
+    assert nl[1] > lin[1] and nl[2] > lin[2]                    # VCSEL: inner levels pushed up
+    cfg_nl = dataclasses.replace(cfg, topology=dataclasses.replace(cfg.topology, optical=squeezed))
+    a = cfg.tx.swing / 2
+    assert np.allclose(_levels(cfg_nl), a * static_curve(squeezed)(_levels(cfg) / a))
+    assert np.array_equal(_levels(cfg), np.array([-a, -a / 3, a / 3, a]))   # no curve: untouched
+
+
+def test_identity_curve_on_the_three_stage_path_matches_two_stages():
+    """Cutting the chain at the E/O and passing an identity curve is the
+    linear link: same error count within Poisson noise, same SNR."""
+    from halo_serdes.channel.model import OpticalStages  # noqa: F401  (the type being built)
+    from halo_serdes.optical import StaticCurve
+
+    cfg = _adc_cfg(4.5, -6.0, n_sym=80_000)
+    cm = ChannelModel.from_config(cfg)
+    two = run_time_link(cfg, channel=cm)
+    seg_a = ChannelModel.from_channel_config(cfg.topology.seg_a, cfg.symbol_rate)
+    eo_m = ChannelModel.from_optical(cfg.topology.optical, seg_a.f, "eo")
+    fib = ChannelModel.from_optical(cfg.topology.optical, seg_a.f, "fiber")
+    o = cm.optical
+    cm.optical = dataclasses.replace(
+        o, curve=StaticCurve("rollover", 0.0, -10.0),
+        drive=ChannelModel.cascade(seg_a, eo_m).band_limited(), optics=fib.band_limited(),
+        drive_amplitude=o.noise.signal_swing_v / 2)
+    three = run_time_link(cfg, channel=cm)
+    n2, n3 = two.ber.n_errors, three.ber.n_errors
+    assert n2 > 100
+    assert abs(n2 - n3) < 4 * np.sqrt(n2 + n3)
+    assert three.slicer_snr_db == pytest.approx(two.slicer_snr_db, abs=0.3)
+
+
+def test_compression_costs_ber_and_the_statistical_engine_says_it_is_outside_invariant3():
+    cfg = _adc_cfg(4.5, -6.0, n_sym=80_000)
+
+    def run(c):
+        cc = dataclasses.replace(cfg, topology=dataclasses.replace(
+            cfg.topology, optical=dataclasses.replace(cfg.topology.optical, li_compression=c)))
+        cm = ChannelModel.from_config(cc)
+        return cc, cm, run_time_link(cc, channel=cm)
+
+    _, _, lin = run(0.0)
+    cc, cm, nl = run(0.4)
+    assert cm.optical.curve is not None
+    assert nl.ber.ber > lin.ber.ber
+    with pytest.warns(UserWarning, match="E/O curve"):
+        run_statistical(cc, channel=cm, ffe_taps=nl.ffe_taps, ffe_pre=cc.rx.ffe.n_pre)
+
+
+def test_optical_package_imports_only_numpy():
+    # optical/ is the device-physics layer; keeping it numpy-only keeps it
+    # importable on the phone and free of engine dependencies.
+    import ast
+    from pathlib import Path
+
+    import halo_serdes.optical as pkg
+
+    allowed = {"numpy", "__future__", "dataclasses"}
+    bad = []
+    for path in sorted(Path(pkg.__file__).parent.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                names = [node.module]
+            else:
+                continue
+            bad += [f"{path.name}: {n}" for n in names if n.split(".")[0] not in allowed]
+    assert not bad, bad

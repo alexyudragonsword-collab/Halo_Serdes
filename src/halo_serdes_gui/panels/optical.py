@@ -1,5 +1,6 @@
 """Optical tab — the topology's cascade, where the noise enters, how much each
-level carries, and reach over fibre length with and without a retimer."""
+level carries, reach over fibre length with and without a retimer, and the
+transmitter's TDECQ."""
 
 from __future__ import annotations
 
@@ -44,6 +45,39 @@ def _sigma_fig(noise):
                              xtitle="level power [dBm]", ytitle="sigma [mV / sample]", height=340)
 
 
+def _tdecq_section(rec: RunRecord):
+    """The transmitter as 802.3 would accept it: TDECQ after the fibre, the
+    optical R_LM the L-I curve leaves, and where ER and bandwidth move it."""
+    t = studies.tdecq_study(rec)
+    if "error" in t:
+        return dbc.Alert(t["error"], color="light", className="border")
+    limit = 4.4 if rec.cfg.symbol_rate < 80e9 else 3.4
+    tone = "good" if t["tdecq_db"] <= limit else "crit"
+    cards = [
+        theme.metric_card("TDECQ (after fibre)", f"{t['tdecq_db']:.2f} dB", tone,
+                          f"802.3 limit {limit} dB (SR1 / DR1)"),
+        theme.metric_card("Optical R_LM", f"{t['rlm']:.3f}", "info",
+                          f"L-I curve alone {t['curve_rlm']:.3f}"),
+        theme.metric_card("Equaliser noise gain C_eq", f"{t['ceq']:.2f}", "info",
+                          f"OMA_outer {t['oma_dbm']:+.2f} dBm"),
+    ]
+    hl = [{"y": limit, "text": f"limit {limit} dB", "color": theme.GOOD}]
+    er = figures.lines_fig([{"x": t["er_db"], "y": t["tdecq_er"], "name": "TDECQ",
+                             "mode": "lines+markers", "color": theme.PRIMARY}],
+                           title="TDECQ vs extinction ratio", xtitle="ER [dB]",
+                           ytitle="TDECQ [dB]", height=300, hlines=hl)
+    bw = figures.lines_fig([{"x": t["bw_ghz"], "y": t["tdecq_bw"], "name": "TDECQ",
+                             "mode": "lines+markers", "color": theme.ACCENT}],
+                           title="TDECQ vs laser bandwidth", xtitle="f_r / 3 dB BW [GHz]",
+                           ytitle="TDECQ [dB]", height=300, hlines=hl)
+    return html.Div([
+        theme.section_title("Transmitter: TDECQ (802.3 reference receiver and equaliser)"),
+        common.cards_row(cards),
+        dbc.Row([dbc.Col(common.graph(er), lg=6), dbc.Col(common.graph(bw), lg=6)],
+                className="g-2"),
+    ])
+
+
 def render(rec: RunRecord):
     if rec is None:
         return common.need_run_message()
@@ -83,6 +117,8 @@ def render(rec: RunRecord):
     blocks = [common.warnings_block(rec), common.cards_row(cards),
               dbc.Row([dbc.Col(common.graph(_loss_fig(cm, cfg.f_nyquist)), lg=7),
                        dbc.Col(common.graph(_sigma_fig(noise)), lg=5)], className="g-2")]
+    if cfg.modulation == "pam4":
+        blocks.append(_tdecq_section(rec))
 
     r = studies.optical_study(rec)
     if "error" in r:

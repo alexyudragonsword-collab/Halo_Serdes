@@ -44,6 +44,19 @@ def split_impulses(cfg: LinkConfig, channel: ChannelModel) -> tuple[np.ndarray, 
     return h1, h2
 
 
+def split_impulses_nonlinear(cfg: LinkConfig, channel: ChannelModel
+                             ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(drive, optics, receiver) impulses around a large-signal E/O curve:
+    up to the curve, from it to the photodiode, and on to the slicer. Their
+    convolution is the small-signal chain the receiver's cursors come from;
+    the waveform passes the curve between the first two."""
+    opt = channel.optical
+    hd = opt.drive.response_set(cfg.dt).h.y
+    ho = opt.optics.response_set(cfg.dt).h.y
+    h2 = apply_front_end(cfg, opt.post_pd.response_set(cfg.dt).h.y)
+    return hd, ho, h2
+
+
 def slicer_sigma_per_level(cfg: LinkConfig, channel: ChannelModel, h1: np.ndarray,
                            h2: np.ndarray, ffe_taps: np.ndarray | None = None,
                            nominal: bool = False) -> np.ndarray:
@@ -99,3 +112,65 @@ def slicer_sigma_per_level(cfg: LinkConfig, channel: ChannelModel, h1: np.ndarra
         p_mean = noise.p_mid_w + a_k * p1_n / scale
         out[k] = np.sqrt(np.sum(g2 * noise.sample_var_v2(np.maximum(p_mean, 0.0), p_var)))
     return out
+
+
+def transmitter_power(cfg: LinkConfig, *, through_fibre: bool = False, include_seg_a: bool = True,
+                      include_rin: bool = True, symbols: np.ndarray | None = None,
+                      rng: np.random.Generator | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Optical power [W] leaving the E/O (TP2), or after the fibre, and the
+    line symbols it carries -- what a TDECQ measurement sees.
+
+    The host Tx waveform is built as the time engine builds it (pattern,
+    precoding, FIR, edge jitter), passes segment A (``include_seg_a``; an LPO
+    module's light depends on the host trace), the E/O response, the
+    large-signal curve if one is configured (the same Wiener order as the
+    link, ``channel/model.py``) and optionally the fibre. Only the
+    laser's RIN is added: shot and TIA noise belong to a receiver, not to the
+    transmitter being measured. RIN is white per sample at the instantaneous
+    power, sigma^2 = RIN P^2 f_s / 2, the convention of ``optical/noise.py``;
+    the reference receiver then sets its bandwidth.
+    """
+    from ..optical import static_curve
+    from ..tx.builder import symbols_to_voltages, tx_fir
+    from ..tx.jitter import build_jittered_tx
+    from .lti import fft_filter
+    from .static_link import check_symbols, make_pattern
+    from .timedomain import _tx_symbols
+
+    top = cfg.topology
+    if top is None:
+        raise ValueError("transmitter_power needs an optical topology (cfg.topology)")
+    opt = top.optical
+    rng = np.random.default_rng(cfg.sim.seed) if rng is None else rng
+    user = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
+    line = _tx_symbols(cfg, user)
+    v = symbols_to_voltages(line, cfg)
+    if len(cfg.tx.fir_taps) > 1:
+        v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
+    tx_wave, _ = build_jittered_tx(v, cfg, rng)
+
+    seg_a = ChannelModel.from_channel_config(top.seg_a, cfg.symbol_rate, "topology.seg_a")
+    eo = ChannelModel.from_optical(opt, seg_a.f, "eo")
+    fib = ChannelModel.from_optical(opt, seg_a.f, "fiber")
+    # without segment A the drive is the Tx waveform through the matched
+    # divider alone: a scale, not a filter (an ideal flat segment on this
+    # grid would be a brick wall with a wrapping sinc impulse)
+    gain_a = abs(seg_a.H[0]) if include_seg_a else 0.5
+    amp = cfg.tx.swing / 2.0 * gain_a * float(np.sum(cfg.tx.fir_taps))
+
+    def impulse(*models):
+        return ChannelModel.cascade(*models).band_limited().response_set(cfg.dt).h.y
+
+    y = (fft_filter(tx_wave.y, impulse(seg_a, eo)) if include_seg_a
+         else fft_filter(0.5 * tx_wave.y, impulse(eo)))
+    curve = static_curve(opt)
+    if curve is not None:
+        y = curve.apply(y, amp)
+    if through_fibre:
+        y = fft_filter(y, impulse(fib))
+    p_mid = 0.5 * (opt.p_low_w + opt.p_high_w)
+    power = np.maximum(p_mid + y / amp * opt.oma_w / 2.0, 0.0)
+    if include_rin:
+        rin = 10.0 ** (opt.rin_db_hz / 10.0)
+        power = power + rng.normal(size=power.size) * power * np.sqrt(rin * 0.5 / cfg.dt)
+    return power, line

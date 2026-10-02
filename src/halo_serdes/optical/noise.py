@@ -42,10 +42,10 @@ class OpticalNoise:
 
     @classmethod
     def from_config(cls, opt, modulation: str, signal_swing_v: float,
-                    dt: float) -> "OpticalNoise":
+                    dt: float, drive_levels=None) -> "OpticalNoise":
         from .oe import level_powers
 
-        return cls(level_powers_w=level_powers(opt, modulation),
+        return cls(level_powers_w=level_powers(opt, modulation, drive_levels),
                    responsivity_a_w=opt.responsivity_a_w,
                    rin_lin=10.0 ** (opt.rin_db_hz / 10.0),
                    tia_noise_a2_hz=(opt.tia_noise_pa_sqrthz * 1e-12) ** 2,

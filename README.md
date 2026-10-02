@@ -42,7 +42,7 @@ print(run_time_link(cfg).summary())     # BER / SER / slicer SNR
 
 ## 图形界面 GUI
 
-一个专业的 Plotly Dash 工作台,把 34 个示例脚本的全部分析能力变成交互式操作
+一个专业的 Plotly Dash 工作台,把 35 个示例脚本的全部分析能力变成交互式操作
 (单次链路、双引擎交叉校验、眼图/浴盆、CTLE、自适应/CDR 动态、ADC 逐 lane、抖动预算、
 reach 扫描、FEC、串扰、AMI/COM、定点),共 17 个能力标签页。界面不新增任何仿真逻辑,
 只驱动现有引擎并渲染结果。详见 [`docs/GUI.md`](docs/GUI.md);
@@ -65,7 +65,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 前端 | `afe/` | CTLE、VGA、求和节点有限带宽;时间交织 ADC(offset/gain/skew 失配、ENOB) |
 | 均衡 | `dsp/` | ZF/MMSE FFE、自适应 DFE(LMS/sign-sign)、Viterbi MLSE 与 sliding-detector MLSD、定点数据通路 |
 | 时钟 | `cdr/` | bang-bang 与 Mueller-Müller CDR(二阶环、环路延迟、相位钳位) |
-| 光互联 | `optical/` + `LinkConfig.topology` | **LPO / CPO 阶段 1**:电段 A → E/O(VCSEL 二阶 / EML 单极点)→ 光纤(OM4 模式带宽 / SMF 色散+啁啾)→ O/E(PD+TIA)→ 电段 B 作为级联 H(f) 进信道;散粒 + RIN + TIA 噪声随每个 PAM4 电平的光功率变化,两个引擎共用一个噪声对象(`examples/32`;不做重定时 / L-I 非线性 / TDECQ) |
+| 光互联 | `optical/` + `LinkConfig.topology` | **LPO / CPO / retimed,阶段 1–3**:电段 A → E/O(VCSEL 二阶 / EML 单极点)→ 光纤(OM4 模式带宽 / SMF 色散+啁啾)→ O/E(PD+TIA)→ 电段 B 作为级联 H(f) 进信道;散粒 + RIN + TIA 噪声随每个 PAM4 电平的光功率变化,两个引擎共用一个噪声对象(`examples/32`);重定时串联(`engine/cascade.py`,`examples/33`);L-I / EAM 大信号曲线与 802.3 TDECQ(`analysis/tdecq.py`,`examples/34`) |
 | 引擎 | `engine/` | 时域 MC、StatEye 统计(PDF 卷积外推 1e-15)、静态快评、Tx-FIR 背channel 训练 |
 | 分析 | `analysis/` | 眼图/浴盆、三层抖动分解、JTOL、IEEE 802.3 COM(93A/178A)、波形重建 |
 | 编码 | `fec/` | RS-KP4/KR4 + pre/post-FEC 换算、级联内码模型 |
@@ -75,7 +75,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 
 **规模**:核心库 ~5.3k 行 / GUI ~2.6k 行 / 测试 ~2.9k 行 / 示例 ~3.4k 行;
 **297 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
-**34 个编号示例**(`examples/00`–`33`)。
+**35 个编号示例**(`examples/00`–`34`)。
 
 ## 路线图
 

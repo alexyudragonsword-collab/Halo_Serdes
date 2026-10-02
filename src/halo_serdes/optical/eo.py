@@ -15,6 +15,8 @@ Sources for the magnitudes the defaults and examples use:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 
@@ -49,3 +51,99 @@ def response(cfg, f: np.ndarray) -> np.ndarray:
     if cfg.kind == "eml_smf":
         return eml_response(f, cfg.f_r_hz)
     raise ValueError(f"no E/O response for optical.kind {cfg.kind!r}")
+
+
+# --- large-signal curve (stage 3) --------------------------------------------
+
+@dataclass(frozen=True)
+class StaticCurve:
+    """Memoryless E/O transfer in normalised units: drive ``u`` with the outer
+    PAM4 drive levels at -1 and +1, power ``g(u)`` with the outer optical
+    levels at -1 and +1.
+
+    Pinning both ends keeps OMA and ER exactly what ``OpticalConfig`` states;
+    what the curve changes is where the inner levels land and how the
+    waveform between symbols is bent -- which is the part of a real
+    transmitter a linear model cannot have.
+
+    ``compression`` c = 1 - (smaller end slope / larger end slope) on [-1, 1]:
+
+    - ``"rollover"`` (VCSEL): P = u + kappa (1 - u^2), the second-order L-I
+      curve with thermal rollover, kappa = c / (2 (2 - c)); concave, the top
+      level is compressed. Past the rollover peak u = 1 / (2 kappa) the power
+      holds there rather than falling.
+    - ``"eam"`` (EML): P = 2 (exp(gamma (u + 1) / 2) - 1) / (exp(gamma) - 1) - 1,
+      the exponential absorption edge, gamma = -ln(1 - c); convex, the bottom
+      level is compressed.
+
+    Both clip at zero optical power (``floor``, below threshold / full
+    extinction). The link applies the curve to the E/O's small-signal output
+    (Wiener order; ``ChannelModel.from_topology`` says why). Approximate, unsourced to a clause: second-order L-I and
+    exponential EAM transmission are the textbook shapes (Coldren, Corzine and
+    Masanovic, Diode Lasers and Photonic Integrated Circuits, ch. 2 and 8);
+    802.3 constrains their result through RLM and TDECQ, not the curve.
+    """
+
+    kind: str
+    compression: float
+    floor: float
+
+    @property
+    def kappa(self) -> float:
+        c = self.compression
+        return c / (2.0 * (2.0 - c))
+
+    @property
+    def gamma(self) -> float:
+        return float(-np.log1p(-self.compression))
+
+    def __call__(self, u):
+        u = np.asarray(u, dtype=np.float64)
+        if self.kind == "rollover":
+            k = self.kappa
+            if k > 0.0:
+                u = np.minimum(u, 0.5 / k)
+            g = u + k * (1.0 - u * u)
+        else:
+            gm = self.gamma
+            g = 2.0 * np.expm1(gm * (u + 1.0) / 2.0) / np.expm1(gm) - 1.0
+        return np.maximum(g, self.floor)
+
+    def apply(self, y: np.ndarray, amplitude: float) -> np.ndarray:
+        """The curve on a waveform whose outer drive levels sit at +-``amplitude``."""
+        return amplitude * self(np.asarray(y) / amplitude)
+
+
+def static_curve(cfg) -> StaticCurve | None:
+    """The configured large-signal curve, or None for a linear E/O."""
+    if cfg.kind == "none" or cfg.li_compression <= 0.0:
+        return None
+    er = 10.0 ** (cfg.er_db / 10.0)
+    return StaticCurve(kind="rollover" if cfg.kind == "vcsel_mmf" else "eam",
+                       compression=float(cfg.li_compression),
+                       floor=-(er + 1.0) / (er - 1.0))
+
+
+def rlm(levels) -> float:
+    """Level separation mismatch ratio of four ascending PAM4 levels.
+
+    IEEE 802.3 120D.3.1.2: with V_mid = (V0 + V3) / 2,
+    ES1 = (V1 - V_mid) / (V0 - V_mid), ES2 = (V2 - V_mid) / (V3 - V_mid),
+    R_LM = min(3 ES1, 3 ES2, 2 - 3 ES1, 2 - 3 ES2); 1 for equal spacing.
+    """
+    v0, v1, v2, v3 = (float(x) for x in levels)
+    mid = 0.5 * (v0 + v3)
+    es1 = (v1 - mid) / (v0 - mid)
+    es2 = (v2 - mid) / (v3 - mid)
+    return min(3 * es1, 3 * es2, 2 - 3 * es1, 2 - 3 * es2)
+
+
+def optical_rlm(cfg, drive_levels=(-1.0, -1.0 / 3.0, 1.0 / 3.0, 1.0)) -> float:
+    """R_LM of the optical levels the curve makes from the given drive levels.
+
+    This is the sense in which ``tx.rlm`` becomes a derived quantity once the
+    E/O is nonlinear: ``tx.rlm`` sets the driver's inner levels, the curve
+    decides where the light ends up."""
+    curve = static_curve(cfg)
+    u = np.asarray(drive_levels, dtype=np.float64)
+    return rlm(curve(u) if curve is not None else u)
