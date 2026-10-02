@@ -4,7 +4,7 @@
 
 ## 项目一句话
 
-行为级高速 SerDes 仿真框架:NRZ ≤32 Gb/s 与 PAM4 ≤224 Gb/s,mixed-signal 与 ADC-based 双接收机架构可公平对比,时域 MC 与 StatEye 统计双引擎交叉校验;光互联(LPO/CPO)作为级联光路段 + 电平相关噪声接入同一条链(阶段 1,见 `cairn/光互联建模.md`)。
+行为级高速 SerDes 仿真框架:NRZ ≤32 Gb/s 与 PAM4 ≤224 Gb/s,mixed-signal 与 ADC-based 双接收机架构可公平对比,时域 MC 与 StatEye 统计双引擎交叉校验;光互联(LPO/CPO/retimed)作为级联光路段 + 电平相关噪声 + 重定时串联 + TDECQ 接入同一条链(阶段 1–3,见 `cairn/光互联建模.md`)。
 
 ## Init 配置
 
