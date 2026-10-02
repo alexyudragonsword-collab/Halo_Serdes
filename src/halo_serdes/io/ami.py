@@ -405,7 +405,9 @@ class NativeCom(ComAdapter):
     Rx-FFE + N_b-tap DFE, and ``sigma_total`` combines residual ISI, crosstalk,
     device noise, and jitter (BBN) as an RSS. The official tool plugs in behind
     the identical :meth:`compute` signature; results here are labeled
-    "behavioral COM" wherever reported.
+    "behavioral COM" wherever reported. Like ``analysis/com.py`` its
+    transmitter is the reference one (Tx FIR on the pulse, no DAC / driver
+    model), so it is not built from ``tx.pipeline.TxPipeline``.
 
     Args:
         target_der: target detector error ratio setting ``Q_target``

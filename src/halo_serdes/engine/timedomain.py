@@ -23,9 +23,8 @@ from ..config.schema import LinkConfig
 from ..core.waveform import Waveform
 from ..cdr import ms_rx
 from ..dsp import channel_cursors
-from ..tx.builder import symbols_to_voltages, tx_fir
 from ..cdr.rx_clock import rx_clock_offsets_samples
-from ..tx.jitter import build_jittered_tx
+from ..tx.pipeline import TxPipeline
 from .lti import fft_filter
 from .result import SimResult
 from .scoring import (
@@ -229,10 +228,8 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # --- pattern, Tx (optionally 1/(1+D) precoded; FIR + jittered edges) ---
     symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line_symbols = _tx_symbols(cfg, symbols)
-    v = symbols_to_voltages(line_symbols, cfg)
-    if len(cfg.tx.fir_taps) > 1:
-        v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
-    tx_wave, _ = build_jittered_tx(v, cfg, rng)
+    tx_pipe = TxPipeline.from_config(cfg)
+    tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(line_symbols), rng)
 
     # --- channel + CTLE (single LTI impulse, overlap-save) ---
     if channel is None:
@@ -387,10 +384,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # --- pattern, Tx (optionally 1/(1+D) precoded) ---
     symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line_symbols = _tx_symbols(cfg, symbols)
-    v = symbols_to_voltages(line_symbols, cfg)
-    if len(cfg.tx.fir_taps) > 1:
-        v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
-    tx_wave, _ = build_jittered_tx(v, cfg, rng)
+    tx_pipe = TxPipeline.from_config(cfg)
+    tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(line_symbols), rng)
 
     # --- channel + CTLE front end ---
     if channel is None:

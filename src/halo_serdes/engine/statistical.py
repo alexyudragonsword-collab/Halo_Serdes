@@ -63,6 +63,7 @@ from ..config.schema import LinkConfig
 from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
+from ..tx.pipeline import TxPipeline
 from .static_link import _levels
 
 
@@ -162,8 +163,9 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         h = np.convolve(h1, h2)
         if level_sigma is None:
             level_sigma = slicer_sigma_per_level(cfg, channel, h1, h2, ffe_taps)
-    if len(cfg.tx.fir_taps) > 1:
-        h = np.convolve(h, upsampled_taps(cfg.tx.fir_taps, osr))
+    tx_resp = TxPipeline.from_config(cfg).equivalent_symbol_response(osr)
+    if tx_resp is not None:
+        h = np.convolve(h, tx_resp)
     noise_sigma = cfg.rx.noise_rms
     h_pre_ffe = h
     if ffe_taps is not None and len(ffe_taps) > 1:

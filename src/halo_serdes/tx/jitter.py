@@ -97,13 +97,8 @@ def jittered_zoh(v_baud: np.ndarray, osr: int, jitter_s: np.ndarray,
 
 def build_jittered_tx(v_baud: np.ndarray, cfg: LinkConfig,
                       rng: np.random.Generator) -> tuple[Waveform, np.ndarray]:
-    """Voltages -> jittered oversampled Tx waveform. Returns (wave, jitter_s)."""
-    n_sym = v_baud.size
-    jit = edge_jitter_seq(n_sym, cfg, rng, v_baud)
-    y = jittered_zoh(v_baud, cfg.osr, jit, cfg.ui)
-    wave = Waveform(y, cfg.dt)
-    if cfg.tx.bw is not None:
-        from .builder import apply_single_pole
+    """Voltages -> jittered oversampled Tx waveform. Returns (wave, jitter_s).
+    Kept for callers of the old API; it is ``TxPipeline.waveform_and_edges``."""
+    from .pipeline import TxPipeline
 
-        wave = apply_single_pole(wave, cfg.tx.bw)
-    return wave, jit
+    return TxPipeline.from_config(cfg).waveform_and_edges(v_baud, rng)

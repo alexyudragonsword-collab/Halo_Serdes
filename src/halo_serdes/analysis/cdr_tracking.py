@@ -29,14 +29,11 @@ def tx_edge_offsets_s(cfg: LinkConfig) -> np.ndarray:
     """
     from ..engine.static_link import make_pattern
     from ..engine.timedomain import _tx_symbols
-    from ..tx.builder import symbols_to_voltages, tx_fir
-    from ..tx.jitter import edge_jitter_seq
+    from ..tx.pipeline import TxPipeline
 
     rng = np.random.default_rng(cfg.sim.seed)
-    v = symbols_to_voltages(_tx_symbols(cfg, make_pattern(cfg)), cfg)
-    if len(cfg.tx.fir_taps) > 1:
-        v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
-    return edge_jitter_seq(v.size, cfg, rng, v)
+    tx_pipe = TxPipeline.from_config(cfg)
+    return tx_pipe.edge_offsets(tx_pipe.symbol_stage(_tx_symbols(cfg, make_pattern(cfg))), rng)
 
 
 def cdr_tracking_error_s(cfg: LinkConfig, res: SimResult,
