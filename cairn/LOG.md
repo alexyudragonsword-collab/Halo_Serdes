@@ -21,7 +21,7 @@
   RIN×OMA −139;TIA 40–43 GHz / 10–13 pA/√Hz(Renesas);C2M 13 dB(OIF)→ 16 dB(LPO MSA)。
 - 示例 32(LPO vs CPO,VCSEL + OM4,ADC + KP4,电段 4/8/12/16 dB):电段 4/8/12/16 dB(总 8/16/24/32 dB @26.56 GHz),OMA +1 dBm、ER 4 dB、RIN −145 dB/Hz,ADC 10 bit + CTLE 3 dB + FFE 4/12,KP4 1e-15:reach **209 / 153 / 0 / 0 m**(单调递减;12 dB 在 30 m 时 pre-FEC 3.9e-4 刚过 KP4 瀑布,16 dB 在 30 m SNR 14 dB);100 m 处 OMA 裕度 8.6 / 5.6 / — / — dB → **CPO 比 8 dB 段的 LPO 多 3.0 dB 光裕度**;12/16 dB 段在 SR1 OMA 窗口内任何 OMA 都关不上 —— 链路是 RIN 限制的(噪声随光功率涨),电损耗经 FFE 放大噪声才是决定量,OMA 几乎不动结果(+1 与 +3 dBm 同 SNR)。
 - `config_bridge` 加 `topology.*` 27 个字段(桌面 / Android 自动出现,铁律 6 触发);
-  Android CI:待 PR CI 跑完后补记 instrumented totals;文档:USAGE §16、README、CHANGELOG、COMPARISON §③、ROADMAP P3-11、
+  Android CI(af0e61c,run 36943475934):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`(FormContractTest 6/0f,解释型与编译型 APK 都过);test 矩阵 3.10/3.11 × jit/nojit、lint、import-clean、vendor-drift、rtl-lockstep 全绿(本地 jit 510 passed / 2 skipped,nojit 508 passed / 4 skipped);文档:USAGE §16、README、CHANGELOG、COMPARISON §③、ROADMAP P3-11、
   `cairn/光互联建模.md`(新)、pitfalls 三条。
 
 ## 2026-10-01 · PLL 时钟相噪剖面,阶段 3:RX 采样时钟 + 活桥(feat/clock-profile-rx)
