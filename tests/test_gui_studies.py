@@ -57,3 +57,29 @@ def test_studies_gate_on_non_analytic_and_non_adc():
     assert "error" in studies.reach_study(rec)
     # mixed-signal run has no ADC codes -> fixed-point returns an error note
     assert "error" in studies.fixedpoint_study(rec)
+
+
+def test_optical_page_renders_every_section_on_the_lpo_preset():
+    """The Optical tab draws its cascade, reach and TDECQ sections from the
+    studies module the GUI imports -- a study missing from that re-export
+    raises on render, which is how the stage-2 page shipped broken."""
+    pytest.importorskip("dash", reason="GUI extra not installed")
+    from halo_serdes_app import config_bridge as cb
+    from halo_serdes_app import runner
+    from halo_serdes_gui import studies as gui_studies
+    from halo_serdes_gui.panels import optical
+
+    assert gui_studies.optical_study is not None and gui_studies.tdecq_study is not None
+    vals = cb.config_to_values(cb.load_preset("PAM4 100G/λ LPO (VCSEL + OM4)"))
+    vals["sim.n_symbols"] = 20000
+    vals["topology.optical.li_compression"] = 0.2
+    rec = runner.run_from_values(vals, engines=("stat",))
+    assert rec.ok, rec.error
+    body = str(optical.render(rec))
+    for section in ("Chain loss @ Nyquist", "Reach over fibre length", "TDECQ (after fibre)",
+                    "Optical R_LM", "TDECQ vs extinction ratio"):
+        assert section in body, section
+    # an electrical link gets the explanation, not an exception
+    elec = runner.run_from_values(cb.config_to_values(cb.load_preset("NRZ 28G analytic (COM/xtalk)")),
+                                  engines=("stat",))
+    assert "This link is electrical" in str(optical.render(elec))
