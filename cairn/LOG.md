@@ -18,7 +18,7 @@
 - **更正阶段 2 条目**:「Optical」页交付时桌面点开即 `AttributeError`(GUI 兼容层没再导出 `optical_study`);已修 + 守卫测试,坑进 pitfalls。
   专题文档的「被推翻的判断」标题在阶段 2 被误删,已恢复并加更正说明。
 - 表单 `topology.optical.li_compression`、`tdecq` study(桌面 + Android 同一份广告)、Optical 页 TDECQ 卡片;ROADMAP P3-11 改为余项(dj DFE、
-  统计引擎曲线 ISI、LPO 线性 EQ)。本地:PYTEST_JIT;PYTEST_NOJIT;Android:ANDROID_TOTALS。
+  统计引擎曲线 ISI、LPO 线性 EQ)。本地 jit 550 passed / 2 skipped,nojit 548 passed / 4 skipped;Android:ANDROID_TOTALS。
 
 ## 2026-10-02 · 光互联链路,阶段 2:重定时串联(feat/optical-link-stage2)
 
