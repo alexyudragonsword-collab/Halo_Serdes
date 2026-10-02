@@ -33,7 +33,13 @@ Non-LTI approximations (each cross-checked against the time engine):
   (no CDR self-noise), which is also what keeps it byte-identical to the
   pre-profile engine;
 - crosstalk: aggressor cursor sets convolved in as independent stationary
-  interference.
+  interference;
+- optical topology (``cfg.topology``): the photodiode's shot and RIN noise
+  depend on the optical power of the level being received, so the Gaussian
+  kernel becomes one kernel per level, each at the *nominal* level power
+  (ISI moves the instantaneous power around that; the time engine follows
+  the waveform, this engine does not -- the 2x cross-check is what bounds the
+  difference). Electrical links keep the single kernel, byte for byte.
 """
 
 from __future__ import annotations
@@ -116,7 +122,12 @@ def gaussian_kernel(sigma: float, dv: float, n_sigma: float = 8.0) -> np.ndarray
 def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     ffe_taps: np.ndarray | None = None, ffe_pre: int = 0,
                     v_bins: int = 4096, n_pre: int = 24, n_post: int = 64,
-                    xtalk_pulses: list[Waveform] | None = None) -> StatResult:
+                    xtalk_pulses: list[Waveform] | None = None,
+                    level_sigma: np.ndarray | None = None) -> StatResult:
+    """``level_sigma``: extra noise sigma at the slicer per transmitted level
+    (ascending), added in quadrature to the receiver noise; derived from
+    ``channel.optical`` when None. Explicit for studies and for pinning that
+    equal kernels reproduce the single-kernel engine."""
     osr = cfg.osr
     if channel is None:
         channel = ChannelModel.from_config(cfg)
@@ -130,6 +141,14 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         f = np.fft.rfftfreq(nfft, d=cfg.dt)
         h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: 2 * h.size]
     h = h * cfg.rx.vga_gain
+    if getattr(channel, "optical", None) is not None:
+        # same two-stage split as the time engine (engine/optical_stage.py)
+        from .optical_stage import slicer_sigma_per_level, split_impulses
+
+        h1, h2 = split_impulses(cfg, channel)
+        h = np.convolve(h1, h2)
+        if level_sigma is None:
+            level_sigma = slicer_sigma_per_level(cfg, channel, h1, h2, ffe_taps)
     if len(cfg.tx.fir_taps) > 1:
         h = np.convolve(h, upsampled_taps(cfg.tx.fir_taps, osr))
     noise_sigma = cfg.rx.noise_rms
@@ -138,6 +157,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         h = np.convolve(h, upsampled_taps(ffe_taps, osr))
         noise_sigma = noise_sigma * float(np.linalg.norm(ffe_taps))
     pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
+    if level_sigma is not None:
+        level_sigma = np.asarray(level_sigma, dtype=np.float64)
 
     swing = cfg.tx.swing / 2.0  # symbol amplitude scale (levels_norm in [-1,1])
     levels_norm = _levels(cfg) / swing  # {-1,1} or {-1,-1/3,1/3,1}*rlm
@@ -151,6 +172,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     # voltage grid sized to worst-case ISI + noise
     span = float(np.abs(pulse.y).max()) * swing * 2.5 + 8 * noise_sigma + 1e-6
+    if level_sigma is not None:
+        span += 8 * float(level_sigma.max())
     v_centers = np.linspace(-span, span, v_bins)
     dv = v_centers[1] - v_centers[0]
     noise_k = gaussian_kernel(noise_sigma, dv)
@@ -189,6 +212,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # closed-form form of the planned MLSD gain table; the time engine is
         # the cross-check (extras['ser_slicer'] vs ser).
         sigma_eff = noise_sigma
+        g_mlsd = 1.0
         if mlsd_mem > 0:
             res = []
             isi_list = list(isi)
@@ -201,7 +225,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             if res:
                 g = np.sqrt(mlse_min_distance_sq(
                     np.concatenate([[1.0], np.asarray(res)])))
-                sigma_eff = noise_sigma / max(g, 1e-12)
+                g_mlsd = max(g, 1e-12)
+                sigma_eff = noise_sigma / g_mlsd
 
         pdf = isi_pdf(isi, levels_norm, v_centers)
         if xtalk_pulses:
@@ -213,22 +238,33 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 xc[xval] = xp.y[xidx[xval]]
                 pdf = np.convolve(pdf, isi_pdf(xc * swing, levels_norm, v_centers),
                                   mode="same")
-        nk = noise_k if sigma_eff == noise_sigma else gaussian_kernel(sigma_eff, dv)
-        if nk.size > 1:
-            pdf = np.convolve(pdf, nk, mode="same")
-        pdf = pdf / max(pdf.sum(), 1e-300)
+        # noise kernel: one for an electrical link; one per *transmitted*
+        # level when the noise follows the level (an inverting channel flips
+        # the slicer order, not which symbol carried the most light)
+        if level_sigma is None:
+            nk = noise_k if sigma_eff == noise_sigma else gaussian_kernel(sigma_eff, dv)
+            if nk.size > 1:
+                pdf = np.convolve(pdf, nk, mode="same")
+            pdf = pdf / max(pdf.sum(), 1e-300)
+            pdf_lv = [pdf] * n_levels
+        else:
+            pdf_lv = []
+            for sk in level_sigma:
+                nk = gaussian_kernel(np.sqrt(noise_sigma ** 2 + sk ** 2) / g_mlsd, dv)
+                pk = np.convolve(pdf, nk, mode="same") if nk.size > 1 else pdf
+                pdf_lv.append(pk / max(pk.sum(), 1e-300))
 
-        # tail CDFs
-        cdf_up = np.cumsum(pdf[::-1])[::-1]   # P(x >= v)
-        cdf_dn = np.cumsum(pdf)               # P(x <= v)
+        # tail CDFs per level
+        cdf_up = [np.cumsum(p[::-1])[::-1] for p in pdf_lv]   # P(x >= v)
+        cdf_dn = [np.cumsum(p) for p in pdf_lv]               # P(x <= v)
 
-        def tail_ge(v: float) -> float:
+        def tail_ge(v: float, j: int) -> float:
             i = int(np.searchsorted(v_centers, v))
-            return float(cdf_up[i]) if i < v_bins else 0.0
+            return float(cdf_up[j][i]) if i < v_bins else 0.0
 
-        def tail_le(v: float) -> float:
+        def tail_le(v: float, j: int) -> float:
             i = int(np.searchsorted(v_centers, v)) - 1
-            return float(cdf_dn[i]) if i >= 0 else 0.0
+            return float(cdf_dn[j][i]) if i >= 0 else 0.0
 
         # SER/BER over levels: distance to adjacent thresholds = |main|*gap/2
         ser = 0.0
@@ -240,10 +276,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             p_err_up = p_err_dn = 0.0
             if j < n_levels - 1:
                 thr = (lv_sorted[j] + lv_sorted[j + 1]) / 2.0
-                p_err_up = tail_ge(thr - lv_sorted[j])
+                p_err_up = tail_ge(thr - lv_sorted[j], int(order[j]))
             if j > 0:
                 thr = (lv_sorted[j - 1] + lv_sorted[j]) / 2.0
-                p_err_dn = tail_le(thr - lv_sorted[j])
+                p_err_dn = tail_le(thr - lv_sorted[j], int(order[j]))
             ser += (p_err_up + p_err_dn) / n_levels
             nbe += (p_err_up + p_err_dn) / n_levels  # Gray: adjacent = 1 bit
         ser_phi[pi] = ser
@@ -252,7 +288,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # marginal slicer PDF (mixture over transmitted levels) for the eye
         eye_col = np.zeros(v_bins)
         for j in range(n_levels):
-            _shift_add(eye_col, pdf, lv[j] / dv, 1.0 / n_levels)
+            _shift_add(eye_col, pdf_lv[j], lv[j] / dv, 1.0 / n_levels)
         eye_pdf[:, pi] = eye_col
 
     # sampling-jitter smearing on the phase axis. White clock: the RJ sigma
@@ -278,6 +314,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         eye_pdf=eye_pdf, v_centers=v_centers,
         phi_ui=phi_offsets / osr,
         extras={"peak": peak, "noise_sigma": noise_sigma,
+                "level_sigma": level_sigma,
                 "jitter_sigma_ui": sigma_ui,
                 "clock_loop": loop_sol})
 

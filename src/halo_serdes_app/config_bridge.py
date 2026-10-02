@@ -21,7 +21,7 @@ from typing import Any
 
 
 from halo_serdes.config import LinkConfig, apply_overrides, load_config
-from halo_serdes.config.schema import SCHEMA_VERSION
+from halo_serdes.config.schema import SCHEMA_VERSION, TopologyConfig
 
 #: Environment override for the directory holding ``configs/`` (and any other
 #: bundled data). Android is the reason it exists: Chaquopy's importer serves
@@ -298,6 +298,39 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
     ("numeric", "Numeric", [
         _f("numeric.mode", "Datapath", "enum", options=["float", "fixed"]),
     ]),
+    # Optical interconnect. "none" is the electrical link (topology=None in
+    # the config); the other two kinds replace `channel` with
+    # segment A -> E/O -> fibre -> O/E -> segment B.
+    ("topology", "Optical topology", [
+        _f("topology.optical.kind", "Optics", "enum",
+           options=["none", "vcsel_mmf", "eml_smf"]),
+        _f("topology.optical.oma_dbm", "OMA outer [dBm]", "float"),
+        _f("topology.optical.er_db", "Extinction ratio [dB]", "float"),
+        _f("topology.optical.rin_db_hz", "RIN [dB/Hz]", "float"),
+        _f("topology.optical.f_r_hz", "Laser f_r / EML BW [GHz]", "float", scale=1e9),
+        _f("topology.optical.damping_hz", "Laser damping [GHz]", "float", scale=1e9),
+        _f("topology.optical.length_m", "Fibre length [m]", "float"),
+        _f("topology.optical.modal_bw_mhz_km", "Modal BW [MHz·km] (MMF)", "opt_float"),
+        _f("topology.optical.dispersion_ps_nm_km", "Dispersion [ps/(nm·km)] (SMF)", "opt_float"),
+        _f("topology.optical.chirp_alpha", "Chirp alpha (SMF)", "float"),
+        _f("topology.optical.wavelength_nm", "Wavelength [nm]", "float"),
+        _f("topology.optical.responsivity_a_w", "PD responsivity [A/W]", "float"),
+        _f("topology.optical.tia_bw_hz", "TIA BW [GHz]", "float", scale=1e9),
+        _f("topology.optical.tia_noise_pa_sqrthz", "TIA noise [pA/√Hz]", "float"),
+        _f("topology.optical.tz_ohm", "Transimpedance [ohm]", "float"),
+        _f("topology.seg_a.kind", "Seg A kind", "enum", options=["touchstone", "analytic"]),
+        _f("topology.seg_a.file", "Seg A Touchstone file", "opt_str"),
+        _f("topology.seg_a.length_m", "Seg A length [m]", "float"),
+        _f("topology.seg_a.rdc", "Seg A R_dc [ohm/m]", "float"),
+        _f("topology.seg_a.r_skin", "Seg A R_skin [ohm/(m·√Hz)]", "float"),
+        _f("topology.seg_a.loss_tangent", "Seg A loss tangent", "float"),
+        _f("topology.seg_b.kind", "Seg B kind", "enum", options=["touchstone", "analytic"]),
+        _f("topology.seg_b.file", "Seg B Touchstone file", "opt_str"),
+        _f("topology.seg_b.length_m", "Seg B length [m]", "float"),
+        _f("topology.seg_b.rdc", "Seg B R_dc [ohm/m]", "float"),
+        _f("topology.seg_b.r_skin", "Seg B R_skin [ohm/(m·√Hz)]", "float"),
+        _f("topology.seg_b.loss_tangent", "Seg B loss tangent", "float"),
+    ]),
 ]
 
 # flat lookup path -> field spec
@@ -370,10 +403,18 @@ def _fmt_num(x: float) -> str:
 
 # --- config <-> values -----------------------------------------------------
 
+def _blank_topology() -> TopologyConfig:
+    # What the form shows for an electrical link: optics "none", segments at
+    # their defaults. LinkConfig normalises this back to topology=None.
+    return TopologyConfig()
+
+
 def get_by_path(cfg: LinkConfig, path: str) -> Any:
     obj: Any = cfg
     for part in path.split("."):
         obj = getattr(obj, part)
+        if obj is None and part == "topology":
+            obj = _blank_topology()
     return obj
 
 
@@ -383,6 +424,14 @@ def build_config(values: dict[str, Any]) -> LinkConfig:
     for path, field in FIELD_BY_PATH.items():
         if path in values:
             overrides[path] = coerce_in(field, values[path])
+    # topology.* fields descend into a subtree that is None on an electrical
+    # link; build that subtree first (LinkConfig collapses "none" optics back
+    # to None, so it cannot be seeded on the LinkConfig itself)
+    top_over = {k[len("topology."):]: v for k, v in overrides.items()
+                if k.startswith("topology.")}
+    if top_over:
+        overrides = {k: v for k, v in overrides.items() if not k.startswith("topology.")}
+        overrides["topology"] = apply_overrides(_blank_topology(), top_over)
     cfg = apply_overrides(LinkConfig(), overrides)
     return _resolve_channel(cfg)
 
@@ -401,6 +450,13 @@ def _resolve_channel(cfg: LinkConfig) -> LinkConfig:
         resolved = resolve_data_file(cfg.channel.file)
         if resolved != cfg.channel.file:
             cfg = apply_overrides(cfg, {"channel.file": resolved})
+    if cfg.topology is not None:
+        for seg in ("seg_a", "seg_b"):
+            ch = getattr(cfg.topology, seg)
+            if ch.kind == "touchstone" and ch.file:
+                resolved = resolve_data_file(ch.file)
+                if resolved != ch.file:
+                    cfg = apply_overrides(cfg, {f"topology.{seg}.file": resolved})
     for side in ("tx", "rx"):
         clk = getattr(cfg, side).clock
         if clk.kind == "profile" and clk.file:

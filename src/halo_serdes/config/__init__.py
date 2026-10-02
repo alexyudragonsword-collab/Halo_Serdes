@@ -9,15 +9,17 @@ from .schema import (
     FfeConfig,
     LinkConfig,
     NumericConfig,
+    OpticalConfig,
     QFormat,
     RxConfig,
     SimConfig,
+    TopologyConfig,
     TxConfig,
 )
 
 __all__ = [
     "AdcConfig", "CdrConfig", "ChannelConfig", "ClockConfig", "CtleConfig", "DfeConfig",
-    "FfeConfig", "LinkConfig", "NumericConfig", "QFormat", "RxConfig",
-    "SimConfig", "TxConfig",
+    "FfeConfig", "LinkConfig", "NumericConfig", "OpticalConfig", "QFormat", "RxConfig",
+    "SimConfig", "TopologyConfig", "TxConfig",
     "load_config", "dump_config", "apply_overrides",
 ]

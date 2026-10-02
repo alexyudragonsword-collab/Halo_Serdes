@@ -10,8 +10,8 @@ import pytest
 
 from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
-    AdcConfig, CdrConfig, ChannelConfig, DfeConfig, FfeConfig, QFormat,
-    SimConfig, ClockConfig, TxConfig,
+    AdcConfig, CdrConfig, ChannelConfig, DfeConfig, FfeConfig, OpticalConfig, QFormat,
+    SimConfig, ClockConfig, TopologyConfig, TxConfig,
 )
 
 
@@ -55,6 +55,26 @@ from halo_serdes.config.schema import (
     (lambda: ChannelConfig(length_m=-0.1), "length_m"),
     (lambda: QFormat(0, 4), "wl"),
     (lambda: QFormat(8, -1), "fl"),
+    # OpticalConfig: each kind requires its own fibre parameter, and the
+    # power scale must be well defined (ER > 0 dB, RIN below 0 dB/Hz)
+    (lambda: OpticalConfig(kind="dfb_smf"), "optical.kind"),
+    (lambda: OpticalConfig(kind="vcsel_mmf"), "modal_bw_mhz_km"),
+    (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=0.0), "modal_bw_mhz_km"),
+    (lambda: OpticalConfig(kind="eml_smf"), "dispersion_ps_nm_km"),
+    (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, er_db=0.0), "er_db"),
+    (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, rin_db_hz=0.0), "rin_db_hz"),
+    (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, f_r_hz=0.0), "f_r_hz"),
+    (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, length_m=-1.0), "length_m"),
+    (lambda: OpticalConfig(kind="eml_smf", dispersion_ps_nm_km=-1.5, tia_bw_hz=0.0), "tia_bw_hz"),
+    (lambda: OpticalConfig(kind="eml_smf", dispersion_ps_nm_km=-1.5,
+                           tia_noise_pa_sqrthz=-1.0), "tia_noise_pa_sqrthz"),
+    (lambda: OpticalConfig(kind="eml_smf", dispersion_ps_nm_km=-1.5,
+                           responsivity_a_w=0.0), "responsivity_a_w"),
+    # the two segments are multiplied point by point: one grid
+    (lambda: TopologyConfig(seg_a=ChannelConfig(kind="analytic", n_freq=1024),
+                            seg_b=ChannelConfig(kind="analytic", n_freq=2048)), "seg_b.n_freq"),
+    (lambda: TopologyConfig(seg_a=ChannelConfig(kind="analytic", f_max=50e9),
+                            seg_b=ChannelConfig(kind="analytic")), "seg_b.f_max"),
 ])
 def test_invalid_config_is_rejected(factory, frag):
     with pytest.raises(ValueError) as exc:
@@ -80,6 +100,29 @@ def test_valid_configs_still_construct():
     DfeConfig(sum_bw=None, tap_limits=None)
     CdrConfig(clamp=None)
     ChannelConfig(f_max=None)
+    # an "off" optical config needs no fibre parameters at all
+    OpticalConfig(kind="none")
+    OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0)
+    OpticalConfig(kind="eml_smf", dispersion_ps_nm_km=0.0)   # zero dispersion is a value
+
+
+def test_optical_power_scale_is_fixed_by_oma_and_er():
+    """``oma_dbm`` and ``er_db`` determine P_high / P_low uniquely."""
+    o = OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, oma_dbm=0.0, er_db=3.0)
+    assert o.oma_w == pytest.approx(1e-3)
+    assert o.p_high_w - o.p_low_w == pytest.approx(o.oma_w)
+    assert o.p_high_w / o.p_low_w == pytest.approx(10 ** 0.3)
+
+
+def test_topology_none_optics_normalise_to_no_topology():
+    """A topology whose optics are "none" is the electrical link, and the
+    engines see exactly one representation of that: ``topology is None``."""
+    assert LinkConfig().topology is None
+    assert LinkConfig(topology=TopologyConfig()).topology is None
+    on = LinkConfig(topology=TopologyConfig(
+        optical=OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0)))
+    assert on.topology is not None and on.topology.optical.kind == "vcsel_mmf"
+    assert on.topology.seg_a.kind == "analytic"    # segments default to a buildable trace
 
 
 def test_derived_quantities_are_physical():
