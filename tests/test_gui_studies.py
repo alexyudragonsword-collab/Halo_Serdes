@@ -83,3 +83,13 @@ def test_optical_page_renders_every_section_on_the_lpo_preset():
     elec = runner.run_from_values(cb.config_to_values(cb.load_preset("NRZ 28G analytic (COM/xtalk)")),
                                   engines=("stat",))
     assert "This link is electrical" in str(optical.render(elec))
+
+
+def test_gui_shim_reexports_every_registered_study():
+    # The panels import the old ``halo_serdes_gui.studies`` path; a study
+    # registered only in the app layer passes every app/Android test and
+    # fails when the desktop page is opened.
+    from halo_serdes_app import api
+
+    missing = [fn.__name__ for fn in api._STUDIES.values() if not hasattr(studies, fn.__name__)]
+    assert not missing, f"add to halo_serdes_gui/studies.py: {missing}"

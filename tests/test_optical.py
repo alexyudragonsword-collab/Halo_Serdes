@@ -379,3 +379,25 @@ def test_compression_costs_ber_and_the_statistical_engine_says_it_is_outside_inv
     assert nl.ber.ber > lin.ber.ber
     with pytest.warns(UserWarning, match="E/O curve"):
         run_statistical(cc, channel=cm, ffe_taps=nl.ffe_taps, ffe_pre=cc.rx.ffe.n_pre)
+
+
+def test_optical_package_imports_only_numpy():
+    # optical/ is the device-physics layer; keeping it numpy-only keeps it
+    # importable on the phone and free of engine dependencies.
+    import ast
+    from pathlib import Path
+
+    import halo_serdes.optical as pkg
+
+    allowed = {"numpy", "__future__", "dataclasses"}
+    bad = []
+    for path in sorted(Path(pkg.__file__).parent.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                names = [node.module]
+            else:
+                continue
+            bad += [f"{path.name}: {n}" for n in names if n.split(".")[0] not in allowed]
+    assert not bad, bad

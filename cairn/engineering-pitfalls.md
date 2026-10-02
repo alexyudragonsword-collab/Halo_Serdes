@@ -78,6 +78,11 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 下一行的 Bode 图仍在裸调 `Ctle.from_config`,整个 tab 照样崩溃 ——
 **提示渲染出来了,然后连同页面一起被丢掉**。是新写的测试抓到的,不是我看出来的。
 
+**新 study 要在 `halo_serdes_gui/studies.py` 兼容层里再导出一次。** GUI 面板还是 `from .. import studies`,
+那是一份写死名字的再导出;study 只加在 `halo_serdes_app.studies` + `api._STUDIES` 时,app 层测试和 Android 合同全绿,
+桌面页面点开才 `AttributeError`。光互联阶段 2 的「Optical」页就这样交付了(阶段 3 发现并修复)。现在有守卫测试:`api._STUDIES` 里每个 study 都必须能从
+兼容层拿到;Optical 页另有一条渲染测试,其它页仍只测 study 函数(`tests/test_gui_studies.py`)。
+
 **测试里"取第一个预设"要先确认它在这个用途下成立。** `preset_names()[0]` 是
 "Library defaults",信道是无文件的 touchstone。这条坑本文件下方已经记过一次(M4 仪器化测试),
 它在 2026-09 的 GUI 测试里又咬了一次 —— **记下来不等于不会再犯,取法本身要改成"取第一个满足前提的"**。
