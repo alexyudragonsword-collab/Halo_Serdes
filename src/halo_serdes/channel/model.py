@@ -26,6 +26,13 @@ class OpticalStages:
     post_pd: "ChannelModel"
     noise: object                   # optical.OpticalNoise
     config: TopologyConfig
+    # Large-signal E/O curve (stage 3). None is a linear E/O and the two
+    # stages above are the whole story; otherwise ``pre_pd`` is cut once more
+    # at the curve: ``drive`` up to it, ``optics`` from it to the photodiode.
+    curve: object = None            # optical.StaticCurve
+    drive: "ChannelModel | None" = None
+    optics: "ChannelModel | None" = None
+    drive_amplitude: float = 0.0    # outer drive level at the curve's input [V]
 
 
 class ChannelModel:
@@ -114,7 +121,7 @@ class ChannelModel:
         swing: the steady outer-level separation that reaches the photodiode
         is what the config's OMA means.
         """
-        from ..optical import OpticalNoise
+        from ..optical import OpticalNoise, static_curve
 
         top = link.topology
         seg_a = cls.from_channel_config(top.seg_a, link.symbol_rate, "topology.seg_a")
@@ -127,8 +134,27 @@ class ChannelModel:
         post_pd = cls.cascade(oe, seg_b)
         full = cls.cascade(pre_pd, post_pd)
         swing_pd = link.tx.swing * abs(seg_a.H[0]) * float(np.sum(link.tx.fir_taps))
-        noise = OpticalNoise.from_config(top.optical, link.modulation, swing_pd, link.dt)
-        full.optical = OpticalStages(pre_pd=pre_pd, post_pd=post_pd, noise=noise, config=top)
+        curve = static_curve(top.optical)
+        if curve is None:
+            noise = OpticalNoise.from_config(top.optical, link.modulation, swing_pd, link.dt)
+            full.optical = OpticalStages(pre_pd=pre_pd, post_pd=post_pd, noise=noise, config=top)
+            return full
+        # The curve acts on the E/O's small-signal output (a Wiener model):
+        # the physical order for an EAM, whose RC bandwidth shapes the
+        # voltage before the absorption curve sees it; for a VCSEL the L-I
+        # curve physically comes before the relaxation dynamics, and the swap
+        # changes how compression bends ISI, not the levels it settles to.
+        # The other order would leave segment A alone in front of the curve,
+        # and a short or ideal trace on this grid is a brick wall whose
+        # zero-phase impulse wraps half its main lobe to the far end of the
+        # record -- the curve would mix in symbols thousands of UI old.
+        drive, optics = cls.cascade(seg_a, eo).band_limited(), fib.band_limited()
+        a = link.tx.swing / 2.0
+        noise = OpticalNoise.from_config(top.optical, link.modulation, swing_pd, link.dt,
+                                         drive_levels=_tx_levels(link) / a)
+        full.optical = OpticalStages(pre_pd=pre_pd, post_pd=post_pd, noise=noise, config=top,
+                                     curve=curve, drive=drive, optics=optics,
+                                     drive_amplitude=swing_pd / 2.0)
         return full
 
     @classmethod
@@ -147,6 +173,30 @@ class ChannelModel:
             H = H * m.H
             gain *= m.ref_gain
         return cls(H, f, name=" x ".join(m.name or "?" for m in models), ref_gain=gain)
+
+    def band_limited(self) -> "ChannelModel":
+        """This response rolled off over the top quarter of its grid and
+        delayed by 32 / f_max, for a block that is used on its own.
+
+        A block whose magnitude does not fall by the grid edge -- SMF
+        dispersion is all-pass in magnitude, a single-pole EAM is still -9 dB
+        at twice the baud rate -- is a brick wall once zero-padded to the
+        sample rate, and its zero-phase sinc wraps half its main lobe to the
+        far end of the impulse record. Inside a full cascade the neighbours'
+        roll-off hides that; cut at the E/O curve (stage 3) or measured at the
+        transmitter, the block stands alone. The taper only touches
+        frequencies above 1.5 x baud, which the E/O, the O/E and any
+        reference receiver remove anyway; the delay (16 UI at the default
+        grid) is long enough that the taper's own ringing does not wrap
+        (tail 2e-5 of the peak; at 4 / f_max it was 1e-2 and the trimmer kept
+        the whole record), and as a constant it moves nothing the receiver or
+        TDECQ measures.
+        """
+        fm = float(self.f[-1])
+        x = np.clip((self.f - 0.75 * fm) / (0.25 * fm), 0.0, 1.0)
+        taper = 0.5 * (1.0 + np.cos(np.pi * x))
+        return ChannelModel(self.H * taper * np.exp(-2j * np.pi * self.f * 32.0 / fm),
+                            self.f, name=self.name, ref_gain=self.ref_gain)
 
     # -- derived quantities -------------------------------------------------
 
@@ -174,3 +224,12 @@ class ChannelModel:
     def pulse(self, dt: float, osr: int, trim: bool = True) -> Waveform:
         rs = self.response_set(dt, trim=trim)
         return pulse_from_impulse(rs.h, osr)
+
+
+def _tx_levels(link: LinkConfig) -> np.ndarray:
+    """The driver's own levels [V] (the curve has not acted on them yet)."""
+    from ..core.mapping import nrz_levels, pam4_levels
+
+    if link.modulation == "pam4":
+        return pam4_levels(link.tx.swing, link.tx.rlm)
+    return nrz_levels(link.tx.swing)

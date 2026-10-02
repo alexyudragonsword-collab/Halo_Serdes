@@ -70,6 +70,10 @@ from halo_serdes.config.schema import (
                            tia_noise_pa_sqrthz=-1.0), "tia_noise_pa_sqrthz"),
     (lambda: OpticalConfig(kind="eml_smf", dispersion_ps_nm_km=-1.5,
                            responsivity_a_w=0.0), "responsivity_a_w"),
+    (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, li_compression=1.0),
+     "li_compression"),
+    (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, li_compression=-0.1),
+     "li_compression"),
     # the two segments are multiplied point by point: one grid
     (lambda: TopologyConfig(seg_a=ChannelConfig(kind="analytic", n_freq=1024),
                             seg_b=ChannelConfig(kind="analytic", n_freq=2048)), "seg_b.n_freq"),

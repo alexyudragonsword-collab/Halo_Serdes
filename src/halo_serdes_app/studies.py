@@ -295,6 +295,61 @@ def optical_study(rec) -> dict:
     return _cached(("optical", rec.id), compute)
 
 
+
+# --- optical transmitter: TDECQ against ER and laser bandwidth ---------------
+
+def _tdecq_settings(cfg) -> dict:
+    """Reference equaliser by lane rate: 5 taps at 100G/lambda, 15 taps with
+    up to 3 precursors at 200G/lambda (802.3dj; its 1-tap DFE not modelled)."""
+    if cfg.symbol_rate < 80e9:
+        return dict(n_taps=5, pre_options=(1, 2))
+    return dict(n_taps=15, pre_options=(1, 2, 3))
+
+
+def tdecq_value(cfg, n_symbols: int = 8191):
+    """TDECQ of the configured transmitter after its fibre (TP2 + the "D")."""
+    import dataclasses as dc
+
+    from halo_serdes.analysis.tdecq import tdecq
+    from halo_serdes.engine.optical_stage import transmitter_power
+
+    c = dc.replace(cfg, sim=dc.replace(cfg.sim, n_symbols=n_symbols, pattern="prbs13q"))
+    power, line = transmitter_power(c, include_seg_a=False, through_fibre=True)
+    return tdecq(power, c.dt, c.symbol_rate, line, **_tdecq_settings(c))
+
+
+def tdecq_study(rec) -> dict:
+    """TDECQ of the configured optical transmitter (after its fibre, laser
+    RIN included, host trace excluded) against extinction ratio and laser
+    bandwidth, with the configured point and the curve's R_LM. PAM4 only."""
+
+    def compute():
+        import dataclasses as dc
+
+        from halo_serdes.optical import optical_rlm
+
+        cfg = rec.cfg
+        if cfg.topology is None:
+            return {"error": "TDECQ needs topology.optical.kind = vcsel_mmf or eml_smf."}
+        if cfg.modulation != "pam4":
+            return {"error": "TDECQ is defined for PAM4 transmitters."}
+        opt = cfg.topology.optical
+
+        def at(**kw):
+            c = dc.replace(cfg, topology=dc.replace(cfg.topology, optical=dc.replace(opt, **kw)))
+            return tdecq_value(c).tdecq_db
+
+        er = np.linspace(max(2.0, opt.er_db - 2.0), opt.er_db + 2.0, 5)
+        bw = opt.f_r_hz * np.array([0.7, 0.85, 1.0, 1.2, 1.45])
+        here = tdecq_value(cfg)
+        return {"er_db": er, "tdecq_er": np.array([at(er_db=float(e)) for e in er]),
+                "bw_ghz": bw / 1e9, "tdecq_bw": np.array([at(f_r_hz=float(b)) for b in bw]),
+                "tdecq_db": here.tdecq_db, "rlm": here.rlm, "ceq": here.ceq,
+                "oma_dbm": float(10 * np.log10(here.oma_outer_w * 1e3)),
+                "curve_rlm": optical_rlm(opt)}
+    return _cached(("tdecq", rec.id), compute)
+
+
 STUDY_PLOTS: dict[str, list[dict]] = {
     "reach": [{"x": "loss", "y": ["pre", "kp4", "kr4"],
                "x_label": "Nyquist loss [dB]", "y_label": "BER", "y_log": True}],
@@ -325,6 +380,11 @@ STUDY_PLOTS: dict[str, list[dict]] = {
                     "y_label": "decision mismatch vs float", "y_log": True}],
     "optical": [{"x": "length_m", "y": ["kp4", "kp4_retimed"],
                  "x_label": "fibre length [m]", "y_label": "post-KP4 BER", "y_log": True}],
+    "tdecq": [{"x": "er_db", "y": ["tdecq_er"],
+               "x_label": "extinction ratio [dB]", "y_label": "TDECQ [dB]", "y_log": False},
+              {"x": "bw_ghz", "y": ["tdecq_bw"],
+               "x_label": "laser bandwidth / f_r [GHz]", "y_label": "TDECQ [dB]",
+               "y_log": False}],
 }
 
 
@@ -356,6 +416,10 @@ STUDY_LABELS: dict[str, tuple[str, str]] = {
                    "The BER wall against datapath word length, replayed "
                    "bit-true against the float reference. Needs a time-domain "
                    "run, so it is the slowest to start."),
+    "tdecq": ("TDECQ",
+              "The optical transmitter's TDECQ (after its fibre, laser RIN in) "
+              "against extinction ratio and laser bandwidth. Needs "
+              "topology.optical set and PAM4; about ten measurements."),
     "optical": ("Optical reach",
                 "Post-KP4 BER against fibre length for the configured optical "
                 "topology, and for the same link with a DSP retimer at the "

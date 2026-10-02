@@ -7,6 +7,8 @@ DC gain; the channel layer cascades them with the electrical segments
 """
 
 from . import eo, fiber, noise, oe
+from .eo import StaticCurve, optical_rlm, rlm, static_curve
 from .noise import OpticalNoise
 
-__all__ = ["eo", "fiber", "noise", "oe", "OpticalNoise"]
+__all__ = ["eo", "fiber", "noise", "oe", "OpticalNoise", "StaticCurve", "optical_rlm",
+           "rlm", "static_curve"]

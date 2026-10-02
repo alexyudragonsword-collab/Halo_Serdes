@@ -413,6 +413,12 @@ class OpticalConfig:
     dispersion_ps_nm_km: Optional[float] = None   # SMF chromatic dispersion (eml_smf)
     chirp_alpha: float = 0.0                      # transmitter linewidth-enhancement (chirp) factor
     wavelength_nm: float = 1310.0                 # carrier wavelength (dispersion phase only)
+    # Large-signal E/O curve (stage 3): 0 is a linear E/O. For a VCSEL it is
+    # L-I rollover, for an EML the EAM's exponential absorption curve; either
+    # way 1 - (smaller end slope / larger end slope) over the outer levels, so
+    # OMA and ER stay what the fields above say and the inner PAM4 levels move
+    # (optical/eo.py, StaticCurve).
+    li_compression: float = 0.0
     # opto-electric (O/E): photodiode + TIA
     responsivity_a_w: float = 0.7
     tia_bw_hz: float = 40.0e9           # second-order (Butterworth) 3 dB bandwidth [Hz]
@@ -433,6 +439,8 @@ class OpticalConfig:
                  f"optical.tia_noise_pa_sqrthz must be >= 0, got {self.tia_noise_pa_sqrthz}")
         _require(self.rin_db_hz < 0.0,
                  f"optical.rin_db_hz must be < 0 dB/Hz, got {self.rin_db_hz}")
+        _require(0.0 <= self.li_compression < 1.0,
+                 f"optical.li_compression must be in [0, 1), got {self.li_compression}")
         if self.kind == "vcsel_mmf":
             _require(self.modal_bw_mhz_km is not None and self.modal_bw_mhz_km > 0,
                      "optical.modal_bw_mhz_km must be set (> 0) for kind 'vcsel_mmf'")

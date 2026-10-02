@@ -27,10 +27,23 @@ def response(cfg, f: np.ndarray) -> np.ndarray:
     return 1.0 / (s * s + np.sqrt(2.0) * s + 1.0)
 
 
-def level_powers(cfg, modulation: str) -> np.ndarray:
-    """Optical power [W] of each transmitted level, ascending."""
+def level_powers(cfg, modulation: str, drive_levels=None) -> np.ndarray:
+    """Optical power [W] of each transmitted level, ascending.
+
+    A linear E/O puts the levels at equal thirds of the OMA. With a
+    large-signal curve (``li_compression`` > 0) the levels are the curve's
+    image of ``drive_levels`` (normalised drive, outer levels at -1 and +1;
+    equal thirds when None), so the inner levels move and the outer ones
+    stay at P_low and P_high."""
+    from .eo import static_curve
+
     n = 4 if modulation == "pam4" else 2
-    return cfg.p_low_w + cfg.oma_w * np.arange(n) / (n - 1)
+    curve = static_curve(cfg)
+    if curve is None and drive_levels is None:
+        return cfg.p_low_w + cfg.oma_w * np.arange(n) / (n - 1)
+    u = np.linspace(-1.0, 1.0, n) if drive_levels is None else np.asarray(drive_levels, float)
+    g = curve(u) if curve is not None else u
+    return cfg.p_low_w + cfg.oma_w * (g + 1.0) / 2.0
 
 
 def output_swing_v(cfg) -> float:
