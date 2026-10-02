@@ -15,7 +15,7 @@ halo-serdes-gui                      # or: python -m halo_serdes_gui
 
 Then open <http://127.0.0.1:8050/>. Options: `--host`, `--port`, `--debug`.
 
-A screenshot-by-screenshot walkthrough of all 15 tabs is in
+A screenshot-by-screenshot walkthrough of the tabs is in
 [`GUI_tour.md`](GUI_tour.md).
 
 Bootstrap (Flatly) is vendored under `src/halo_serdes_gui/assets/`, so the app
@@ -59,8 +59,10 @@ re-renders from it instantly (study sweeps are cached per run).
 | **Crosstalk** | FEXT/NEXT coupling sweep (StatEye) + multi-lane ICN (~√N) & 802.3 COM vs aggressor count | synthetic aggressors / aggressor_bank |
 | **AMI / COM** | IEEE 802.3 COM (93A/178A) vs loss overlaid on the RSS FoM + IBIS-AMI status (compiled reference model runs over the real C ABI; pyibisami for vendor models) | analytic channel |
 | **Fixed-Point** | word-length BER wall (datapath replay) | needs an ADC run |
+| **Optical** | the topology's cascade loss split at the photodiode, per-level PD-node noise, reach over fibre length as configured vs DSP-retimed (statistical cascade) | `topology.optical` set; retimer RX/TX from `topology.retimer_*` |
 
 ## Performance notes
+
 
 - Engines are blocking + numba-jitted (first call pays a one-time compile).
   The main area shows a spinner while a run is in flight.

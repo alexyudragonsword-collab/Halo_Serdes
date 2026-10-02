@@ -6,6 +6,27 @@
 
 ---
 
+## [未发布] — 光互联链路(阶段 2:重定时串联)
+
+### 新增
+- **`symbols=` 入参**(`run_time_link` 两条路径、`run_static_link`):外部用户符号流代替 `sim.pattern`;只收整数索引
+  (`check_symbols`,浮点数组按波形拒收,铁律 5),给 PRBS 自己的序列时与不给逐位相同。`SimResult.extras["decisions"]`
+  带出打过分的用户域判决(从 `warmup` 起对齐)。
+- **`TopologyConfig.retimer: none | both`、`retimer_rx`、`retimer_tx`**;**`engine/cascade.py`**:`run_cascade(cfg, statistical=)`
+  把链切成 host→段 A→重定时 / 重定时→光路→重定时 / 重定时→段 B→host 三段串联,每段的判决是下一段的符号源,
+  端到端 BER 按 host 判决 vs host 符号联合计数,同时报每段 BER 与 1 − ∏(1 − pᵢ);`run_cascade_statistical` 只用统计引擎
+  (ADC 收端用时域引擎的 MMSE 起始 FFE),给扫描与界面用。
+- 预置 `configs/pam4_100g_lpo_vcsel.yaml`(100G/λ LPO,`retimer: both` 即 retimed);`config_bridge` 加 `topology.retimer*`
+  字段,每个预置都能从表单值原样重建(新增守卫)。
+- **Optical study**(`studies.optical_study`,桌面 / Android 同一份广告)与 GUI **「Optical」页**(第 17 个标签页):
+  级联插损在光电二极管处的切分、每电平 PD 节点噪声、光纤长度 reach(as configured vs retimed)。
+- 示例 `33_three_topologies.py`:LPO / DSP retimed / CPO 同光路 reach 阶梯 + 电损耗 / 光噪声 / 重定时三杠杆表;
+  `tests/test_cascade.py`。
+
+### 验证
+- 三段各自 ~1e-3 / ~1e-2 BER 时端到端在自身 Wilson 区间(z = 3)内等于 1 − ∏(1 − pᵢ),ADC PAM4 与 mixed-signal NRZ 都过;
+  重定时光路段 BER < LPO 整链;统计级联 / 时域端到端 2× 内;`topology=None` 的 409 值引擎指纹不变(仅新增 `decisions` 键)。
+
 ## [未发布] — 光互联链路(阶段 1:光路作为信道段 + 电平相关噪声)
 
 ### 新增

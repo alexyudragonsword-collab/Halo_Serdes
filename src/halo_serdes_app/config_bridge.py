@@ -330,6 +330,27 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("topology.seg_b.rdc", "Seg B R_dc [ohm/m]", "float"),
         _f("topology.seg_b.r_skin", "Seg B R_skin [ohm/(m·√Hz)]", "float"),
         _f("topology.seg_b.loss_tangent", "Seg B loss tangent", "float"),
+        # retiming: the module's own receiver and transmitter (stage 2)
+        _f("topology.retimer", "Retimer", "enum", options=["none", "both"]),
+        _f("topology.retimer_rx.arch", "Retimer RX arch", "enum",
+           options=["mixed_signal", "adc_dsp"]),
+        _f("topology.retimer_rx.noise_rms", "Retimer RX noise RMS [V]", "float"),
+        _f("topology.retimer_rx.ctle.peak_db", "Retimer CTLE peaking [dB]", "float"),
+        _f("topology.retimer_rx.ffe.n_pre", "Retimer FFE precursors", "int"),
+        _f("topology.retimer_rx.ffe.n_post", "Retimer FFE postcursors", "int"),
+        _f("topology.retimer_rx.dfe.n_taps", "Retimer DFE taps", "int"),
+        _f("topology.retimer_rx.ffe.adapt", "Retimer FFE adapt", "enum",
+           options=["none", "lms", "wiener"]),
+        _f("topology.retimer_rx.ffe.mu", "Retimer FFE mu", "float"),
+        _f("topology.retimer_rx.adc.n_bits", "Retimer ADC bits", "int"),
+        _f("topology.retimer_rx.adc.fullscale", "Retimer ADC full scale [V]", "float"),
+        _f("topology.retimer_rx.cdr.kind", "Retimer CDR", "enum",
+           options=["bang_bang", "mueller_muller"]),
+        _f("topology.retimer_rx.cdr.kp_shift", "Retimer CDR Kp shift", "int"),
+        _f("topology.retimer_rx.cdr.ki_shift", "Retimer CDR Ki shift", "int"),
+        _f("topology.retimer_tx.swing", "Retimer TX swing [V pp]", "float"),
+        _f("topology.retimer_tx.fir_taps", "Retimer TX FIR taps", "tuple_float"),
+        _f("topology.retimer_tx.fir_n_pre", "Retimer TX FIR precursors", "int"),
     ]),
 ]
 
@@ -515,6 +536,9 @@ def _preset_paths() -> dict[str, Path]:
         "PAM4 deep-LR ADC (FFE+DFE8)": CONFIGS_DIR / "pam4_deep_lr_adc.yaml",
         # 112 GBd PAM4 = 224 Gb/s; "224G" is the data rate everywhere else
         "PAM4 224G ADC (TI mismatch)": CONFIGS_DIR / "pam4_112g_adc_mismatch.yaml",
+        # 100G/lambda optics: the LPO link; `topology.retimer: both` makes it a
+        # DSP-retimed module, shorter segments make it CPO
+        "PAM4 100G/λ LPO (VCSEL + OM4)": CONFIGS_DIR / "pam4_100g_lpo_vcsel.yaml",
     }
 
 

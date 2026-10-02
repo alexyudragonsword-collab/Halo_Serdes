@@ -253,6 +253,48 @@ def jtol_study(rec) -> dict:
 #:
 #: Always a *list* of panels, because a single study can produce series in
 #: different units (multilane yields both mV and dB, which share no axis).
+
+# --- optical topology: reach over fibre length, retimed or not --------------
+
+def optical_study(rec) -> dict:
+    """Post-KP4 BER against fibre length for the configured optical topology,
+    and for the same link cut by a retimer at the module's ingress and egress.
+
+    Statistical engine throughout: the configured topology runs as one link,
+    the retimed one as three segments combined as 1 - prod(1 - p_i)
+    (``engine/cascade.py``). An ADC receiver gets the MMSE starting FFE the
+    time engine would open with. Declines a link without ``topology``.
+    """
+
+    def compute():
+        import dataclasses as dc
+
+        from halo_serdes.engine.cascade import run_cascade_statistical
+        from halo_serdes.fec import pre_to_post_fec_ber
+
+        cfg = rec.cfg
+        if cfg.topology is None:
+            return {"error": "optical sweep needs topology.optical.kind = "
+                    "vcsel_mmf or eml_smf; this link is electrical."}
+        base = cfg.topology.optical.length_m or 100.0
+        lengths = np.linspace(0.3 * base, 3.0 * base, 8)
+        pre, pre_ret = [], []
+        for L in lengths:
+            top = dc.replace(cfg.topology, optical=dc.replace(cfg.topology.optical, length_m=float(L)))
+            c_as = dc.replace(cfg, topology=dc.replace(top, retimer="none"))
+            c_rt = dc.replace(cfg, topology=dc.replace(top, retimer="both"))
+            pre.append(max(run_cascade_statistical(c_as).stat_ber, 1e-300))
+            pre_ret.append(max(run_cascade_statistical(c_rt).stat_ber, 1e-300))
+        pre = np.array(pre); pre_ret = np.array(pre_ret)
+        kp4 = np.array([pre_to_post_fec_ber(max(p, 1e-9), "kp4") for p in pre])
+        kp4_ret = np.array([pre_to_post_fec_ber(max(p, 1e-9), "kp4") for p in pre_ret])
+        return {"length_m": lengths, "pre": pre, "pre_retimed": pre_ret,
+                "kp4": kp4, "kp4_retimed": kp4_ret,
+                "reach_m": _reach(lengths, kp4), "reach_m_retimed": _reach(lengths, kp4_ret),
+                "retimer": cfg.topology.retimer}
+    return _cached(("optical", rec.id), compute)
+
+
 STUDY_PLOTS: dict[str, list[dict]] = {
     "reach": [{"x": "loss", "y": ["pre", "kp4", "kr4"],
                "x_label": "Nyquist loss [dB]", "y_label": "BER", "y_log": True}],
@@ -281,6 +323,8 @@ STUDY_PLOTS: dict[str, list[dict]] = {
     "fixedpoint": [{"x": "wl", "y": ["mismatch"],
                     "x_label": "weight word length [bits]",
                     "y_label": "decision mismatch vs float", "y_log": True}],
+    "optical": [{"x": "length_m", "y": ["kp4", "kp4_retimed"],
+                 "x_label": "fibre length [m]", "y_label": "post-KP4 BER", "y_log": True}],
 }
 
 
@@ -312,4 +356,8 @@ STUDY_LABELS: dict[str, tuple[str, str]] = {
                    "The BER wall against datapath word length, replayed "
                    "bit-true against the float reference. Needs a time-domain "
                    "run, so it is the slowest to start."),
+    "optical": ("Optical reach",
+                "Post-KP4 BER against fibre length for the configured optical "
+                "topology, and for the same link with a DSP retimer at the "
+                "module's ingress and egress. Needs topology.optical set."),
 }

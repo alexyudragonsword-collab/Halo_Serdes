@@ -42,11 +42,11 @@ print(run_time_link(cfg).summary())     # BER / SER / slicer SNR
 
 ## 图形界面 GUI
 
-一个专业的 Plotly Dash 工作台,把 33 个示例脚本的全部分析能力变成交互式操作
+一个专业的 Plotly Dash 工作台,把 34 个示例脚本的全部分析能力变成交互式操作
 (单次链路、双引擎交叉校验、眼图/浴盆、CTLE、自适应/CDR 动态、ADC 逐 lane、抖动预算、
-reach 扫描、FEC、串扰、AMI/COM、定点),共 16 个能力标签页。界面不新增任何仿真逻辑,
+reach 扫描、FEC、串扰、AMI/COM、定点),共 17 个能力标签页。界面不新增任何仿真逻辑,
 只驱动现有引擎并渲染结果。详见 [`docs/GUI.md`](docs/GUI.md);
-16 个标签页的图文导览见 [`docs/GUI_tour.md`](docs/GUI_tour.md)。
+17 个标签页的图文导览见 [`docs/GUI_tour.md`](docs/GUI_tour.md)。
 
 ```bash
 pip install -e ".[gui,jit,fec]"
@@ -70,12 +70,12 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 分析 | `analysis/` | 眼图/浴盆、三层抖动分解、JTOL、IEEE 802.3 COM(93A/178A)、波形重建 |
 | 编码 | `fec/` | RS-KP4/KR4 + pre/post-FEC 换算、级联内码模型 |
 | 接口 | `io/` | IBIS-AMI(真实 C ABI 执行编译模型 / pyibisami 厂商模型)、COM 适配器 |
-| 界面 | `halo_serdes_gui/` | 16 标签页 Plotly Dash 工作台 + Windows 桌面打包 |
+| 界面 | `halo_serdes_gui/` | 17 标签页 Plotly Dash 工作台 + Windows 桌面打包 |
 | 硬件 | `rtl/` | FFE+DFE+slicer 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**:核心库 ~5.3k 行 / GUI ~2.6k 行 / 测试 ~2.9k 行 / 示例 ~3.4k 行;
 **297 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
-**33 个编号示例**(`examples/00`–`32`)。
+**34 个编号示例**(`examples/00`–`33`)。
 
 ## 路线图
 
@@ -88,11 +88,11 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 4 | ADC-based 架构(TI-ADC + 数字 DSP + MM-CDR) | ✅ |
 | 5 | MLSD(Viterbi/滑动检测器)+ RS-FEC(KP4/KR4)+ 抖动分解 + 双架构对比 | ✅ |
 | 6 | 定点双模式(bit-true)+ RTL 黄金模型出口(lockstep 向量) | ✅ |
-| G | 16 标签页 Plotly Dash GUI + Windows 桌面打包(PyInstaller / Nuitka) | ✅ |
+| G | 17 标签页 Plotly Dash GUI + Windows 桌面打包(PyInstaller / Nuitka) | ✅ |
 | + | 抖动预算、IBIS-AMI/COM 接缝、时域 FEXT/NEXT 串扰 | ✅ |
 | ++ | 忠实 IEEE 802.3 COM(93A/178A)、多 lane 串扰 + ICN、MLSD/1+D 预编码接入引擎、<br>IBIS-AMI 真实 C ABI 执行、JTOL、RTL bit-exact lockstep、CI(测试/lint/lockstep) | ✅ |
 
-六个阶段之后又完成三项增量(抖动预算、IBIS-AMI/COM、时域串扰)、16 标签页 GUI,
+六个阶段之后又完成三项增量(抖动预算、IBIS-AMI/COM、时域串扰)、17 标签页 GUI,
 以及第二梯队:忠实 802.3 COM、多 lane 串扰 + MLSD/预编码接线、IBIS-AMI 真执行、
 JTOL、RTL lockstep、Windows 打包。
 

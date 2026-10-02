@@ -59,6 +59,26 @@ def make_pattern(cfg: LinkConfig) -> np.ndarray:
     raise ValueError(f"unknown pattern {cfg.sim.pattern!r}")
 
 
+def check_symbols(cfg: LinkConfig, symbols: np.ndarray) -> np.ndarray:
+    """Admit an externally supplied user symbol stream.
+
+    Symbols are indices, never voltages: the stream must be integer-typed,
+    one-dimensional and inside the modulation's alphabet. A float array is
+    refused even if its values happen to be whole, because that is what a
+    waveform handed in by mistake looks like (invariant #5).
+    """
+    arr = np.asarray(symbols)
+    if arr.ndim != 1 or arr.size == 0:
+        raise ValueError("symbols must be a non-empty 1-D array of symbol indices")
+    if not np.issubdtype(arr.dtype, np.integer):
+        raise TypeError(f"symbols must be integer symbol indices, got dtype {arr.dtype}")
+    m = 2 ** cfg.bits_per_symbol
+    if arr.min() < 0 or arr.max() >= m:
+        raise ValueError(f"symbols must lie in [0, {m}) for {cfg.modulation}, "
+                         f"got [{arr.min()}, {arr.max()}]")
+    return arr.astype(np.int64, copy=False)
+
+
 def _levels(cfg: LinkConfig) -> np.ndarray:
     if cfg.modulation == "pam4":
         return pam4_levels(cfg.tx.swing, cfg.tx.rlm)
@@ -66,12 +86,13 @@ def _levels(cfg: LinkConfig) -> np.ndarray:
 
 
 def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
-                    collect_eye: bool = True) -> SimResult:
+                    collect_eye: bool = True,
+                    symbols: np.ndarray | None = None) -> SimResult:
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 
     # --- pattern & Tx (optionally 1/(1+D) precoded) ---
-    symbols = make_pattern(cfg)
+    symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line_symbols = symbols
     if cfg.precode:
         from ..core.mapping import precode_1plusd
@@ -158,7 +179,8 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                              "eq_pre": eq_pre, "main_cursor": main,
                              # the solved FFE is the link's total linear-EQ
                              # budget, not an RX circuit block (see module doc)
-                             "eq_semantics": "link_budget"})
+                             "eq_semantics": "link_budget",
+                             "decisions": sc.decisions})
 
 
 def fold_eye(y: np.ndarray, osr: int, phase: int, n_traces: int = 2000,

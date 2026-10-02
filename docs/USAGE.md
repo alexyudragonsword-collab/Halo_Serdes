@@ -571,7 +571,32 @@ s.extras["level_sigma"]                 # 统计引擎实际用的每电平判�
 `tests/test_optical.py`)。剩余差来自每电平噪声其实是高斯尺度混合(σ 随 ISI 图样摆动),见
 `cairn/光互联建模.md`。
 
-**不做的**(阶段 1):重定时、L-I 非线性 / TDECQ、功耗;AMI 模型与 `topology` 互斥。
-示例 `examples/32_lpo_vs_cpo.py`:同一光路,电段 4/8/12/16 dB,光纤长度扫到 reach,
-再在 100 m 上比 CPO 与 LPO 的 OMA 裕度。
+**重定时(阶段 2)**:`topology.retimer: both` 在模块入口和出口各放一个重定时器,链路变成三段串联
+(host TX → 段 A → 重定时 RX;重定时 TX → 光路 → 重定时 RX;重定时 TX → 段 B → host RX),
+每段各自判决、下一段把上一段的判决当符号源重发(`symbols=` 入参,经 `tx/builder.py` 回到波形域),
+端到端 BER 用 host 的判决对 host 自己的符号流打分;FEC 仍是端到端,模块里不终结。
+
+```yaml
+topology:
+  retimer: both            # none | both
+  retimer_rx: {arch: adc_dsp, ctle: {peak_db: 3.0}, adc: {n_bits: 10, fullscale: 0.6}, ffe: {n_pre: 4, n_post: 12, adapt: lms, mu: 3.0e-5}}
+  retimer_tx: {swing: 1.0}
+```
+
+```python
+from halo_serdes.engine.cascade import run_cascade, run_cascade_statistical
+r = run_cascade(cfg, statistical=True)   # 时域三段串联 + 每段统计 BER
+r.ber.ber, r.ber_product, r.stat_ber     # 端到端实测 / 1 − ∏(1 − p_i) / 统计引擎同式
+[s.result.ber.ber for s in r.segments]   # 每段
+run_cascade_statistical(cfg).stat_ber    # 只用统计引擎(ADC 收端用 MMSE 起始 FFE),扫描用
+run_time_link(cfg, symbols=my_symbols)   # 任何引擎都能接外部符号流(整数索引,不接波形)
+```
+
+注意全刻度:未重定时时 host RX 看到整条链(增益 0.25),重定时后每个 RX 只看一段电线(0.5)或光路(0.25),
+`adc.fullscale` 要跟着设(预置 `pam4_100g_lpo_vcsel.yaml` 里 host 0.3、重定时器 0.6)。
+
+**不做的**:L-I 非线性 / TDECQ、功耗、重定时器内的 FEC 终结;AMI 模型与 `topology` 互斥。
+示例 `examples/32_lpo_vs_cpo.py`(同一光路,电段 4/8/12/16 dB,光纤长度扫到 reach,100 m 上比
+CPO 与 LPO 的 OMA 裕度)、`examples/33_three_topologies.py`(LPO / retimed / CPO 同台 + 三杠杆表);
+GUI「Optical」页与 Android 的「Optical reach」study 用统计级联画同一张 reach 图。
 

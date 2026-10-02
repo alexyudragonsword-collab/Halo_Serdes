@@ -1,0 +1,77 @@
+# 100G/lambda PAM4 (53.125 GBd) over a linear pluggable optics (LPO) link:
+# host TX -> 8 dB trace -> 850 nm VCSEL -> 100 m OM4 -> PD + 40 GHz TIA ->
+# 8 dB trace -> host ADC RX. Optics are 802.3db SR1 magnitudes (OMA +1 dBm,
+# ER 4 dB, RIN -145 dB/Hz); the host receiver does all the equalisation.
+# `topology.retimer: both` turns the same link into a DSP-retimed module.
+modulation: pam4
+symbol_rate: 53.125e9
+osr: 16
+channel:
+  kind: analytic          # unused while topology is set; kept buildable
+tx:
+  swing: 1.0
+rx:
+  arch: adc_dsp
+  ctle:
+    peak_db: 3.0
+  adc:
+    n_bits: 10
+    n_lanes: 16
+    enob: null
+    fullscale: 0.3
+  ffe:
+    n_pre: 4
+    n_post: 12
+    adapt: lms
+    mu: 3.0e-5
+  dfe:
+    n_taps: 0
+  cdr:
+    kind: mueller_muller
+    kp_shift: 7
+    ki_shift: 15
+  noise_rms: 1.0e-4
+topology:
+  seg_a: {kind: analytic, length_m: 0.102, rdc: 5.0, r_skin: 2.0e-3, loss_tangent: 0.012, n_freq: 4096}
+  optical:
+    kind: vcsel_mmf
+    f_r_hz: 22.0e9
+    damping_hz: 30.0e9
+    er_db: 4.0
+    oma_dbm: 1.0
+    rin_db_hz: -145.0
+    length_m: 100.0
+    modal_bw_mhz_km: 4700.0
+    responsivity_a_w: 0.7
+    tia_bw_hz: 40.0e9
+    tia_noise_pa_sqrthz: 12.0
+    tz_ohm: 2000.0
+  seg_b: {kind: analytic, length_m: 0.102, rdc: 5.0, r_skin: 2.0e-3, loss_tangent: 0.012, n_freq: 4096}
+  retimer: none
+  retimer_rx:
+    arch: adc_dsp
+    ctle:
+      peak_db: 3.0
+    adc:
+      n_bits: 10
+      n_lanes: 16
+      enob: null
+      fullscale: 0.6
+    ffe:
+      n_pre: 4
+      n_post: 12
+      adapt: lms
+      mu: 3.0e-5
+    dfe:
+      n_taps: 0
+    cdr:
+      kind: mueller_muller
+      kp_shift: 7
+      ki_shift: 15
+    noise_rms: 1.0e-4
+  retimer_tx:
+    swing: 1.0
+sim:
+  n_symbols: 200000
+  pattern: prbs13q
+  engine: both

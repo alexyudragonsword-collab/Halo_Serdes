@@ -475,8 +475,19 @@ class TopologyConfig:
     seg_a: ChannelConfig = field(default_factory=_analytic_segment)
     optical: OpticalConfig = field(default_factory=OpticalConfig)
     seg_b: ChannelConfig = field(default_factory=_analytic_segment)
+    # Retiming (stage 2). "both" puts a retimer at the module's ingress and
+    # egress: the link becomes three links in series (host TX -> seg A ->
+    # retimer; retimer -> optics -> retimer; retimer -> seg B -> host RX),
+    # each with its own receiver and clean re-transmission of its decisions,
+    # and the end-to-end BER is scored on the host's decisions against the
+    # host's symbols. The retimer's receiver and transmitter are ordinary
+    # RxConfig / TxConfig; FEC stays end to end (no termination in the module).
+    retimer: Literal["none", "both"] = "none"
+    retimer_rx: RxConfig = field(default_factory=RxConfig)
+    retimer_tx: TxConfig = field(default_factory=TxConfig)
 
     def __post_init__(self):
+        _require_in(self.retimer, {"none", "both"}, "topology.retimer")
         # The cascade multiplies H(f) point by point, so both segments must
         # be evaluated on one grid; the grid is seg_a's and seg_b must agree.
         _require(self.seg_a.n_freq == self.seg_b.n_freq,

@@ -140,7 +140,52 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 
 ---
 
-## 05 · 工程结论 / Engineering conclusions
+## 05 · 探索四:光互联的三种切法 / Exploration IV: three ways to cut an optical link
+
+同一条光路(850 nm VCSEL f_r 22 GHz + OM4 4700 MHz·km + 40 GHz TIA,OMA +1 dBm,ER 4 dB,53.125 GBd PAM4),
+同一个 ADC 收端(10 bit,CTLE 3 dB,FFE 4/12,MM-CDR),KP4 到 1e-15。LPO 让主机均衡整条电-光-电链;
+DSP retimed 在模块入口 / 出口各判决一次重发,链路变成三段串联(`engine/cascade.py`);CPO 是电段缩短的 LPO。
+One optical path, one host receiver, KP4 to 1e-15. LPO makes the host equalise the whole electrical-optical-electrical chain;
+a DSP-retimed module decides and re-transmits at ingress and egress, so the link becomes three links in series; CPO is LPO with short traces.
+
+![三拓扑 / three topologies](../examples/output/33_three_topologies.png)
+
+| 拓扑 / Topology | 电段 A = B | 重定时 | reach(RIN −145) | 说明 / note |
+|---|---|---|---|---|
+| LPO | 8 dB | 无 | **143 m** | 主机 RX 背光纤 + 两段 trace 的 ISI / host RX carries fibre + both traces |
+| DSP retimed | 8 dB | 两端 | **249 m** | 光路段只背自己的 ISI,电段各自干净 / optics carry only their own ISI |
+| CPO | 4 dB | 无 | **182 m** | 电段短,主机仍背光纤 / short traces, host still carries the fibre |
+
+**三个杠杆,各自单独加码与一起加码 / Three levers, alone and together**(基线 LPO 8 dB、RIN −143 dB/Hz,reach 97 m;
+示例 33 的时域阶梯 / time-engine ladders of example 33):
+
+| 杠杆 / Lever | reach | 增益 / gain |
+|---|---|---|
+| 基线 / baseline: LPO 8 dB, RIN −143 | 97 m | — |
+| + 电段 8 → 4 dB(CPO 的动作)/ electrical | 159 m | +62 m |
+| + 激光器 RIN −143 → −148 / optical noise | 178 m | +81 m |
+| + 重定时 / retiming | 229 m | +132 m |
+| **三者全上 / all three** | **282 m** | **+185 m** |
+
+> 单杠杆增益之和 +274 m,三者一起 +185 m —— **不正交,不可叠加**。重定时已经把电段的 ISI 从光路段上拿走,
+> 再缩短电段就几乎没有光路可以多拿的;RIN 与重定时都作用在同一个光路段的噪声裕度上。这与探索三里
+> "ADC × FEC 相加"的结论相反,原因是那两个杠杆分别改"信号多干净"与"能容忍多脏",而这里三个杠杆都在改
+> 同一段链路的 SNR。退一步说,到了 300 m,OM4 自身 15.7 GHz 的模式带宽才是墙。
+>
+> The single-lever gains sum to +274 m, all three together give +185 m: **not orthogonal, not additive**. Retiming already
+> lifts the traces' ISI off the optical segment, so shortening the traces afterwards leaves little for the optics to gain,
+> and RIN and retiming both act on the same segment's noise margin. Unlike exploration III (ADC × FEC, where one lever
+> changes how clean the signal is and the other how dirty it may be), all three here move the SNR of the same segment;
+> past 300 m the OM4 modal bandwidth (15.7 GHz) is the wall.
+
+读数约定 / reading conventions:横轴是光纤长度与 OMA,不是"损耗 dB"(光路损耗不是 ISI 的代理量);每条阶梯的
+pre-FEC 地板 ~1e-5 来自时域引擎尾部 2–3 个无效判决(ROADMAP P1-1b),与 KP4 的 2.4e-4 阈值无关。
+Fibre length and OMA on the x axis, never "loss in dB"; the ~1e-5 pre-FEC floor of every ladder is the engine's 2-3 invalid
+tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
+
+---
+
+## 06 · 工程结论 / Engineering conclusions
 
 **架构决策 / Architecture decision**(由符号率而非数据率决定 / by symbol rate, not data rate):
 
