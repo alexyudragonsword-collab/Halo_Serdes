@@ -6,6 +6,7 @@ must agree in the 1e-4..1e-2 overlap region within 2x.
 """
 
 import numpy as np
+import pytest
 
 from halo_serdes.analysis.metrics import nrz_ber_awgn, pam4_ser_awgn, qfunc
 from halo_serdes.channel import ChannelModel
@@ -164,3 +165,26 @@ def test_level_dependent_noise_hits_the_noisier_level():
     # the upper and lower tails are read off the grid with opposite half-bin
     # bias (searchsorted on each side), so the two differ at the bin level
     assert abs(bottom.ser / top.ser - 1.0) < 0.10
+
+
+@pytest.mark.parametrize("length_m,noise", [(0.15, 0.03), (0.25, 0.02), (0.35, 0.012)])
+def test_dac_quantisation_cross_check_within_2x(length_m, noise):
+    """Invariant #3 with only the Tx DAC added: the statistical engine's
+    noise_rms (+) sigma_q against the static engine's quantised waveform, at
+    three channel losses. A 4-bit DAC so the quantisation visibly moves BER."""
+    import dataclasses
+
+    cfg = LinkConfig(
+        modulation="pam4", symbol_rate=32e9, osr=16,
+        channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=2.0,
+                              r_skin=1.5e-3, loss_tangent=0.01),
+        tx=TxConfig(swing=1.0, dac_bits=4),
+        rx=RxConfig(ctle=CtleConfig(enable=False), ffe=FfeConfig(n_pre=2, n_post=6),
+                    dfe=DfeConfig(n_taps=2), noise_rms=noise),
+        sim=SimConfig(n_symbols=300_000, seed=6, pattern="prbs13q"))
+    mc = run_static_link(cfg, collect_eye=False)
+    stat = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    ratio = stat.ber / mc.ber.ber
+    assert 0.5 < ratio < 2.0, (length_m, stat.ber, mc.ber.ber, ratio)
+    ideal = run_static_link(dataclasses.replace(cfg, tx=TxConfig(swing=1.0)), collect_eye=False)
+    assert mc.ber.ber > 1.2 * ideal.ber.ber          # the DAC is not a bystander here

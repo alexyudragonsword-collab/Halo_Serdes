@@ -9,6 +9,7 @@ import numpy as np
 from ..config.schema import LinkConfig
 from ..core.mapping import nrz_levels, pam4_levels
 from ..core.waveform import Waveform
+from .driver import apply_single_pole  # noqa: F401  (re-exported; it lives with the driver)
 
 
 def symbols_to_voltages(symbols: np.ndarray, cfg: LinkConfig) -> np.ndarray:
@@ -38,12 +39,3 @@ def build_tx_waveform(symbols: np.ndarray, cfg: LinkConfig) -> Waveform:
 
     pipe = TxPipeline.from_config(cfg)
     return pipe.waveform(pipe.symbol_stage(symbols))
-
-
-def apply_single_pole(wave: Waveform, f3db: float) -> Waveform:
-    """Single-pole lowpass H(f) = 1/(1 + jf/f3db), applied via rFFT."""
-    n = wave.y.size
-    f = np.fft.rfftfreq(n, d=wave.dt)
-    H = 1.0 / (1.0 + 1j * f / f3db)
-    y = np.fft.irfft(np.fft.rfft(wave.y) * H, n=n)
-    return Waveform(y, wave.dt, wave.t0)

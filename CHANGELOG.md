@@ -6,6 +6,27 @@
 
 ---
 
+## [未发布] — DSP-based TX(阶段 0 + 阶段 1)
+
+### 变更
+- **TX 收成一条 `tx.pipeline.TxPipeline`**:`symbol_stage`(电平 → [PR 占位] → FFE → DAC)、ZOH + 时钟边沿偏移(唯一的域切换)、
+  `waveform`(驱动器压缩 → 驱动器单极点)、`equivalent_symbol_response`(统计引擎)。原来手拼的七处
+  (`timedomain.py` 两处、`static_link.py`、`statistical.py`、`optical_stage.py`、`reconstruct.py`、`cdr_tracking.py`)全部改用它;
+  475 值引擎指纹与 44 值 TX 路径指纹(剖面时钟、重建、CDR 追踪、光发射功率、串联)与 main 逐位相同。
+  `com.py` 与 `io/ami.py` 的 NativeCom 保留参考 TX,docstring 写明"no DAC / driver model"。
+
+### 新增
+- `TxConfig.dac_bits / dac_fs / dac_thermo_msbs / dac_unit_sigma`:`tx/dac.py::TxDac` —— 中升均匀量化(满量程峰峰值,默认 = FFE 峰值,
+  不削峰),温度计 MSB + 二进制 LSB 分段的单元电流失配 INL(端点修正后 E[INL²] = σ²(M−1)/6),削峰计数;失配用独立随机流,
+  开 DAC 不移动链路的抖动 / 噪声抽样。
+- `TxConfig.drv_nl / drv_compression / drv_p1db_v / drv_oip3_v`:`tx/driver.py`,Hammerstein(先压缩后带宽);`"curve"` 复用
+  `core/static_curve.py::StaticCurve`(从 `optical/eo.py` 提出来两边共用,c 与 `li_compression` 同一定义,同 c 同输入逐位相同),
+  `"tanh"` 按 1 dB 压缩点、`"cubic"` 按 OIP3(HD3 闭式)。`apply_single_pole` 搬到 `tx/driver.py`,`builder.py` 重导出。
+- `analysis/tx_metrics.py`:`tx_sndr_db`、`measured_rlm`、`tx_report`(同边沿的理想 TX 作参考,符号中心采样,最小二乘增益对齐)。
+- 统计引擎:DAC 折成每 UI 白噪 σ_q² = LSB²/12 + E[INL²]·LSB²,经 DAC→判决器的符号响应(全部游标平方和)到 RX;
+  驱动器非线性开启时 warning。`engine/backchannel.py`:有 DAC 时峰值约束 sum|taps| ≤ dac_fs / swing。
+- 表单 `tx.dac_*`、`tx.drv_*`(桌面与 Android 共用);示例 `35_dsp_tx_sndr.py`;`tests/test_dac.py`、`tests/test_tx_pipeline.py`。
+
 ## [未发布] — 光互联链路(阶段 3:E/O 大信号曲线 + TDECQ)
 
 ### 新增

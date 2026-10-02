@@ -27,7 +27,9 @@ import numpy as np
 from ..config.schema import LinkConfig
 from ..core.sampler import hold, upsampled_taps
 from ..core.waveform import Waveform
-from .builder import apply_single_pole, symbols_to_voltages, tx_fir
+from .builder import symbols_to_voltages, tx_fir
+from .dac import TxDac
+from .driver import DriverNl, apply_single_pole
 from .jitter import edge_jitter_seq, jittered_zoh
 
 
@@ -38,15 +40,44 @@ class TxPipeline:
     ``waveform`` is the only method that returns a ``Waveform``.
     """
 
-    def __init__(self, cfg: LinkConfig) -> None:
+    def __init__(self, cfg: LinkConfig, dac: TxDac | None = None,
+                 driver_nl: DriverNl | None = None) -> None:
         self.cfg = cfg
         tx = cfg.tx
         self.fir_taps = np.asarray(tx.fir_taps, dtype=np.float64)
         self.fir_n_pre = int(tx.fir_n_pre)
+        self.dac_model = dac
+        self.driver_nl = driver_nl
+        self.stats = {"dac_clipped": 0}
 
     @classmethod
     def from_config(cls, cfg: LinkConfig, rng: np.random.Generator | None = None) -> "TxPipeline":
-        return cls(cfg)
+        """``rng`` draws the DAC's unit-cell mismatch. By default it is a
+        stream of its own (seeded from ``sim.seed``), never the link's
+        generator: the mismatch is a property of the chip, and switching the
+        DAC on must not move the edge, noise or ADC draws that follow."""
+        tx = cfg.tx
+        dac = None
+        if tx.dac_bits is not None:
+            if rng is None and tx.dac_unit_sigma > 0:
+                rng = np.random.default_rng([cfg.sim.seed, 0x7DAC])
+            dac = TxDac(tx.dac_bits, cls.dac_fullscale(cfg), thermo_msbs=tx.dac_thermo_msbs,
+                        unit_sigma=tx.dac_unit_sigma, rng=rng)
+        nl = None
+        if tx.drv_nl != "none":
+            nl = DriverNl(tx.drv_nl, compression=tx.drv_compression,
+                          fullscale=0.5 * cls.dac_fullscale(cfg),
+                          p1db_v=tx.drv_p1db_v, oip3_v=tx.drv_oip3_v)
+        return cls(cfg, dac, nl)
+
+    @staticmethod
+    def dac_fullscale(cfg: LinkConfig) -> float:
+        """Peak-to-peak range the DAC (and the driver's curve) spans: ``tx.dac_fs``,
+        or by default exactly the FFE's peak output, swing * sum|taps|, so an
+        unset full scale never clips."""
+        if cfg.tx.dac_fs is not None:
+            return float(cfg.tx.dac_fs)
+        return float(cfg.tx.swing * np.abs(np.asarray(cfg.tx.fir_taps, dtype=np.float64)).sum())
 
     # ------------------------------------------------------------ symbol domain
     @property
@@ -59,7 +90,8 @@ class TxPipeline:
         return symbols_to_voltages(symbols, self.cfg)
 
     def pr_filter(self, v: np.ndarray) -> np.ndarray:
-        """Transmit-side partial-response shaping: not modelled yet (identity)."""
+        """Transmit-side partial-response shaping: not modelled yet (identity).
+        Its place is fixed: before the FFE and the DAC."""
         return v
 
     def ffe(self, v: np.ndarray) -> np.ndarray:
@@ -68,7 +100,15 @@ class TxPipeline:
         return v
 
     def dac(self, v: np.ndarray) -> np.ndarray:
-        return v
+        if self.dac_model is None:
+            return v
+        self.stats["dac_clipped"] += self.dac_model.n_over_range(v)
+        return self.dac_model(v)
+
+    @property
+    def dac_sigma_q(self) -> float:
+        """Equivalent white error of the DAC per UI [V] (0 without one)."""
+        return 0.0 if self.dac_model is None else self.dac_model.sigma_q
 
     def symbol_stage(self, symbols: np.ndarray) -> np.ndarray:
         """Line symbols (level indices, after any precoding) -> per-UI volts."""
@@ -90,6 +130,10 @@ class TxPipeline:
 
     # ---------------------------------------------------------- waveform domain
     def driver(self, wave: Waveform) -> Waveform:
+        # Hammerstein: the output stage compresses on its instantaneous drive,
+        # then its load sets the bandwidth
+        if self.driver_nl is not None:
+            wave = Waveform(self.driver_nl(wave.y), wave.dt, wave.t0)
         if self.cfg.tx.bw is not None:
             wave = apply_single_pole(wave, self.cfg.tx.bw)
         return wave
@@ -108,8 +152,10 @@ class TxPipeline:
         """The LTI part of the symbol stage on the sample grid, or None when it
         is the identity: what the statistical engine convolves into the pulse.
 
-        The driver pole is not in it: the statistical engine has never modelled
-        ``tx.bw`` (a known gap, recorded in cairn/DSP发端与PR.md)."""
+        The DAC is not in it (it reaches the statistical engine as the
+        equivalent noise ``dac_sigma_q``), nor is the driver pole: the
+        statistical engine has never modelled ``tx.bw`` (a known gap, recorded
+        in cairn/DSP发端与PR.md)."""
         if not self.ffe_active:
             return None
         return upsampled_taps(self.fir_taps, self.cfg.osr if osr is None else osr)

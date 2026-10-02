@@ -50,6 +50,25 @@ MLSD 的定点化(度量位宽、路径度量归一化)是真实 RTL 里最容�
 
 ---
 
+### 1c. 接收端的起始均衡看不见 TX FFE
+
+**现状**:静态引擎(`engine/static_link.py`)从**不含 TX FIR 的信道脉冲**解 RX FFE、取采样相位、算 DFE 权重
+和判决电平尺度,而它均衡的波形含 TX FIR。时域引擎两种架构的起始 MMSE FFE、DFE 种子、电平尺度与符号延时
+同样来自不含 TX FIR 的脉冲(`engine/timedomain.py` 两处 `pulse_from_impulse(Waveform(h, ...))`),
+靠自适应环路事后追回。统计引擎反而是对的(TX FIR 卷进了 h)。
+
+**证据**(2026-10-02,DSP TX 阶段 1 调试时测得):静态引擎 32 GBd、0.25 m 解析信道、TX
+(−0.08, 0.78, −0.14):NRZ 判决 SNR 27.7 → 11.2 dB,PAM4 BER 0 → 5.3e-2,统计引擎同配置 1.2e-11;
+ADC 时域引擎 53 GBd、TX (−0.1, 0.75, −0.15)、LMS μ 3e-5:5 万符号 BER 0.10、SNR 9.5 dB(无 DAC 也一样)。
+
+**为什么要紧**:预置里的 TX FIR 都很温和(主抽头 1.0),影响小;但 DSP TX 的意义就是发端 FFE 担一部分均衡,
+`train_tx_fir` 训出的抽头、以及任何主抽头明显 < 1 的 TX,在静态引擎里给出的是错的数,在时域引擎里起点是错的。
+
+**怎么做**:三处脉冲都卷进 `TxPipeline.equivalent_symbol_response()` 并按 `fir_n_pre` 左移 n_pre UI(波形里的 FIR
+已经对齐到主抽头)。会改变 6 个带 TX FIR 预置的逐位指纹,单独一个 PR、重新冻结指纹。
+
+---
+
 ### 2. 波形全量驻留,长跑受内存限制
 
 **现状**:实测 10⁶ 符号 @106.25 GBd/OSR32 峰值 RSS ≈ **0.9 GB**
@@ -157,6 +176,11 @@ job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量�
 ### 8. Duobinary / PR 整形
 1+D 预编码已实现(`precode` 开关),但**预编码 ≠ PR 整形**:前者是符号映射,
 后者要在发端有意引入受控 ISI 并配匹配的检测器。属于独立能力。
+
+DSP TX 阶段 0/1 已合入后,发端 PR 的位置已经留好:`TxPipeline.pr_filter` 在 FFE 与 DAC 之前(恒等占位),
+DAC 与驱动器压缩已建模,所以发端 PR 的 DAC 动态范围代价可以直接测。剩下的是方案文档的阶段 2(收端 1+αD:
+`zf_ffe/mmse_ffe` 的 target、LMS 期望值、DFE 起点、MLSD 光标、CDR `pd_offset`)与阶段 3(发端 PR 与三方同台)。
+另:统计引擎从未建模 `tx.bw`(驱动器单极点),发端 PR 的频谱论证会碰到它,开工前先补。
 
 ### 9. 多 lane 数据通路
 多 lane 目前只在**串扰侧**(`aggressor_bank`/`icn_rms`);链路本身仍是单 lane。

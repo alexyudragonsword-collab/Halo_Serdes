@@ -87,3 +87,73 @@ def test_profile_clock_edges_through_the_pipeline_match_the_tracking_replay():
     v = symbols_to_voltages(_tx_symbols(cfg, make_pattern(cfg)), cfg)
     v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
     assert np.array_equal(tx_edge_offsets_s(cfg), edge_jitter_seq(v.size, cfg, rng, v))
+
+
+# ------------------------------------------------------------ stage 1: driver
+
+def test_driver_curve_is_the_e_o_curve_bit_for_bit():
+    """drv_compression and optical li_compression are one parameter: at the
+    same c the driver and the laser bend the same input identically."""
+    from halo_serdes.config.schema import OpticalConfig
+    from halo_serdes.optical import static_curve
+
+    u = np.linspace(-1.0, 1.0, 2001)
+    for c in (0.05, 0.2, 0.45):
+        laser = static_curve(OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, li_compression=c))
+        cfg = LinkConfig(tx=TxConfig(swing=2.0, drv_nl="curve", drv_compression=c))
+        drv = TxPipeline.from_config(cfg).driver_nl
+        assert drv.fullscale == 1.0
+        assert np.array_equal(drv(u), laser(u))
+
+
+def test_cubic_driver_hd3_matches_the_closed_form():
+    from halo_serdes.tx.driver import DriverNl, hd3_cubic_db
+
+    n, k = 4096, 17
+    x = np.sin(2 * np.pi * np.arange(n) * k / n)
+    for amp, oip3 in ((0.3, 1.5), (0.5, 1.2), (0.4, 0.9)):
+        y = np.abs(np.fft.rfft(DriverNl("cubic", oip3_v=oip3)(amp * x)))
+        measured = 20 * np.log10(y[3 * k] / y[k])
+        assert abs(measured - hd3_cubic_db(amp, oip3)) < 0.5
+
+
+def test_tanh_driver_is_one_db_compressed_at_p1db():
+    from halo_serdes.tx.driver import DriverNl
+
+    n, k, p1db = 4096, 13, 0.35
+    x = p1db * np.sin(2 * np.pi * np.arange(n) * k / n)
+    y = np.fft.rfft(DriverNl("tanh", p1db_v=p1db)(x))
+    gain_db = 20 * np.log10(np.abs(y[k]) / (n / 2) / p1db)
+    assert abs(gain_db + 1.0) < 0.02
+
+
+def test_measured_rlm_falls_monotonically_with_compression():
+    from halo_serdes.analysis.tx_metrics import tx_report
+
+    rlms = []
+    for c in (0.0, 0.1, 0.2, 0.3, 0.4):
+        tx = dict(swing=1.0) if c == 0.0 else dict(swing=1.0, drv_nl="curve", drv_compression=c)
+        cfg = LinkConfig(modulation="pam4", symbol_rate=53.125e9, osr=16, tx=TxConfig(**tx),
+                         sim=SimConfig(n_symbols=8000, seed=2, pattern="prbs13q"))
+        rlms.append(tx_report(cfg).rlm)
+    assert rlms[0] == pytest.approx(1.0, abs=1e-9)
+    assert np.all(np.diff(rlms) < 0), rlms
+
+
+def test_driver_compression_is_hammerstein_and_warns_in_the_statistical_engine():
+    """The curve acts on the held waveform before the driver pole: pole after
+    curve, not curve after pole."""
+    from halo_serdes.engine.statistical import run_statistical
+    from halo_serdes.tx.driver import apply_single_pole
+
+    cfg = LinkConfig(modulation="pam4", symbol_rate=53.125e9, osr=16,
+                     channel=ChannelConfig(kind="analytic", length_m=0.1),
+                     tx=TxConfig(swing=1.0, bw=30e9, drv_nl="curve", drv_compression=0.3),
+                     sim=SimConfig(n_symbols=2000, seed=2, pattern="prbs13q"))
+    pipe = TxPipeline.from_config(cfg)
+    v = pipe.symbol_stage(make_pattern(cfg))
+    held = Waveform(hold(v, cfg.osr), cfg.dt)
+    expected = apply_single_pole(Waveform(pipe.driver_nl(held.y), cfg.dt), cfg.tx.bw)
+    assert np.array_equal(pipe.waveform(v).y, expected.y)
+    with pytest.warns(UserWarning, match="drv_nl"):
+        run_statistical(cfg)
