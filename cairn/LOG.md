@@ -3,6 +3,24 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-02 · 光互联链路,阶段 2:重定时串联(feat/optical-link-stage2)
+
+- **重定时 = 三条链路串联。** `TopologyConfig.retimer: none | both` + `retimer_rx` / `retimer_tx`;`engine/cascade.py`
+  把链切成 host→段 A→重定时 / 重定时→光路(两端理想 0.5 段)→重定时 / 重定时→段 B→host,每段
+  `run_time_link(seg_cfg, symbols=上一段判决)`,判决流取 `SimResult.extras["decisions"]`(新键;409 值指纹其余不变),
+  段 k 种子 = seed + k;端到端 BER = host 判决 vs host 符号流,从 Σwarmup 起比对;同时报每段 BER 与 1 − ∏(1 − pᵢ)。
+  统计版 `run_cascade_statistical`:ADC 收端用时域引擎的 MMSE 起始 FFE,扫描与界面用。
+- **`symbols=`** 进两条时域路径与静态链路,只收整数索引(浮点即波形,拒收,铁律 5);给 PRBS 自己的序列时逐位相同。
+- **验收**(`tests/test_cascade.py`):三段 ~1e-3 / ~1e-2 时端到端在 Wilson 区间(z = 3)内等于 1 − ∏(1 − pᵢ),
+  ADC PAM4 与 MS NRZ 都过;重定时光路段 BER < LPO 整链;统计级联 / 时域端到端 2× 内;`test_domain_boundary` 继续过。
+- **理想段 / 零相位光纤块让 trimmer 失效**:零长度段在 2×baud 网格上是砖墙 → 补零成 sinc;高斯 / 色散响应零相位 → 反因果半边绕到数组尾;两者都让按一阶差分能量的 trimmer 整段保留 32k 样本,再直接卷积 → 一点 177 s。理想段改到 1/(2dt) 网格、光纤块加纯延时后 76 样本、0.7 s。时域引擎尾部 2–3 个无效判决进 ROADMAP P1-1b。
+- **全刻度陷阱**:同一个 `retimer_rx` 既收段 A(增益 0.5)又收光路(0.25),host RX 未重定时看整链(0.25)、重定时后看段 B(0.5);
+  第一次跑三段时段 A 的 BER 4e-4 是 ADC 削波,不是信道 —— 预置里 host 0.3 / 重定时器 0.6。
+- 示例 33(LPO / retimed / CPO 同光路 + 三杠杆表):reach LPO 8 dB 143 m / retimed 249 m / CPO 4 dB 182 m;杠杆(基线 97 m)电段 +62、RIN +81、重定时 +132、三者一起 +185 m(单项之和 +274)—— 不可叠加,三个杠杆动的是同一段光路的 SNR;写进 `docs/SUMMARY.md` §05。
+- 预置 `pam4_100g_lpo_vcsel.yaml`;`config_bridge` 加 `topology.retimer*`(每个预置可从表单值原样重建,新守卫);
+  `studies.optical_study` + GUI「Optical」页(第 17 页)+ Android 同一份 study 广告;Android CI:待 PR CI 跑完后补记 instrumented totals;
+  文档:USAGE §16、GUI.md、README、CHANGELOG、COMPARISON §③、ROADMAP P3-11、SUMMARY §05、`cairn/光互联建模.md` §7。
+
 ## 2026-10-01 · 光互联链路,阶段 1:光路作为信道段 + 电平相关噪声(feat/optical-link-stage1)
 
 - **一条链三种拓扑。** `LinkConfig.topology = TopologyConfig(seg_a, optical, seg_b)`(None = 电链路,
