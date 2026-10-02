@@ -96,14 +96,13 @@ def measure(cfg: LinkConfig, kw: dict):
 
 
 def crossing(x, y, limit):
-    """First x where y crosses the limit (linear interpolation), or None."""
+    """Where y crosses the limit, by linear interpolation between the two
+    sweep points that straddle it; "all pass" / "all fail" when none do."""
     y = np.asarray(y, float)
-    ok = y <= limit
     for i in range(len(x) - 1):
-        if ok[i] != ok[i + 1]:
-            return float(np.interp(limit, [y[i], y[i + 1]], [x[i], x[i + 1]])
-                         if y[i + 1] != y[i] else x[i])
-    return None
+        if (y[i] - limit) * (y[i + 1] - limit) <= 0 and y[i] != y[i + 1]:
+            return float(x[i] + (limit - y[i]) / (y[i + 1] - y[i]) * (x[i + 1] - x[i]))
+    return "all pass" if np.all(y <= limit) else "all fail"
 
 
 results = {}
@@ -136,7 +135,7 @@ for name, t in TRANSMITTERS.items():
     li_x = crossing(LI_SWEEP, r["li"], t["limit"])
 
     def fmt(v, unit):
-        return f"{v:.2f}{unit}" if v is not None else "no crossing"
+        return f"{v:.2f}{unit}" if isinstance(v, float) else v
     print(f"{name:<20} {t['limit']:5.1f}dB {fmt(er_x, ' dB'):>8} {fmt(bw_x, ' GHz'):>14} "
           f"{fmt(li_x, ''):>16}")
 
