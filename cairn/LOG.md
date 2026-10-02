@@ -18,7 +18,7 @@
   第一次跑三段时段 A 的 BER 4e-4 是 ADC 削波,不是信道 —— 预置里 host 0.3 / 重定时器 0.6。
 - 示例 33(LPO / retimed / CPO 同光路 + 三杠杆表):reach LPO 8 dB 143 m / retimed 249 m / CPO 4 dB 182 m;杠杆(基线 97 m)电段 +62、RIN +81、重定时 +132、三者一起 +185 m(单项之和 +274)—— 不可叠加,三个杠杆动的是同一段光路的 SNR;写进 `docs/SUMMARY.md` §05。
 - 预置 `pam4_100g_lpo_vcsel.yaml`;`config_bridge` 加 `topology.retimer*`(每个预置可从表单值原样重建,新守卫);
-  `studies.optical_study` + GUI「Optical」页(第 17 页)+ Android 同一份 study 广告;Android CI(de1f86b,run 36957977369,解释型 APK):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`(StudyContractTest 2/0f 含新 study 广告;编译型 APK 同一 run 跑完后补记);test 矩阵、lint、import-clean、vendor-drift、rtl-lockstep 全绿;本地 jit 526 passed / 2 skipped,nojit 524 passed / 4 skipped;
+  `studies.optical_study` + GUI「Optical」页(第 17 页)+ Android 同一份 study 广告;Android CI(de1f86b,run 36957977369,解释型 APK):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`(StudyContractTest 2/0f 含新 study 广告;解释型与编译型 APK 都过);test 矩阵、lint、import-clean、vendor-drift、rtl-lockstep 全绿;本地 jit 526 passed / 2 skipped,nojit 524 passed / 4 skipped;
   文档:USAGE §16、GUI.md、README、CHANGELOG、COMPARISON §③、ROADMAP P3-11、SUMMARY §05、`cairn/光互联建模.md` §7。
 
 ## 2026-10-01 · 光互联链路,阶段 1:光路作为信道段 + 电平相关噪声(feat/optical-link-stage1)
