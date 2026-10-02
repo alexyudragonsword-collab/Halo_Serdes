@@ -136,6 +136,16 @@ def test_fixedpoint_spec_is_checked_on_a_config_that_can_run_it():
         _spec_matches_data(name, vals)
 
 
+def test_optical_spec_is_checked_on_the_lpo_preset():
+    """The optical study declines every electrical preset; the LPO preset is
+    the one built for it, so its spec is checked there (same reason as the
+    fixed-point case above)."""
+    vals = call("preset", name="PAM4 100G/λ LPO (VCSEL + OM4)")["data"]["values"]
+    assert _spec_matches_data("optical", vals), "optical study declined the LPO preset"
+    # the new field group round-trips like every other preset
+    assert call("derive", values=vals)["data"]["valid"]
+
+
 def test_unknown_method_is_data_not_an_exception():
     r = call("no_such_method")
     assert r["ok"] is False

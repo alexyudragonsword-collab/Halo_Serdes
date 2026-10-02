@@ -34,7 +34,7 @@ from .scoring import (
     training_schedule,
     warmup_symbols,
 )
-from .static_link import _levels, fold_eye, make_pattern
+from .static_link import _levels, check_symbols, fold_eye, make_pattern
 
 
 #: Symbols per data-aided LMS averaging batch, handed to the mixed-signal
@@ -165,10 +165,16 @@ def _optical_pass(tx_y: np.ndarray, stages, channel: ChannelModel,
 def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False,
                   collect_jitter: bool = False,
-                  tx_ami=None, rx_ami=None, xtalk=None) -> SimResult:
+                  tx_ami=None, rx_ami=None, xtalk=None,
+                  symbols: np.ndarray | None = None) -> SimResult:
+    """``symbols``: the user symbol stream to send instead of ``sim.pattern``
+    (symbol indices, one per UI). A retimer feeds one segment's decisions to
+    the next this way; the stream enters the waveform domain only through
+    ``tx/builder.py`` (invariant #5). With the pattern's own stream the
+    result is identical to leaving it None."""
     if cfg.rx.arch == "adc_dsp":
         return _run_adc_link(cfg, channel, collect_eye, collect_jitter,
-                             tx_ami, rx_ami, xtalk)
+                             tx_ami, rx_ami, xtalk, symbols)
     from ..config.schema import (
         MS_COMFORT_DATA_RATE,
         MS_HARD_MAX_BAUD,
@@ -205,7 +211,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     osr = cfg.osr
 
     # --- pattern, Tx (optionally 1/(1+D) precoded; FIR + jittered edges) ---
-    symbols = make_pattern(cfg)
+    symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line_symbols = _tx_symbols(cfg, symbols)
     v = symbols_to_voltages(line_symbols, cfg)
     if len(cfg.tx.fir_taps) > 1:
@@ -340,13 +346,15 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "jitter_budget": jitter_budget,
                 "mlsd_resid": resid_ratios,
                 "ser_slicer": sc.ser_slicer,
-                "precode": cfg.precode})
+                "precode": cfg.precode,
+                "decisions": sc.decisions})
 
 
 def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False,
                   collect_jitter: bool = False,
-                  tx_ami=None, rx_ami=None, xtalk=None) -> SimResult:
+                  tx_ami=None, rx_ami=None, xtalk=None,
+                  symbols: np.ndarray | None = None) -> SimResult:
     """ADC-based RX: light CTLE -> TI-ADC -> digital FFE/DFE -> MM-CDR.
 
     Primary metrics for this architecture are slicer-input SNR and SER
@@ -361,7 +369,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     osr = cfg.osr
 
     # --- pattern, Tx (optionally 1/(1+D) precoded) ---
-    symbols = make_pattern(cfg)
+    symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line_symbols = _tx_symbols(cfg, symbols)
     v = symbols_to_voltages(line_symbols, cfg)
     if len(cfg.tx.fir_taps) > 1:
@@ -488,4 +496,5 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 # SER of the raw slicer, before the sequence detector — the
                 # baseline the MLSD gain is measured against
                 "ser_slicer": sc.ser_slicer,
-                "precode": cfg.precode})
+                "precode": cfg.precode,
+                "decisions": sc.decisions})
