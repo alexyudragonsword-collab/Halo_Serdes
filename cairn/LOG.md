@@ -17,7 +17,7 @@
   —— 这条链上瓶颈是驱动器压缩,不是 7 bit。
 - **发现两处既有缺口**(未修,进 ROADMAP):接收端起始均衡看不见 TX FFE(静态引擎 TX (−0.08, 0.78, −0.14) 时 SNR 27.7 → 11.2 dB;
   修了会动 6 个预置的指纹,P1 1c);统计引擎从未建模 `tx.bw`(P3 #8)。坑:SQNR 闭式要对峰值位置平均;backchannel 的 `peak` 重名。
-- 验证:jit 603 passed / 2 skipped,nojit 601 passed / 4 skipped,新开关全关时两份指纹逐位同;Android:ANDROID_TOTALS。
+- 验证:jit 603 passed / 2 skipped,nojit 601 passed / 4 skipped,新开关全关时两份指纹逐位同;Android CI(e0ed63d,run 37007280461):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-02 · 光互联链路,阶段 3:E/O 大信号曲线 + TDECQ(feat/optical-link-stage3)
 
