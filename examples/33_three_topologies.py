@@ -150,15 +150,17 @@ print(f"retimed optics reach > LPO reach: {ret > lpo}   (retimed {ret:.0f} m vs 
       f"CPO {cpo:.0f} m)")
 
 # --------------------------------------------------------------- levers ---
-# Baseline is the LPO link with a typical-device RIN of -140 dB/Hz. Each
-# lever alone: shorter segments (8 -> 4 dB, the CPO move), quieter laser
-# (RIN -140 -> -145), retiming; then all three.
+# Baseline is the LPO link with RIN -143 dB/Hz, chosen so the baseline itself
+# reaches somewhere (at -140 the 8 dB LPO link does not close at 30 m, and a
+# gain over zero says nothing about additivity). Each lever alone: shorter
+# segments (8 -> 4 dB, the CPO move), a quieter laser (RIN -143 -> -148),
+# retiming; then all three.
 LEVERS = [
-    ("baseline: LPO 8 dB, RIN -140", 8.0, "none", -140.0),
-    ("+ electrical: 4 dB segments", 4.0, "none", -140.0),
-    ("+ optical noise: RIN -145", 8.0, "none", -145.0),
-    ("+ retiming", 8.0, "both", -140.0),
-    ("all three", 4.0, "both", -145.0),
+    ("baseline: LPO 8 dB, RIN -143", 8.0, "none", -143.0),
+    ("+ electrical: 4 dB segments", 4.0, "none", -143.0),
+    ("+ optical noise: RIN -148", 8.0, "none", -148.0),
+    ("+ retiming", 8.0, "both", -143.0),
+    ("all three", 4.0, "both", -148.0),
 ]
 print()
 print("Lever table (reach at post-KP4 < 1e-15):")

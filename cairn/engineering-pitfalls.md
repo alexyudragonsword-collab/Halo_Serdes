@@ -40,6 +40,10 @@ authoring_mode: ai_generated
 按二阶矩匹配的单高斯把 σ 对到 2% 内,BER 仍乐观 1.6×(Q≈3.2)。比值不是 1 不一定是 σ 算错,
 先看噪声是不是高斯。
 
+**reach 阶梯上两个长度的 pre-FEC 一模一样,先看错误落在哪。** ADC 路径每次运行最后 2–3 个判决是无效的
+(`error_idx` 贴着 `n_checked`),给每条曲线垫了 3/(2N) 的地板;60k 符号时 5.6e-5、200k 时 1e-5。
+不是链路性质,是引擎尾部余量(ROADMAP P1-1b)。
+
 ### API 类
 
 **`SimResult.ber` 是 `BerResult` 不是 float。** 要数值用 `res.ber.ber`;`res.ser` 才是

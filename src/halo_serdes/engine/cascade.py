@@ -63,10 +63,22 @@ class CascadeResult:
                 f"  product={self.ber_product:.3e}  [{segs}]")
 
 
-def _ideal_segment(like: ChannelConfig) -> ChannelConfig:
-    # A zero-length analytic trace on the same grid: H = 0.5, the matched
-    # divider every segment in this library is referenced to.
-    return ChannelConfig(kind="analytic", length_m=0.0, n_freq=like.n_freq, f_max=like.f_max)
+def _ideal_segment(like: ChannelConfig, cfg: LinkConfig) -> ChannelConfig:
+    """A zero-length trace: H = 0.5, the matched divider every segment is
+    referenced to -- on a grid that already reaches the waveform's Nyquist.
+
+    On the segments' own grid (f_max = 2 x baud by default) a flat 0.5 is a
+    brick wall that the zero-padding to ``dt`` turns into a sinc the impulse
+    trimmer keeps whole: 32k samples that then meet the stage-2 impulse in a
+    direct convolution. Evaluating the optics on a grid ending at 1/(2 dt)
+    needs no padding, so the ideal segment is an exact delta and the optical
+    blocks, which are analytic, simply extend to the sampling bandwidth.
+    """
+    f_max_like = like.f_max if like.f_max is not None else 2.0 * cfg.symbol_rate
+    df = f_max_like / (like.n_freq - 1)
+    f_nyq_wave = 1.0 / (2.0 * cfg.dt)
+    n = int(round(f_nyq_wave / df)) + 1
+    return ChannelConfig(kind="analytic", length_m=0.0, n_freq=n, f_max=(n - 1) * df)
 
 
 def segment_configs(cfg: LinkConfig) -> list[tuple[str, LinkConfig]]:
@@ -82,7 +94,7 @@ def segment_configs(cfg: LinkConfig) -> list[tuple[str, LinkConfig]]:
     rep = dataclasses.replace
     seg_a = rep(cfg, channel=top.seg_a, topology=None, rx=top.retimer_rx)
     optics = rep(cfg, topology=TopologyConfig(
-        seg_a=_ideal_segment(top.seg_a), optical=top.optical, seg_b=_ideal_segment(top.seg_b)),
+        seg_a=_ideal_segment(top.seg_a, cfg), optical=top.optical, seg_b=_ideal_segment(top.seg_b, cfg)),
         tx=top.retimer_tx, rx=top.retimer_rx,
         sim=rep(cfg.sim, seed=cfg.sim.seed + 1))
     seg_b = rep(cfg, channel=top.seg_b, topology=None, tx=top.retimer_tx,
