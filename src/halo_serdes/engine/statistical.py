@@ -46,6 +46,10 @@ Non-LTI approximations (each cross-checked against the time engine):
   white once an FFE spreads the input over many codes. Without a Tx FFE the
   four PAM4 levels sit on four fixed codes and the "noise" is a fixed level
   offset this engine averages instead;
+- Tx driver pole (``tx.bw``): LTI, so not an approximation -- it is in the
+  pulse through ``TxPipeline.equivalent_symbol_response`` and in the DAC
+  error's path through ``after_dac_response``, the same sampled impulse the
+  receivers' pulse analysis uses;
 - Tx driver nonlinearity (``tx.drv_nl``): not modelled here, the time
   engine's alone, with a warning (outside the 2x cross-check);
 - optical topology (``cfg.topology``): the photodiode's shot and RIN noise
@@ -193,7 +197,9 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             f"tx.drv_nl={cfg.tx.drv_nl!r}: the driver's compression is not in the "
             "statistical engine (it is not LTI) and the result is outside the 2x "
             "cross-check (invariant #3) -- use the time engine", stacklevel=2)
-    h_after_dac = h                    # the DAC's error enters after the Tx FFE
+    # the DAC's error enters after the Tx FFE, before the driver pole
+    drv_resp = tx_pipe.after_dac_response(osr)
+    h_after_dac = h if drv_resp is None else np.convolve(h, drv_resp)
     tx_resp = tx_pipe.equivalent_symbol_response(osr)
     if tx_resp is not None:
         h = np.convolve(h, tx_resp)

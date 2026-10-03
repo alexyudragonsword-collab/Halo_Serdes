@@ -167,17 +167,59 @@ class TxPipeline:
         resp = self.equivalent_symbol_response(osr)
         if resp is None:
             return h, 0
-        return np.convolve(h, resp), self.fir_n_pre * osr
+        return np.convolve(h, resp), self.symbol_response_lead(osr)
 
     # ------------------------------------------------------ statistical engine
-    def equivalent_symbol_response(self, osr: int | None = None) -> np.ndarray | None:
-        """The LTI part of the symbol stage on the sample grid, or None when it
-        is the identity: what the statistical engine convolves into the pulse.
+    def driver_response(self, osr: int | None = None) -> tuple[np.ndarray, int] | None:
+        """The driver pole as a sampled impulse, and how many of its samples
+        lie before t = 0; None without ``tx.bw``.
 
-        The DAC is not in it (it reaches the statistical engine as the
-        equivalent noise ``dac_sigma_q``), nor is the driver pole: the
-        statistical engine has never modelled ``tx.bw`` (a known gap, recorded
-        in cairn/DSP发端与PR.md)."""
-        if not self.ffe_active:
+        It is the inverse rFFT of the same H(f) that ``apply_single_pole``
+        multiplies the waveform by, so both engines see the same operator,
+        aliasing included. H is not band-limited, so that inverse rings: up
+        to ~10 % of the peak just before t = 0, then an alternating tail that
+        only falls as 1/n. The non-causal samples are kept and reported as
+        the lead; the window is +-32 UI (or 40 time constants after t = 0 if
+        that is longer), which leaves the weight within ~6e-5 of the DC gain.
+        """
+        bw = self.cfg.tx.bw
+        if bw is None:
             return None
-        return upsampled_taps(self.fir_taps, self.cfg.osr if osr is None else osr)
+        osr = self.cfg.osr if osr is None else osr
+        dt = self.cfg.ui / osr
+        tau = 1.0 / (2.0 * np.pi * bw)
+        pre = 32 * osr
+        keep = max(int(np.ceil(40.0 * tau / dt)) + 1, pre)
+        n = 1 << int(np.ceil(np.log2(4 * (keep + pre))))
+        h = np.fft.irfft(1.0 / (1.0 + 1j * np.fft.rfftfreq(n, d=dt) / bw), n)
+        return np.concatenate([h[n - pre:], h[:keep]]), pre
+
+    def equivalent_symbol_response(self, osr: int | None = None) -> np.ndarray | None:
+        """The LTI part of the Tx after the levels -- FFE and driver pole -- on
+        the sample grid, or None when it is the identity: what the statistical
+        engine convolves into the pulse and the receivers' pulse analysis sees.
+
+        The DAC is not in it: it reaches the statistical engine as the
+        equivalent noise ``dac_sigma_q`` (see ``after_dac_response``). Its main
+        cursor sits ``symbol_response_lead`` samples later than in the
+        waveform."""
+        osr = self.cfg.osr if osr is None else osr
+        resp = upsampled_taps(self.fir_taps, osr) if self.ffe_active else None
+        drv = self.driver_response(osr)
+        if drv is None:
+            return resp
+        return drv[0] if resp is None else np.convolve(resp, drv[0])
+
+    def symbol_response_lead(self, osr: int | None = None) -> int:
+        """Samples by which ``equivalent_symbol_response`` is late against
+        the waveform: the FFE's dropped precursor outputs plus the driver
+        impulse's non-causal samples."""
+        osr = self.cfg.osr if osr is None else osr
+        drv = self.driver_response(osr)
+        return (self.fir_n_pre * osr if self.ffe_active else 0) + (0 if drv is None else drv[1])
+
+    def after_dac_response(self, osr: int | None = None) -> np.ndarray | None:
+        """What follows the DAC inside the Tx (the driver pole), or None: the
+        path its quantisation error takes before the channel."""
+        drv = self.driver_response(osr)
+        return None if drv is None else drv[0]

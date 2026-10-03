@@ -210,3 +210,25 @@ def test_tx_ffe_cross_check_within_2x(length_m, noise, dac_bits):
     stat = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
     ratio = stat.ber / mc.ber.ber
     assert 0.5 < ratio < 2.0, (length_m, dac_bits, stat.ber, mc.ber.ber, ratio)
+
+
+@pytest.mark.parametrize("mod,pattern,noise", [("nrz", "prbs13", 0.03), ("pam4", "prbs13q", 0.012)])
+def test_tx_driver_pole_cross_check_within_2x(mod, pattern, noise):
+    """Invariant #3 with the Tx driver's single pole at half the baud rate.
+    The statistical engine used to leave ``tx.bw`` out entirely, and the
+    receivers solved their starting FFE, phase and slicer scale from a pulse
+    without it: 2e-2 / 0.15 time-domain BER against an unchanged statistical
+    5e-5 / 5e-4 (ratio 0.003)."""
+    cfg = LinkConfig(
+        modulation=mod, symbol_rate=32e9, osr=16,
+        channel=ChannelConfig(kind="analytic", length_m=0.25, rdc=2.0,
+                              r_skin=1.5e-3, loss_tangent=0.01),
+        tx=TxConfig(swing=1.0, bw=16e9),
+        rx=RxConfig(ctle=CtleConfig(enable=False), ffe=FfeConfig(n_pre=2, n_post=6),
+                    dfe=DfeConfig(n_taps=2), noise_rms=noise),
+        sim=SimConfig(n_symbols=300_000, seed=6, pattern=pattern))
+    mc = run_static_link(cfg, collect_eye=False)
+    assert mc.ber.n_errors > 50, mc.ber.n_errors
+    stat = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    ratio = stat.ber / mc.ber.ber
+    assert 0.5 < ratio < 2.0, (mod, stat.ber, mc.ber.ber, ratio)
