@@ -6,6 +6,19 @@
 
 ---
 
+## [未发布] — 接收端部分响应整形 1 + aD(原 ROADMAP P3 #8 阶段 2)
+
+### 新增
+- `PrConfig(target, at)` 与 `LinkConfig.pr`;表单 `pr.target`、`pr.at`(桌面与 Android 共用)。ADC 收端的起始 FFE(`zf_ffe` /
+  `mmse_ffe` 的 `target=`)、LMS 期望值、DFE 起点、MLSD 光标、MM-CDR 检测器输入都按目标走;a = 1 + 预编码切合成电平。
+- 统计引擎 `pr_error_events`:PR + 序列检测器时对交替误差事件在 FFE 着色噪声下做 union bound。
+- 示例 `36_pr_rx_alpha.py`:示例 18 信道上 a = 0.75 的 reach 36.3 dB,对照(delta 目标 + Viterbi)31.6 dB(+4.7 dB)。
+- `tests/test_pr.py`,并在 `test_mlsd_fec.py`、`test_mlsd_precode_wiring.py`、`test_config_validation.py` 加用例。
+
+### 变更
+- `pr.at: tx`、mixed-signal + PR、静态引擎与定点数据通路遇 PR 都拒绝;`target=(1.0,)` 与此前逐位相同。
+- 测试 664 项,示例 37 个。
+
 ## [未发布] — 统计引擎与时域引擎的一致性(原 ROADMAP P1 1b、P3 #8 的 tx.bw、P3 #11 的分箱)
 
 ### 修复

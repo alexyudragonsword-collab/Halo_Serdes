@@ -60,6 +60,10 @@ mixed-signal 与 ADC-DSP **共享** Tx、信道、分析层、统计引擎骨架
 0.64–1.0 的方差,判决噪声随 CDR 的小数相位变。修后:MS NRZ / PAM4、ADC PAM4、tx.bw、光 ER 3–7.5 dB 都在 0.88–1.04×
 (光路另加了邻符号分箱核,`cairn/光互联建模.md`)。
 
+**第三条前提(2026-10-03,收端 PR)**:序列检测器面对的噪声若是有色的,统计引擎不能只用白噪声最小距离 —— PR 目标下 FFE 把
+噪声染成强负相关,最小距离版本乐观 2.5–20 倍。PR 路径改为交替误差事件的 union bound(噪声自相关取自 FFE 抽头),
+2× 判据只在 BER ≲ 5e-4 成立(union bound 在高 BER 偏松);测试工作点按此选(`tests/test_pr.py`)。
+
 ### 4. numba 是性能层,不是正确性层
 
 热核写成纯 Python 函数,再用 `numba.njit` 包一层;`ImportError` 或 `HALO_NO_JIT=1`

@@ -25,6 +25,9 @@
 13. [定点与 RTL 出口](#13-定点与-rtl-出口)
 14. [性能与内存](#14-性能与内存)
 15. [常见问题](#15-常见问题)
+16. [光互联:LPO / CPO 作为同一条链](#16-光互联lpo--cpo-作为同一条链)
+17. [DSP 发端:DAC 与驱动器压缩](#17-dsp-发端dac-与驱动器压缩)
+18. [接收端部分响应(PR)整形](#18-接收端部分响应pr整形)
 
 ---
 
@@ -657,3 +660,31 @@ r.sndr_db, r.rlm, r.dac_clipped
 
 示例 `examples/35_dsp_tx_sndr.py`:TX SNDR 对 DAC 位数 × 驱动器压缩(叠 6.02N + 1.76),以及示例 18 的信道扫描上
 DAC 6 / 7 / 8 / 理想与 7 bit + 压缩的 reach。
+
+---
+
+## 18. 接收端部分响应(PR)整形
+
+ADC 收端的 FFE 默认把脉冲均衡成 delta(只留主光标)。`pr.target = [1.0, a]` 让它均衡成 1 + aD:
+第一个后光标保留为 a·主光标,由序列检测器(Viterbi)解掉,FFE 少反演信道、少放大噪声。
+
+```yaml
+rx:
+  arch: adc_dsp            # 只有 ADC 收端能整形;mixed_signal + pr 在构造时就报错
+  mlsd: {kind: viterbi, memory: 2}
+pr:
+  target: [1.0, 0.75]      # (1.0,) = delta(默认,逐位等于不设);只支持 1 + aD,a ∈ [0, 1]
+  at: rx                   # tx(发端 PR)是 ROADMAP P3 #8 阶段 3,现在抛 NotImplementedError
+precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 个合成电平再 mod N,不传播
+```
+
+- **一定要配序列检测器**:`mlsd.kind: none` 时只有逐符号判决减 a × 上一判决(相当于理想 DFE 抽头),
+  省下的噪声又还回去了;引擎发 warning。
+- **接线**:LMS 期望值 = levels[x_s] + a·levels[x_{s−1}];DFE 从受控光标之后起;MM-CDR 读"样本 − a × 上一判决",
+  锁定点与 delta 目标同(示例 18 信道上差 ≤ 0.0011 UI)。静态引擎与定点数据通路不支持 PR,直接拒绝。
+- **统计引擎**:受控光标移出 ISI PDF;有序列检测器时 BER 是对交替误差事件的 union bound,噪声相关性取自 FFE 抽头
+  (只看最小距离会乐观 2.5–20 倍)。BER ≤ 5e-4 时与时域在 1.5× 内,1e-2 以上偏悲观(最多 3×)。
+- **预编码与 Viterbi**:a = 1 + 预编码时 Viterbi 的一个错误解码后变两个,BER 比不预编码略高;预编码的价值在给 LMS / CDR
+  的逐符号判决不传播。
+
+示例 `examples/36_pr_rx_alpha.py`:a ∈ {0, 0.25, 0.5, 0.75, 1} × 三个损耗,以及 reach 扫描(对照 a = 0 + Viterbi)。
