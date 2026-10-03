@@ -68,7 +68,7 @@ BASE = LinkConfig(
                 adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5),
                 ffe=FfeConfig(n_pre=4, n_post=10, adapt="lms"),
                 dfe=DfeConfig(n_taps=1, adapt="lms"),
-                cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15, pd_input="adc"),
+                cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15, pd_input="ffe"),
                 noise_rms=0.0015),
     sim=SimConfig(n_symbols=N_SYMBOLS, seed=3, pattern="prbs13q"))
 

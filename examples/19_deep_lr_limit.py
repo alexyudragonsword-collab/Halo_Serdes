@@ -4,12 +4,13 @@ Pushing past the ~28 dB limit of example 18 by adding DFE (cancels far
 postcursors without FFE's noise enhancement) and deeper MLSD memory. The
 honest finding: at deep LR the link is SNR-limited, not ISI/DSP-depth-limited.
 
-- adding DFE + MLSD memory-3 over FFE+memory-2 buys only ~1-2 dB (the residual
+- adding DFE + MLSD memory-3 over FFE+memory-2 buys under 1 dB (the residual
   ISI is already small; the wall is noise, and FFE-inverting a 30 dB channel
   enhances it);
 - the big lever is ADC sampling quality — better ENOB / lower noise floor
-  buys ~6 dB of reach with the SAME DSP (28 -> 29 dB from DSP depth, but
-  29 -> 35.5 dB from the ADC).
+  buys ~6 dB of reach with the SAME DSP (31.8 -> 32.4 dB from DSP depth, but
+  32.4 -> 38.7 dB from the ADC). Rerun 2026-10-03 after the receiver fixes;
+  the earlier 28 -> 29 -> 35.5 dB ladder was taken with MM-CDR off the peak.
 
 Two panels: (1) DSP-depth comparison at a fixed ADC; (2) ADC-quality
 comparison at the best DSP. Reach = where post-KP4 crosses the 1e-15 target.
@@ -85,7 +86,7 @@ CONFIGS = {
     "same + better ADC (ENOB7.5)": dict(n_pre=6, n_post=4, n_dfe=8, peak=8, mem=3,
                                        enob=7.5, noise=0.0008),
 }
-lengths = [0.16, 0.18, 0.19, 0.20, 0.21, 0.22, 0.24]
+lengths = [0.16, 0.18, 0.19, 0.20, 0.21, 0.22, 0.24, 0.26, 0.28]
 
 results = {}
 for label, kw in CONFIGS.items():
@@ -106,7 +107,9 @@ def reach(rows):
         if logpost[i] < -15 <= logpost[i + 1]:
             t = (-15 - logpost[i]) / (logpost[i + 1] - logpost[i])
             return loss[i] + t * (loss[i + 1] - loss[i])
-    return loss[0] if logpost[0] >= -15 else None
+    if logpost[0] >= -15:
+        return None                       # fails at the first point
+    return np.inf                         # never crosses inside the sweep
 
 
 fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
@@ -121,10 +124,10 @@ for label in ("FFE + MLSD mem2 (example 18)", "FFE + DFE8 + MLSD mem3"):
     r = results[label]
     ax.semilogy(-r[:, 0], np.maximum(r[:, 1], 1e-30), markers[label] + "-",
                 color=colors[label], label=f"{label} (reach {reach(r):.1f} dB)"
-                if reach(r) else label)
+                if reach(r) is not None and np.isfinite(reach(r)) else label)
 ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
-       title="Add DFE + deeper MLSD: only ~1-2 dB more at same ADC\n(residual ISI already small; deep LR is SNR-limited)")
+       title="Add DFE + deeper MLSD: under 1 dB more at same ADC\n(residual ISI already small; deep LR is SNR-limited)")
 ax.yaxis.set_major_formatter(_fmt); ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=7.5); ax.grid(True, which="both", alpha=0.3)
 
@@ -134,7 +137,7 @@ for label in ("FFE + DFE8 + MLSD mem3", "same + better ADC (ENOB7.5)"):
     r = results[label]
     ax.semilogy(-r[:, 0], np.maximum(r[:, 1], 1e-30), markers[label] + "-",
                 color=colors[label], label=f"{label} (reach {reach(r):.1f} dB)"
-                if reach(r) else label)
+                if reach(r) is not None and np.isfinite(reach(r)) else label)
 ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
        title="Better ADC (ENOB 6.5->7.5, half the noise): ~6 dB more at same DSP\n(the real lever for deep LR is sampling quality)")
@@ -146,5 +149,10 @@ fig.savefig(OUT / "19_deep_lr_limit.png", dpi=130)
 print("\n== reach summary (max loss with post-KP4 < 1e-15) ==")
 for label, r in results.items():
     rc = reach(r)
-    print(f"  {label}: {rc:.1f} dB" if rc else f"  {label}: <start")
+    if rc is None:
+        print(f"  {label}: < {-r[0, 0]:.1f} dB (fails at the first point)")
+    elif np.isinf(rc):
+        print(f"  {label}: > {-r[-1, 0]:.1f} dB (no crossing inside the sweep)")
+    else:
+        print(f"  {label}: {rc:.1f} dB")
 print(f"wrote {OUT / '19_deep_lr_limit.png'}")

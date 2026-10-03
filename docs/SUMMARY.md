@@ -15,10 +15,17 @@
 
 **224G reach 阶梯 / The 224G reach ladder**
 
-| 18 dB (C2M) | 28 dB (MR) | 35 dB (LR) | 41 dB (Deep LR) |
+| 18 dB (C2M) | 32 dB (MR/LR) | 36–39 dB (LR) | 44 dB (Deep LR) |
 |---|---|---|---|
-| FFE+DFE 基线 | +MLSD | +更好 ADC 或级联 FEC | 全栈组合 |
-| FFE+DFE baseline | +MLSD | +better ADC / concat FEC | full stack |
+| FFE+DFE 基线 | FFE(+MLSD) | +级联 FEC 或更好 ADC | 全栈组合 |
+| FFE+DFE baseline | FFE (+MLSD) | +concat FEC / better ADC | full stack |
+
+> **更正 / Correction(2026-10-03)**:探索二到四的数是接收端两处修复后重跑的(起始均衡看见 TX FFE;MM-CDR 在 PAM4 上读
+> 均衡后的样本,`cdr.pd_input` 默认 `auto`)。旧阶梯 18 → 28 → 29 → 35 → 41 dB 是在 CDR 锁偏峰值时量的;最大的改变是
+> **MLSD 在示例 18 的扫描上不再有增益** —— 原先的 29× 来自锁偏,不来自信道。旧数见 CHANGELOG 2026-10-03。
+> Explorations II–IV were rerun after two receiver fixes (the starting equaliser now sees the Tx FFE; MM-CDR reads the
+> equalised samples on PAM4). The old 18 → 28 → 29 → 35 → 41 dB ladder was measured with the CDR off the eye's peak;
+> the largest change is that **MLSD no longer gains anything on example 18's sweep** — its old 29× came from the lock point.
 
 ---
 
@@ -99,8 +106,10 @@ The post-56G architecture: light CTLE + TI-ADC + digital FFE/DFE/MLSD + MM-CDR. 
 
 | 链路 / Link | Nyquist | 插损 / Loss | pre-FEC BER | SNR | post-KP4 |
 |---|---|---|---|---|---|
-| 112 Gb/s PAM4 | 28 GHz | −10.1 dB | 1.5e-6 | 22.9 dB | 7.5e-50 |
-| 224 Gb/s PAM4 | 56 GHz | −18.2 dB | 7.6e-5 | 18.9 dB | 9.8e-23 |
+| 112 Gb/s PAM4 | 28 GHz | −10.1 dB | 1.5e-6 | 31.2 dB | 7.5e-50 |
+| 224 Gb/s PAM4 | 56 GHz | −18.2 dB | 3.5e-6 | 26.1 dB | 5.8e-44 |
+
+(2026-10-03 重跑;此前 22.9 / 18.9 dB、224G BER 7.6e-5。/ Rerun 2026-10-03; previously 22.9 / 18.9 dB and 7.6e-5 at 224G.)
 
 **眼图在哪里?闭在模拟,开在数字 / Where is the eye? Closed in analog, open in digital**
 
@@ -117,13 +126,15 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 
 | 杠杆 / Lever | 增益 / Gain | 代价 / Cost |
 |---|---|---|
-| DSP 深度(DFE + 更深 MLSD)/ DSP depth | +1 dB | 收益递减 / diminishing |
-| **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+6 dB** | ADC 功耗 / power |
-| **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+6 dB** | 开销 6%→24% / overhead |
+| DSP 深度(DFE + 更深 MLSD)/ DSP depth | +0.6 dB | 收益递减 / diminishing |
+| **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+6.3 dB** | ADC 功耗 / power |
+| **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.6 dB** | 开销 6%→24% / overhead |
 
-- **MLSD** 补 FFE 够不着的深度 ISI:-27 dB 处把 FFE-only 的 5.3e-4 拉到 5.0e-5(29× 增益,回到 KP4 瀑布点以下);但 memory-2 约 -28 dB 到极限。 / MLSD covers deep ISI: 29× gain at −27 dB, tops out near −28 dB.
-- **深 LR 是 SNR 受限,不是 ISI/DSP 深度受限**——加 DFE + 更深 MLSD 只多 ~1 dB,ADC 采样质量才是大杠杆。 / Deep LR is SNR-limited; DSP depth buys ~1 dB, ADC quality ~6 dB.
-- **级联内码**把可容忍 pre-FEC BER 从 2.2e-5 抬到 ~7e-3(300 倍),reach 从 29 到 35.5 dB。 / Concat inner code raises tolerable pre-FEC 300×.
+- **MLSD 在这条扫描上没有增益**:FFE-only 到 −28.8 dB 零误码,−30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
+  原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
+  error-free to −28.8 dB and memory-2 MLSD matches it at −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
+- **深 LR 是 SNR 受限,不是 ISI/DSP 深度受限**——加 DFE + 更深 MLSD 只多 0.6 dB(31.8 → 32.4 dB),ADC 采样质量多 6.3 dB(→ 38.7 dB)。 / Deep LR is SNR-limited; DSP depth buys 0.6 dB, ADC quality 6.3 dB.
+- **级联内码**把可容忍 pre-FEC BER 从 2.2e-5 抬到 ~7e-3(300 倍),reach 从 32.6 到 36.2 dB(BCH(255,215);此前 29 → 35.5 dB)。 / Concat inner code raises tolerable pre-FEC 300×; reach 32.6 → 36.2 dB.
 
 **全栈组合:进入 802.3dj LR / Full stack: into the 802.3dj LR band**
 
@@ -131,12 +142,16 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 
 | 配置 / Config | reach | 增益 / gain |
 |---|---|---|
-| A. KP4 + ADC 6.5(基线 / baseline) | 29.3 dB | — |
-| B. + 级联 FEC / concat FEC | 35.5 dB | +6.2 |
-| C. + 更好 ADC 7.5 / better ADC | 35.5 dB | +6.2 |
-| **D. 全栈 / full stack** | **41.4 dB** | **+12.1** |
+| A. KP4 + ADC 6.5(基线 / baseline) | 33.2 dB | — |
+| B. + 级联 FEC / concat FEC | 36.2 dB | +3.0 |
+| C. + 更好 ADC 7.5 / better ADC | 38.7 dB | +5.5 |
+| **D. 全栈 / full stack** | **44.0 dB** | **+10.8** |
 
-> 两个正交的 +6 dB 杠杆几乎线性叠加成 +12 dB:一个改"信号有多干净"(ADC/SNR),一个改"能容忍多脏"(FEC 阈值),正交,所以相加。 / The two orthogonal +6 dB levers stack to +12 dB: one changes how clean the signal is (ADC/SNR), the other how dirty it tolerates (FEC threshold).
+(2026-10-03 重跑;此前 29.3 / 35.5 / 35.5 / 41.4 dB。/ Rerun 2026-10-03; previously 29.3 / 35.5 / 35.5 / 41.4 dB.)
+
+> 两个正交的杠杆(+3.0 与 +5.5 dB)合起来 +10.8 dB,不少于单独之和(+8.5):一个改"信号有多干净"(ADC/SNR),一个改"能容忍多脏"(FEC 阈值),正交,所以相加。
+> 合起来比相加还多 2.3 dB 的原因没单独核实。 / The two orthogonal levers (+3.0 and +5.5 dB) give +10.8 dB together, no less than their sum (+8.5):
+> one changes how clean the signal is (ADC/SNR), the other how dirty it may be (FEC threshold). Why the combination beats the sum by 2.3 dB was not isolated.
 
 ---
 
@@ -152,27 +167,30 @@ a DSP-retimed module decides and re-transmits at ingress and egress, so the link
 
 | 拓扑 / Topology | 电段 A = B | 重定时 | reach(RIN −145) | 说明 / note |
 |---|---|---|---|---|
-| LPO | 8 dB | 无 | **143 m** | 主机 RX 背光纤 + 两段 trace 的 ISI / host RX carries fibre + both traces |
-| DSP retimed | 8 dB | 两端 | **249 m** | 光路段只背自己的 ISI,电段各自干净 / optics carry only their own ISI |
-| CPO | 4 dB | 无 | **182 m** | 电段短,主机仍背光纤 / short traces, host still carries the fibre |
+| LPO | 8 dB | 无 | **157 m** | 主机 RX 背光纤 + 两段 trace 的 ISI / host RX carries fibre + both traces |
+| DSP retimed | 8 dB | 两端 | **254 m** | 光路段只背自己的 ISI,电段各自干净 / optics carry only their own ISI |
+| CPO | 4 dB | 无 | **211 m** | 电段短,主机仍背光纤 / short traces, host still carries the fibre |
 
-**三个杠杆,各自单独加码与一起加码 / Three levers, alone and together**(基线 LPO 8 dB、RIN −143 dB/Hz,reach 97 m;
+**三个杠杆,各自单独加码与一起加码 / Three levers, alone and together**(基线 LPO 8 dB、RIN −143 dB/Hz,reach 99 m;
 示例 33 的时域阶梯 / time-engine ladders of example 33):
 
 | 杠杆 / Lever | reach | 增益 / gain |
 |---|---|---|
-| 基线 / baseline: LPO 8 dB, RIN −143 | 97 m | — |
-| + 电段 8 → 4 dB(CPO 的动作)/ electrical | 159 m | +62 m |
-| + 激光器 RIN −143 → −148 / optical noise | 178 m | +81 m |
-| + 重定时 / retiming | 229 m | +132 m |
-| **三者全上 / all three** | **282 m** | **+185 m** |
+| 基线 / baseline: LPO 8 dB, RIN −143 | 99 m | — |
+| + 电段 8 → 4 dB(CPO 的动作)/ electrical | 180 m | +81 m |
+| + 激光器 RIN −143 → −148 / optical noise | 206 m | +107 m |
+| + 重定时 / retiming | 231 m | +132 m |
+| **三者全上 / all three** | **287 m** | **+188 m** |
 
-> 单杠杆增益之和 +274 m,三者一起 +185 m —— **不正交,不可叠加**。重定时已经把电段的 ISI 从光路段上拿走,
+(2026-10-03 重跑,两张表都是;此前拓扑 143 / 249 / 182 m,杠杆 97 / 159 / 178 / 229 / 282 m,单杠杆之和 +274 m。结论不变。
+/ Both tables rerun 2026-10-03; previously 143 / 249 / 182 m and 97 / 159 / 178 / 229 / 282 m. Same conclusions.)
+
+> 单杠杆增益之和 +320 m,三者一起 +188 m —— **不正交,不可叠加**。重定时已经把电段的 ISI 从光路段上拿走,
 > 再缩短电段就几乎没有光路可以多拿的;RIN 与重定时都作用在同一个光路段的噪声裕度上。这与探索三里
 > "ADC × FEC 相加"的结论相反,原因是那两个杠杆分别改"信号多干净"与"能容忍多脏",而这里三个杠杆都在改
 > 同一段链路的 SNR。退一步说,到了 300 m,OM4 自身 15.7 GHz 的模式带宽才是墙。
 >
-> The single-lever gains sum to +274 m, all three together give +185 m: **not orthogonal, not additive**. Retiming already
+> The single-lever gains sum to +320 m, all three together give +188 m: **not orthogonal, not additive**. Retiming already
 > lifts the traces' ISI off the optical segment, so shortening the traces afterwards leaves little for the optics to gain,
 > and RIN and retiming both act on the same segment's noise margin. Unlike exploration III (ADC × FEC, where one lever
 > changes how clean the signal is and the other how dirty it may be), all three here move the SNR of the same segment;
@@ -218,14 +236,14 @@ tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
 | 里程碑 / Milestone | reach | 手段 / means | 代价 / cost |
 |---|---|---|---|
 | 基线 ADC-DSP | 18 dB | FFE + 1-tap DFE | DSP 面积/功耗 |
-| + MLSD | 28 dB | Viterbi 序列检测 | 状态数指数增长 |
-| + DFE + 更深 MLSD | 29 dB | DSP 深度 | 收益递减 |
-| + 更好 ADC 或级联 FEC | 35 dB | 单杠杆 +6 dB | ADC 功耗 / FEC 开销 |
-| **+ 两者全上** | **41 dB** | 全栈 +12 dB | 功耗 + 开销叠加 |
+| 深 LR 上的 FFE(+ MLSD) | 32 dB | 长 FFE;MLSD 在本扫描无增益 | DSP 面积/功耗 |
+| + DFE + 更深 MLSD | 32 dB | DSP 深度(+0.6 dB) | 收益递减 |
+| + 级联 FEC / 更好 ADC | 36 / 39 dB | 单杠杆 +3.0 / +5.5 dB | FEC 开销 / ADC 功耗 |
+| **+ 两者全上** | **44 dB** | 全栈 +10.8 dB | 功耗 + 开销叠加 |
 
-> **核心论点 / The thesis**：深 LR 是全栈问题,没有单一杠杆能到。每个杠杆单独到顶都会撞上各自的墙——DSP 撞 SNR 墙、FEC 撞 pre-FEC 悬崖、ADC 撞功耗。只有正交组合(ADC 质量 × DSP × FEC)才能从 29 dB 推到 41 dB。这套框架的价值是把每个杠杆的 dB 贡献与代价量化摆出来——给的是一张权衡表,而非一个是非题。
+> **核心论点 / The thesis**：深 LR 是全栈问题,没有单一杠杆能到。每个杠杆单独到顶都会撞上各自的墙——DSP 撞 SNR 墙、FEC 撞 pre-FEC 悬崖、ADC 撞功耗。只有正交组合(ADC 质量 × DSP × FEC)才能从 33 dB 推到 44 dB。这套框架的价值是把每个杠杆的 dB 贡献与代价量化摆出来——给的是一张权衡表,而非一个是非题。
 >
-> Deep LR is a full-stack problem; no single lever gets there. Each tops out at its own wall — DSP at the SNR wall, FEC at the pre-FEC cliff, ADC at power. Only the orthogonal combination reaches from 29 to 41 dB. The framework's value is quantifying each lever's dB and cost — a trade table, not a yes/no answer.
+> Deep LR is a full-stack problem; no single lever gets there. Each tops out at its own wall — DSP at the SNR wall, FEC at the pre-FEC cliff, ADC at power. Only the orthogonal combination reaches from 33 to 44 dB. The framework's value is quantifying each lever's dB and cost — a trade table, not a yes/no answer.
 
 **贯穿始终的方法论 / Methodology throughout**
 

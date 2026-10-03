@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-03 · `cdr.pd_input` 默认 `auto` + 重跑受影响的 20 个示例(feat/pd-input-auto,原 ROADMAP P1 1d)
+
+- 48 点扫描:PAM4 上 `ffe` 持平或大幅更好(0.25 m SNR 17.9 → 27.4 dB),NRZ 上 `ffe` 在轻 ISI 链路相位游走 ~0.4 UI。默认改 `auto`
+  (`LinkConfig.mm_pd_input`:PAM4 → ffe,NRZ → adc)。指纹只动 LPO 预置时域块(9 → 11 误码)。专题 §5 有表并更正"被推翻"那句。
+- 20 个示例新旧代码各跑一遍:示例 18 的 MLSD 增益没了(1.0×,旧 29× 来自锁偏);224G 阶梯 → 18 / 32 / 36–39 / 44 dB;光互联阶梯
+  小幅上移、结论不变。SUMMARY / summary.html / COMPARISON / 两个专题按新数改、旧数留在原处。示例 19 `<start` 误报修掉,示例 31 改 `ffe`。
+- 新 ROADMAP P2 6d(示例 18 换一个 MLSD 真有用的配置、重嵌 summary.html 的图);pitfalls 加"杠杆增益要在修好的基线上量"。
+- 验证:jit 612 passed / 2 skipped(+ 新 7 项单跑通过),nojit 617 passed / 4 skipped;Android CI(0354903,run 37093567169):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过(第二个 commit 只动示例与文档)。
+
 ## 2026-10-03 · Android CI 的 push 路径补上 APK 资源目录(ci/android-paths)
 
 - `configs/**`、`data/channels/**`、`data/clock_profiles/**` 加进 `android.yml` 的 push 路径:PR #9 只改预置,Android 没触发。

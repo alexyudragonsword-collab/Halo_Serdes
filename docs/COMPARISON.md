@@ -50,8 +50,9 @@
    (比值 1.03×),是本框架最大差异化增量。
 2. **双 RX 架构公平对比** —— mixed-signal 与 ADC-DSP 共享 Tx/信道/分析层,差异
    限制在两个组装类内。serdespy/PyBERT 只有 mixed-signal,DragonPHY2 只有 ADC。
-3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→28→29→35→41 dB
-   杠杆分解(MLSD +、DFE/deeper MLSD +、better ADC +6dB、级联 FEC +6dB,正交可叠加)。
+3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→32→36/39→44 dB
+   杠杆分解(DFE/deeper MLSD +0.6 dB、级联 FEC +3.6 dB、better ADC +6.3 dB,正交可叠加;
+   2026-10-03 接收端修复后重跑,旧阶梯 18→28→29→35→41 dB 是 CDR 锁偏时量的)。
 4. **双 MLSD 实现 + 解析 MLSE 增益 + 双引擎接线** —— Viterbi MLSE(最优)+ DragonPHY 式
    sliding-detector(低复杂度);`mlse_min_distance_sq`/`mlse_gain_over_dfe_db` 给出对理想
    DFE 的渐近编码增益闭式解(1+D→3.01 dB、EPR4→6.02 dB,匹配滤波器界),示例 27 标定实测
