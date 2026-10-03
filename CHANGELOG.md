@@ -6,6 +6,14 @@
 
 ---
 
+## [未发布] — 224G ADC 预置的 MM-CDR 改读均衡后的样本(ROADMAP P1 1c 新)
+
+### 变更
+- `pam4_224g_adc.yaml`、`pam4_224g_112g_adc.yaml`、`pam4_112g_adc_mismatch.yaml`、`pam4_deep_lr_adc.yaml`:`cdr.pd_input: adc → ffe`。
+  `adc` 输入时 MM 鉴相器锁在偏离脉冲峰值 0.15–0.3 UI 处并来回摆;`ffe` 时贴住峰值,且照样跟踪抖动(SJ 0.1 UI @ 0.5 MHz,
+  跟踪误差 rms 0.13 / 0.15 / 0.06 / 0.12 UI → 0.03 / 0.06 / 0.03 / 0.04 UI)。时域 BER:3.1e-3 → 2.3e-4、7.8e-3 → 1.6e-5、
+  3.8e-3 → 1.3e-5、6.4e-2 → 3.9e-5。其余预置、静态与统计引擎不变。库默认值仍是 `adc`(见 ROADMAP P1 1d)。
+
 ## [未发布] — 接收端起始均衡看见 TX FFE(ROADMAP P1 1c)
 
 ### 修复
