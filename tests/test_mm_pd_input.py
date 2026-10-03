@@ -2,8 +2,6 @@
 it steers around (raw ADC samples lock PAM4 off the peak; equalised samples
 leave a light-ISI NRZ link without a timing gradient)."""
 
-import dataclasses as dc
-
 import numpy as np
 import pytest
 

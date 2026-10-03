@@ -9,7 +9,14 @@ residual ISI, no error propagation, sequence gain) + KP4 FEC.
 This sweep runs the ADC link across LR channel lengths and compares, at each
 loss: FFE-only slicer BER vs FFE+MLSD BER, against the KP4 pre-FEC waterfall,
 with post-KP4 projection.
+
+Correction (2026-10-03): the MLSD gain this example used to show (29x at
+-27 dB) came from the receiver, not the channel: the starting equaliser did
+not see the Tx FFE and MM-CDR read the raw ADC samples, locking off the
+eye's peak. With both fixed, FFE alone is error-free to -28.8 dB and MLSD
+memory-2 adds nothing measurable on this sweep (gain 1.0x at -30 and -33 dB).
 """
+
 
 import sys
 import time
@@ -125,7 +132,7 @@ ax.axhline(KP4_WATERFALL, color="r", ls="--", lw=1, label="KP4 pre-FEC waterfall
 ax.axvspan(35, 46, color="gray", alpha=0.10)
 ax.text(35.3, 2e-6, "LR (>35 dB)", fontsize=7, color="gray")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="pre-FEC BER",
-       title="Deep ISI beyond FFE's reach is compensated by MLSD\n(224 Gb/s PAM4, ADC arch)")
+       title="FFE-only vs FFE + MLSD (memory 2)\n(224 Gb/s PAM4, ADC arch)")
 ax.yaxis.set_major_formatter(_fmt)
 ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=8)
@@ -138,7 +145,7 @@ ax.semilogy(-loss, np.maximum(post_mlsd, 1e-30), "s-", color="C0",
             label="post-KP4 (FFE + MLSD)")
 ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-FEC BER (KP4)",
-       title="MLSD pulls pre-FEC below the waterfall,\nso KP4 can reach 1e-15")
+       title="Pre-FEC after MLSD against the KP4 waterfall\n(post-KP4 target 1e-15)")
 ax.yaxis.set_major_formatter(_fmt)
 ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=8)

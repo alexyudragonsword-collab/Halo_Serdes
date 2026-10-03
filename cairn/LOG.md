@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-03 · `cdr.pd_input` 默认 `auto` + 重跑受影响的 20 个示例(feat/pd-input-auto,原 ROADMAP P1 1d)
+
+- 48 点扫描:PAM4 上 `ffe` 持平或大幅更好(0.25 m SNR 17.9 → 27.4 dB),NRZ 上 `ffe` 在轻 ISI 链路相位游走 ~0.4 UI。默认改 `auto`
+  (`LinkConfig.mm_pd_input`:PAM4 → ffe,NRZ → adc)。指纹只动 LPO 预置时域块(9 → 11 误码)。专题 §5 有表并更正"被推翻"那句。
+- 20 个示例新旧代码各跑一遍:示例 18 的 MLSD 增益没了(1.0×,旧 29× 来自锁偏);224G 阶梯 → 18 / 32 / 36–39 / 44 dB;光互联阶梯
+  小幅上移、结论不变。SUMMARY / summary.html / COMPARISON / 两个专题按新数改、旧数留在原处。示例 19 `<start` 误报修掉,示例 31 改 `ffe`。
+- 新 ROADMAP P2 6d(示例 18 换一个 MLSD 真有用的配置、重嵌 summary.html 的图);pitfalls 加"杠杆增益要在修好的基线上量"。
+- 验证:jit 612 passed / 2 skipped(+ 新 7 项单跑通过),nojit 617 passed / 4 skipped;Android:见 PR CI。
+
 ## 2026-10-03 · 4 个 224G ADC 预置 `cdr.pd_input: adc → ffe`(fix/adc-presets-pd-ffe)
 
 - 被推翻:预置注释"均衡后的样本没有 MM 梯度"。`ffe` 时 CDR 照样跟踪(SJ 0.1 UI @ 0.5 MHz,跟踪误差 rms 0.026–0.062 UI,
