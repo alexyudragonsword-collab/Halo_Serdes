@@ -147,18 +147,6 @@ job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量�
 里有对 `halo_serdes_app` 的 re-export shim,桌面侧依赖它 —— 排除时要确认排的只是 APK
 的打包范围,不是别的。
 
-### 6d. 示例 18 不再展示 MLSD 的增益;`docs/summary.html` 的内嵌图是旧快照
-
-**现状**:2026-10-03 接收端修复后重跑,示例 18 的扫描上 FFE 到 −28.8 dB 零误码,−30 / −33 dB 处 MLSD memory-2 与 FFE-only
-一样(1.0×)—— 这个示例存在的理由(MLSD 补 FFE 够不着的 ISI)在它自己的信道上测不出来了。示例 19 的"DSP 深度"杠杆也只剩
-+0.6 dB。`docs/summary.html` 的文字已更正,内嵌的 base64 图仍是修复前的。
-
-**证据**:`docs/SUMMARY.md` 探索三的更正;`cairn/DSP发端与PR.md` §5;`engineering-pitfalls.md` MLSD 类首条(MLSD 只在有残余
-ISI 时有用)。
-
-**怎么做**:给示例 18 换一个 FFE 确实留下残余 ISI 的配置(短 FFE、或更深的反射 / 欠均衡信道),量出 MLSD 真实的增益与它
-开始起作用的损耗;再按新输出重嵌 `summary.html` 的图。
-
 ## P3 — 能力扩展
 
 ### 7. 片上校准回路
@@ -174,6 +162,10 @@ DSP TX 阶段 0/1 已合入后,发端 PR 的位置已经留好:`TxPipeline.pr_fi
 DAC 与驱动器压缩已建模,所以发端 PR 的 DAC 动态范围代价可以直接测。剩下的是方案文档的阶段 2(收端 1+αD:
 `zf_ffe/mmse_ffe` 的 target、LMS 期望值、DFE 起点、MLSD 光标、CDR `pd_offset`)与阶段 3(发端 PR 与三方同台)。
 另:统计引擎从未建模 `tx.bw`(驱动器单极点),发端 PR 的频谱论证会碰到它,开工前先补。
+
+收端 1+αD 目标也是 MLSD 真正加 reach 的前提:示例 18(2026-10-03 改版)量到 LMS 收敛的 21 抽头 FFE 只留 < 0.002 的残余光标,
+MLSD memory-2 在任何损耗都是 1.0×;3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 拿回 2.4–5.1×,但仍不如 21 抽头 FFE 单独用。
+即 delta 目标下 MLSD 只能替代 FFE 抽头,不能加 reach。
 
 ### 9. 多 lane 数据通路
 多 lane 目前只在**串扰侧**(`aggressor_bank`/`icn_rms`);链路本身仍是单 lane。

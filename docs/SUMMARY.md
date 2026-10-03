@@ -130,7 +130,11 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 | **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+6.3 dB** | ADC 功耗 / power |
 | **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.6 dB** | 开销 6%→24% / overhead |
 
-- **MLSD 在这条扫描上没有增益**:FFE-only 到 −28.8 dB 零误码,−30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
+- **MLSD 只拿回短 FFE 留下的 ISI**(示例 18):21 抽头 LMS FFE 收敛到 MMSE,残余光标 < 0.002,MLSD memory-2 在每个损耗都是 1.0×;
+  3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 从 −28.8 dB 起拿回 2.4×、−33.3 dB 处 5.1× —— 但 3 抽头 + MLSD 仍不如 21 抽头 FFE 单独用。
+  要 MLSD 真加 reach,FFE 得均衡到部分响应目标(1+αD)而不是 delta,这一项未建模(ROADMAP P3 #8)。 / MLSD only recovers what a
+  short FFE leaves: 1.0× behind a 21-tap MMSE FFE, 2.4–5.1× behind a 3-tap one, which still loses to the 21-tap FFE alone.
+- 21 抽头 FFE:到 −28.8 dB 零误码,−30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
   error-free to −28.8 dB and memory-2 MLSD matches it at −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
 - **深 LR 是 SNR 受限,不是 ISI/DSP 深度受限**——加 DFE + 更深 MLSD 只多 0.6 dB(31.8 → 32.4 dB),ADC 采样质量多 6.3 dB(→ 38.7 dB)。 / Deep LR is SNR-limited; DSP depth buys 0.6 dB, ADC quality 6.3 dB.

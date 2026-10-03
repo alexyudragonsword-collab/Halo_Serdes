@@ -1,20 +1,24 @@
-"""Realistic 224G long-reach: FFE + MLSD + KP4 FEC.
+"""224G long-reach: where MLSD earns its keep, and where it has nothing to do.
 
-At medium/long-reach loss (27-35 dB @ 56 GHz Nyquist), a linear-EQ-only
-ADC receiver leaves pre-FEC BER above the KP4 waterfall (~2.4e-4): FFE that
-fully inverts the channel enhances noise too much, and DFE propagates errors.
-The 224G-LR answer is FFE-to-a-short-residual + MLSD (Viterbi MLSE over the
-residual ISI, no error propagation, sequence gain) + KP4 FEC.
+MLSD (Viterbi MLSE) works on the ISI the linear equaliser leaves behind. An
+LMS-adapted FFE converges to the MMSE solution, which leaves almost none: on
+this channel a 21-tap FFE has residual cursors under 0.002 and MLSD memory-2
+adds nothing at any loss. Cut the FFE to 3 taps and it leaves a real residual
+(second postcursor ~-0.05 to -0.11); MLSD then recovers 3-5x in BER -- but the
+3-tap FFE + MLSD still does not beat the 21-tap FFE alone.
 
-This sweep runs the ADC link across LR channel lengths and compares, at each
-loss: FFE-only slicer BER vs FFE+MLSD BER, against the KP4 pre-FEC waterfall,
-with post-KP4 projection.
+So in this model MLSD substitutes for FFE taps rather than adding reach. Where
+MLSD really adds reach is an FFE that equalises to a partial-response target
+(e.g. 1 + 0.5D) instead of to a delta, so it enhances less noise and leaves the
+MLSE a known, controlled ISI; that FFE target is not modelled (ROADMAP P3 #8).
 
-Correction (2026-10-03): the MLSD gain this example used to show (29x at
--27 dB) came from the receiver, not the channel: the starting equaliser did
-not see the Tx FFE and MM-CDR read the raw ADC samples, locking off the
-eye's peak. With both fixed, FFE alone is error-free to -28.8 dB and MLSD
-memory-2 adds nothing measurable on this sweep (gain 1.0x at -30 and -33 dB).
+The sweep runs both FFE lengths across the LR channel lengths and reports, at
+each loss: FFE-only slicer BER, FFE + MLSD (memory 2) BER, and post-KP4.
+
+History (2026-10-03): this example used to show a 29x MLSD gain at -27 dB with
+the 21-tap FFE. That gain came from the receiver, not the channel -- the
+starting equaliser did not see the Tx FFE and MM-CDR read the raw ADC samples,
+locking off the eye's peak.
 """
 
 
@@ -53,7 +57,12 @@ OUT.mkdir(exist_ok=True)
 KP4_WATERFALL = 2.4e-4  # pre-FEC BER below which KP4 -> post-FEC << 1e-12
 
 
-def make_cfg(length_m: float, n_sym: int = 400_000) -> LinkConfig:
+# (label, n_pre, n_post): the 21-tap FFE is the receiver examples 19 and 35 reuse
+FFES = (("21-tap FFE", 6, 14), ("3-tap FFE", 1, 1))
+
+
+def make_cfg(length_m: float, n_pre: int = 6, n_post: int = 14,
+             n_sym: int = 400_000) -> LinkConfig:
     return LinkConfig(
         modulation="pam4", symbol_rate=112e9, osr=16,  # 224 Gb/s
         channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=5.0,
@@ -62,8 +71,7 @@ def make_cfg(length_m: float, n_sym: int = 400_000) -> LinkConfig:
         rx=RxConfig(arch="adc_dsp",
                     ctle=CtleConfig(enable=True, peak_db=6.0),
                     adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5, fullscale=0.6),
-                    # FFE tuned to leave a short residual for the MLSD; no DFE
-                    ffe=FfeConfig(n_pre=6, n_post=14, adapt="lms", mu=3e-5),
+                    ffe=FfeConfig(n_pre=n_pre, n_post=n_post, adapt="lms", mu=3e-5),
                     dfe=DfeConfig(n_taps=0),
                     cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
                     noise_rms=0.0015),
@@ -71,8 +79,8 @@ def make_cfg(length_m: float, n_sym: int = 400_000) -> LinkConfig:
     )
 
 
-def evaluate(length_m: float):
-    cfg = make_cfg(length_m)
+def evaluate(length_m: float, n_pre: int, n_post: int):
+    cfg = make_cfg(length_m, n_pre, n_post)
     cm = ChannelModel.from_config(cfg)
     loss = cm.loss_at(56e9)
     res = run_time_link(cfg, channel=cm)
@@ -98,58 +106,61 @@ def evaluate(length_m: float):
 
 
 lengths = [0.15, 0.17, 0.18, 0.19, 0.20, 0.22]
-rows = []
-print("224 Gb/s PAM4 LR: FFE-only vs FFE+MLSD (memory 2), + KP4 projection")
-print(f"{'Loss@Nyq':>9} {'Class':>5} {'SNR':>6} {'FFE BER':>10} {'MLSD BER':>10} "
-      f"{'MLSD gain':>8}  {'post-KP4(MLSD)':>13}")
-for L in lengths:
-    t0 = time.time()
-    r = evaluate(L)
-    rows.append(r)
-    reach = "C2M" if r["loss"] > -25 else ("MR" if r["loss"] > -35 else "LR")
-    gain = r["ber_ffe"] / max(r["ber_mlsd"], 1e-9)
-    post = pre_to_post_fec_ber(max(r["ber_mlsd"], 1e-9), "kp4")
-    print(f"{r['loss']:8.1f}dB {reach:>5} {r['snr']:5.1f}dB {r['ber_ffe']:9.2e} "
-          f"{r['ber_mlsd']:9.2e} {gain:6.1f}x  {post:12.1e}  [{time.time()-t0:.0f}s]")
+results = {}
+print("224 Gb/s PAM4 LR: FFE-only vs FFE + MLSD (memory 2), two FFE lengths, + KP4 projection")
+for label, n_pre, n_post in FFES:
+    print(f"== {label} ({n_pre} pre / {n_post} post) ==")
+    print(f"{'Loss@Nyq':>9} {'Class':>5} {'SNR':>6} {'FFE BER':>10} {'MLSD BER':>10} "
+          f"{'MLSD gain':>8}  {'post-KP4(MLSD)':>13}  residual h1..h3")
+    rows = []
+    for L in lengths:
+        t0 = time.time()
+        r = evaluate(L, n_pre, n_post)
+        rows.append(r)
+        reach = "C2M" if r["loss"] > -25 else ("MR" if r["loss"] > -35 else "LR")
+        gain = f"{r['ber_ffe'] / r['ber_mlsd']:6.1f}x" if r["ber_mlsd"] > 0 else "      -"
+        post = pre_to_post_fec_ber(max(r["ber_mlsd"], 1e-9), "kp4")
+        resid = " ".join(f"{c:+.3f}" for c in r["resid"][1:4])
+        print(f"{r['loss']:8.1f}dB {reach:>5} {r['snr']:5.1f}dB {r['ber_ffe']:9.2e} "
+              f"{r['ber_mlsd']:9.2e} {gain}  {post:12.1e}  {resid}  [{time.time()-t0:.0f}s]")
+    results[label] = rows
 
 # ------------------------------------------------------------------ plot ---
-loss = np.array([r["loss"] for r in rows])
-ffe = np.array([max(r["ber_ffe"], 5e-7) for r in rows])
-mlsd = np.array([max(r["ber_mlsd"], 5e-7) for r in rows])
-post_ffe = np.array([pre_to_post_fec_ber(max(r["ber_ffe"], 1e-9), "kp4") for r in rows])
-post_mlsd = np.array([pre_to_post_fec_ber(max(r["ber_mlsd"], 1e-9), "kp4") for r in rows])
-
 from matplotlib.ticker import FuncFormatter  # noqa: E402
 
 _fmt = FuncFormatter(lambda v, _: f"{v:.0e}")
 _nofmt = FuncFormatter(lambda v, _: "")
+colors = {"21-tap FFE": "C0", "3-tap FFE": "C1"}
 
 fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
 ax = axes[0]
-ax.semilogy(-loss, ffe, "o-", color="C1", label="FFE-only (slicer)")
-ax.semilogy(-loss, mlsd, "s-", color="C0", label="FFE + MLSD (memory 2)")
+for label, rows in results.items():
+    loss = np.array([r["loss"] for r in rows])
+    ffe = np.array([max(r["ber_ffe"], 5e-7) for r in rows])
+    mlsd = np.array([max(r["ber_mlsd"], 5e-7) for r in rows])
+    ax.semilogy(-loss, ffe, "o--", color=colors[label], label=f"{label} only")
+    ax.semilogy(-loss, mlsd, "s-", color=colors[label], label=f"{label} + MLSD (memory 2)")
 ax.axhline(KP4_WATERFALL, color="r", ls="--", lw=1, label="KP4 pre-FEC waterfall 2.4e-4")
-ax.axvspan(35, 46, color="gray", alpha=0.10)
-ax.text(35.3, 2e-6, "LR (>35 dB)", fontsize=7, color="gray")
+ax.text(22.8, 6e-7, "no errors in 400k symbols (plotted at 5e-7)", fontsize=7, color="gray")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="pre-FEC BER",
-       title="FFE-only vs FFE + MLSD (memory 2)\n(224 Gb/s PAM4, ADC arch)")
+       title="MLSD recovers what a short FFE leaves;\na 21-tap MMSE FFE leaves it nothing (224 Gb/s PAM4)")
 ax.yaxis.set_major_formatter(_fmt)
 ax.yaxis.set_minor_formatter(_nofmt)
-ax.legend(fontsize=8)
+ax.legend(fontsize=7.5)
 ax.grid(True, which="both", alpha=0.3)
 
 ax = axes[1]
-ax.semilogy(-loss, np.maximum(post_ffe, 1e-30), "o-", color="C1",
-            label="post-KP4 (FFE-only)")
-ax.semilogy(-loss, np.maximum(post_mlsd, 1e-30), "s-", color="C0",
-            label="post-KP4 (FFE + MLSD)")
-ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
-ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-FEC BER (KP4)",
-       title="Pre-FEC after MLSD against the KP4 waterfall\n(post-KP4 target 1e-15)")
-ax.yaxis.set_major_formatter(_fmt)
-ax.yaxis.set_minor_formatter(_nofmt)
+for label, rows in results.items():
+    pts = [(-r["loss"], r["ber_ffe"] / r["ber_mlsd"]) for r in rows
+           if r["ber_mlsd"] > 0 and r["ber_ffe"] > 0]
+    if pts:
+        x, g = zip(*pts)
+        ax.plot(x, g, "s-", color=colors[label], label=label)
+ax.axhline(1.0, color="gray", lw=1)
+ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="MLSD gain (FFE BER / MLSD BER)",
+       title="MLSD gain by FFE length\n(points where either detector made no errors omitted)")
 ax.legend(fontsize=8)
-ax.grid(True, which="both", alpha=0.3)
+ax.grid(True, alpha=0.3)
 
 fig.tight_layout()
 fig.savefig(OUT / "18_lr_ffe_mlsd_fec.png", dpi=130)
