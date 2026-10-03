@@ -10,7 +10,7 @@
 - 20 个示例新旧代码各跑一遍:示例 18 的 MLSD 增益没了(1.0×,旧 29× 来自锁偏);224G 阶梯 → 18 / 32 / 36–39 / 44 dB;光互联阶梯
   小幅上移、结论不变。SUMMARY / summary.html / COMPARISON / 两个专题按新数改、旧数留在原处。示例 19 `<start` 误报修掉,示例 31 改 `ffe`。
 - 新 ROADMAP P2 6d(示例 18 换一个 MLSD 真有用的配置、重嵌 summary.html 的图);pitfalls 加"杠杆增益要在修好的基线上量"。
-- 验证:jit 612 passed / 2 skipped(+ 新 7 项单跑通过),nojit 617 passed / 4 skipped;Android:见 PR CI。
+- 验证:jit 612 passed / 2 skipped(+ 新 7 项单跑通过),nojit 617 passed / 4 skipped;Android CI(0354903,run 37093567169):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过(第二个 commit 只动示例与文档)。
 
 ## 2026-10-03 · 4 个 224G ADC 预置 `cdr.pd_input: adc → ffe`(fix/adc-presets-pd-ffe)
 
