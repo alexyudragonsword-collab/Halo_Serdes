@@ -625,3 +625,35 @@ CPO 与 LPO 的 OMA 裕度)、`examples/33_three_topologies.py`(LPO / retimed / 
 `examples/34_tdecq.py`(VCSEL 100G/λ 与 EML 200G/λ 的 TDECQ 对 ER / 激光带宽 / L-I 压缩,对着 802.3 上限);
 GUI「Optical」页与 Android 的「Optical reach」study 用统计级联画同一张 reach 图。
 
+
+## 17. DSP 发端:DAC 与驱动器压缩
+
+发端是一条流水线(`tx/pipeline.py::TxPipeline`):符号域 **电平 → [PR 占位] → FFE → DAC**,一次显式 ZOH(带时钟边沿偏移),
+波形域 **驱动器压缩 → 驱动器单极点**。所有引擎与分析入口都从它取发端波形,新字段默认全关,关着时逐字节等于以前。
+
+```yaml
+tx:
+  fir_taps: [-0.06, 1.0, -0.12]
+  fir_n_pre: 1
+  dac_bits: 7              # 空 = 理想发端;每 UI 一个码,中升量化
+  dac_fs: null             # 满量程峰峰值 [V];空 = swing × Σ|taps|(FFE 的峰值,不削峰)
+  dac_thermo_msbs: 3       # 温度计解码的高位,其余二进制
+  dac_unit_sigma: 0.02     # 单元电流失配 σ [LSB] → 静态 INL(端点修正);失配用独立随机流
+  drv_nl: curve            # none | curve | tanh | cubic(Hammerstein:先压缩后 tx.bw)
+  drv_compression: 0.1     # curve 的 c,与 optical.li_compression 同一定义(两端斜率比)
+  # drv_p1db_v: 0.35       # tanh:单音 1 dB 压缩点的输入幅度
+  # drv_oip3_v: 1.2        # cubic:输出三阶交调点幅度,y = x − 4/(3 OIP3²) x³
+```
+
+```python
+from halo_serdes.analysis.tx_metrics import tx_report
+r = tx_report(cfg)           # 同边沿、理想 DAC + 线性驱动器作参考
+r.sndr_db, r.rlm, r.dac_clipped
+```
+
+- **削峰不静默**:`dac_fs` 小于 FFE 峰值时 `dac_clipped` 计数,TX SNDR 随之下降;`train_tx_fir` 在有 `dac_fs` 时把 Σ|taps| 限在 `dac_fs / swing`。
+- **统计引擎**把 DAC 折成每 UI 白噪 σ_q² = LSB²/12 + E[INL²],经 DAC→判决器的符号响应到 RX;驱动器压缩只在时域引擎里,统计引擎发 warning。
+- **COM 不含 DAC / 驱动器**:`analysis/com.py` 与 `NativeCom` 用 802.3 的参考发端。
+
+示例 `examples/35_dsp_tx_sndr.py`:TX SNDR 对 DAC 位数 × 驱动器压缩(叠 6.02N + 1.76),以及示例 18 的信道扫描上
+DAC 6 / 7 / 8 / 理想与 7 bit + 压缩的 reach。

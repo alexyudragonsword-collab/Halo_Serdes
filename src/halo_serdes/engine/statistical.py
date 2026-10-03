@@ -38,6 +38,16 @@ Non-LTI approximations (each cross-checked against the time engine):
   the curve's steady-state levels stand in for the transmitted ones and the
   chain stays linear; the curve's bending of ISI is the time engine's alone
   and a warning says so;
+- Tx DAC (``tx.dac_bits``): quantisation and static INL become white noise
+  per UI at the DAC output, sigma_q^2 = LSB^2 / 12 + E[INL^2] LSB^2, carried
+  to the slicer through the Tx-to-slicer symbol response (every cursor's
+  square, so the channel's attenuation and the FFE's noise gain are in it).
+  The error is really a deterministic function of the DAC input; it looks
+  white once an FFE spreads the input over many codes. Without a Tx FFE the
+  four PAM4 levels sit on four fixed codes and the "noise" is a fixed level
+  offset this engine averages instead;
+- Tx driver nonlinearity (``tx.drv_nl``): not modelled here, the time
+  engine's alone, with a warning (outside the 2x cross-check);
 - optical topology (``cfg.topology``): the photodiode's shot and RIN noise
   depend on the optical power of the level being received, so the Gaussian
   kernel becomes one kernel per level, each at the *nominal* level power
@@ -63,6 +73,7 @@ from ..config.schema import LinkConfig
 from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
+from ..tx.pipeline import TxPipeline
 from .static_link import _levels
 
 
@@ -123,6 +134,18 @@ def gaussian_kernel(sigma: float, dv: float, n_sigma: float = 8.0) -> np.ndarray
     return k / k.sum()
 
 
+def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> float:
+    """sigma at the slicer of a white per-UI error of ``sigma_q`` added at the
+    DAC output: sqrt(sum_k p_k^2) sigma_q with p_k the symbol response from the
+    DAC to the slicer at the main cursor's phase."""
+    from ..core.sampler import baud_samples
+
+    p = pulse_from_impulse(Waveform(h, dt), osr).y
+    peak = int(np.argmax(np.abs(p)))
+    cursors = baud_samples(p, osr, peak % osr)
+    return float(sigma_q * np.sqrt(np.sum(cursors ** 2)))
+
+
 def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     ffe_taps: np.ndarray | None = None, ffe_pre: int = 0,
                     v_bins: int = 4096, n_pre: int = 24, n_post: int = 64,
@@ -162,14 +185,28 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         h = np.convolve(h1, h2)
         if level_sigma is None:
             level_sigma = slicer_sigma_per_level(cfg, channel, h1, h2, ffe_taps)
-    if len(cfg.tx.fir_taps) > 1:
-        h = np.convolve(h, upsampled_taps(cfg.tx.fir_taps, osr))
+    tx_pipe = TxPipeline.from_config(cfg)
+    if cfg.tx.drv_nl != "none":
+        import warnings
+
+        warnings.warn(
+            f"tx.drv_nl={cfg.tx.drv_nl!r}: the driver's compression is not in the "
+            "statistical engine (it is not LTI) and the result is outside the 2x "
+            "cross-check (invariant #3) -- use the time engine", stacklevel=2)
+    h_after_dac = h                    # the DAC's error enters after the Tx FFE
+    tx_resp = tx_pipe.equivalent_symbol_response(osr)
+    if tx_resp is not None:
+        h = np.convolve(h, tx_resp)
     noise_sigma = cfg.rx.noise_rms
     h_pre_ffe = h
     if ffe_taps is not None and len(ffe_taps) > 1:
         h = np.convolve(h, upsampled_taps(ffe_taps, osr))
         noise_sigma = noise_sigma * float(np.linalg.norm(ffe_taps))
+        h_after_dac = np.convolve(h_after_dac, upsampled_taps(ffe_taps, osr))
     pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
+    if tx_pipe.dac_sigma_q > 0.0:
+        noise_sigma = float(np.hypot(noise_sigma, dac_noise_at_slicer(
+            tx_pipe.dac_sigma_q, h_after_dac, cfg.dt, osr)))
     if level_sigma is not None:
         level_sigma = np.asarray(level_sigma, dtype=np.float64)
 

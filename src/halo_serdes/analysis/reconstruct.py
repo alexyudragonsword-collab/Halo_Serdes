@@ -22,8 +22,7 @@ from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..engine.lti import fft_filter
 from ..engine.static_link import fold_eye, make_pattern
-from ..tx.builder import symbols_to_voltages, tx_fir
-from ..tx.jitter import build_jittered_tx
+from ..tx.pipeline import TxPipeline
 
 
 def front_end_impulse(cfg: LinkConfig, channel: ChannelModel,
@@ -50,10 +49,8 @@ def front_end_waveform(cfg: LinkConfig, channel: ChannelModel | None = None,
         channel = ChannelModel.from_config(cfg)
     rng = np.random.default_rng(cfg.sim.seed if seed is None else seed)
     symbols = make_pattern(cfg)
-    v = symbols_to_voltages(symbols, cfg)
-    if len(cfg.tx.fir_taps) > 1:
-        v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
-    tx_wave, _ = build_jittered_tx(v, cfg, rng)
+    tx_pipe = TxPipeline.from_config(cfg)
+    tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(symbols), rng)
 
     h = front_end_impulse(cfg, channel, include_ctle=include_ctle)
     rx_y = fft_filter(tx_wave.y, h)

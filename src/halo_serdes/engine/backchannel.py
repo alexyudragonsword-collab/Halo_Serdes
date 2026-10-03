@@ -11,7 +11,9 @@ protocol behaviorally:
 - each round it issues sign-only inc/dec requests in quantized steps for the
   Tx taps it wants changed (c(-1), c(+1), ...);
 - the TX applies the requests under a peak-power constraint
-  (sum|taps| = 1, main tap absorbs the change) and the loop repeats until
+  (sum|taps| = peak, main tap absorbs the change; peak = 1, or with a DAC
+  whose full scale ``tx.dac_fs`` is below the swing, dac_fs / swing, so the
+  trained FFE never drives the DAC past its range) and the loop repeats until
   the trained cursors fall below threshold or the round budget runs out.
 """
 
@@ -56,6 +58,14 @@ def _rx_pulse_base(cfg: LinkConfig, channel: ChannelModel) -> np.ndarray:
     return h * cfg.rx.vga_gain
 
 
+def _peak_budget(cfg: LinkConfig) -> float:
+    """sum|taps| the Tx may spend: the FFE output's peak-to-peak range is
+    swing * sum|taps|, which a DAC can only reproduce up to ``tx.dac_fs``."""
+    if cfg.tx.dac_bits is not None and cfg.tx.dac_fs is not None:
+        return min(1.0, float(cfg.tx.dac_fs) / float(cfg.tx.swing))
+    return 1.0
+
+
 def train_tx_fir(cfg: LinkConfig, channel: ChannelModel | None = None,
                  n_pre: int = 1, n_post: int = 1, step: float = 1.0 / 64.0,
                  threshold: float = 0.01, max_rounds: int = 64,
@@ -80,8 +90,9 @@ def train_tx_fir(cfg: LinkConfig, channel: ChannelModel | None = None,
     h_base = _rx_pulse_base(cfg, channel)
 
     n_taps = n_pre + 1 + n_post
+    budget = _peak_budget(cfg)
     taps = np.zeros(n_taps)
-    taps[n_pre] = 1.0
+    taps[n_pre] = budget
 
     cur_hist: list[np.ndarray] = []
     tap_hist: list[np.ndarray] = []
@@ -118,6 +129,8 @@ def train_tx_fir(cfg: LinkConfig, channel: ChannelModel | None = None,
         taps = taps + step * requests
         # peak-power constraint: renormalize, main tap absorbs the change
         taps = taps / np.abs(taps).sum()
+        if budget != 1.0:
+            taps = taps * budget
 
     return BackchannelResult(taps=taps, n_pre=n_pre, converged=converged,
                              rounds=rounds,

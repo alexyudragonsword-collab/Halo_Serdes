@@ -3,6 +3,22 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-02 · DSP 发端,阶段 0 + 1:TxPipeline + DAC + 驱动器压缩(feat/dsp-tx)
+
+- **阶段 0**:七处手拼的 TX(timedomain 两处、static_link、statistical、optical_stage、reconstruct、cdr_tracking)收成
+  `tx/pipeline.py::TxPipeline`;475 值引擎指纹 + 44 值 TX 路径指纹(剖面时钟、重建、CDR 边沿、光发射功率、串联)与 main 逐位同,
+  测试数与基线同(jit 550 / nojit 548)。COM 与 NativeCom 保留参考 TX。清单与行号:`cairn/DSP发端与PR.md` §1。
+- **阶段 1**:`tx.dac_*`(中升量化、温度计 + 二进制单元失配 INL、削峰计数,失配用独立随机流)、`tx.drv_*`(Hammerstein;
+  `"curve"` 与 E/O 共用 `core/static_curve.py`,同 c 逐位相同)、`analysis/tx_metrics.py`、统计引擎 σ_q 折算 + 驱动器 warning、
+  backchannel 峰值约束读 `dac_fs`、表单字段、示例 35。
+- 闭式:SQNR(峰值位置平均后)N = 5..8 差 ≤ 0.09 dB;INL RMS = σ√((M−1)/6) ±20%;cubic HD3 差 < 1e-13 dB;tanh P1dB −1.00 dB;
+  σ_q 折算与波形差 RMS 15% 内。铁律 3(只开 DAC,静态 vs 统计,三损耗点):4 bit 0.73–0.81,6 bit 0.94–0.95。
+- 示例 35(示例 18 的 224G LR):DAC 6/7/8 bit 的 reach 与理想差在 ±0.25 dB 扫描分辨率内;驱动器 c = 0.2 掉 1.6–1.7 dB、c = 0.1 掉 0.3 dB
+  —— 这条链上瓶颈是驱动器压缩,不是 7 bit。
+- **发现两处既有缺口**(未修,进 ROADMAP):接收端起始均衡看不见 TX FFE(静态引擎 TX (−0.08, 0.78, −0.14) 时 SNR 27.7 → 11.2 dB;
+  修了会动 6 个预置的指纹,P1 1c);统计引擎从未建模 `tx.bw`(P3 #8)。坑:SQNR 闭式要对峰值位置平均;backchannel 的 `peak` 重名。
+- 验证:jit 603 passed / 2 skipped,nojit 601 passed / 4 skipped,新开关全关时两份指纹逐位同;Android CI(e0ed63d,run 37007280461):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
+
 ## 2026-10-02 · 光互联链路,阶段 3:E/O 大信号曲线 + TDECQ(feat/optical-link-stage3)
 
 - **`OpticalConfig.li_compression`** → `optical.StaticCurve`:VCSEL 凹(热翻转)/ EML 凸(EAM 指数吸收),外电平钉住、OMA/ER 不变;

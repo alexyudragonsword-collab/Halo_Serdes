@@ -74,6 +74,23 @@ from halo_serdes.config.schema import (
      "li_compression"),
     (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, li_compression=-0.1),
      "li_compression"),
+    # DSP Tx: every new field has an illegal value, and the ones that only
+    # mean something together fail when one is set without the other
+    (lambda: TxConfig(dac_bits=0), "dac_bits"),
+    (lambda: TxConfig(dac_bits=17), "dac_bits"),
+    (lambda: TxConfig(dac_fs=0.8), "dac_fs"),
+    (lambda: TxConfig(dac_bits=6, dac_fs=0.0), "dac_fs"),
+    (lambda: TxConfig(dac_bits=6, dac_thermo_msbs=7), "dac_thermo_msbs"),
+    (lambda: TxConfig(dac_thermo_msbs=2), "dac_thermo_msbs"),
+    (lambda: TxConfig(dac_unit_sigma=0.1), "dac_unit_sigma"),
+    (lambda: TxConfig(dac_bits=6, dac_unit_sigma=-0.1), "dac_unit_sigma"),
+    (lambda: TxConfig(drv_nl="softclip"), "drv_nl"),
+    (lambda: TxConfig(drv_nl="curve", drv_compression=1.0), "drv_compression"),
+    (lambda: TxConfig(drv_compression=0.2), "drv_compression"),
+    (lambda: TxConfig(drv_nl="tanh"), "drv_p1db_v"),
+    (lambda: TxConfig(drv_nl="cubic"), "drv_oip3_v"),
+    (lambda: TxConfig(drv_nl="tanh", drv_p1db_v=-0.3), "drv_p1db_v"),
+    (lambda: LinkConfig(modulation="pam4", tx=TxConfig(dac_bits=1)), "dac_bits"),
     # the two segments are multiplied point by point: one grid
     (lambda: TopologyConfig(seg_a=ChannelConfig(kind="analytic", n_freq=1024),
                             seg_b=ChannelConfig(kind="analytic", n_freq=2048)), "seg_b.n_freq"),
@@ -134,3 +151,18 @@ def test_derived_quantities_are_physical():
     assert c.dt == pytest.approx(c.ui / 32)
     assert c.f_nyquist == pytest.approx(c.symbol_rate / 2)
     assert c.dt > 0                          # the regression this guards
+
+
+def test_dsp_tx_fields_round_trip_through_yaml(tmp_path):
+    from halo_serdes.config.loader import dump_config, load_config
+
+    cfg = LinkConfig(modulation="pam4", tx=TxConfig(
+        fir_taps=(-0.1, 0.8, -0.1), fir_n_pre=1, dac_bits=7, dac_fs=0.9, dac_thermo_msbs=3,
+        dac_unit_sigma=0.02, drv_nl="curve", drv_compression=0.2))
+    path = tmp_path / "dsp_tx.yaml"
+    dump_config(cfg, path)
+    assert load_config(path) == cfg
+    for tx in (TxConfig(drv_nl="tanh", drv_p1db_v=0.4), TxConfig(drv_nl="cubic", drv_oip3_v=1.2)):
+        c = LinkConfig(tx=tx)
+        dump_config(c, path)
+        assert load_config(path) == c

@@ -131,8 +131,7 @@ def transmitter_power(cfg: LinkConfig, *, through_fibre: bool = False, include_s
     the reference receiver then sets its bandwidth.
     """
     from ..optical import static_curve
-    from ..tx.builder import symbols_to_voltages, tx_fir
-    from ..tx.jitter import build_jittered_tx
+    from ..tx.pipeline import TxPipeline
     from .lti import fft_filter
     from .static_link import check_symbols, make_pattern
     from .timedomain import _tx_symbols
@@ -144,10 +143,8 @@ def transmitter_power(cfg: LinkConfig, *, through_fibre: bool = False, include_s
     rng = np.random.default_rng(cfg.sim.seed) if rng is None else rng
     user = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line = _tx_symbols(cfg, user)
-    v = symbols_to_voltages(line, cfg)
-    if len(cfg.tx.fir_taps) > 1:
-        v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
-    tx_wave, _ = build_jittered_tx(v, cfg, rng)
+    tx_pipe = TxPipeline.from_config(cfg)
+    tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(line), rng)
 
     seg_a = ChannelModel.from_channel_config(top.seg_a, cfg.symbol_rate, "topology.seg_a")
     eo = ChannelModel.from_optical(opt, seg_a.f, "eo")

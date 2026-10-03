@@ -22,6 +22,10 @@ The recipe (93A/178A, behavioral-level):
    one-sided tail equals the target DER.
 4. ``COM = 20 log10(A_s / A_ni)`` dB.
 
+Reference TX: no DAC / driver model. COM's transmitter is the 802.3 reference
+(Tx FFE taps on the pulse, nothing else), so ``tx.dac_*`` / ``tx.drv_*`` do not
+reach it; ``_apply_tx_fir`` is deliberately not ``tx.pipeline.TxPipeline``.
+
 ``A_s`` is the signal amplitude = main cursor × half the minimum normalized
 level spacing (so PAM4's inner eye and R_LM are handled automatically).
 """

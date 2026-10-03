@@ -157,6 +157,15 @@ class TxConfig:
     swing: float = 1.0                     # differential peak-to-peak [V]
     rlm: float = 1.0                       # PAM4 level mismatch ratio
     bw: Optional[float] = None             # single-pole driver bandwidth [Hz]
+    # DSP Tx (tx/dac.py, tx/driver.py); every default is "off"
+    dac_bits: Optional[int] = None         # None = ideal (unquantised) Tx
+    dac_fs: Optional[float] = None         # DAC full scale, peak-to-peak [V]; None = FFE peak
+    dac_thermo_msbs: int = 0               # thermometer-decoded MSBs (rest binary)
+    dac_unit_sigma: float = 0.0            # unit-cell current mismatch sigma [LSB]
+    drv_nl: Literal["none", "curve", "tanh", "cubic"] = "none"
+    drv_compression: float = 0.0           # c of core.static_curve (= optical li_compression)
+    drv_p1db_v: Optional[float] = None     # tanh: input amplitude at 1 dB compression [V]
+    drv_oip3_v: Optional[float] = None     # cubic: output IP3 amplitude [V]
     # Edge timing lives on the clock. The four jitter fields that used to sit
     # here (rj_ui, sj_ui, sj_freq, dcd_ui) moved into ClockConfig when a clock
     # became something that could be a PLL profile rather than three numbers;
@@ -176,6 +185,27 @@ class TxConfig:
                  or self.fir_n_pre < len(self.fir_taps),
                  f"tx.fir_n_pre must be < len(fir_taps)={len(self.fir_taps)}, "
                  f"got {self.fir_n_pre}")
+        dac = self.dac_bits is not None
+        _require(not dac or 1 <= self.dac_bits <= 16,
+                 f"tx.dac_bits must be in [1, 16] when set, got {self.dac_bits}")
+        _require(self.dac_fs is None or (dac and self.dac_fs > 0),
+                 f"tx.dac_fs needs tx.dac_bits and must be > 0, got {self.dac_fs}")
+        _require(0 <= self.dac_thermo_msbs <= (self.dac_bits if dac else 0),
+                 f"tx.dac_thermo_msbs must be in [0, dac_bits], got {self.dac_thermo_msbs}")
+        _require(self.dac_unit_sigma >= 0 and (dac or self.dac_unit_sigma == 0),
+                 f"tx.dac_unit_sigma must be >= 0 and needs tx.dac_bits, got {self.dac_unit_sigma}")
+        _require_in(self.drv_nl, ("none", "curve", "tanh", "cubic"), "tx.drv_nl")
+        _require(0.0 <= self.drv_compression < 1.0,
+                 f"tx.drv_compression must be in [0, 1), got {self.drv_compression}")
+        _require(self.drv_compression == 0.0 or self.drv_nl == "curve",
+                 "tx.drv_compression is the 'curve' driver's parameter: set tx.drv_nl='curve'")
+        for name in ("drv_p1db_v", "drv_oip3_v"):
+            v = getattr(self, name)
+            _require(v is None or v > 0, f"tx.{name} must be > 0 when set, got {v}")
+        _require(self.drv_nl != "tanh" or self.drv_p1db_v is not None,
+                 "tx.drv_nl='tanh' needs tx.drv_p1db_v")
+        _require(self.drv_nl != "cubic" or self.drv_oip3_v is not None,
+                 "tx.drv_nl='cubic' needs tx.drv_oip3_v")
 
 
 @dataclass(frozen=True)
@@ -538,6 +568,10 @@ class LinkConfig:
                  f"symbol_rate must be > 0 Baud, got {self.symbol_rate}")
         # a non-positive osr silently yields a negative/infinite dt
         _require(self.osr >= 1, f"osr must be >= 1 sample/UI, got {self.osr}")
+        # a DAC that cannot even hold the symbol alphabet is a typo, not a design
+        n_lv = 4 if self.modulation == "pam4" else 2
+        _require(self.tx.dac_bits is None or 2 ** self.tx.dac_bits >= n_lv,
+                 f"tx.dac_bits={self.tx.dac_bits} cannot represent {n_lv} {self.modulation} levels")
         # NOTE: a touchstone channel with no file is intentionally allowed here
         # — LinkConfig() defaults to it, and ChannelModel.from_config raises a
         # precise error at load time if it is actually used.

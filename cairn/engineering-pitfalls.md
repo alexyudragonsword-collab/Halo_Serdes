@@ -78,6 +78,15 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 下一行的 Bode 图仍在裸调 `Ctle.from_config`,整个 tab 照样崩溃 ——
 **提示渲染出来了,然后连同页面一起被丢掉**。是新写的测试抓到的,不是我看出来的。
 
+**"满幅正弦 SQNR = 6.02N + 1.76" 要对峰值位置取平均。** 闭式假设误差在一个 LSB 内均匀;正弦大部分时间停在峰值附近,
+峰值落在顶码的哪里决定结果:理想 5 bit 恰好满幅读 31.48 dB、低 ¼ LSB 读 32.07(闭式 31.86),N = 5..8 恰好满幅一律偏低
+0.13–0.38 dB。不是量化器错了(均匀输入的误差功率 = LSB²/12 ± 0.2%)。`TxDac.sqnr_of_sine` 对峰值走过顶码一个 LSB 的
+16 个幅度平均,差 ≤ 0.09 dB;`TiAdc.snr_of_sine` 没这样做,它的测试容差是 0.6 dB。
+
+**给循环里已有的名字起新变量前先 grep 一下函数体。** backchannel 的峰值预算第一版叫 `peak`,而循环里 `peak` 是脉冲峰值的
+样本索引,于是每轮归一化后抽头被乘上了脉冲峰值的样本索引(约 720),训出 Σ|taps| = 747 的抽头。ruff 不报(同类型重赋值),
+是新写的"训练结果不超满量程"测试抓到的。
+
 **新 study 要在 `halo_serdes_gui/studies.py` 兼容层里再导出一次。** GUI 面板还是 `from .. import studies`,
 那是一份写死名字的再导出;study 只加在 `halo_serdes_app.studies` + `api._STUDIES` 时,app 层测试和 Android 合同全绿,
 桌面页面点开才 `AttributeError`。光互联阶段 2 的「Optical」页就这样交付了(阶段 3 发现并修复)。现在有守卫测试:`api._STUDIES` 里每个 study 都必须能从

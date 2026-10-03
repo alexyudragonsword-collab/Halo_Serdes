@@ -1,5 +1,5 @@
-"""Tx behavioral model: symbol-domain FIR (de-emphasis), ZOH oversampling,
-optional driver bandwidth. Jitter injection arrives in Phase 2.
+"""Tx building blocks: level mapping and the symbol-spaced FIR. The
+transmitter assembled from them is ``tx.pipeline.TxPipeline``.
 """
 
 from __future__ import annotations
@@ -8,8 +8,8 @@ import numpy as np
 
 from ..config.schema import LinkConfig
 from ..core.mapping import nrz_levels, pam4_levels
-from ..core.sampler import hold
 from ..core.waveform import Waveform
+from .driver import apply_single_pole  # noqa: F401  (re-exported; it lives with the driver)
 
 
 def symbols_to_voltages(symbols: np.ndarray, cfg: LinkConfig) -> np.ndarray:
@@ -33,25 +33,9 @@ def tx_fir(v_baud: np.ndarray, taps: tuple[float, ...] | np.ndarray, n_pre: int)
 
 
 def build_tx_waveform(symbols: np.ndarray, cfg: LinkConfig) -> Waveform:
-    """Symbols -> oversampled ideal-edge Tx waveform (ZOH), FIR applied.
+    """Symbols -> oversampled ideal-edge Tx waveform. Kept for callers of the
+    old API; the transmitter itself is ``tx.pipeline.TxPipeline``."""
+    from .pipeline import TxPipeline
 
-    Driver bandwidth (cfg.tx.bw) is applied as a single-pole lowpass in the
-    frequency domain (fixing serdespy's tx_bandwidth NameError approach).
-    """
-    v = symbols_to_voltages(symbols, cfg)
-    if len(cfg.tx.fir_taps) > 1:
-        v = tx_fir(v, cfg.tx.fir_taps, cfg.tx.fir_n_pre)
-    y = hold(v, cfg.osr)
-    wave = Waveform(y, cfg.dt)
-    if cfg.tx.bw is not None:
-        wave = apply_single_pole(wave, cfg.tx.bw)
-    return wave
-
-
-def apply_single_pole(wave: Waveform, f3db: float) -> Waveform:
-    """Single-pole lowpass H(f) = 1/(1 + jf/f3db), applied via rFFT."""
-    n = wave.y.size
-    f = np.fft.rfftfreq(n, d=wave.dt)
-    H = 1.0 / (1.0 + 1j * f / f3db)
-    y = np.fft.irfft(np.fft.rfft(wave.y) * H, n=n)
-    return Waveform(y, wave.dt, wave.t0)
+    pipe = TxPipeline.from_config(cfg)
+    return pipe.waveform(pipe.symbol_stage(symbols))

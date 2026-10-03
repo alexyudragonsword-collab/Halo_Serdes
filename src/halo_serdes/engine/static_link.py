@@ -34,7 +34,7 @@ from ..core.sampler import sample_baud
 from ..core.waveform import Waveform
 from ..dsp import apply_ffe, channel_cursors, dfe_static, mmse_ffe
 from ..dsp.ffe import equalized_cursors
-from ..tx import build_tx_waveform
+from ..tx.pipeline import TxPipeline
 from .result import SimResult
 from .scoring import score
 
@@ -115,7 +115,8 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         from ..core.mapping import precode_1plusd
 
         line_symbols = precode_1plusd(symbols, 2 ** cfg.bits_per_symbol)
-    tx_wave = build_tx_waveform(line_symbols, cfg)
+    tx_pipe = TxPipeline.from_config(cfg)
+    tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(line_symbols))
 
     # --- channel + CTLE + VGA as one LTI response (single frequency-domain pass) ---
     if channel is None:
