@@ -3,6 +3,12 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-03 · Android CI 的 push 路径补上 APK 资源目录(ci/android-paths)
+
+- `configs/**`、`data/channels/**`、`data/clock_profiles/**` 加进 `android.yml` 的 push 路径:PR #9 只改预置,Android 没触发。
+  坑记入 `engineering-pitfalls.md` 打包类首条。
+- 验证:本 PR 动工作流文件,自身就会触发 Android;totals 见 PR CI。
+
 ## 2026-10-03 · 4 个 224G ADC 预置 `cdr.pd_input: adc → ffe`(fix/adc-presets-pd-ffe)
 
 - 被推翻:预置注释"均衡后的样本没有 MM 梯度"。`ffe` 时 CDR 照样跟踪(SJ 0.1 UI @ 0.5 MHz,跟踪误差 rms 0.026–0.062 UI,

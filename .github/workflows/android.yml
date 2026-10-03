@@ -12,12 +12,19 @@ name: android
 # on Android 15+ devices, ARM float behaviour (the emulator is x86_64), and
 # real-world performance.
 
+# Push runs on every branch, so it is the trigger that guards a PR. Its paths
+# must cover everything the APK ships: the two Python packages and the asset
+# directories stageHaloAssets copies in (android/app/build.gradle.kts). A
+# preset-only change used to skip this workflow while still changing the app.
 on:
   push:
     paths:
       - "android/**"
       - "src/halo_serdes/**"
       - "src/halo_serdes_app/**"
+      - "configs/**"
+      - "data/channels/**"
+      - "data/clock_profiles/**"
       - ".github/workflows/android.yml"
   pull_request:
     paths:
