@@ -7,7 +7,7 @@
 
 - `configs/**`、`data/channels/**`、`data/clock_profiles/**` 加进 `android.yml` 的 push 路径:PR #9 只改预置,Android 没触发。
   坑记入 `engineering-pitfalls.md` 打包类首条。
-- 验证:本 PR 动工作流文件,自身就会触发 Android;totals 见 PR CI。
+- 验证:本 PR 动工作流文件,自身就触发了 Android(push 与 pull_request 各一次);Android CI(8ab5c42,run 37093101089):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过;测试矩阵、lint、import-clean 全绿。
 
 ## 2026-10-03 · 4 个 224G ADC 预置 `cdr.pd_input: adc → ffe`(fix/adc-presets-pd-ffe)
 
