@@ -12,6 +12,12 @@
 - 新 ROADMAP P2 6d(示例 18 换一个 MLSD 真有用的配置、重嵌 summary.html 的图);pitfalls 加"杠杆增益要在修好的基线上量"。
 - 验证:jit 612 passed / 2 skipped(+ 新 7 项单跑通过),nojit 617 passed / 4 skipped;Android CI(0354903,run 37093567169):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过(第二个 commit 只动示例与文档)。
 
+## 2026-10-03 · Android CI 的 push 路径补上 APK 资源目录(ci/android-paths)
+
+- `configs/**`、`data/channels/**`、`data/clock_profiles/**` 加进 `android.yml` 的 push 路径:PR #9 只改预置,Android 没触发。
+  坑记入 `engineering-pitfalls.md` 打包类首条。
+- 验证:本 PR 动工作流文件,自身就触发了 Android(push 与 pull_request 各一次);Android CI(8ab5c42,run 37093101089):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过;测试矩阵、lint、import-clean 全绿。
+
 ## 2026-10-03 · 4 个 224G ADC 预置 `cdr.pd_input: adc → ffe`(fix/adc-presets-pd-ffe)
 
 - 被推翻:预置注释"均衡后的样本没有 MM 梯度"。`ffe` 时 CDR 照样跟踪(SJ 0.1 UI @ 0.5 MHz,跟踪误差 rms 0.026–0.062 UI,

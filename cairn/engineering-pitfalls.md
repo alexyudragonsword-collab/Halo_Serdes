@@ -179,6 +179,11 @@ slew 比值却很小。统计引擎另加一条 σ_e > 0.1 UI 的 `noise-limited
 
 ### 打包 / 跨平台类
 
+**CI 路径过滤要覆盖 APK 打包的一切,不只是代码。** `android.yml` 的 push 路径曾只列 `android/`、两个 Python 包与工作流本身;
+`configs/`、`data/channels/`、`data/clock_profiles/` 由 `stageHaloAssets` 打进 APK,却不在列表里 —— PR #9 只改了 4 个预置,
+Android 一项也没跑,靠手动 dispatch 才补上。**规则:改了 `stageHaloAssets` 的 `from(...)` 就同步改 push 路径**
+(push 对所有分支生效,是它在守 PR;pull_request 的窄列表只是兜底)。
+
 **静默回退会把"资源没打包"伪装成"参数不对"。** `load_preset()` 曾经在预设文件找不到时
 悄悄返回 `LinkConfig()`,而它的默认信道是 **touchstone 且无文件** —— 于是 Android 上
 `configs/` 没进 APK 这件事,现形时的样子是引擎抛
