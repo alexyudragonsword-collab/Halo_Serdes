@@ -292,8 +292,12 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     levels_norm = _levels(cfg) / swing  # {-1,1} or {-1,-1/3,1/3,1}*rlm
 
     peak = int(np.argmax(np.abs(pulse.y)))
-    n_dfe = cfg.rx.dfe.n_taps
     pr_active = cfg.pr.active
+    if pr_active and peak >= osr and abs(pulse.y[peak - osr]) >= 0.5 * abs(pulse.y[peak]):
+        # equalised to [1, a] the pulse has two comparable cursors (equal at
+        # a = 1) and nothing before them: the main one is the earlier
+        peak -= osr
+    n_dfe = cfg.rx.dfe.n_taps
     n_t = len(cfg.pr.target)
     mlsd_mem = cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none" else 0
 

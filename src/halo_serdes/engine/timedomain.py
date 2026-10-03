@@ -436,6 +436,11 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     h_rx, lead = tx_pipe.receiver_view(h)
     pulse = pulse_from_impulse(Waveform(h_rx, cfg.dt), osr)
     peak_rx = int(np.argmax(np.abs(pulse.y)))
+    if tx_pipe.pr_taps is not None:
+        # a 1 + aD Tx pulse peaks on either of its two cursors; x_k's own is
+        # where the unshaped pulse peaks
+        h_un, _ = tx_pipe.receiver_view(h, shaping=False)
+        peak_rx = int(np.argmax(np.abs(pulse_from_impulse(Waveform(h_un, cfg.dt), osr).y)))
     peak = peak_rx - lead
     fcfg = cfg.rx.ffe
     n_pre_c, n_post_c = fcfg.n_pre + 4, fcfg.n_post + 12

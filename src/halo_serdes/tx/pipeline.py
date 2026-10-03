@@ -17,7 +17,9 @@ value (``tests/golden/`` and the engine fingerprint pin that).
 
 The order inside the symbol stage is fixed: partial-response shaping comes
 before the FFE and the DAC, so a transmit-side 1+aD target is what the DAC
-has to resolve (its extra levels cost DAC range).
+has to resolve (its extra levels cost DAC range). It is scaled by 1/(1+a):
+the composite peak equals the unshaped one, so the DAC and driver span what
+they spanned before and the level spacing pays for the extra levels.
 """
 
 from __future__ import annotations
@@ -46,6 +48,8 @@ class TxPipeline:
         tx = cfg.tx
         self.fir_taps = np.asarray(tx.fir_taps, dtype=np.float64)
         self.fir_n_pre = int(tx.fir_n_pre)
+        a = cfg.pr.alpha if cfg.pr.at_tx else 0.0
+        self.pr_taps = np.array([1.0, a]) / (1.0 + a) if a > 0.0 else None
         self.dac_model = dac
         self.driver_nl = driver_nl
         self.stats = {"dac_clipped": 0}
@@ -90,9 +94,23 @@ class TxPipeline:
         return symbols_to_voltages(symbols, self.cfg)
 
     def pr_filter(self, v: np.ndarray) -> np.ndarray:
-        """Transmit-side partial-response shaping: not modelled yet (identity).
-        Its place is fixed: before the FFE and the DAC."""
-        return v
+        """Transmit-side 1 + aD shaping, (v[k] + a v[k-1]) / (1 + a); identity
+        unless ``pr.at == "tx"`` with a > 0. Causal: the first symbol has no
+        predecessor (the sequence starts from 0)."""
+        if self.pr_taps is None:
+            return v
+        out = v * self.pr_taps[0]
+        out[1:] += self.pr_taps[1] * v[:-1]
+        return out
+
+    def _symbol_taps(self, shaping: bool = True) -> tuple[np.ndarray, int] | None:
+        """PR filter and FFE as one symbol-spaced response and its precursor
+        count, or None when both are identity."""
+        taps = self.fir_taps if self.ffe_active else None
+        n_pre = self.fir_n_pre if self.ffe_active else 0
+        if shaping and self.pr_taps is not None:
+            taps = self.pr_taps if taps is None else np.convolve(taps, self.pr_taps)
+        return None if taps is None else (taps, n_pre)
 
     def ffe(self, v: np.ndarray) -> np.ndarray:
         if self.ffe_active:
@@ -148,7 +166,8 @@ class TxPipeline:
         return self.waveform_and_edges(v_sym, rng)[0]
 
     # ------------------------------------------------------ receiver analysis
-    def receiver_view(self, h: np.ndarray, osr: int | None = None) -> tuple[np.ndarray, int]:
+    def receiver_view(self, h: np.ndarray, osr: int | None = None,
+                      shaping: bool = True) -> tuple[np.ndarray, int]:
         """The impulse a receiver's pulse analysis has to look at, and its lead.
 
         The Tx waveform already carries the FFE, but the engines filter it
@@ -162,9 +181,12 @@ class TxPipeline:
         using it as a position in the received waveform.
 
         Without an FFE it is ``(h, 0)`` -- the same array, untouched.
+        ``shaping=False`` leaves a transmit PR filter out: a 1 + aD pulse has
+        two comparable cursors and its peak can be the a x_{k-1} one, so the
+        main cursor is located on the unshaped pulse (same lead, same start).
         """
         osr = self.cfg.osr if osr is None else osr
-        resp = self.equivalent_symbol_response(osr)
+        resp = self.equivalent_symbol_response(osr, shaping)
         if resp is None:
             return h, 0
         return np.convolve(h, resp), self.symbol_response_lead(osr)
@@ -194,8 +216,9 @@ class TxPipeline:
         h = np.fft.irfft(1.0 / (1.0 + 1j * np.fft.rfftfreq(n, d=dt) / bw), n)
         return np.concatenate([h[n - pre:], h[:keep]]), pre
 
-    def equivalent_symbol_response(self, osr: int | None = None) -> np.ndarray | None:
-        """The LTI part of the Tx after the levels -- FFE and driver pole -- on
+    def equivalent_symbol_response(self, osr: int | None = None,
+                                   shaping: bool = True) -> np.ndarray | None:
+        """The LTI part of the Tx after the levels -- PR filter, FFE and driver pole -- on
         the sample grid, or None when it is the identity: what the statistical
         engine convolves into the pulse and the receivers' pulse analysis sees.
 
@@ -204,7 +227,8 @@ class TxPipeline:
         cursor sits ``symbol_response_lead`` samples later than in the
         waveform."""
         osr = self.cfg.osr if osr is None else osr
-        resp = upsampled_taps(self.fir_taps, osr) if self.ffe_active else None
+        st = self._symbol_taps(shaping)
+        resp = None if st is None else upsampled_taps(st[0], osr)
         drv = self.driver_response(osr)
         if drv is None:
             return resp
@@ -216,7 +240,8 @@ class TxPipeline:
         impulse's non-causal samples."""
         osr = self.cfg.osr if osr is None else osr
         drv = self.driver_response(osr)
-        return (self.fir_n_pre * osr if self.ffe_active else 0) + (0 if drv is None else drv[1])
+        st = self._symbol_taps()
+        return (0 if st is None else st[1] * osr) + (0 if drv is None else drv[1])
 
     def after_dac_response(self, osr: int | None = None) -> np.ndarray | None:
         """What follows the DAC inside the Tx (the driver pole), or None: the

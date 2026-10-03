@@ -547,9 +547,11 @@ class PrConfig:
     resolves the controlled cursor instead of the FFE inverting it, which
     costs less noise enhancement on a lossy channel.
 
-    ``at="tx"`` (shaping in the transmitter, before the FFE and DAC) is the
-    next stage, ROADMAP P3 #8 stage 3; targets longer than 1 + aD are out of
-    scope (the trellis grows as N^L)."""
+    ``at="tx"`` shapes in the transmitter instead, before the FFE and the
+    DAC, scaled by 1 / (1 + a) so the Tx peak swing stays what it was (the
+    DAC and driver range is the constraint, and the extra levels come out of
+    it); the receiver then detects the same 1 + aD target. Targets longer
+    than 1 + aD are out of scope (the trellis grows as N^L)."""
     target: tuple[float, ...] = (1.0,)
     at: Literal["rx", "tx"] = "rx"
 
@@ -562,14 +564,14 @@ class PrConfig:
         if len(self.target) == 2:
             _require(0.0 <= self.target[1] <= 1.0,
                      f"pr.target alpha must be in [0, 1], got {self.target[1]}")
-        if self.at == "tx":
-            raise NotImplementedError(
-                "pr.at='tx' (transmit-side partial response) is not built yet: "
-                "ROADMAP P3 #8, stage 3")
 
     @property
     def active(self) -> bool:
         return len(self.target) > 1
+
+    @property
+    def at_tx(self) -> bool:
+        return self.active and self.at == "tx"
 
     @property
     def alpha(self) -> float:
