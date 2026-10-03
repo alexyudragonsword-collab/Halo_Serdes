@@ -79,14 +79,15 @@ def _tx_symbols(cfg: LinkConfig, symbols: np.ndarray) -> np.ndarray:
 
 
 def _residual_ratios(eq_cursors: np.ndarray, eq_pre: int, n_dfe: int,
-                     memory: int) -> np.ndarray:
+                     memory: int, n_target: int = 1) -> np.ndarray:
     """Postcursors left for the sequence detector, normalized to the main one.
 
-    The FFE shapes the pulse and the DFE cancels the first ``n_dfe``
+    The FFE shapes the pulse (``n_target`` cursors from the main one on are
+    its partial-response target) and the DFE cancels the next ``n_dfe``
     postcursors; whatever follows is the residual ISI the MLSD works over.
     """
     main = eq_cursors[eq_pre]
-    start = eq_pre + 1 + n_dfe
+    start = eq_pre + n_target + n_dfe
     tail = eq_cursors[start: start + memory]
     if tail.size < memory:
         tail = np.pad(tail, (0, memory - tail.size))
@@ -94,19 +95,23 @@ def _residual_ratios(eq_cursors: np.ndarray, eq_pre: int, n_dfe: int,
 
 
 def _mlsd_post_detect(cfg: LinkConfig, y_slicer: np.ndarray, dec: np.ndarray,
-                      levels: np.ndarray, resid: np.ndarray) -> np.ndarray:
+                      levels: np.ndarray, resid: np.ndarray,
+                      head: np.ndarray | None = None) -> np.ndarray:
     """Re-decide the symbol stream with the configured sequence detector.
 
     ``levels`` are the slicer levels in volts, so the trellis cursor vector is
-    ``[1, r1, r2, ...]`` — the residual ratios scale those same volt levels.
-    Returns ``dec`` unchanged when MLSD is off or the residual is negligible.
+    ``[1, r1, r2, ...]`` — the residual ratios scale those same volt levels --
+    or, with a partial-response target, ``head`` (``[1, alpha]``) and then
+    the residual. Returns ``dec`` unchanged when MLSD is off or there is
+    nothing to detect over.
     """
     mcfg = cfg.rx.mlsd
     if mcfg.kind == "none":
         return dec
     from ..dsp.mlsd import post_detect
 
-    cursors = np.concatenate([[1.0], np.asarray(resid, dtype=float)])
+    cursors = np.concatenate([[1.0] if head is None else np.asarray(head, dtype=float),
+                              np.asarray(resid, dtype=float)])
     if np.all(np.abs(cursors[1:]) < 1e-9):    # nothing left to detect over
         return dec
     method = "viterbi" if mcfg.kind == "viterbi" else "sliding"
@@ -436,14 +441,35 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     n_pre_c, n_post_c = fcfg.n_pre + 4, fcfg.n_post + 12
     cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak_rx)
     n_taps = fcfg.n_pre + 1 + fcfg.n_post
+    pr = cfg.pr
+    target = pr.target if pr.active else None
+    n_t = len(pr.target)
     w_ffe0 = mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
-                      noise_var=cfg.rx.noise_rms ** 2)
+                      noise_var=cfg.rx.noise_rms ** 2, target=target)
     eq_cursors, eq_pre = equalized_cursors(cursors, w_ffe0, n_pre_c, fcfg.n_pre)
     main = eq_cursors[eq_pre]
     n_dfe = cfg.rx.dfe.n_taps
-    w_dfe0 = (eq_cursors[eq_pre + 1: eq_pre + 1 + n_dfe] / main
+    # the DFE cancels what follows the target's controlled cursors
+    w_dfe0 = (eq_cursors[eq_pre + n_t: eq_pre + n_t + n_dfe] / main
               if n_dfe else np.zeros(0))
     levels = _levels(cfg) * abs(main)
+    pr_mode, pr_levels, pd_offset = 0, np.zeros(1), float(cfg.rx.cdr.pd_offset)
+    if pr.active:
+        if cfg.rx.mlsd.kind == "none":
+            import warnings
+
+            warnings.warn(
+                f"pr.target {tuple(pr.target)} without a sequence detector (rx.mlsd.kind "
+                "'none'): the controlled cursor is only cancelled by decision feedback, "
+                "which costs what the target saved -- set rx.mlsd.kind", stacklevel=2)
+        # precoded 1 + D slices the composite levels and stops error
+        # propagation; any other alpha subtracts it from the previous decision
+        pr_mode = 2 if (cfg.precode and pr.alpha == 1.0) else 1
+        if pr_mode == 2:
+            n_lv = levels.size
+            pr_levels = np.array([np.mean([levels[i] + levels[q - i]
+                                           for i in range(max(0, q - n_lv + 1), min(q, n_lv - 1) + 1)])
+                                  for q in range(2 * n_lv - 1)])
 
     # --- TI-ADC ---
     adc = TiAdc(cfg.rx.adc, osr, rng)
@@ -475,9 +501,10 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         adc.q_step, adc.code_max, enob_noise,
         np.asarray(w_ffe0, dtype=np.float64), fcfg.n_pre, float(mu_f),
         np.asarray(w_dfe0, dtype=np.float64), float(mu_d),
-        float(kp), float(ki), float(clamp), float(ccfg.pd_offset),
+        float(kp), float(ki), float(clamp), pd_offset,
         1 if cfg.mm_pd_input == "ffe" else 0, lat_blocks,
-        sched.reference, int(train_end), int(settle), rx_clk)
+        sched.reference, int(train_end), int(settle), rx_clk,
+        float(pr.alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64))
 
     # The FFE emits symbol k - n_pre at ADC sample k, so the kernel's last
     # n_pre decisions were never made (they hold the array's initial 0). They
@@ -487,15 +514,18 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # --- optional MLSD over the residual the FFE/DFE left behind ---
     eq_final, eq_pre_f = equalized_cursors(cursors, w_ffe, n_pre_c, fcfg.n_pre)
     resid_ratios = _residual_ratios(eq_final, eq_pre_f, n_dfe,
-                                    cfg.rx.mlsd.memory)
+                                    cfg.rx.mlsd.memory, n_t)
+    # the trellis takes the controlled cursor as the FFE actually shaped it
+    head = (np.array([1.0, eq_final[eq_pre_f + 1] / eq_final[eq_pre_f]])
+            if pr.active else None)
     dec_slicer = dec
-    dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios)
+    dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios, head)
 
     warm = warmup_symbols(cfg, train_end, n_run)
     # score() undoes the precoder first: the slicer decided line symbols
     sc = score(cfg, dec=dec, dec_slicer=dec_slicer, y_slicer=y_sl,
                levels=levels, line_idx=ref_idx, user_idx=user_idx,
-               n_run=n_run, warmup=warm)
+               n_run=n_run, warmup=warm, pr_alpha=pr.alpha)
     dec_c, ref_c = sc.decisions, sc.reference
 
     # per-lane SER (TI mismatch diagnostics)

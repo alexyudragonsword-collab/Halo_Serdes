@@ -3,8 +3,9 @@
 Ports serdespy's ``forcing_ffe`` Toeplitz zero-forcing solve (with its
 redundant double normalization removed) and extends it to regularized MMSE:
 ``w = (M^T M + lambda I)^-1 M^T d`` where M is the channel convolution matrix
-and d the desired (delta) response. At lambda -> 0 with a square system, MMSE
-reduces exactly to ZF.
+and d the desired response: a delta at the main cursor, or a partial-response
+``target`` starting there (``(1.0, a)`` for 1 + aD). At lambda -> 0 with a
+square system, MMSE reduces exactly to ZF.
 """
 
 from __future__ import annotations
@@ -42,8 +43,12 @@ def _conv_matrix(c: np.ndarray, n_taps: int) -> np.ndarray:
     return M
 
 
+def _target(target) -> np.ndarray:
+    return np.array([1.0] if target is None else target, dtype=np.float64)
+
+
 def zf_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
-           normalize: bool = True) -> np.ndarray:
+           normalize: bool = True, target=None) -> np.ndarray:
     """Zero-forcing FFE solve.
 
     Args:
@@ -54,7 +59,8 @@ def zf_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
 
     Solves the square system forcing the equalized response to a unit pulse at
     the main position over ``n_taps`` constrained cursor positions centered on
-    the main cursor (serdespy ``forcing_ffe`` formulation).
+    the main cursor (serdespy ``forcing_ffe`` formulation) -- or to ``target``
+    from the main position on.
     """
     A = np.zeros((n_taps, n_taps))
     for j in range(n_taps):
@@ -64,7 +70,9 @@ def zf_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
             if 0 <= ci < cursors.size:
                 A[i, j] = cursors[ci]
     d = np.zeros(n_taps)
-    d[tap_pre] = 1.0
+    t = _target(target)
+    n = min(t.size, n_taps - tap_pre)
+    d[tap_pre: tap_pre + n] = t[:n]
     w = np.linalg.solve(A, d)
     if normalize:
         w = w / np.abs(w).sum()
@@ -72,15 +80,18 @@ def zf_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
 
 
 def mmse_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
-             noise_var: float = 0.0, normalize: bool = True) -> np.ndarray:
+             noise_var: float = 0.0, normalize: bool = True, target=None) -> np.ndarray:
     """Regularized MMSE FFE over the full ISI support.
 
     Minimizes ||M w - d||^2 + noise_var * ||w||^2 with d a delta at the main
-    output cursor. noise_var = 0 gives the least-squares ZF solution.
+    output cursor, or ``target`` from there on. noise_var = 0 gives the
+    least-squares ZF solution.
     """
     M = _conv_matrix(cursors, n_taps)
     d = np.zeros(M.shape[0])
-    d[c_pre + tap_pre] = 1.0
+    t = _target(target)
+    n = min(t.size, d.size - (c_pre + tap_pre))
+    d[c_pre + tap_pre: c_pre + tap_pre + n] = t[:n]
     A = M.T @ M + noise_var * np.eye(n_taps)
     w = np.linalg.solve(A, M.T @ d)
     if normalize:
@@ -96,7 +107,19 @@ def apply_ffe(y_baud: np.ndarray, w: np.ndarray, tap_pre: int) -> np.ndarray:
 
 
 def equalized_cursors(cursors: np.ndarray, w: np.ndarray, c_pre: int,
-                      tap_pre: int) -> tuple[np.ndarray, int]:
-    """Channel cursors after FFE; returns (new_cursors, new_pre_count)."""
+                      tap_pre: int, target=None) -> tuple[np.ndarray, int]:
+    """Channel cursors after FFE; returns (new_cursors, new_pre_count).
+
+    With ``target`` the controlled cursors are taken out -- main * target
+    subtracted from the main position on -- so what is returned is the ISI
+    the partial-response target does not account for (the main cursor
+    itself then reads 0)."""
     out = np.convolve(cursors, w)
-    return out, c_pre + tap_pre
+    pre = c_pre + tap_pre
+    if target is not None:
+        t = _target(target)
+        main = out[pre]
+        n = min(t.size, out.size - pre)
+        out = out.copy()
+        out[pre: pre + n] -= main * t[:n]
+    return out, pre

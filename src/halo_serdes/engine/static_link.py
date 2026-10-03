@@ -105,6 +105,10 @@ def _levels(cfg: LinkConfig) -> np.ndarray:
 def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                     collect_eye: bool = True,
                     symbols: np.ndarray | None = None) -> SimResult:
+    if cfg.pr.active:
+        raise NotImplementedError(
+            "the static engine has no sequence detector to resolve a partial-response "
+            "target; run pr.target with the time engine (sim.engine 'time' or 'both')")
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 

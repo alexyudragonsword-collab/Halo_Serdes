@@ -15,6 +15,17 @@ Non-LTI approximations (each cross-checked against the time engine):
 - DFE: ideal cancellation of the covered postcursors (weights assumed exact);
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
 - sampling jitter: BER(phi) smeared with the RJ Gaussian on the phase axis;
+- receive-side partial response (``cfg.pr``): the controlled cursor (the
+  first postcursor of the FFE-shaped pulse, whatever it is at each phase)
+  leaves the ISI PDF; with a sequence detector it joins the trellis cursors
+  [1, alpha, r...], without one it is cancelled like an ideal DFE tap. The
+  DFE then starts after it. With a sequence detector the BER is not the
+  plain MLSD's minimum-distance gain but a union bound over the alternating error
+  events, in the noise the shaping FFE coloured (``pr_error_events``): the
+  minimum distance alone was 2.5-20x optimistic against the time engine;
+  the bound is within 1.5x at BER <= 5e-4 and loose (up to 3x pessimistic)
+  above 1e-2. The time engine's per-symbol PR decision and its LMS
+  reference are not modelled (outside the LTI + AWGN cross-check);
 - sampling phase: the ADC receiver is read at the bathtub minimum; the
   mixed-signal receiver at the bang-bang loop's lock point (where its edge
   samples balance, ``cdr.linear.lock_offset_samples``), because that loop
@@ -146,6 +157,45 @@ def isi_pdf(cursor_amps: np.ndarray, levels_norm: np.ndarray,
     return pdf
 
 
+def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
+                    precoded: bool, max_len: int = 12) -> list[tuple[float, float]]:
+    """(distance gain, weight) per error event of a sequence detector on a
+    partial-response target, for a union bound.
+
+    The minimum distance alone is not enough here, for two reasons the time
+    engine shows. The FFE that shapes the pulse into [1, alpha] colours the
+    noise (rho1 = -0.25, rho2 = -0.31 for [1, 1] on example 18's channel),
+    and the Viterbi metric is Euclidean, so an event d is missed with
+    Q(|d|^2 / (2 sigma sqrt(d' R d))), not Q(|d| / 2 sigma). And with alpha
+    near 1 every alternating event (+1, -1, +1, ...) of any length L is near
+    the minimum distance, so they add up. Events are one level step per
+    symbol, alternating in sign; the data supports one of length L with
+    probability ((M - 1) / M)^(L - 1) relative to a single error (which the
+    per-level threshold sum already weighs). Each costs L symbol errors, or,
+    precoded, as many as the mod-M sum of neighbouring errors leaves (2 for
+    any alternating event).
+
+    The gain is relative to the memoryless slicer's half-distance; with white
+    noise and L = 1 it is |d|, the plain MLSD path's sqrt(d_min^2).
+    """
+    h = np.asarray(cursors, dtype=float)
+    rho = np.asarray(noise_acf, dtype=float) / float(noise_acf[0])
+    out = []
+    for n in range(1, max_len + 1):
+        e = np.where(np.arange(n) % 2 == 0, 1.0, -1.0)
+        d = np.convolve(e, h)
+        acf_d = np.correlate(d, d, "full")[d.size - 1:]
+        k = min(acf_d.size, rho.size)
+        proj = acf_d[0] + 2.0 * float(np.dot(acf_d[1:k], rho[1:k]))
+        g = float(acf_d[0] / np.sqrt(max(proj, 1e-300)))
+        if precoded:
+            errs = int(np.count_nonzero(np.convolve(e, [1.0, 1.0]).round().astype(int) % n_levels))
+        else:
+            errs = n
+        out.append((g, ((n_levels - 1) / n_levels) ** (n - 1) * errs))
+    return out
+
+
 def gaussian_kernel(sigma: float, dv: float, n_sigma: float = 8.0) -> np.ndarray:
     if sigma <= 0:
         return np.array([1.0])
@@ -243,6 +293,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     peak = int(np.argmax(np.abs(pulse.y)))
     n_dfe = cfg.rx.dfe.n_taps
+    pr_active = cfg.pr.active
+    n_t = len(cfg.pr.target)
     mlsd_mem = cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none" else 0
 
     # phase axis: one UI centered on the pulse peak
@@ -262,6 +314,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     n_levels = levels_norm.size
     bits_per_sym = cfg.bits_per_symbol
+    # noise autocorrelation at the slicer, symbol spacing: white at the FFE
+    # input (the receiver noise is band-limited to the baud rate), coloured
+    # by the taps; only the partial-response union bound reads it
+    noise_acf = np.ones(1)
+    if pr_active and mlsd_mem > 0 and ffe_taps is not None and len(ffe_taps) > 1:
+        w = np.asarray(ffe_taps, dtype=float)
+        noise_acf = np.correlate(w, w, "full")[w.size - 1:]
 
     for pi, off in enumerate(phi_offsets):
         # cursors at this phase (volts, per unit symbol level)
@@ -272,11 +331,19 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         c = c * swing
         main = c[n_pre]
         isi = np.delete(c, n_pre)
-        # ideal DFE removes the first n_dfe postcursors
+        # a partial-response target's controlled cursor is signal, not ISI:
+        # the sequence detector resolves it (or, without one, the per-symbol
+        # decision subtracts it like an ideal DFE tap)
+        head = [1.0]
+        if pr_active:
+            head.append(isi[n_pre] / main if main else 0.0)
+            isi = isi.copy()
+            isi[n_pre] = 0.0
+        # ideal DFE removes the n_dfe postcursors after the target
         if n_dfe > 0:
             isi_list = list(isi)
             for d in range(n_dfe):
-                pos = n_pre + d  # index into isi (post side starts at n_pre)
+                pos = n_pre + n_t - 1 + d  # index into isi (post side starts at n_pre)
                 if pos < len(isi_list):
                     isi_list[pos] = 0.0
             isi = np.asarray(isi_list)
@@ -289,22 +356,26 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # which is applied here as an equivalent noise reduction. This is the
         # closed-form form of the planned MLSD gain table; the time engine is
         # the cross-check (extras['ser_slicer'] vs ser).
-        sigma_eff = noise_sigma
         g_mlsd = 1.0
         if mlsd_mem > 0:
             res = []
             isi_list = list(isi)
             for d in range(mlsd_mem):
-                pos = n_pre + n_dfe + d       # postcursors after the DFE's
+                pos = n_pre + n_t - 1 + n_dfe + d   # postcursors after the DFE's
                 if pos < len(isi_list):
                     res.append(isi_list[pos] / main if main else 0.0)
                     isi_list[pos] = 0.0       # resolved, not interference
             isi = np.asarray(isi_list)
-            if res:
+            if res or pr_active:
                 g = np.sqrt(mlse_min_distance_sq(
-                    np.concatenate([[1.0], np.asarray(res)])))
+                    np.concatenate([head, np.asarray(res)])))
                 g_mlsd = max(g, 1e-12)
-                sigma_eff = noise_sigma / g_mlsd
+        # error events the per-level sum runs over: one, unless a sequence
+        # detector works a partial-response target (pr_error_events)
+        events = [(g_mlsd, 1.0)]
+        if pr_active and mlsd_mem > 0:
+            events = pr_error_events(np.concatenate([head, np.asarray(res)]), noise_acf,
+                                     n_levels, cfg.precode)
 
         if pattern_sigma is not None:
             # the binned neighbours leave the random ISI and become a shift
@@ -322,62 +393,69 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 xc[xval] = xp.y[xidx[xval]]
                 pdf = np.convolve(pdf, isi_pdf(xc * swing, levels_norm, v_centers),
                                   mode="same")
-        # noise kernel: one for an electrical link; one per *transmitted*
-        # level when the noise follows the level (an inverting channel flips
-        # the slicer order, not which symbol carried the most light)
-        if pattern_sigma is not None:
-            pdf_lv = []
-            n_pat = n_levels ** len(_BINNED_NEIGHBOURS)
-            for k in range(n_levels):
-                acc = np.zeros(v_bins)
-                for combo in np.ndindex(*pattern_sigma.shape[1:]):
-                    shifted = np.zeros(v_bins)
-                    _shift_add(shifted, pdf, float(np.dot(c_bin, levels_norm[list(combo)])) / dv, 1.0)
-                    nk = gaussian_kernel(
-                        np.sqrt(noise_sigma ** 2 + pattern_sigma[(k,) + combo] ** 2) / g_mlsd, dv)
-                    acc += (np.convolve(shifted, nk, mode="same") if nk.size > 1 else shifted) / n_pat
-                pdf_lv.append(acc / max(acc.sum(), 1e-300))
-        elif level_sigma is None:
-            nk = noise_k if sigma_eff == noise_sigma else gaussian_kernel(sigma_eff, dv)
-            if nk.size > 1:
-                pdf = np.convolve(pdf, nk, mode="same")
-            pdf = pdf / max(pdf.sum(), 1e-300)
-            pdf_lv = [pdf] * n_levels
-        else:
-            pdf_lv = []
-            for sk in level_sigma:
-                nk = gaussian_kernel(np.sqrt(noise_sigma ** 2 + sk ** 2) / g_mlsd, dv)
-                pk = np.convolve(pdf, nk, mode="same") if nk.size > 1 else pdf
-                pdf_lv.append(pk / max(pk.sum(), 1e-300))
-
-        # tail CDFs per level
-        cdf_up = [np.cumsum(p[::-1])[::-1] for p in pdf_lv]   # P(x >= v)
-        cdf_dn = [np.cumsum(p) for p in pdf_lv]               # P(x <= v)
-
-        def tail_ge(v: float, j: int) -> float:
-            i = int(np.searchsorted(v_centers, v))
-            return float(cdf_up[j][i]) if i < v_bins else 0.0
-
-        def tail_le(v: float, j: int) -> float:
-            i = int(np.searchsorted(v_centers, v)) - 1
-            return float(cdf_dn[j][i]) if i >= 0 else 0.0
-
-        # SER/BER over levels: distance to adjacent thresholds = |main|*gap/2
         ser = 0.0
         nbe = 0.0
-        lv = levels_norm * main
-        order = np.argsort(lv)
-        lv_sorted = lv[order]
-        for j in range(n_levels):
-            p_err_up = p_err_dn = 0.0
-            if j < n_levels - 1:
-                thr = (lv_sorted[j] + lv_sorted[j + 1]) / 2.0
-                p_err_up = tail_ge(thr - lv_sorted[j], int(order[j]))
-            if j > 0:
-                thr = (lv_sorted[j - 1] + lv_sorted[j]) / 2.0
-                p_err_dn = tail_le(thr - lv_sorted[j], int(order[j]))
-            ser += (p_err_up + p_err_dn) / n_levels
-            nbe += (p_err_up + p_err_dn) / n_levels  # Gray: adjacent = 1 bit
+        pdf_isi = pdf
+        pdf_eye = None
+        for g_ev, w_ev in events:
+            pdf = pdf_isi
+            # noise kernel: one for an electrical link; one per *transmitted*
+            # level when the noise follows the level (an inverting channel flips
+            # the slicer order, not which symbol carried the most light)
+            if pattern_sigma is not None:
+                pdf_lv = []
+                n_pat = n_levels ** len(_BINNED_NEIGHBOURS)
+                for k in range(n_levels):
+                    acc = np.zeros(v_bins)
+                    for combo in np.ndindex(*pattern_sigma.shape[1:]):
+                        shifted = np.zeros(v_bins)
+                        _shift_add(shifted, pdf, float(np.dot(c_bin, levels_norm[list(combo)])) / dv, 1.0)
+                        nk = gaussian_kernel(
+                            np.sqrt(noise_sigma ** 2 + pattern_sigma[(k,) + combo] ** 2) / g_ev, dv)
+                        acc += (np.convolve(shifted, nk, mode="same") if nk.size > 1 else shifted) / n_pat
+                    pdf_lv.append(acc / max(acc.sum(), 1e-300))
+            elif level_sigma is None:
+                nk = noise_k if g_ev == 1.0 else gaussian_kernel(noise_sigma / g_ev, dv)
+                if nk.size > 1:
+                    pdf = np.convolve(pdf, nk, mode="same")
+                pdf = pdf / max(pdf.sum(), 1e-300)
+                pdf_lv = [pdf] * n_levels
+            else:
+                pdf_lv = []
+                for sk in level_sigma:
+                    nk = gaussian_kernel(np.sqrt(noise_sigma ** 2 + sk ** 2) / g_ev, dv)
+                    pk = np.convolve(pdf, nk, mode="same") if nk.size > 1 else pdf
+                    pdf_lv.append(pk / max(pk.sum(), 1e-300))
+
+            # tail CDFs per level
+            cdf_up = [np.cumsum(p[::-1])[::-1] for p in pdf_lv]   # P(x >= v)
+            cdf_dn = [np.cumsum(p) for p in pdf_lv]               # P(x <= v)
+
+            def tail_ge(v: float, j: int) -> float:
+                i = int(np.searchsorted(v_centers, v))
+                return float(cdf_up[j][i]) if i < v_bins else 0.0
+
+            def tail_le(v: float, j: int) -> float:
+                i = int(np.searchsorted(v_centers, v)) - 1
+                return float(cdf_dn[j][i]) if i >= 0 else 0.0
+
+            # SER/BER over levels: distance to adjacent thresholds = |main|*gap/2
+            lv = levels_norm * main
+            order = np.argsort(lv)
+            lv_sorted = lv[order]
+            for j in range(n_levels):
+                p_err_up = p_err_dn = 0.0
+                if j < n_levels - 1:
+                    thr = (lv_sorted[j] + lv_sorted[j + 1]) / 2.0
+                    p_err_up = tail_ge(thr - lv_sorted[j], int(order[j]))
+                if j > 0:
+                    thr = (lv_sorted[j - 1] + lv_sorted[j]) / 2.0
+                    p_err_dn = tail_le(thr - lv_sorted[j], int(order[j]))
+                ser += w_ev * (p_err_up + p_err_dn) / n_levels
+                nbe += w_ev * (p_err_up + p_err_dn) / n_levels  # Gray: adjacent = 1 bit
+            if pdf_eye is None:
+                pdf_eye = pdf_lv
+        pdf_lv = pdf_eye
         ser_phi[pi] = ser
         ber_phi[pi] = nbe / bits_per_sym
 

@@ -149,3 +149,32 @@ def test_stat_and_time_engines_agree_with_mlsd_on():
                         channel=ch)
     ratio = s.ber / max(t.ser, 1e-12)
     assert 0.5 < ratio < 2.0, (s.ber, t.ser, ratio)
+
+
+def _pr_cfg(precode, n=120_000):
+    """Example 18's 224 Gb/s ADC receiver at -33 dB with a [1, 1] target."""
+    from halo_serdes.config.schema import AdcConfig, FfeConfig, PrConfig
+
+    return LinkConfig(
+        modulation="pam4", symbol_rate=112e9, osr=16, precode=precode,
+        channel=ChannelConfig(kind="analytic", length_m=0.22, rdc=5.0, r_skin=2.0e-3,
+                              loss_tangent=0.012, n_freq=8192),
+        tx=TxConfig(swing=1.0, fir_taps=(-0.06, 1.0, -0.12), fir_n_pre=1),
+        rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=6.0),
+                    adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5, fullscale=0.6),
+                    ffe=FfeConfig(n_pre=6, n_post=14, adapt="lms", mu=3e-5),
+                    dfe=DfeConfig(n_taps=0), mlsd=MlsdConfig(kind="viterbi", memory=2),
+                    cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
+                    noise_rms=0.0015),
+        sim=SimConfig(n_symbols=n, seed=3, pattern="prbs13q"),
+        pr=PrConfig(target=(1.0, 1.0)))
+
+
+def test_precoded_pr_target_is_scored_on_user_symbols():
+    """With precoding and a [1, 1] target the slicer decides composites and
+    the link is scored after the precoder is undone: a working link, not the
+    chance-level BER a line/user mix-up would read."""
+    res = run_time_link(_pr_cfg(True))
+    assert res.ber.ber < 1e-3, res.summary()
+    assert res.ser < 2e-3, res.summary()
+

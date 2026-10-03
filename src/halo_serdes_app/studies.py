@@ -199,6 +199,9 @@ def fixedpoint_study(rec) -> dict:
         if adc is None or q is None or rec.sim.ffe_taps is None:
             return {"error": "fixed-point replay needs an ADC run (rx.arch = "
                     "adc_dsp) — load the PAM4 224G ADC preset and Run."}
+        if cfg.pr.active:
+            return {"error": "fixed-point replay models the delta target only; "
+                    "set pr.target back to (1.0,) to replay this link."}
         from halo_serdes.config.schema import NumericConfig, QFormat
         from halo_serdes.dsp.fixed_datapath import run_fixed_datapath
 
@@ -207,7 +210,7 @@ def fixedpoint_study(rec) -> dict:
         wide = NumericConfig(ffe_weight=QFormat(20, 16), dfe_weight=QFormat(20, 16))
         dec_ref, *_ = run_fixed_datapath(codes, rec.sim.ffe_taps, rec.sim.dfe_taps,
                                          levels, n_pre, wide, adc.cfg.fullscale,
-                                         adc.cfg.n_bits)
+                                         adc.cfg.n_bits, pr=cfg.pr)
         wls = [4, 5, 6, 7, 8, 10, 12]
         mism = []
         for wl in wls:

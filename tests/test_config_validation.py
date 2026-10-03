@@ -10,8 +10,8 @@ import pytest
 
 from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
-    AdcConfig, CdrConfig, ChannelConfig, DfeConfig, FfeConfig, OpticalConfig, QFormat,
-    SimConfig, ClockConfig, TopologyConfig, TxConfig,
+    AdcConfig, CdrConfig, ChannelConfig, DfeConfig, FfeConfig, OpticalConfig, PrConfig,
+    QFormat, RxConfig, SimConfig, ClockConfig, TopologyConfig, TxConfig,
 )
 
 
@@ -91,6 +91,16 @@ from halo_serdes.config.schema import (
     (lambda: TxConfig(drv_nl="cubic"), "drv_oip3_v"),
     (lambda: TxConfig(drv_nl="tanh", drv_p1db_v=-0.3), "drv_p1db_v"),
     (lambda: LinkConfig(modulation="pam4", tx=TxConfig(dac_bits=1)), "dac_bits"),
+    # receive partial response: 1 + aD only, main cursor 1, alpha in [0, 1],
+    # and only where a digital FFE can shape it
+    (lambda: PrConfig(target=()), "pr.target"),
+    (lambda: PrConfig(target=(0.8, 0.5)), "pr.target[0]"),
+    (lambda: PrConfig(target=(1.0, 0.5, 0.25)), "pr.target"),
+    (lambda: PrConfig(target=(1.0, -0.1)), "alpha"),
+    (lambda: PrConfig(target=(1.0, 1.2)), "alpha"),
+    (lambda: PrConfig(at="both"), "pr.at"),
+    (lambda: LinkConfig(rx=RxConfig(arch="mixed_signal"), pr=PrConfig(target=(1.0, 0.5))),
+     "mixed_signal"),
     # the two segments are multiplied point by point: one grid
     (lambda: TopologyConfig(seg_a=ChannelConfig(kind="analytic", n_freq=1024),
                             seg_b=ChannelConfig(kind="analytic", n_freq=2048)), "seg_b.n_freq"),
