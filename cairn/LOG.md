@@ -11,7 +11,9 @@
   BER ≤ 5e-4 时 1.0–1.5×。
 - 示例 36:reach 对照 31.6 dB → a = 0.25 / 0.5 / 0.75 / 1:33.9 / 35.5 / 36.3 / 36.2 dB(最优 0.75,+4.7 dB);1+D Viterbi 增益扣重数后 3.01 dB 内。
   33.3 dB 处 2.5e-6 不是误码底(种子 3/4/5:2/0/2 个比特错)。专题 `DSP发端与PR.md` §7,USAGE §18,SUMMARY §04 加一行杠杆。
-- 验证:`target=(1.0,)` 指纹逐位同 main(488 + 44 值);ruff 干净;jit 664 passed / 2 skipped。
+- 验证:`target=(1.0,)` 指纹逐位同 main(488 + 44 值);ruff 干净;本地 jit 664 passed / 2 skipped(本地 nojit 全量跑到 86% 被时限停掉,
+  其间无失败;此前一轮 4 个失败是 stash 后的陈旧缓存,单独重跑 39 项全过)。CI(5da9dc4)测试矩阵含 3.10 / 3.11 nojit、lint、import-clean、
+  rtl-lockstep、vendor-drift 全绿;Android CI(run 37122891581):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-03 · 统计引擎一致性 A1–A4(fix/stat-engine-consistency,原 ROADMAP 1b、#8 tx.bw、#11 分箱)
 
