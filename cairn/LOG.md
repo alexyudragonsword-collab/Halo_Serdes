@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-03 · 统计引擎一致性 A1–A4(fix/stat-engine-consistency,原 ROADMAP 1b、#8 tx.bw、#11 分箱)
+
+- A1 根因:ADC FFE 在第 k 个样本才判第 k − n_pre 个符号,末尾 n_pre 个 `dec` 是没写过的 0 却被计分。截掉后 ADC 预置少 3–11 错。
+- A2 根因:统计引擎的脉冲不含 TX 驱动器极点。`TxPipeline.driver_response`(与 `apply_single_pole` 同一 H,±32 UI 窗)接入后 0.003× → 1.00 / 1.04×。
+- A3 根因两条:统计端报全相位最小值而非 bang-bang 锁定相位;时域 Catmull-Rom 插值把逐样本白噪声压到 Σc² = 0.64–0.81。
+  修:按 FFE 延迟把锁定点映到均衡后相位;`receiver_awgn` 限带到 [0, baud]。PAM4 MS 0.19 / 0.41 / 0.70 → 0.88 / 0.97 / 0.94;
+  **更正**:`光互联建模.md` 里把 MS PAM4 偏差归给 DFE 传播的判断不对,是这两条。
+- A4 根因:单高斯核匹配方差但尾部比尺度混合窄;两邻符号分箱后 ER 3 / 4.5 / 6 在 1.5× 内(0.99 / 0.97 / 0.96)。
+- 推翻:`test_clock_profile_cdr` 的 JTOL"有剖面方向更差"只在单种子成立(种子 7 / 8 / 9 修前就是 1.52 / 1.24 / 1.07),改断言为有限且有形状。
+- 示例 23 个有变化,前后数在 SUMMARY / summary.html / COMPARISON / 两专题(数旧值保留);新 ROADMAP 4b(统计引擎缺 ENOB 噪声)、4c(周跳后不重对齐)。
+- pitfalls 加 4 条;`architecture-invariants.md` §3 记两条前提。
+- 验证:ruff 干净;jit 637 passed / 2 skipped,nojit 635 passed / 4 skipped。CI 与 Android 待 PR。
+
 ## 2026-10-03 · 示例 18 改为量 MLSD 何时有用;summary.html 换图(feat/ex18-mlsd,原 ROADMAP P2 6d)
 
 - 扫描 FFE 长度 1/1、1/3、2/5、6/14 × 4 个损耗 × CTLE 0/6 dB:只有 3 抽头时 MLSD 有增益(memory-2 最高 5×),1/3 起就 ≤ 1.2×;

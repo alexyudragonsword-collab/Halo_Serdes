@@ -5,7 +5,7 @@ summary: "Halo_Serdes 的六条架构不变量与代码/文档约定 —— 破�
 tags: [architecture, invariants, conventions, serdes]
 contains: [architecture-invariant, code-convention, doc-convention, validation-tradeoff]
 created: "2026-08-18"
-updated: "2026-08-24"
+updated: "2026-10-03"
 related: [engineering-pitfalls.md, knowledge-inventory.md]
 authoring_mode: ai_generated
 ---
@@ -53,6 +53,12 @@ mixed-signal 与 ADC-DSP **共享** Tx、信道、分析层、统计引擎骨架
 ≥ ~0.4 kp/update,或 BB 鉴相器输入抖动 ≥ ~0.1 UI)后线性模型失效,统计引擎必须警告而不是给数。
 接收端时钟(阶段 3)进内核的方式是**逐符号采样偏移数组**,环路本身不变、全零逐位回归;
 两只时钟的残余只在线性(MM)环路上功率相加,BB 上超加 —— 这是鉴相器的性质,不是误差。
+
+**两条前提(2026-10-03 补)**:(1) 比的是同一个采样点 —— 统计引擎在 mixed-signal 上按 bang-bang 锁定点读数
+(静态引擎在 FFE 前脉冲峰值),ADC 上取浴盆最低点;读最低点曾让 MS PAM4 只有 0.19–0.70。(2) 噪声在两个引擎里是
+同一个量 —— 时域引擎的接收噪声限带到 [0, baud](`engine/lti.receiver_awgn`),否则插值采样器在样本之间只放过
+0.64–1.0 的方差,判决噪声随 CDR 的小数相位变。修后:MS NRZ / PAM4、ADC PAM4、tx.bw、光 ER 3–7.5 dB 都在 0.88–1.04×
+(光路另加了邻符号分箱核,`cairn/光互联建模.md`)。
 
 ### 4. numba 是性能层,不是正确性层
 

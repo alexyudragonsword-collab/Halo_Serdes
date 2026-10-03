@@ -6,6 +6,22 @@
 
 ---
 
+## [未发布] — 统计引擎与时域引擎的一致性(原 ROADMAP P1 1b、P3 #8 的 tx.bw、P3 #11 的分箱)
+
+### 修复
+- ADC 路径不再计入 FFE 没判决的尾部 n_pre 个符号(预分配的 0 被当判决打分):ADC 预置的指纹少 3–11 个"误码",
+  示例 15 / 16 由 1.5e-6 / 3.5e-6 与 4 / 5 个误码变为 0。
+- `tx.bw` 进统计引擎与接收端脉冲分析:`TxPipeline.driver_response` / `equivalent_symbol_response` / `after_dac_response`;
+  0.5×baud 驱动器极点下统计 / 静态比从 0.003× 变为 1.00×(NRZ)/ 1.04×(PAM4)。
+- Mixed-signal 统计引擎在 bang-bang 环路实际锁定的相位读 BER(此前报全相位最小值);时域接收噪声改为限带到 [0, baud]
+  (`engine/lti.receiver_awgn`),插值采样器不再把逐样本白噪声稀释到约 0.8σ。PAM4 MS 统计 / 时域比 0.19–0.70 → 0.88–0.97。
+- 光链路统计引擎按两邻符号分箱电平相关噪声(`optical_stage.slicer_sigma_binned`):ER 6 dB 处 0.65–0.76 → 0.94–0.96。
+
+### 变更
+- 示例重跑(23 个有变化):224G 阶梯 18 / 32 / 36–38 / 44 dB;杠杆 DSP 深度 +0.8、ADC +5.3、级联 FEC +3.8 dB;全栈 33.2 / 36.2 /
+  37.7 / 44.2 dB;示例 18 3 抽头 MLSD 1.9–4.4×;示例 33 159 / 256 / 214 m;示例 35 c = 0.2 代价 1.5–1.8 dB。
+- 测试 637 项;`test_jtol_runs_on_a_profile_clock` 取代原单种子方向断言。
+
 ## [未发布] — 示例 18 改为量 MLSD 在什么条件下有用;summary.html 换图(原 ROADMAP P2 6d)
 
 ### 变更
