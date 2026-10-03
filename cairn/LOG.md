@@ -3,6 +3,14 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-03 · 4 个 224G ADC 预置 `cdr.pd_input: adc → ffe`(fix/adc-presets-pd-ffe)
+
+- 被推翻:预置注释"均衡后的样本没有 MM 梯度"。`ffe` 时 CDR 照样跟踪(SJ 0.1 UI @ 0.5 MHz,跟踪误差 rms 0.026–0.062 UI,
+  `adc` 是 0.058–0.152 UI),无 SJ 时贴住峰值;`adc` 自己就漂 0.17–0.29 UI。时域 BER(106G / 112G stress / TI / deep-LR):
+  3.1e-3 → 2.3e-4、7.8e-3 → 1.6e-5、3.8e-3 → 1.3e-5、6.4e-2 → 3.9e-5;指纹只变这 4 个预置的时域块。
+- 库默认 `pd_input` 仍是 `adc`;自己搭 ADC 接收机的示例用的是它 → ROADMAP P1 1d 并入"先定默认值再重跑"。专题 §5 追加。
+- 验证:PDTOTALS。
+
 ## 2026-10-03 · 修:接收端起始均衡看见 TX FFE(fix/rx-init-tx-ffe,原 ROADMAP P1 1c)
 
 - `TxPipeline.receiver_view(h)`:TX FFE 卷进脉冲分析用的 h,返回 n_pre·osr 超前量;静态、时域两架构、`front_end_waveform` 改用它。

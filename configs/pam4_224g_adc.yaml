@@ -38,7 +38,7 @@ rx:
     kind: mueller_muller
     kp_shift: 7
     ki_shift: 15
-    pd_input: adc      # MM PD on raw ADC codes (fully-equalized input has no gradient)
+    pd_input: ffe      # MM PD on the equalised samples: tracks, and sits on the eye (ROADMAP P1 1c, 2026-10-03)
 sim:
   n_symbols: 1000000
   pattern: prbs13q

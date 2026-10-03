@@ -36,7 +36,7 @@ rx:
     kind: mueller_muller
     kp_shift: 7
     ki_shift: 15
-    pd_input: adc
+    pd_input: ffe      # MM PD on the equalised samples: tracks, and sits on the eye (ROADMAP P1 1c, 2026-10-03)
   noise_rms: 0.0015
 sim:
   n_symbols: 200000
