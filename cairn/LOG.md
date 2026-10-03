@@ -14,7 +14,8 @@
 - 推翻:`test_clock_profile_cdr` 的 JTOL"有剖面方向更差"只在单种子成立(种子 7 / 8 / 9 修前就是 1.52 / 1.24 / 1.07),改断言为有限且有形状。
 - 示例 23 个有变化,前后数在 SUMMARY / summary.html / COMPARISON / 两专题(数旧值保留);新 ROADMAP 4b(统计引擎缺 ENOB 噪声)、4c(周跳后不重对齐)。
 - pitfalls 加 4 条;`architecture-invariants.md` §3 记两条前提。
-- 验证:ruff 干净;jit 637 passed / 2 skipped,nojit 635 passed / 4 skipped。CI 与 Android 待 PR。
+- 验证:ruff 干净;jit 637 passed / 2 skipped,nojit 635 passed / 4 skipped。CI(ab8aaed)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿;
+  Android CI(3548102,run 37118161226,最后一个改代码的 commit):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-03 · 示例 18 改为量 MLSD 何时有用;summary.html 换图(feat/ex18-mlsd,原 ROADMAP P2 6d)
 
