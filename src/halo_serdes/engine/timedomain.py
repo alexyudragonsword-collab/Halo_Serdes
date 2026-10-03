@@ -479,7 +479,11 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         1 if cfg.mm_pd_input == "ffe" else 0, lat_blocks,
         sched.reference, int(train_end), int(settle), rx_clk)
 
-    n_run = dec.size
+    # The FFE emits symbol k - n_pre at ADC sample k, so the kernel's last
+    # n_pre decisions were never made (they hold the array's initial 0). They
+    # used to be scored: a fixed tail of wrong symbols, 3/(2N) in BER.
+    n_run = max(dec.size - fcfg.n_pre, 0)
+    dec = dec[:n_run]
     # --- optional MLSD over the residual the FFE/DFE left behind ---
     eq_final, eq_pre_f = equalized_cursors(cursors, w_ffe, n_pre_c, fcfg.n_pre)
     resid_ratios = _residual_ratios(eq_final, eq_pre_f, n_dfe,

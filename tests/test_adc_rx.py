@@ -190,3 +190,27 @@ def test_lane_mismatch_degrades_and_calibration_recovers():
     # per-lane SER spread present under mismatch
     spread_bad = r_bad.extras["lane_ser"].max() - r_bad.extras["lane_ser"].min()
     assert spread_bad >= 0.0
+
+
+# --------------------------------------------- end of run (ROADMAP P1 1b)
+
+def _clean_adc_link(mod, n_pre):
+    rx = RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=3.0),
+                  adc=AdcConfig(n_bits=10, n_lanes=16, fullscale=0.4),
+                  ffe=FfeConfig(n_pre=n_pre, n_post=8, adapt="lms", mu=3e-5), dfe=DfeConfig(n_taps=0),
+                  cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15), noise_rms=0.0)
+    return LinkConfig(modulation=mod, symbol_rate=53.125e9 if mod == "pam4" else 26.5625e9, osr=16,
+                      channel=ChannelConfig(kind="analytic", length_m=0.1, rdc=5.0, r_skin=2e-3,
+                                            loss_tangent=0.012, n_freq=4096),
+                      tx=TxConfig(swing=1.0), rx=rx,
+                      sim=SimConfig(n_symbols=200_000, seed=1,
+                                    pattern="prbs13q" if mod == "pam4" else "prbs13"))
+
+
+@pytest.mark.parametrize("mod, n_pre", [("pam4", 4), ("pam4", 1), ("nrz", 4)])
+def test_noiseless_adc_link_has_no_tail_errors(mod, n_pre):
+    """The FFE outputs symbol k - n_pre at ADC sample k, so the last n_pre
+    symbols of a run never get a decision. They used to be scored anyway (as
+    level 0): a fixed ~3-error floor, 3/(2N) in BER, on every ADC run."""
+    res = run_time_link(_clean_adc_link(mod, n_pre))
+    assert res.ber.n_errors == 0, list(res.ber.error_idx)
