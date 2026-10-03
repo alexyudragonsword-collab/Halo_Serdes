@@ -22,6 +22,14 @@ from halo_serdes.engine import run_time_link
 from halo_serdes.engine.statistical import run_statistical
 
 
+# Engine-level runs of 60k-600k symbols take 2-6 minutes each through the
+# pure-Python kernel. They check the PR model, not the fallback, so they run
+# where numba does; with HALO_NO_JIT=1 the kernel's own equivalence is
+# test_numba_kernel_matches_python_with_pr's job.
+needs_jit = pytest.mark.skipif(adc_rx is _adc_rx_py,
+                               reason="engine-level PR run; minutes through the pure-Python kernel")
+
+
 # ------------------------------------------------------------ configuration
 
 def test_config_limits():
@@ -219,6 +227,7 @@ def test_mm_cdr_holds_its_phase_under_a_pr_target(alpha, precode):
     assert abs(ph1 - ph0) < 0.05, (ph0, ph1)
 
 
+@needs_jit
 @pytest.mark.parametrize("alpha", [0.5, 1.0])
 def test_invariant3_with_a_pr_target(alpha):
     """LTI + AWGN + receive PR + Viterbi: statistical (union bound over the
@@ -236,6 +245,7 @@ def test_invariant3_with_a_pr_target(alpha):
     assert 0.5 < ratio < 2.0, (alpha, st.ber, mc.ber.ber, ratio)
 
 
+@needs_jit
 def test_pr_helps_on_a_lossy_channel_and_costs_nothing_on_a_short_one():
     """Direction only (example 36 has the numbers): at -33 dB the best alpha
     is above 0 and beats the delta target + MLSD; at -23 dB no alpha is
@@ -283,6 +293,7 @@ def test_tx_pr_filter_is_peak_normalised_and_in_the_symbol_response(alpha):
     assert rx_pipe.pr_taps is None and np.array_equal(rx_pipe.pr_filter(lv), lv)
 
 
+@needs_jit
 @pytest.mark.parametrize("alpha", [0.5, 1.0])
 def test_tx_pr_is_rx_pr_moved_plus_its_peak_cost(alpha):
     """Linear chain, noise at the receiver: shaping in the Tx does not change
@@ -310,6 +321,7 @@ def test_tx_pr_main_cursor_is_the_symbols_own():
     assert res.ber.ber < 7e-3, res.summary()
 
 
+@needs_jit
 def test_invariant3_with_a_tx_pr_target():
     """Precoded duobinary from the Tx, Viterbi at the receiver: statistical
     within 2x of the time engine. (a = 0.5 from the Tx is 2.5-2.9x

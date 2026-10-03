@@ -12,6 +12,8 @@
 - 缺口(ROADMAP P3 #8):统计引擎在发端 a = 0.5 时悲观 2.5–2.9×(ρ1 ≈ −0.67,长事件距离持平,union bound 重复计);发端 a = 1 预编码 1.2–1.5×。
 - 验证:无 `at: tx` 时指纹逐位同 main(488 + 44 值);ruff 干净;jit 672 passed / 2 skipped(跑测时 README 示例数未更新的 1 项失败,更新后 14/14 过)。
   专题 `DSP发端与PR.md` §8,USAGE §18,SUMMARY §04,pitfalls 2 条。
+- CI:3.10 nojit 撞 30 分钟上限(test_pr.py 在纯 Python 内核下 26 分钟,6 个 60 万符号级引擎测试各 2–6 分钟)。这些测试改为只在 numba 下跑
+  (`needs_jit`,与文件里已有的跳过条件相同);nojit 下内核等价由 `test_numba_kernel_matches_python_with_pr` 负责。nojit 26 → 3 分钟。
 
 ## 2026-10-03 · 接收端 PR 整形 1 + aD(feat/rx-pr,原 ROADMAP P3 #8 阶段 2)
 
