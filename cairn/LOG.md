@@ -3,6 +3,14 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-03 · 示例 18 改为量 MLSD 何时有用;summary.html 换图(feat/ex18-mlsd,原 ROADMAP P2 6d)
+
+- 扫描 FFE 长度 1/1、1/3、2/5、6/14 × 4 个损耗 × CTLE 0/6 dB:只有 3 抽头时 MLSD 有增益(memory-2 最高 5×),1/3 起就 ≤ 1.2×;
+  3 抽头 + MLSD 从不胜过 21 抽头 FFE。delta 目标的 LMS FFE 把残余压到 < 0.002 —— MLSD 要加 reach 得有 1+αD 目标(P3 #8 已记)。
+- 示例 18 两种 FFE 同台(21 抽头配置不变,示例 19 / 35 的引用仍有效);SUMMARY、summary.html、pitfalls MLSD 类按此改。
+- summary.html 的示例 15 / 16 / 21 三张内嵌图换新;其余六张是 mixed-signal 示例,不受两处修复影响,未动。
+- 验证:ruff 干净;示例 18 跑通;CI(b0bdee8)测试矩阵、lint、import-clean、rtl-lockstep 全绿。只动示例与文档,不碰共用层,Android 工作流按路径不触发(铁律 6 不适用)。
+
 ## 2026-10-03 · `cdr.pd_input` 默认 `auto` + 重跑受影响的 20 个示例(feat/pd-input-auto,原 ROADMAP P1 1d)
 
 - 48 点扫描:PAM4 上 `ffe` 持平或大幅更好(0.25 m SNR 17.9 → 27.4 dB),NRZ 上 `ffe` 在轻 ISI 链路相位游走 ~0.4 UI。默认改 `auto`
