@@ -12,7 +12,7 @@
   1.1–1.6 倍** —— 不是本修复的错:这些预置 MM-CDR 读均衡前 ADC 采样(`pd_input: adc`),锁偏 0.1–0.3 UI 并来回摆,两种起点
   相位轨迹逐位相同;相位在峰值附近时新起点好 3–10 倍,`pd_input: ffe` 时新起点 BER 低 18–30 倍。改不改预置由用户定 →
   ROADMAP P1 1c(新);16 个带 TX FIR 的示例要重跑(示例 35 的 reach +3.4 dB)→ P1 1d。查法进 pitfalls(SNR 好 BER 坏 → 按时间分段看误码和 CDR 相位)。专题 `cairn/DSP发端与PR.md` §5 追加更正。
-- 验证:jit 612 passed / 2 skipped,nojit 610 passed / 4 skipped(+9 项新测试);Android:见 PR CI。
+- 验证:jit 612 passed / 2 skipped,nojit 610 passed / 4 skipped(+9 项新测试);Android CI(a8ebf6b,run 37081913516):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-02 · DSP 发端,阶段 0 + 1:TxPipeline + DAC + 驱动器压缩(feat/dsp-tx)
 
