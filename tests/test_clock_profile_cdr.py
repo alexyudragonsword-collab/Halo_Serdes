@@ -277,12 +277,16 @@ def test_tx_edge_offsets_replay_the_engines_draw(wander):
 
 # ------------------------------------------------------------------ JTOL
 
-def test_jtol_runs_on_a_profile_clock_and_loses_tolerance_near_the_loop_corner(tmp_path):
-    """Same RMS (0.068 UI) as white noise and as a 1/f^2 profile: tolerated SJ
-    at 10 MHz -- inside what the loop tries to follow -- drops for the profile
-    (the wander spends the loop's slew budget), while at 100 and 400 MHz,
-    where the loop follows nothing, the two are identical to the bisection
-    step. Measured 1.637 -> 1.264 UI at 10 MHz, 0.144 / 0.269 UI unchanged."""
+def test_jtol_runs_on_a_profile_clock(tmp_path):
+    """JTOL on a 1/f^2 profile clock and on white noise of the same RMS
+    (0.068 UI): finite everywhere, and both fall from ~1.5-2 UI at 10 MHz to
+    ~0.2-0.3 UI at 100 and 400 MHz, where the loop follows nothing.
+
+    Not asserted any more: that the profile tolerates less SJ at 10 MHz than
+    white noise. It held for this test's seed (1.64 -> 1.26 UI) and not across
+    seeds 7 / 8 / 9 (coloured / white 1.52 / 1.24 / 1.07 with the noise model
+    of the time it was written; with 20k symbols and a 1e-3 threshold the
+    bisected tolerance scatters by ~25 %), so it was a seed, not the profile."""
     from halo_serdes.analysis import jitter_tolerance
 
     n_sym = 20_000
@@ -297,9 +301,9 @@ def test_jtol_runs_on_a_profile_clock_and_loses_tolerance_near_the_loop_corner(t
             warnings.simplefilter("ignore")
             tol[name] = jitter_tolerance(cfg, freqs, ber_threshold=1e-3, amp_lo=0.02, amp_hi=4.0,
                                          iters=5).tol_ui
-    assert np.all(np.isfinite(tol["coloured"])) and tol["coloured"][0] > 0
-    assert tol["coloured"][0] < 0.9 * tol["white"][0], tol
-    assert np.allclose(tol["coloured"][1:], tol["white"][1:], rtol=0.15), tol
+    for name, t in tol.items():
+        assert np.all(np.isfinite(t)) and np.all(t > 0), (name, t)
+        assert t[0] > 3.0 * max(t[1], t[2]), (name, t)
 
 
 # ------------------------------------------------------------- ADC / MM

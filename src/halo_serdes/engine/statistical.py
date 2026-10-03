@@ -15,6 +15,11 @@ Non-LTI approximations (each cross-checked against the time engine):
 - DFE: ideal cancellation of the covered postcursors (weights assumed exact);
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
 - sampling jitter: BER(phi) smeared with the RJ Gaussian on the phase axis;
+- sampling phase: the ADC receiver is read at the bathtub minimum; the
+  mixed-signal receiver at the bang-bang loop's lock point (where its edge
+  samples balance, ``cdr.linear.lock_offset_samples``), because that loop
+  does not look for minimum BER and with a DFE the two are 0.1-0.2 UI and up
+  to 8x in BER apart (``extras['ber_min_phase']`` keeps the minimum);
 - coloured clock (``tx.clock.kind = "profile"``): the CDR is linearised
   (``cdr/linear.py``) and the smear sigma is the profile power the loop does
   not track plus the jitter it acquires from its own detector noise, both
@@ -364,15 +369,37 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         ser_phi = np.convolve(sp, k, mode="valid")
 
     best = int(np.argmin(ber_phi))
+    ber, ser = float(ber_phi[best]), float(ser_phi[best])
+    lock_ui = None
+    if cfg.rx.arch == "mixed_signal":
+        # Report what the receiver samples, not the best it could. The
+        # bang-bang loop settles where its edge samples balance, which is not
+        # where BER is lowest: a DFE moves the bathtub's floor 0.1-0.2 UI away
+        # from it. With an FFE this is the static engine, which has no loop and
+        # samples at the pre-FFE pulse peak. Either point is found on the
+        # pre-FFE pulse, then moved to the equalised pulse's phase axis (the
+        # FFE's main tap delays it by ffe_pre UI).
+        pre_y = pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr).y
+        pk_pre = int(np.argmax(np.abs(pre_y)))
+        has_ffe = ffe_taps is not None and len(ffe_taps) > 1
+        at = 0.0 if has_ffe else lock_offset_samples(pre_y, pk_pre, osr, osr // 2)
+        lag = pk_pre + at + (ffe_pre * osr if has_ffe else 0) - peak
+        lock = (lag + osr / 2) % osr - osr / 2
+        ber = float(np.interp(lock, phi_offsets, ber_phi))
+        ser = float(np.interp(lock, phi_offsets, ser_phi))
+        best = int(np.argmin(np.abs(phi_offsets - lock)))
+        lock_ui = lock / osr
     return StatResult(
         ber_phi=ber_phi, ser_phi=ser_phi, best_phi=best,
-        ber=float(ber_phi[best]), ser=float(ser_phi[best]),
+        ber=ber, ser=ser,
         eye_pdf=eye_pdf, v_centers=v_centers,
         phi_ui=phi_offsets / osr,
         extras={"peak": peak, "noise_sigma": noise_sigma,
                 "level_sigma": level_sigma,
                 "jitter_sigma_ui": sigma_ui,
-                "clock_loop": loop_sol})
+                "clock_loop": loop_sol,
+                "lock_phase_ui": lock_ui,
+                "ber_min_phase": float(ber_phi.min())})
 
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,

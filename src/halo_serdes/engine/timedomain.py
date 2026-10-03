@@ -25,7 +25,7 @@ from ..cdr import ms_rx
 from ..dsp import channel_cursors
 from ..cdr.rx_clock import rx_clock_offsets_samples
 from ..tx.pipeline import TxPipeline
-from .lti import fft_filter
+from .lti import fft_filter, receiver_awgn
 from .result import SimResult
 from .scoring import (
     cdr_gains,
@@ -269,7 +269,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
             "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
 
     if cfg.rx.noise_rms > 0:
-        rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
+        rx_y += receiver_awgn(rng, cfg.rx.noise_rms, rx_y.size, osr)
 
     # --- pulse-response analysis: main cursor, initial phase, initial DFE taps ---
     # the pulse the receiver sees includes the Tx FFE; ``lead`` maps its peak
@@ -424,7 +424,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
             "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
 
     if cfg.rx.noise_rms > 0:
-        rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
+        rx_y += receiver_awgn(rng, cfg.rx.noise_rms, rx_y.size, osr)
 
     # --- pulse analysis: initial FFE (MMSE), DFE, slicer levels ---
     # (the Tx FFE is part of the pulse the receiver equalises; see run_time_link)
