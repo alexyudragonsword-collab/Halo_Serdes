@@ -157,13 +157,16 @@ job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量�
 1+D 预编码已实现(`precode` 开关),但**预编码 ≠ PR 整形**:前者是符号映射,
 后者要有意引入受控 ISI 并配匹配的检测器。
 
-**阶段 2(收端 1+aD)已合入**(2026-10-03,`PrConfig`、`docs/USAGE.md` §18、`cairn/DSP发端与PR.md` §7):
-示例 18 的信道上 a = 0.75 比 delta 目标 + Viterbi 多 reach(示例 36)。剩下的是**阶段 3:发端 PR**
-(`TxPipeline.pr_filter` 在 FFE 与 DAC 之前,恒等占位;`pr.at: tx` 现在抛 NotImplementedError),以及发端 / 收端 / 无 PR 三方同台。
-DAC 与驱动器压缩已建模,所以发端 PR 的 DAC 动态范围代价可以直接测。
+**阶段 2(收端)与阶段 3(发端)已合入**(2026-10-03,`PrConfig(at="rx"|"tx")`、`docs/USAGE.md` §18、`cairn/DSP发端与PR.md` §7–8)。
+示例 18 的信道上:收端 1 + 0.75D 比 delta + Viterbi 多 4.7 dB reach(示例 36);发端 1 + aD 在峰值不变时 ≈ 无 PR − 20·log10(1 + a)
+(示例 37),线性链路里发端整形不省收端的噪声放大。
 
-不在阶段 2 范围、尚未做:a 的自适应(现在由配置给定)、长于 1 + aD 的目标(网格按 N^L 长)、统计引擎对 PR 逐符号判决
-(给 LMS / CDR 用的)的建模。
+尚未做:
+- 统计引擎在**发端 a = 0.5** 时比时域悲观 2.5–2.9×(超出不变量 3 的 2×):FFE 输出 ρ1 ≈ −0.67,各长度交替误差事件距离几乎相同,
+  union bound 把嵌套的长事件重复计。需要按"首次分叉"计事件(或对误差事件做转移函数界)而不是简单求和;收端 PR 与发端
+  a = 1 预编码在 2× 内。`tests/test_pr.py::test_invariant3_with_a_tx_pr_target` 只测后者。
+- a 的自适应(现在由配置给定)、长于 1 + aD 的目标、统计引擎对 PR 逐符号判决(给 LMS / CDR 用的)的建模。
+- 发端 PR 真正可能占优的场景本模型没有:发端带宽受限且噪声在发端之前 / 之内(如光调制器的 duobinary)、串扰源在发端。
 
 ### 9. 多 lane 数据通路
 多 lane 目前只在**串扰侧**(`aggressor_bank`/`icn_rms`);链路本身仍是单 lane。
@@ -180,7 +183,7 @@ DAC 与驱动器压缩已建模,所以发端 PR 的 DAC 动态范围代价可以
 
 ### 10. 测试与文档的长尾
 - GUI docstring 28%(核心库 66%);GUI 行覆盖 60%(核心库 89%)。
-- 37 个示例只做 **import 守卫**(`tests/test_examples_api.py`),不执行。
+- 38 个示例只做 **import 守卫**(`tests/test_examples_api.py`),不执行。
   全量执行太慢(多个用 10⁶ 符号),可考虑加一个"小符号数档"的夜间 CI job。
 - `LICENSE` 与 `CONTRIBUTING.md` 尚缺(许可证类型需要由项目所有者决定)。
 

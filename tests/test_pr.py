@@ -304,10 +304,10 @@ def test_tx_pr_is_rx_pr_moved_plus_its_peak_cost(alpha):
 
 def test_tx_pr_main_cursor_is_the_symbols_own():
     """At a = 1 the shaped pulse has two equal cursors and its peak can be the
-    a x_{k-1} one; the receiver locates x_k on the unshaped pulse, so a short
-    channel decodes cleanly (one UI off it would be chance-level)."""
-    res = run_time_link(_tx_pr(_link(0.15, 1.0, n_sym=40_000, precode=True), 1.0))
-    assert res.ber.ber < 1e-3, res.summary()
+    a x_{k-1} one; the receiver locates x_k on the unshaped pulse. Located by
+    argmax this link reads 1.5e-2, located on the unshaped pulse 3.7e-3."""
+    res = run_time_link(_tx_pr(_link(0.20, 1.0, n_sym=40_000, precode=True), 1.0))
+    assert res.ber.ber < 7e-3, res.summary()
 
 
 def test_invariant3_with_a_tx_pr_target():
