@@ -161,6 +161,24 @@ input has no gradient"(均衡后的样本没有 MM 梯度)—— **被推翻**:F
 下 `ffe` 的恢复相位峰峰动了 0.27–0.40 UI,跟踪误差 rms 0.026–0.062 UI,都比 `adc` 的 0.058–0.152 UI 小;无 SJ 时 `ffe` 相位
 不动(0.003–0.005 UI)是因为它本来就在峰值上,不是因为不动。在 0.2 UI @ 1 MHz 以上两种输入都失锁,环路带宽本身是另一个问题。
 
+**库默认值(2026-10-03,分支 feat/pd-input-auto):`CdrConfig.pd_input` 改为 `auto`**,由 `LinkConfig.mm_pd_input`
+按调制解析:PAM4 → `ffe`,NRZ → `adc`;显式写 `adc` / `ffe` 照旧。依据是 48 点扫描(`adc_dsp`,8 bit,FFE 3/10,MM kp 6/8,
+NRZ 26.5625 GBd / PAM4 53.125 GBd × 0.1 / 0.25 / 0.4 m × FFE lms/none × DFE 0/1,各跑无 SJ 与 SJ 0.1 UI @ 0.5 MHz):
+
+| | `ffe` 相对 `adc` |
+|---|---|
+| PAM4 0.25 m | SNR 17.9 → 27.4 dB,BER 3.6e-4 → 5.1e-6;kp 8 时 1.9e-3 → 5.1e-6 |
+| PAM4 0.1 m,kp 8 + SJ | `adc` 失锁(BER 0.15,跟踪误差 0.44 UI),`ffe` 2.2e-2 / 0.18 UI |
+| PAM4 0.4 m | SNR +0.7–1.0 dB;其余持平 |
+| NRZ 0.1 m | **`ffe` 相位游走 0.41–0.44 UI**(`adc` ≤ 0.01),SNR −1 dB;kp 8 + SJ 跟踪误差 0.18 vs 0.07 UI |
+| NRZ 0.25 m | SNR +1.9 dB,但 kp 6 + SJ 跟踪误差 0.13 vs 0.05 UI |
+| NRZ 0.4 m | SNR −0.7 dB;SJ 下 BER < 3.4e-6 → 3.7e-5–1.2e-4 |
+
+**更正上一段的"被推翻"**:均衡后的样本没有 MM 梯度这一担心对 PAM4 不成立,**对轻 ISI 的 NRZ 成立** —— FFE 在一大片相位上都
+把 h(±1) 压到 0,MM 在那片区域里随机游走。PAM4 用 `adc` 时锁在未均衡脉冲 h(−1) = h(+1) 的点上,离均衡后的最优点多远
+取决于信道和 CTLE(0.25 m 上 CTLE 3 dB 差 3.4 dB SNR、6 dB 差 9.5 dB)。两条都写进 `tests/test_mm_pd_input.py`。
+指纹:475 值里只有 LPO 预置(PAM4,没写 `pd_input`)的时域块变了,9 → 11 个误码、SNR +0.03 dB,统计上持平。
+
 另一个既有缺口:统计引擎从未建模 `tx.bw`(驱动器单极点)。阶段 0 保持原样(逐字节),记在 ROADMAP P3 #8。
 
 ## 6. 阶段 2/3 的接缝(未做)

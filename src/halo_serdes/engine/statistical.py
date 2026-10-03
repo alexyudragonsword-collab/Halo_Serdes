@@ -345,7 +345,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # as stated. Profile clock: what the CDR leaves of it, plus the loop's own
     # noise -- see _sampling_jitter_ui and the assumption list above.
     sigma_ui, loop_sol = _sampling_jitter_ui(
-        cfg, pulse if cfg.rx.cdr.pd_input == "ffe" else
+        cfg, pulse if cfg.mm_pd_input == "ffe" else
         pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr), levels_norm, swing,
         cfg.rx.noise_rms)
     if sigma_ui > 0:

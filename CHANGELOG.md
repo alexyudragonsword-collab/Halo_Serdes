@@ -6,13 +6,23 @@
 
 ---
 
+## [未发布] — MM-CDR 鉴相器输入默认 `auto`(PAM4 读均衡后样本,NRZ 读 ADC 原始样本)
+
+### 变更
+- `CdrConfig.pd_input` 默认值 `adc` → `auto`,新属性 `LinkConfig.mm_pd_input` 按调制解析:PAM4 → `ffe`,NRZ → `adc`;
+  显式写 `adc` / `ffe` 的配置不变。表单 `rx.cdr.pd_input` 多一个选项 `auto`(桌面与 Android 同一份广告)。
+- 依据:48 点 ADC 链路扫描。PAM4 用 `adc` 会锁在未均衡脉冲的 MM 零点上(0.25 m:SNR 17.9 vs 27.4 dB);NRZ 用 `ffe` 在
+  轻 ISI 链路上失去 MM 梯度,相位游走 ~0.4 UI。细节与表见 `cairn/DSP发端与PR.md` §5。
+- 受影响的现有配置:没写 `pd_input` 的 PAM4 ADC 配置 —— 预置里只有 `pam4_100g_lpo_vcsel.yaml`(时域 9 → 11 个误码,持平),
+  以及自己搭 PAM4 ADC 接收机的示例(重跑结果见同日 ROADMAP P1 1d 的更正)。
+
 ## [未发布] — 224G ADC 预置的 MM-CDR 改读均衡后的样本(ROADMAP P1 1c 新)
 
 ### 变更
 - `pam4_224g_adc.yaml`、`pam4_224g_112g_adc.yaml`、`pam4_112g_adc_mismatch.yaml`、`pam4_deep_lr_adc.yaml`:`cdr.pd_input: adc → ffe`。
   `adc` 输入时 MM 鉴相器锁在偏离脉冲峰值 0.15–0.3 UI 处并来回摆;`ffe` 时贴住峰值,且照样跟踪抖动(SJ 0.1 UI @ 0.5 MHz,
   跟踪误差 rms 0.13 / 0.15 / 0.06 / 0.12 UI → 0.03 / 0.06 / 0.03 / 0.04 UI)。时域 BER:3.1e-3 → 2.3e-4、7.8e-3 → 1.6e-5、
-  3.8e-3 → 1.3e-5、6.4e-2 → 3.9e-5。其余预置、静态与统计引擎不变。库默认值仍是 `adc`(见 ROADMAP P1 1d)。
+  3.8e-3 → 1.3e-5、6.4e-2 → 3.9e-5。其余预置、静态与统计引擎不变。库默认值仍是 `adc`(见 ROADMAP P1 1d;同日后改为 `auto`,见上一条)。
 
 ## [未发布] — 接收端起始均衡看见 TX FFE(ROADMAP P1 1c)
 

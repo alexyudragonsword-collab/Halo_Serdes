@@ -476,7 +476,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         np.asarray(w_ffe0, dtype=np.float64), fcfg.n_pre, float(mu_f),
         np.asarray(w_dfe0, dtype=np.float64), float(mu_d),
         float(kp), float(ki), float(clamp), float(ccfg.pd_offset),
-        1 if ccfg.pd_input == "ffe" else 0, lat_blocks,
+        1 if cfg.mm_pd_input == "ffe" else 0, lat_blocks,
         sched.reference, int(train_end), int(settle), rx_clk)
 
     n_run = dec.size

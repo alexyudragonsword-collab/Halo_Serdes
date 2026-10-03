@@ -289,7 +289,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("rx.cdr.kp_shift", "Kp shift (2^-k)", "int"),
         _f("rx.cdr.ki_shift", "Ki shift (2^-k)", "int"),
         _f("rx.cdr.pd_offset", "PD offset", "float"),
-        _f("rx.cdr.pd_input", "PD input", "enum", options=["adc", "ffe"]),
+        _f("rx.cdr.pd_input", "PD input", "enum", options=["auto", "adc", "ffe"]),
         _f("rx.cdr.clamp", "Phase clamp [UI]", "opt_float"),
         _f("rx.cdr.loop_latency_symbols", "Loop latency [sym]", "int"),
     ]),

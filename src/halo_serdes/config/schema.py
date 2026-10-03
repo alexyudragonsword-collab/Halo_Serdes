@@ -318,15 +318,18 @@ class CdrConfig:
     kp_shift: int = 6                   # proportional gain = 2**-kp_shift [UI/update]
     ki_shift: int = 12                  # integral gain = 2**-ki_shift
     pd_offset: float = 0.0              # MM sampling-point bias
-    pd_input: Literal["adc", "ffe"] = "adc"  # MM PD source (DragonPHY mux);
-    # NOTE: "ffe" on a fully-equalized signal leaves MM without a timing
-    # gradient — use with pd_offset or partial equalization only.
+    # MM PD source (DragonPHY mux). "auto" resolves by modulation through
+    # LinkConfig.mm_pd_input: on PAM4 the raw ADC samples lock MM off the
+    # eye's peak, while on NRZ the equalised samples can leave MM with no
+    # timing gradient (light-ISI links wander ~0.4 UI) -- see
+    # cairn/DSP发端与PR.md §5 for the sweep behind this.
+    pd_input: Literal["auto", "adc", "ffe"] = "auto"
     clamp: Optional[float] = None       # per-update phase step clamp [UI]
     loop_latency_symbols: int = 0       # digital pipeline latency in the loop
 
     def __post_init__(self):
         _require_in(self.kind, {"bang_bang", "mueller_muller"}, "cdr.kind")
-        _require_in(self.pd_input, {"adc", "ffe"}, "cdr.pd_input")
+        _require_in(self.pd_input, {"auto", "adc", "ffe"}, "cdr.pd_input")
         _require(self.clamp is None or self.clamp > 0,
                  f"cdr.clamp must be > 0 when set, got {self.clamp}")
         _require(self.loop_latency_symbols >= 0,
@@ -589,6 +592,15 @@ class LinkConfig:
     @property
     def f_nyquist(self) -> float:
         return self.symbol_rate / 2.0
+
+    @property
+    def mm_pd_input(self) -> str:
+        """The MM phase detector's input with "auto" resolved: equalised
+        samples on PAM4, raw ADC samples on NRZ."""
+        pd = self.rx.cdr.pd_input
+        if pd != "auto":
+            return pd
+        return "ffe" if self.modulation == "pam4" else "adc"
 
     @property
     def bits_per_symbol(self) -> int:
