@@ -15,6 +15,11 @@ Non-LTI approximations (each cross-checked against the time engine):
 - DFE: ideal cancellation of the covered postcursors (weights assumed exact);
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
 - sampling jitter: BER(phi) smeared with the RJ Gaussian on the phase axis;
+- sampling phase: the ADC receiver is read at the bathtub minimum; the
+  mixed-signal receiver at the bang-bang loop's lock point (where its edge
+  samples balance, ``cdr.linear.lock_offset_samples``), because that loop
+  does not look for minimum BER and with a DFE the two are 0.1-0.2 UI and up
+  to 8x in BER apart (``extras['ber_min_phase']`` keeps the minimum);
 - coloured clock (``tx.clock.kind = "profile"``): the CDR is linearised
   (``cdr/linear.py``) and the smear sigma is the profile power the loop does
   not track plus the jitter it acquires from its own detector noise, both
@@ -46,6 +51,10 @@ Non-LTI approximations (each cross-checked against the time engine):
   white once an FFE spreads the input over many codes. Without a Tx FFE the
   four PAM4 levels sit on four fixed codes and the "noise" is a fixed level
   offset this engine averages instead;
+- Tx driver pole (``tx.bw``): LTI, so not an approximation -- it is in the
+  pulse through ``TxPipeline.equivalent_symbol_response`` and in the DAC
+  error's path through ``after_dac_response``, the same sampled impulse the
+  receivers' pulse analysis uses;
 - Tx driver nonlinearity (``tx.drv_nl``): not modelled here, the time
   engine's alone, with a warning (outside the 2x cross-check);
 - optical topology (``cfg.topology``): the photodiode's shot and RIN noise
@@ -53,7 +62,13 @@ Non-LTI approximations (each cross-checked against the time engine):
   kernel becomes one kernel per level, each at the *nominal* level power
   (ISI moves the instantaneous power around that; the time engine follows
   the waveform, this engine does not -- the 2x cross-check is what bounds the
-  difference). Electrical links keep the single kernel, byte for byte.
+  difference). Which neighbours were sent moves the light along the receive
+  filter's memory, so each level's noise is a scale mixture, wider in the
+  tails than one matched-variance Gaussian (0.65-0.76x optimistic at ER
+  6-7.5 dB). The two nearest neighbours are therefore binned: per level and
+  per neighbour pattern one kernel (``slicer_sigma_binned``), their cursors a
+  fixed shift instead of random ISI; the rest stays a single variance.
+  Electrical links keep the single kernel, byte for byte.
 """
 
 from __future__ import annotations
@@ -88,6 +103,12 @@ class StatResult:
     v_centers: np.ndarray
     phi_ui: np.ndarray           # phase axis in UI relative to pulse peak
     extras: dict = field(default_factory=dict)
+
+
+#: Cursor offsets whose symbols the optical noise is binned on: the next
+#: symbol sent (-1) and the previous one (+1). They move the most light
+#: along the receive filter's memory.
+_BINNED_NEIGHBOURS = (-1, 1)
 
 
 def _shift_add(dst: np.ndarray, src: np.ndarray, shift_bins: float, weight: float) -> None:
@@ -158,6 +179,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     osr = cfg.osr
     if channel is None:
         channel = ChannelModel.from_config(cfg)
+    pattern_sigma = None
 
     # --- equalized pulse response: Tx FIR (x) channel (x) CTLE [(x) FFE] ---
     ch_rs = channel.response_set(cfg.dt)
@@ -179,12 +201,16 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "covered by the 2x cross-check (invariant #3) -- use the time engine",
                 stacklevel=2)
         # same two-stage split as the time engine (engine/optical_stage.py)
-        from .optical_stage import slicer_sigma_per_level, split_impulses
+        from .optical_stage import (
+            slicer_sigma_binned, slicer_sigma_per_level, split_impulses,
+        )
 
         h1, h2 = split_impulses(cfg, channel)
         h = np.convolve(h1, h2)
         if level_sigma is None:
             level_sigma = slicer_sigma_per_level(cfg, channel, h1, h2, ffe_taps)
+            pattern_sigma = slicer_sigma_binned(cfg, channel, h1, h2, ffe_taps,
+                                                neighbours=_BINNED_NEIGHBOURS)
     tx_pipe = TxPipeline.from_config(cfg)
     if cfg.tx.drv_nl != "none":
         import warnings
@@ -193,7 +219,9 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             f"tx.drv_nl={cfg.tx.drv_nl!r}: the driver's compression is not in the "
             "statistical engine (it is not LTI) and the result is outside the 2x "
             "cross-check (invariant #3) -- use the time engine", stacklevel=2)
-    h_after_dac = h                    # the DAC's error enters after the Tx FFE
+    # the DAC's error enters after the Tx FFE, before the driver pole
+    drv_resp = tx_pipe.after_dac_response(osr)
+    h_after_dac = h if drv_resp is None else np.convolve(h, drv_resp)
     tx_resp = tx_pipe.equivalent_symbol_response(osr)
     if tx_resp is not None:
         h = np.convolve(h, tx_resp)
@@ -278,6 +306,12 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 g_mlsd = max(g, 1e-12)
                 sigma_eff = noise_sigma / g_mlsd
 
+        if pattern_sigma is not None:
+            # the binned neighbours leave the random ISI and become a shift
+            pos = [n_pre + j if j < 0 else n_pre + j - 1 for j in _BINNED_NEIGHBOURS]
+            c_bin = np.array([isi[p] for p in pos])
+            isi = isi.copy()
+            isi[pos] = 0.0
         pdf = isi_pdf(isi, levels_norm, v_centers)
         if xtalk_pulses:
             for xp in xtalk_pulses:
@@ -291,7 +325,19 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # noise kernel: one for an electrical link; one per *transmitted*
         # level when the noise follows the level (an inverting channel flips
         # the slicer order, not which symbol carried the most light)
-        if level_sigma is None:
+        if pattern_sigma is not None:
+            pdf_lv = []
+            n_pat = n_levels ** len(_BINNED_NEIGHBOURS)
+            for k in range(n_levels):
+                acc = np.zeros(v_bins)
+                for combo in np.ndindex(*pattern_sigma.shape[1:]):
+                    shifted = np.zeros(v_bins)
+                    _shift_add(shifted, pdf, float(np.dot(c_bin, levels_norm[list(combo)])) / dv, 1.0)
+                    nk = gaussian_kernel(
+                        np.sqrt(noise_sigma ** 2 + pattern_sigma[(k,) + combo] ** 2) / g_mlsd, dv)
+                    acc += (np.convolve(shifted, nk, mode="same") if nk.size > 1 else shifted) / n_pat
+                pdf_lv.append(acc / max(acc.sum(), 1e-300))
+        elif level_sigma is None:
             nk = noise_k if sigma_eff == noise_sigma else gaussian_kernel(sigma_eff, dv)
             if nk.size > 1:
                 pdf = np.convolve(pdf, nk, mode="same")
@@ -358,15 +404,37 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         ser_phi = np.convolve(sp, k, mode="valid")
 
     best = int(np.argmin(ber_phi))
+    ber, ser = float(ber_phi[best]), float(ser_phi[best])
+    lock_ui = None
+    if cfg.rx.arch == "mixed_signal":
+        # Report what the receiver samples, not the best it could. The
+        # bang-bang loop settles where its edge samples balance, which is not
+        # where BER is lowest: a DFE moves the bathtub's floor 0.1-0.2 UI away
+        # from it. With an FFE this is the static engine, which has no loop and
+        # samples at the pre-FFE pulse peak. Either point is found on the
+        # pre-FFE pulse, then moved to the equalised pulse's phase axis (the
+        # FFE's main tap delays it by ffe_pre UI).
+        pre_y = pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr).y
+        pk_pre = int(np.argmax(np.abs(pre_y)))
+        has_ffe = ffe_taps is not None and len(ffe_taps) > 1
+        at = 0.0 if has_ffe else lock_offset_samples(pre_y, pk_pre, osr, osr // 2)
+        lag = pk_pre + at + (ffe_pre * osr if has_ffe else 0) - peak
+        lock = (lag + osr / 2) % osr - osr / 2
+        ber = float(np.interp(lock, phi_offsets, ber_phi))
+        ser = float(np.interp(lock, phi_offsets, ser_phi))
+        best = int(np.argmin(np.abs(phi_offsets - lock)))
+        lock_ui = lock / osr
     return StatResult(
         ber_phi=ber_phi, ser_phi=ser_phi, best_phi=best,
-        ber=float(ber_phi[best]), ser=float(ser_phi[best]),
+        ber=ber, ser=ser,
         eye_pdf=eye_pdf, v_centers=v_centers,
         phi_ui=phi_offsets / osr,
         extras={"peak": peak, "noise_sigma": noise_sigma,
                 "level_sigma": level_sigma,
                 "jitter_sigma_ui": sigma_ui,
-                "clock_loop": loop_sol})
+                "clock_loop": loop_sol,
+                "lock_phase_ui": lock_ui,
+                "ber_min_phase": float(ber_phi.min())})
 
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,

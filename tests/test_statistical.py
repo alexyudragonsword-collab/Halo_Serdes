@@ -14,7 +14,7 @@ from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
     ChannelConfig, CtleConfig, DfeConfig, FfeConfig, RxConfig, SimConfig, TxConfig,
 )
-from halo_serdes.engine import run_static_link
+from halo_serdes.engine import run_static_link, run_time_link
 from halo_serdes.engine.statistical import gaussian_kernel, isi_pdf, run_statistical
 
 
@@ -210,3 +210,55 @@ def test_tx_ffe_cross_check_within_2x(length_m, noise, dac_bits):
     stat = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
     ratio = stat.ber / mc.ber.ber
     assert 0.5 < ratio < 2.0, (length_m, dac_bits, stat.ber, mc.ber.ber, ratio)
+
+
+@pytest.mark.parametrize("mod,pattern,noise", [("nrz", "prbs13", 0.03), ("pam4", "prbs13q", 0.012)])
+def test_tx_driver_pole_cross_check_within_2x(mod, pattern, noise):
+    """Invariant #3 with the Tx driver's single pole at half the baud rate.
+    The statistical engine used to leave ``tx.bw`` out entirely, and the
+    receivers solved their starting FFE, phase and slicer scale from a pulse
+    without it: 2e-2 / 0.15 time-domain BER against an unchanged statistical
+    5e-5 / 5e-4 (ratio 0.003)."""
+    cfg = LinkConfig(
+        modulation=mod, symbol_rate=32e9, osr=16,
+        channel=ChannelConfig(kind="analytic", length_m=0.25, rdc=2.0,
+                              r_skin=1.5e-3, loss_tangent=0.01),
+        tx=TxConfig(swing=1.0, bw=16e9),
+        rx=RxConfig(ctle=CtleConfig(enable=False), ffe=FfeConfig(n_pre=2, n_post=6),
+                    dfe=DfeConfig(n_taps=2), noise_rms=noise),
+        sim=SimConfig(n_symbols=300_000, seed=6, pattern=pattern))
+    mc = run_static_link(cfg, collect_eye=False)
+    assert mc.ber.n_errors > 50, mc.ber.n_errors
+    stat = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    ratio = stat.ber / mc.ber.ber
+    assert 0.5 < ratio < 2.0, (mod, stat.ber, mc.ber.ber, ratio)
+
+
+@pytest.mark.parametrize("mod,length_m,noise,n_dfe", [
+    ("pam4", 0.3, 0.009, 2), ("pam4", 0.3, 0.012, 2), ("pam4", 0.4, 0.016, 2),
+    ("pam4", 0.3, 0.012, 0), ("nrz", 0.4, 0.045, 2), ("nrz", 0.15, 0.06, 2)])
+def test_mixed_signal_cross_check_within_2x(mod, length_m, noise, n_dfe):
+    """Invariant #3 on the mixed-signal receiver, PAM4 included. The bang-bang
+    CDR locks where its edge samples balance (near the pulse peak), not at
+    the bathtub minimum, and with a DFE the two are 0.2 UI apart: reading the
+    statistical BER at the minimum made it 0.19-0.70 of the time engine's
+    (0.12 with the CDR frozen at the peak), and DFE error propagation was
+    not the cause (frozen loop, BER read at the peak: 0.92-1.0).
+
+    The 0.15 m NRZ case locks 0.2 UI late, between samples: with per-sample
+    white noise the interpolating sampler saw only ~0.87 sigma there and the
+    time engine read 2.3x below the statistical one (engine/lti.receiver_awgn)."""
+    cfg = LinkConfig(
+        modulation=mod, symbol_rate=16e9, osr=32,
+        channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=2.0,
+                              r_skin=1.5e-3, loss_tangent=0.01),
+        tx=TxConfig(swing=1.0),
+        rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=False),
+                    dfe=DfeConfig(n_taps=n_dfe), noise_rms=noise),
+        sim=SimConfig(n_symbols=400_000, seed=3, pattern="prbs13q" if mod == "pam4" else "prbs13"))
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 100, mc.ber.n_errors
+    stat = run_statistical(cfg, channel=cm)
+    ratio = stat.ber / mc.ber.ber
+    assert 0.5 < ratio < 2.0, (mod, length_m, noise, n_dfe, stat.ber, mc.ber.ber, ratio)

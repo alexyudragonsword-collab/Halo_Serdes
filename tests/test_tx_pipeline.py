@@ -72,10 +72,35 @@ def test_ideal_edges_are_a_plain_hold():
 
 
 def test_equivalent_symbol_response_is_the_upsampled_fir():
-    cfg = _cfg(ClockConfig())
+    cfg = _cfg(ClockConfig(), bw=None)
     assert np.array_equal(TxPipeline.from_config(cfg).equivalent_symbol_response(),
                           upsampled_taps(cfg.tx.fir_taps, cfg.osr))
-    assert TxPipeline.from_config(_cfg(ClockConfig(), taps=(1.0,))).equivalent_symbol_response() is None
+    assert TxPipeline.from_config(_cfg(ClockConfig(), taps=(1.0,), bw=None)).equivalent_symbol_response() is None
+
+
+@pytest.mark.parametrize("taps", [(1.0,), (-0.08, 0.72, -0.2)], ids=["no_ffe", "ffe"])
+def test_equivalent_symbol_response_carries_the_driver_pole(taps):
+    """With ``tx.bw`` the response is the FFE convolved with the pole's
+    sampled impulse, and filtering the held symbols with it reproduces the
+    pipeline's own waveform (the rFFT pole) away from the run's ends."""
+    from halo_serdes.engine.lti import fft_filter
+
+    cfg = _cfg(ClockConfig(), taps=taps, bw=20e9)
+    pipe = TxPipeline.from_config(cfg)
+    drv, pre = pipe.driver_response()
+    assert drv.sum() == pytest.approx(1.0, abs=1e-4)          # unit DC gain, less the 1/n tail
+    resp = pipe.equivalent_symbol_response()
+    expected = drv if len(taps) == 1 else np.convolve(upsampled_taps(cfg.tx.fir_taps, cfg.osr), drv)
+    assert np.array_equal(resp, expected)
+    assert pipe.symbol_response_lead() == pre + (cfg.tx.fir_n_pre * cfg.osr if len(taps) > 1 else 0)
+
+    sym = make_pattern(cfg)[:2000]
+    levels = pipe.levels(sym)
+    ref = pipe.waveform(pipe.symbol_stage(sym)).y
+    via_impulse = fft_filter(hold(levels, cfg.osr), resp)
+    lead = pipe.symbol_response_lead()
+    mid = slice(200 * cfg.osr, 1800 * cfg.osr)
+    assert np.max(np.abs(via_impulse[lead:][mid] - ref[mid])) < 1e-3 * cfg.tx.swing
 
 
 def test_profile_clock_edges_through_the_pipeline_match_the_tracking_replay():
@@ -162,12 +187,12 @@ def test_driver_compression_is_hammerstein_and_warns_in_the_statistical_engine()
 # ------------------------------------------- receivers see the Tx FFE (P1 1c)
 
 def test_receiver_view_folds_the_ffe_in_and_reports_its_lead():
-    cfg = _cfg(ClockConfig())
+    cfg = _cfg(ClockConfig(), bw=None)
     h = np.random.default_rng(0).normal(size=400)
     h_rx, lead = TxPipeline.from_config(cfg).receiver_view(h)
     assert lead == cfg.tx.fir_n_pre * cfg.osr
     assert np.array_equal(h_rx, np.convolve(h, upsampled_taps(cfg.tx.fir_taps, cfg.osr)))
-    one = TxPipeline.from_config(_cfg(ClockConfig(), taps=(1.0,)))
+    one = TxPipeline.from_config(_cfg(ClockConfig(), taps=(1.0,), bw=None))
     same, zero = one.receiver_view(h)
     assert same is h and zero == 0          # single-tap links: untouched, byte for byte
 

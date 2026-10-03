@@ -145,7 +145,10 @@ def test_end_to_end_ber_is_the_product_of_the_segments(arch, mod):
     receiver architectures run the cascade)."""
     # receiver noise sized so the two electrical segments err at ~1e-3 and the
     # optics (the same retimer RX on half the amplitude) at ~1e-2
-    noise, oma = (0.02, -3.0) if arch == "adc_dsp" else (0.10, -13.0)
+    # (the mixed-signal pair was 0.10 / -13 dBm until the time engine's noise
+    # stopped thinning out between samples; that left every segment ~10x past
+    # this operating point, where segment errors stop being independent)
+    noise, oma = (0.02, -3.0) if arch == "adc_dsp" else (0.065, -10.0)
     cfg = _retimed(arch=arch, mod=mod, host_noise=noise, retimer_noise=noise,
                    oma_dbm=oma, n_sym=150_000)
     r = run_cascade(cfg)

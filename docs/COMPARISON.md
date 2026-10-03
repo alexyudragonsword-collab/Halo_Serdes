@@ -50,9 +50,9 @@
    (比值 1.03×),是本框架最大差异化增量。
 2. **双 RX 架构公平对比** —— mixed-signal 与 ADC-DSP 共享 Tx/信道/分析层,差异
    限制在两个组装类内。serdespy/PyBERT 只有 mixed-signal,DragonPHY2 只有 ADC。
-3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→32→36/39→44 dB
-   杠杆分解(DFE/deeper MLSD +0.6 dB、级联 FEC +3.6 dB、better ADC +6.3 dB,正交可叠加;
-   2026-10-03 接收端修复后重跑,旧阶梯 18→28→29→35→41 dB 是 CDR 锁偏时量的)。
+3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→32→36/38→44 dB
+   杠杆分解(DFE/deeper MLSD +0.8 dB、级联 FEC +3.8 dB、better ADC +5.3 dB,正交可叠加;
+   2026-10-03 接收端修复与统计引擎一致性修复后重跑,旧阶梯 18→28→29→35→41 dB 是 CDR 锁偏时量的)。
 4. **双 MLSD 实现 + 解析 MLSE 增益 + 双引擎接线** —— Viterbi MLSE(最优)+ DragonPHY 式
    sliding-detector(低复杂度);`mlse_min_distance_sq`/`mlse_gain_over_dfe_db` 给出对理想
    DFE 的渐近编码增益闭式解(1+D→3.01 dB、EPR4→6.02 dB,匹配滤波器界),示例 27 标定实测
@@ -66,7 +66,7 @@
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
    30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、297 个测试全通过、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、637 个测试全通过、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -74,7 +74,7 @@
 ## ③ 还没做到(真实缺口)
 
 **光互联**:阶段 1–3 已做 —— 光路(E/O、光纤、O/E)作为级联 H(f) 进信道,O/E 噪声随电平光功率变化,
-两引擎在 ER 3 / 4.5 / 6 dB 三点 2× 内吻合(`tests/test_optical.py`,示例 32 回答 LPO vs CPO);
+两引擎在 ER 3 / 4.5 / 6 dB 三点 2× 内吻合(电平相关噪声按两邻符号分箱后 1.5× 内)(`tests/test_optical.py`,示例 32 回答 LPO vs CPO);
 重定时器把链路切成三段串联,每段判决作下一段符号源,端到端 BER 与 1 − ∏(1 − pᵢ) 在置信区间内
 (`engine/cascade.py`,示例 33 LPO / retimed / CPO 同台);E/O 大信号曲线(VCSEL L-I / EAM)与 802.3
 TDECQ(`analysis/tdecq.py`,示例 34)。
@@ -149,5 +149,5 @@ TDECQ(`analysis/tdecq.py`,示例 34)。
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 297 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 637 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。

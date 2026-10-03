@@ -244,6 +244,25 @@ def test_invariant3_optical_adc_within_2x(er_db):
     assert 0.5 < ratio < 2.0, (er_db, st.ber, mc.ber.ber, ratio)
 
 
+@pytest.mark.parametrize("er_db,oma_dbm", [(3.0, -4.0), (4.5, -4.0), (6.0, -4.0),
+                                            (6.0, -2.0), (7.5, -4.0)])
+def test_optical_adc_within_1p5x_with_pattern_binned_noise(er_db, oma_dbm):
+    """The per-level noise is a scale mixture: which neighbours were sent
+    moves the light along the receive filter's memory, and one
+    matched-variance Gaussian per level is optimistic in the tails. With it
+    these five points read 0.98 / 0.86 / 0.76 / 0.68 / 0.65 of the time
+    engine (800k symbols, the last outside 1.5x and falling with ER); binning
+    on the two nearest neighbours brings them to 0.99 / 0.97 / 0.96 / 0.96 /
+    0.94 (ROADMAP P3 #11)."""
+    cfg = _adc_cfg(er_db, oma_dbm, n_sym=800_000)
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 100, mc.ber.n_errors
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    ratio = st.ber / mc.ber.ber
+    assert 1 / 1.5 < ratio < 1.5, (er_db, st.ber, mc.ber.ber, ratio)
+
+
 @pytest.mark.parametrize("er_db", [3.0, 4.5, 6.0])
 def test_invariant3_optical_mixed_signal_within_2x(er_db):
     """Same assertion on the mixed-signal receiver (invariant #2: both

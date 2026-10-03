@@ -171,3 +171,66 @@ def transmitter_power(cfg: LinkConfig, *, through_fibre: bool = False, include_s
         rin = 10.0 ** (opt.rin_db_hz / 10.0)
         power = power + rng.normal(size=power.size) * power * np.sqrt(rin * 0.5 / cfg.dt)
     return power, line
+
+
+def slicer_sigma_binned(cfg: LinkConfig, channel: ChannelModel, h1: np.ndarray,
+                        h2: np.ndarray, ffe_taps: np.ndarray | None = None,
+                        neighbours: tuple[int, ...] = (-1, 1)) -> np.ndarray:
+    """Optical noise sigma at the slicer [V] per level *and* per pattern of
+    the symbols at ``neighbours`` (cursor offsets: -1 the next symbol sent,
+    +1 the previous one).
+
+    ``slicer_sigma_per_level`` averages the noise variance over every
+    neighbour, so each level gets one Gaussian; but which neighbours were
+    sent moves the light along the filter's memory, so the true per-level
+    distribution is a scale mixture of Gaussians, wider in the tails than its
+    matched-variance stand-in (0.55-0.63x optimistic at ER 6 dB). Here the
+    two nearest neighbours are fixed per bin -- their pre-PD pulses enter the
+    mean power, only the others stay random -- which leaves the per-bin
+    distribution close to Gaussian.
+
+    Returns shape ``(M,) + (M,) * len(neighbours)``: level, then each
+    neighbour's level, all ascending.
+    """
+    noise = channel.optical.noise
+    osr = cfg.osr
+    g = h2
+    if ffe_taps is not None and len(ffe_taps) > 1:
+        g = np.convolve(g, upsampled_taps(ffe_taps, osr))
+    g2 = g * g
+
+    p1 = np.convolve(h1, np.ones(osr))
+    p_full = np.convolve(p1, g)
+    t_s = int(np.argmax(np.abs(p_full)))
+    base = t_s - np.arange(g.size)
+
+    def p1_at(shift: int) -> np.ndarray:
+        # symbol at cursor offset j was sent j UI earlier: its pre-PD pulse,
+        # seen at the PD-node sample feeding output delay n, is p1[t_s - n + j T]
+        idx = base + shift * osr
+        out = np.zeros(g.size)
+        ok = (idx >= 0) & (idx < p1.size)
+        out[ok] = p1[idx[ok]]
+        return out
+
+    own = p1_at(0)
+    fixed = [p1_at(j) for j in neighbours]
+    fold = np.array([float(np.sum(baud_samples(p1, osr, r) ** 2)) for r in range(osr)])
+    rest = np.zeros(g.size)
+    ok = (base >= 0) & (base < p1.size)
+    rest[ok] = fold[base[ok] % osr]
+    rest = np.maximum(rest - own ** 2 - sum(f ** 2 for f in fixed), 0.0)
+
+    levels_v = _levels(cfg)
+    m = levels_v.size
+    a2 = float(np.mean(levels_v ** 2))
+    scale = noise.volts_per_amp * noise.responsivity_a_w
+    p_var = a2 * rest / scale ** 2
+    out = np.empty((m,) * (1 + len(neighbours)))
+    for combo in np.ndindex(*out.shape):
+        lin = levels_v[combo[0]] * own
+        for f, i in zip(fixed, combo[1:]):
+            lin = lin + levels_v[i] * f
+        p_mean = noise.p_mid_w + lin / scale
+        out[combo] = np.sqrt(np.sum(g2 * noise.sample_var_v2(np.maximum(p_mean, 0.0), p_var)))
+    return out

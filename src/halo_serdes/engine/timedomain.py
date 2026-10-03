@@ -25,7 +25,7 @@ from ..cdr import ms_rx
 from ..dsp import channel_cursors
 from ..cdr.rx_clock import rx_clock_offsets_samples
 from ..tx.pipeline import TxPipeline
-from .lti import fft_filter
+from .lti import fft_filter, receiver_awgn
 from .result import SimResult
 from .scoring import (
     cdr_gains,
@@ -269,7 +269,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
             "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
 
     if cfg.rx.noise_rms > 0:
-        rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
+        rx_y += receiver_awgn(rng, cfg.rx.noise_rms, rx_y.size, osr)
 
     # --- pulse-response analysis: main cursor, initial phase, initial DFE taps ---
     # the pulse the receiver sees includes the Tx FFE; ``lead`` maps its peak
@@ -424,7 +424,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
             "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
 
     if cfg.rx.noise_rms > 0:
-        rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
+        rx_y += receiver_awgn(rng, cfg.rx.noise_rms, rx_y.size, osr)
 
     # --- pulse analysis: initial FFE (MMSE), DFE, slicer levels ---
     # (the Tx FFE is part of the pulse the receiver equalises; see run_time_link)
@@ -479,7 +479,11 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         1 if cfg.mm_pd_input == "ffe" else 0, lat_blocks,
         sched.reference, int(train_end), int(settle), rx_clk)
 
-    n_run = dec.size
+    # The FFE emits symbol k - n_pre at ADC sample k, so the kernel's last
+    # n_pre decisions were never made (they hold the array's initial 0). They
+    # used to be scored: a fixed tail of wrong symbols, 3/(2N) in BER.
+    n_run = max(dec.size - fcfg.n_pre, 0)
+    dec = dec[:n_run]
     # --- optional MLSD over the residual the FFE/DFE left behind ---
     eq_final, eq_pre_f = equalized_cursors(cursors, w_ffe, n_pre_c, fcfg.n_pre)
     resid_ratios = _residual_ratios(eq_final, eq_pre_f, n_dfe,
