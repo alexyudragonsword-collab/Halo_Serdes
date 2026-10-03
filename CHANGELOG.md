@@ -6,6 +6,17 @@
 
 ---
 
+## [未发布] — 接收端起始均衡看见 TX FFE(ROADMAP P1 1c)
+
+### 修复
+- 静态引擎与时域引擎两种架构的脉冲分析(RX FFE 起始解、DFE 种子、判决电平尺度、采样相位、符号延时)以前用的是不含 TX FIR
+  的信道脉冲,而它们均衡的波形含 TX FIR。现在经 `TxPipeline.receiver_view(h)` 卷进 TX FFE 并扣掉 n_pre UI 的超前量;
+  `reconstruct.front_end_waveform` 的眼图相位同理。单抽头 TX 逐字节不变。
+- 强 TX FFE(主抽头 0.78)下:静态 NRZ SNR 11.2 → 26.2 dB,静态 PAM4 BER 5.3e-2 → 0,ADC 时域 BER 0.10 → 4.6e-5;
+  静态 vs 统计交叉校验(带 / 不带 5 bit DAC,三损耗点)0.83–1.17,以前测不了。
+- 指纹:6 个带 TX FIR 的预置的静态 / 时域值变化(475 值中 131 个);统计、COM、单抽头预置不变。4 个 ADC 预置的时域 BER
+  高了 1.1–1.6 倍,根因是它们的 MM-CDR(`pd_input: adc`)锁偏 0.1–0.3 UI,见 ROADMAP P1 1c(新)。
+
 ## [未发布] — DSP-based TX(阶段 0 + 阶段 1)
 
 ### 变更

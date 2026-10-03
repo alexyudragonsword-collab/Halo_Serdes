@@ -57,8 +57,9 @@ def front_end_waveform(cfg: LinkConfig, channel: ChannelModel | None = None,
     if with_noise and cfg.rx.noise_rms > 0:
         rx_y = rx_y + rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
 
-    pulse = pulse_from_impulse(Waveform(h, cfg.dt), cfg.osr)
-    peak = int(np.argmax(np.abs(pulse.y)))
+    h_rx, lead = tx_pipe.receiver_view(h)
+    pulse = pulse_from_impulse(Waveform(h_rx, cfg.dt), cfg.osr)
+    peak = int(np.argmax(np.abs(pulse.y))) - lead
     return Waveform(rx_y, cfg.dt), peak % cfg.osr
 
 

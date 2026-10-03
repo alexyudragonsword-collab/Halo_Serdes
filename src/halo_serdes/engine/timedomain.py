@@ -272,13 +272,17 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
 
     # --- pulse-response analysis: main cursor, initial phase, initial DFE taps ---
-    pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
-    peak = int(np.argmax(np.abs(pulse.y)))
+    # the pulse the receiver sees includes the Tx FFE; ``lead`` maps its peak
+    # back onto the received waveform (TxPipeline.receiver_view)
+    h_rx, lead = tx_pipe.receiver_view(h)
+    pulse = pulse_from_impulse(Waveform(h_rx, cfg.dt), osr)
+    peak_rx = int(np.argmax(np.abs(pulse.y)))
+    peak = peak_rx - lead
     n_dfe = cfg.rx.dfe.n_taps
     # take enough postcursors for the DFE *and* the residual an MLSD works over
     n_post_c = max(n_dfe, 1) + (cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none"
                                 else 0)
-    cursors = channel_cursors(pulse, osr, 0, n_post_c, peak_idx=peak)
+    cursors = channel_cursors(pulse, osr, 0, n_post_c, peak_idx=peak_rx)
     main = cursors[0]
     # DFE feedback multiplies slicer levels (which carry the main-cursor
     # scale), so tap weights are postcursors normalized to the main cursor.
@@ -423,11 +427,14 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         rx_y += rng.normal(scale=cfg.rx.noise_rms, size=rx_y.size)
 
     # --- pulse analysis: initial FFE (MMSE), DFE, slicer levels ---
-    pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
-    peak = int(np.argmax(np.abs(pulse.y)))
+    # (the Tx FFE is part of the pulse the receiver equalises; see run_time_link)
+    h_rx, lead = tx_pipe.receiver_view(h)
+    pulse = pulse_from_impulse(Waveform(h_rx, cfg.dt), osr)
+    peak_rx = int(np.argmax(np.abs(pulse.y)))
+    peak = peak_rx - lead
     fcfg = cfg.rx.ffe
     n_pre_c, n_post_c = fcfg.n_pre + 4, fcfg.n_post + 12
-    cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak)
+    cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak_rx)
     n_taps = fcfg.n_pre + 1 + fcfg.n_post
     w_ffe0 = mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
                       noise_var=cfg.rx.noise_rms ** 2)

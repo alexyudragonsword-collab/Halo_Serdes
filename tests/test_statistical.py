@@ -188,3 +188,25 @@ def test_dac_quantisation_cross_check_within_2x(length_m, noise):
     assert 0.5 < ratio < 2.0, (length_m, stat.ber, mc.ber.ber, ratio)
     ideal = run_static_link(dataclasses.replace(cfg, tx=TxConfig(swing=1.0)), collect_eye=False)
     assert mc.ber.ber > 1.2 * ideal.ber.ber          # the DAC is not a bystander here
+
+
+@pytest.mark.parametrize("length_m,noise", [(0.15, 0.012), (0.25, 0.012), (0.35, 0.012)])
+@pytest.mark.parametrize("dac_bits", [None, 5])
+def test_tx_ffe_cross_check_within_2x(length_m, noise, dac_bits):
+    """Invariant #3 with a strong Tx FFE: the static engine's receiver solves
+    for the pulse it actually sees (TxPipeline.receiver_view). Before that, it
+    equalised the channel without the Tx FFE and this configuration read
+    5e-2 against a statistical 1e-11 (ROADMAP P1 1c)."""
+    cfg = LinkConfig(
+        modulation="pam4", symbol_rate=32e9, osr=16,
+        channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=2.0,
+                              r_skin=1.5e-3, loss_tangent=0.01),
+        tx=TxConfig(swing=1.0, fir_taps=(-0.08, 0.78, -0.14), fir_n_pre=1, dac_bits=dac_bits),
+        rx=RxConfig(ctle=CtleConfig(enable=False), ffe=FfeConfig(n_pre=2, n_post=6),
+                    dfe=DfeConfig(n_taps=2), noise_rms=noise),
+        sim=SimConfig(n_symbols=300_000, seed=6, pattern="prbs13q"))
+    mc = run_static_link(cfg, collect_eye=False)
+    assert mc.ber.n_errors > 50, mc.ber.n_errors
+    stat = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    ratio = stat.ber / mc.ber.ber
+    assert 0.5 < ratio < 2.0, (length_m, dac_bits, stat.ber, mc.ber.ber, ratio)
