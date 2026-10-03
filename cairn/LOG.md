@@ -9,7 +9,7 @@
   `adc` 是 0.058–0.152 UI),无 SJ 时贴住峰值;`adc` 自己就漂 0.17–0.29 UI。时域 BER(106G / 112G stress / TI / deep-LR):
   3.1e-3 → 2.3e-4、7.8e-3 → 1.6e-5、3.8e-3 → 1.3e-5、6.4e-2 → 3.9e-5;指纹只变这 4 个预置的时域块。
 - 库默认 `pd_input` 仍是 `adc`;自己搭 ADC 接收机的示例用的是它 → ROADMAP P1 1d 并入"先定默认值再重跑"。专题 §5 追加。
-- 验证:PDTOTALS。
+- 验证:jit 612 passed / 2 skipped,nojit 610 passed / 4 skipped;Android:见 PR CI。
 
 ## 2026-10-03 · 修:接收端起始均衡看见 TX FFE(fix/rx-init-tx-ffe,原 ROADMAP P1 1c)
 
