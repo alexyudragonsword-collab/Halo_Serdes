@@ -14,6 +14,8 @@
   专题 `DSP发端与PR.md` §8,USAGE §18,SUMMARY §04,pitfalls 2 条。
 - CI:3.10 nojit 撞 30 分钟上限(test_pr.py 在纯 Python 内核下 26 分钟,6 个 60 万符号级引擎测试各 2–6 分钟)。这些测试改为只在 numba 下跑
   (`needs_jit`,与文件里已有的跳过条件相同);nojit 下内核等价由 `test_numba_kernel_matches_python_with_pr` 负责。nojit 26 → 3 分钟。
+- CI(7060031)测试矩阵(nojit 7–14 分钟)、lint、import-clean、rtl-lockstep、vendor-drift 全绿;Android CI(9ce91bb,run 37134632073,含全部代码改动):
+  `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-03 · 接收端 PR 整形 1 + aD(feat/rx-pr,原 ROADMAP P3 #8 阶段 2)
 
