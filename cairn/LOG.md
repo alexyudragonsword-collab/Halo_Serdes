@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-03 · 修:接收端起始均衡看见 TX FFE(fix/rx-init-tx-ffe,原 ROADMAP P1 1c)
+
+- `TxPipeline.receiver_view(h)`:TX FFE 卷进脉冲分析用的 h,返回 n_pre·osr 超前量;静态、时域两架构、`front_end_waveform` 改用它。
+  单抽头逐字节不变。强 TX FFE:静态 NRZ SNR 11.2 → 26.2 dB、PAM4 BER 5.3e-2 → 0、ADC 时域 BER 0.10 → 4.6e-5;静态 vs 统计
+  (± 5 bit DAC,三损耗点)0.83–1.17。8 项新测试在旧行为下全红。
+- 指纹 131 / 475 变(6 个带 TX FIR 预置的静态 / 时域;统计、COM、单抽头不变)。静态全面变好;**4 个 ADC 预置时域 BER 高
+  1.1–1.6 倍** —— 不是本修复的错:这些预置 MM-CDR 读均衡前 ADC 采样(`pd_input: adc`),锁偏 0.1–0.3 UI 并来回摆,两种起点
+  相位轨迹逐位相同;相位在峰值附近时新起点好 3–10 倍,`pd_input: ffe` 时新起点 BER 低 18–30 倍。改不改预置由用户定 →
+  ROADMAP P1 1c(新)。查法进 pitfalls(SNR 好 BER 坏 → 按时间分段看误码和 CDR 相位)。专题 `cairn/DSP发端与PR.md` §5 追加更正。
+- 验证:FIXTOTALS。
+
 ## 2026-10-02 · DSP 发端,阶段 0 + 1:TxPipeline + DAC + 驱动器压缩(feat/dsp-tx)
 
 - **阶段 0**:七处手拼的 TX(timedomain 两处、static_link、statistical、optical_stage、reconstruct、cdr_tracking)收成

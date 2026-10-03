@@ -147,6 +147,28 @@ class TxPipeline:
     def waveform(self, v_sym: np.ndarray, rng: np.random.Generator | None = None) -> Waveform:
         return self.waveform_and_edges(v_sym, rng)[0]
 
+    # ------------------------------------------------------ receiver analysis
+    def receiver_view(self, h: np.ndarray, osr: int | None = None) -> tuple[np.ndarray, int]:
+        """The impulse a receiver's pulse analysis has to look at, and its lead.
+
+        The Tx waveform already carries the FFE, but the engines filter it
+        with ``h`` alone (channel, CTLE, VGA). Solving the receiver's starting
+        FFE, DFE seeds, slicer scale, sampling phase and symbol delay from
+        ``h`` alone equalises a pulse the receiver never sees. This returns
+        ``h`` with the FFE's symbol response folded in, plus the number of
+        samples by which that response's main cursor sits *later* than in the
+        waveform (``tx_fir`` drops its first ``fir_n_pre`` outputs to align
+        the main tap with the symbol): subtract it from the peak index before
+        using it as a position in the received waveform.
+
+        Without an FFE it is ``(h, 0)`` -- the same array, untouched.
+        """
+        osr = self.cfg.osr if osr is None else osr
+        resp = self.equivalent_symbol_response(osr)
+        if resp is None:
+            return h, 0
+        return np.convolve(h, resp), self.fir_n_pre * osr
+
     # ------------------------------------------------------ statistical engine
     def equivalent_symbol_response(self, osr: int | None = None) -> np.ndarray | None:
         """The LTI part of the symbol stage on the sample grid, or None when it

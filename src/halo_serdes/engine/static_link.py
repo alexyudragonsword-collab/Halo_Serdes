@@ -141,12 +141,16 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     from ..channel.response import pulse_from_impulse
 
     h_chain = np.fft.irfft(H_chain, n=n)[: min(n, 400 * osr)]
-    pulse = pulse_from_impulse(Waveform(h_chain * vga.gain, cfg.dt), osr)
-    peak = int(np.argmax(np.abs(pulse.y)))
+    # solve against the pulse the receiver sees, Tx FFE included; ``lead``
+    # maps its peak back onto the received waveform
+    h_rx, lead = tx_pipe.receiver_view(h_chain * vga.gain)
+    pulse = pulse_from_impulse(Waveform(h_rx, cfg.dt), osr)
+    peak_rx = int(np.argmax(np.abs(pulse.y)))
+    peak = peak_rx - lead
     phase = peak % osr
 
     n_pre_c, n_post_c = 8, 24
-    cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak)
+    cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak_rx)
 
     # --- baud sampling at the pulse-peak phase ---
     # The one domain crossing on this path, and now the only thing that

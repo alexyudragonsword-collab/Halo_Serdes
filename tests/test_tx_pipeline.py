@@ -157,3 +157,48 @@ def test_driver_compression_is_hammerstein_and_warns_in_the_statistical_engine()
     assert np.array_equal(pipe.waveform(v).y, expected.y)
     with pytest.warns(UserWarning, match="drv_nl"):
         run_statistical(cfg)
+
+
+# ------------------------------------------- receivers see the Tx FFE (P1 1c)
+
+def test_receiver_view_folds_the_ffe_in_and_reports_its_lead():
+    cfg = _cfg(ClockConfig())
+    h = np.random.default_rng(0).normal(size=400)
+    h_rx, lead = TxPipeline.from_config(cfg).receiver_view(h)
+    assert lead == cfg.tx.fir_n_pre * cfg.osr
+    assert np.array_equal(h_rx, np.convolve(h, upsampled_taps(cfg.tx.fir_taps, cfg.osr)))
+    one = TxPipeline.from_config(_cfg(ClockConfig(), taps=(1.0,)))
+    same, zero = one.receiver_view(h)
+    assert same is h and zero == 0          # single-tap links: untouched, byte for byte
+
+
+@pytest.mark.parametrize("arch", ["adc_dsp", "mixed_signal"])
+def test_time_engine_equalises_the_pulse_with_the_tx_ffe(arch):
+    """A Tx with a 0.78 main tap: the receiver's starting equaliser, DFE seeds,
+    slicer scale and symbol delay now come from the pulse it receives."""
+    from halo_serdes.config.schema import AdcConfig, CdrConfig, CtleConfig, DfeConfig, FfeConfig
+    from halo_serdes.engine import run_time_link
+
+    if arch == "adc_dsp":
+        rx = RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=3.0),
+                      adc=AdcConfig(n_bits=10, n_lanes=16, fullscale=0.3),
+                      ffe=FfeConfig(n_pre=3, n_post=8, adapt="lms", mu=3e-5), dfe=DfeConfig(n_taps=0),
+                      cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15), noise_rms=1e-4)
+        cfg = LinkConfig(modulation="pam4", symbol_rate=53.125e9, osr=16,
+                         channel=ChannelConfig(kind="analytic", length_m=0.1, rdc=5.0, r_skin=2e-3,
+                                               loss_tangent=0.012, n_freq=4096),
+                         tx=TxConfig(swing=1.0, fir_taps=(-0.1, 0.75, -0.15), fir_n_pre=1), rx=rx,
+                         sim=SimConfig(n_symbols=50_000, seed=11, pattern="prbs13q"))
+        floor = 14.0                       # 9.5 dB (BER 0.10) before the fix
+    else:
+        rx = RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=True, peak_db=3.0),
+                      dfe=DfeConfig(n_taps=2), noise_rms=1e-4)
+        cfg = LinkConfig(modulation="nrz", symbol_rate=26.5625e9, osr=16,
+                         channel=ChannelConfig(kind="analytic", length_m=0.4, rdc=5.0, r_skin=2e-3,
+                                               loss_tangent=0.012, n_freq=4096),
+                         tx=TxConfig(swing=1.0, fir_taps=(-0.08, 0.78, -0.14), fir_n_pre=1), rx=rx,
+                         sim=SimConfig(n_symbols=100_000, seed=11, pattern="prbs13"))
+        floor = 9.0                        # 1.6e-4 BER before the fix
+    res = run_time_link(cfg)
+    assert res.slicer_snr_db > floor, res.slicer_snr_db
+    assert res.ber.n_errors < 20, res.ber.n_errors
