@@ -9,7 +9,7 @@
   3 抽头 + MLSD 从不胜过 21 抽头 FFE。delta 目标的 LMS FFE 把残余压到 < 0.002 —— MLSD 要加 reach 得有 1+αD 目标(P3 #8 已记)。
 - 示例 18 两种 FFE 同台(21 抽头配置不变,示例 19 / 35 的引用仍有效);SUMMARY、summary.html、pitfalls MLSD 类按此改。
 - summary.html 的示例 15 / 16 / 21 三张内嵌图换新;其余六张是 mixed-signal 示例,不受两处修复影响,未动。
-- 验证:ruff 干净;示例 18 跑通;只动示例与文档,桌面测试套件与 Android 不受影响(CI 见 PR)。
+- 验证:ruff 干净;示例 18 跑通;CI(b0bdee8)测试矩阵、lint、import-clean、rtl-lockstep 全绿。只动示例与文档,不碰共用层,Android 工作流按路径不触发(铁律 6 不适用)。
 
 ## 2026-10-03 · `cdr.pd_input` 默认 `auto` + 重跑受影响的 20 个示例(feat/pd-input-auto,原 ROADMAP P1 1d)
 
