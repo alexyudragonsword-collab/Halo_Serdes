@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**637 项测试**、双引擎(时域 + StatEye 统计)、36 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **637 tests**, dual engines (time-domain + StatEye), 36 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**664 项测试**、双引擎(时域 + StatEye 统计)、37 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **664 tests**, dual engines (time-domain + StatEye), 37 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -135,11 +135,16 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 | DSP 深度(DFE + 更深 MLSD)/ DSP depth | +0.8 dB | 收益递减 / diminishing |
 | **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+5.3 dB** | ADC 功耗 / power |
 | **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.8 dB** | 开销 6%→24% / overhead |
+| **收端 PR 整形**(FFE 均衡到 1+0.75D,Viterbi 解受控光标)/ RX partial response | **+4.7 dB** | Viterbi 网格(N² 状态)/ trellis |
 
 - **MLSD 只拿回短 FFE 留下的 ISI**(示例 18):21 抽头 LMS FFE 收敛到 MMSE,残余光标 < 0.002,MLSD memory-2 在每个损耗都是 1.0×;
   3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 从 −28.8 dB 起拿回 1.9×、−33.3 dB 处 4.4× —— 但 3 抽头 + MLSD 仍不如 21 抽头 FFE 单独用。
-  要 MLSD 真加 reach,FFE 得均衡到部分响应目标(1+αD)而不是 delta,这一项未建模(ROADMAP P3 #8)。 / MLSD only recovers what a
+  要 MLSD 真加 reach,FFE 得均衡到部分响应目标(1+αD)而不是 delta —— 见下一条。 / MLSD only recovers what a
   short FFE leaves: 1.0× behind a 21-tap MMSE FFE, 1.9–4.4× behind a 3-tap one, which still loses to the 21-tap FFE alone.
+- **收端 PR 整形把 MLSD 变成 reach**(示例 36,2026-10-03):同一 21 抽头 FFE 均衡到 1+aD、memory-2 Viterbi 解 a,reach 从对照
+  (delta 目标 + Viterbi)31.6 dB 到 a = 0.25 / 0.5 / 0.75 / 1 的 33.9 / 35.5 / **36.3** / 36.2 dB;−33.3 dB 处 BER 1.7e-3 → 2.5e-6。
+  delta 目标的 FFE 把噪声放大花掉了,整形后由网格收回。与 FEC / ADC 杠杆是否可叠加未量。 / RX partial response turns MLSD into reach:
+  a 1+0.75D target with memory-2 Viterbi buys +4.7 dB (31.6 → 36.3 dB) over the delta target with the same Viterbi.
 - 21 抽头 FFE:到 −28.8 dB 零误码,−30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
   error-free to −28.8 dB and memory-2 MLSD matches it at −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
@@ -264,4 +269,4 @@ tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 637 项测试 · 双引擎 · 36 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 664 项测试 · 双引擎 · 37 个实验脚本*

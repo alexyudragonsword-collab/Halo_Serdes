@@ -111,9 +111,17 @@ if os.environ.get("HALO_NO_JIT") != "1":
 def run_fixed_datapath(codes_int: np.ndarray, w_ffe_float: np.ndarray,
                        w_dfe_float: np.ndarray, levels_float: np.ndarray,
                        n_pre: int, numeric: NumericConfig,
-                       code_fullscale: float, code_bits: int):
+                       code_fullscale: float, code_bits: int, pr=None):
     """Float weights/levels -> quantize -> bit-true replay. Returns
-    (dec, v_float, artifacts dict for dump_vectors)."""
+    (dec, v_float, artifacts dict for dump_vectors).
+
+    ``pr``: the link's ``PrConfig``. The bit-true slicer decides against a
+    delta target; with a partial-response target it would replay a receiver
+    the link does not have, so it refuses instead."""
+    if pr is not None and pr.active:
+        raise NotImplementedError(
+            "fixed-point datapath with a partial-response target (pr.target "
+            f"{tuple(pr.target)}): the bit-true FFE/DFE/slicer only models the delta target")
     wq = numeric.ffe_weight
     w_ffe_int = to_int(w_ffe_float, wq)
     w_dfe_int = to_int(w_dfe_float, numeric.dfe_weight)

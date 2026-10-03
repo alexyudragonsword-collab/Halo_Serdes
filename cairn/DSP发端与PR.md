@@ -191,8 +191,44 @@ NRZ 26.5625 GBd / PAM4 53.125 GBd × 0.1 / 0.25 / 0.4 m × FFE lms/none × DFE 0
 
 另一个既有缺口:统计引擎从未建模 `tx.bw`(驱动器单极点)。阶段 0 保持原样(逐字节),记在 ROADMAP P3 #8。
 
-## 6. 阶段 2/3 的接缝(未做)
+## 6. 阶段 2/3 的接缝(阶段 2 已做,见 §7;阶段 3 未做)
 
 - 发端 PR:`TxPipeline.pr_filter`(FFE 与 DAC 之前,恒等占位)。PR 开启后 `dac_fullscale` 的默认值要按 PR 后的峰值重算。
 - 收端 PR:不碰发端;`PrConfig` 只放一份在 `LinkConfig`,发收两端都读。
 - 802.3dj 的 TX SNDR / R_LM 规格值(量级 30+ dB / ≥ 0.95)在出口代理后核不到,示例与文档都标 "approximate, unsourced",不画成限值。
+
+## 7. 收端 1 + aD 整形(阶段 2,2026-10-03)
+
+**接口**:`PrConfig(target=(1.0,) | (1.0, a), at="rx")`,a ∈ [0, 1];`at="tx"` 抛 NotImplementedError 指向 ROADMAP P3 #8 阶段 3;
+mixed-signal + PR 在 `LinkConfig` 构造时拒绝(没有数字 FFE 可整形);静态引擎、`fixed_datapath` 拒绝 PR。`target=(1.0,)`
+与不设逐位相同(指纹 488 + 44 个值)。
+
+**接线**(`engine/timedomain.py`、`cdr/adc_kernel.py`、`dsp/ffe.py`):
+- 起始 FFE:`mmse_ffe(..., target=)`(ZF 版对 [1, a] 残余 < 1%);LMS 期望值 levels[x_s] + a·levels[x_{s−1}];
+- 逐符号判决(给 LMS、CDR、DFE 用):减 a × 上一判决再切;a = 1 + 预编码时切 2N − 1 个合成电平,用户符号 = q mod N(不传播),
+  另有一条截断的线路符号链给 DFE / 残差 / LMS,合成电平到两端时自动重同步;
+- DFE 从受控光标之后起;MLSD 光标 [1, a_实测, r…](a 取最终 FFE 的均衡光标);
+- MM-CDR 读"样本 − a × 上一判决"。原方案的 `pd_offset` 补偿不行:a ≥ 0.75 时环路走 0.4–4 UI。修后锁定点与 delta 目标差
+  ≤ 0.0011 UI(a 0.25–1、含预编码,示例 18 信道 −33 dB)。
+
+**统计引擎**:受控光标移出 ISI PDF;有序列检测器时对交替误差事件(长度 1–12)做 union bound,噪声自相关取自 FFE 抽头
+(`pr_error_events`)。只用最小距离时比时域乐观 2.5–20 倍(PR 下 FFE 输出噪声 ρ1 ≈ −0.25、ρ2 ≈ −0.31;a ≈ 1 时各长度事件距离相同)。
+与时域比(`enob=None`,36.4 dB 信道):a = 0.5 1.47–1.52×、a = 1 预编码 1.00–1.35×(BER 2e-5…3e-4);BER 1e-2 以上
+union bound 偏悲观(a = 0.5 3.2×)。统计引擎仍不建 ADC 量化噪声(ROADMAP 4b)。
+
+**示例 36**(示例 18 的 21 抽头 LMS FFE + MM-CDR + memory-2 Viterbi,ENOB 6.5,1.5 mV,40 万符号):
+
+| 损耗 @ 56 GHz | a = 0(对照) | 0.25 | 0.5 | 0.75 | 1 |
+|---|---|---|---|---|---|
+| 28.8 dB | 3.8e-6 | 0 错 | 0 错 | 0 错 | 0 错 |
+| 33.3 dB | 1.7e-3 | 1.2e-4 | 7.6e-6 | **2.5e-6** | 2.5e-6 |
+| 37.9 dB | 2.5e-2 | 1.0e-2 | 2.8e-3 | **1.1e-3** | 1.3e-3 |
+
+reach(post-KP4 1e-15 ⇔ pre-FEC 2.19e-4):对照 31.6 dB;a = 0.25 / 0.5 / 0.75 / 1 → 33.9 / 35.5 / **36.3** / 36.2 dB(+2.2 / +3.9 / **+4.7** / +4.6)。
+a = 1 预编码 8.9e-6 vs 不预编码 2.5e-6(33.3 dB):Viterbi 的一个错误解码后变两个,预编码的价值只在逐符号判决不传播。
+33.3 dB 处 a ≥ 0.75 的 2.5e-6 是 2 个比特错,种子 3 / 4 / 5 给 2 / 0 / 2,是计数统计,不是误码底。
+
+**判断**:在本模型的 224G LR 链路上,收端 1 + 0.75D + Viterbi 比 delta 目标 + Viterbi 多约 4.7 dB reach —— 这正是示例 18
+里 MLSD 加不了 reach 的另一半:delta 目标的 FFE 把噪声放大花掉了,整形后由网格收回。口径:a 由配置给定(不自适应)、
+memory-2、单 lane、无串扰;与示例 19 / 21 的 FEC / ADC 杠杆是否可叠加未量。
+

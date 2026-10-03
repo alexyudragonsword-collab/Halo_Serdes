@@ -1,6 +1,7 @@
 """MLSD, sliding detector, RS-FEC, and jitter-decomposition tests."""
 
 import numpy as np
+import pytest
 
 from halo_serdes.analysis.jitter import calc_jitter
 from halo_serdes.analysis.metrics import qfunc
@@ -103,6 +104,28 @@ def test_mlse_min_distance_reference_values():
     for _ in range(20):
         cur = np.concatenate([[1.0], rng.uniform(-0.6, 0.6, size=3)])
         assert mlse_gain_over_dfe_db(cur) >= -1e-9
+
+
+def test_pr_error_events_reduce_to_the_minimum_distance_in_white_noise():
+    """The partial-response union bound's single-error event is the plain
+    MLSD gain when the noise is white, and with alpha = 1 every alternating
+    event has the same distance (the sum the bound exists for); precoded,
+    any alternating event costs two user errors."""
+    from halo_serdes.engine.statistical import pr_error_events
+
+    for alpha in (0.25, 0.5, 1.0):
+        ev = pr_error_events(np.array([1.0, alpha]), np.ones(1), 4, precoded=False)
+        assert ev[0][0] == pytest.approx(np.sqrt(1.0 + alpha ** 2))
+        assert ev[0][1] == 1.0
+    ev = pr_error_events(np.array([1.0, 1.0]), np.ones(1), 4, precoded=False, max_len=6)
+    assert [g for g, _ in ev] == pytest.approx([np.sqrt(2.0)] * 6)
+    assert [w for _, w in ev] == pytest.approx([n * 0.75 ** (n - 1) for n in range(1, 7)])
+    ev_p = pr_error_events(np.array([1.0, 1.0]), np.ones(1), 4, precoded=True, max_len=6)
+    assert [w for _, w in ev_p] == pytest.approx([2 * 0.75 ** (n - 1) for n in range(1, 7)])
+    # noise anticorrelated at lag 1 helps the single error, which spans two
+    # adjacent samples of the same sign
+    g_col = pr_error_events(np.array([1.0, 1.0]), np.array([1.0, -0.25]), 4, False)[0][0]
+    assert g_col > np.sqrt(2.0)
 
 
 def test_post_detect_beats_slicer_on_real_residual():

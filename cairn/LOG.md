@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-03 · 接收端 PR 整形 1 + aD(feat/rx-pr,原 ROADMAP P3 #8 阶段 2)
+
+- `PrConfig` + ADC 收端接线(起始 FFE target、LMS 期望值、DFE 起点、MLSD 光标 [1, a, r…]、逐符号判决、a = 1 预编码切合成电平)。
+- 偏离方案两处:(1) CDR 不用 `pd_offset` —— a ≥ 0.75 时环路走 0.4–4 UI;改读"样本 − a × 上一判决",锁定偏差 ≤ 0.0011 UI。
+  (2) 统计引擎不只用 MLSE 最小距离 —— PR 下 FFE 噪声 ρ1 ≈ −0.25、ρ2 ≈ −0.31,最小距离版乐观 2.5–20×;改为交替误差事件 union bound,
+  BER ≤ 5e-4 时 1.0–1.5×。
+- 示例 36:reach 对照 31.6 dB → a = 0.25 / 0.5 / 0.75 / 1:33.9 / 35.5 / 36.3 / 36.2 dB(最优 0.75,+4.7 dB);1+D Viterbi 增益扣重数后 3.01 dB 内。
+  33.3 dB 处 2.5e-6 不是误码底(种子 3/4/5:2/0/2 个比特错)。专题 `DSP发端与PR.md` §7,USAGE §18,SUMMARY §04 加一行杠杆。
+- 验证:`target=(1.0,)` 指纹逐位同 main(488 + 44 值);ruff 干净;本地 jit 664 passed / 2 skipped(本地 nojit 全量跑到 86% 被时限停掉,
+  其间无失败;此前一轮 4 个失败是 stash 后的陈旧缓存,单独重跑 39 项全过)。CI(5da9dc4)测试矩阵含 3.10 / 3.11 nojit、lint、import-clean、
+  rtl-lockstep、vendor-drift 全绿;Android CI(run 37122891581):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
+
 ## 2026-10-03 · 统计引擎一致性 A1–A4(fix/stat-engine-consistency,原 ROADMAP 1b、#8 tx.bw、#11 分箱)
 
 - A1 根因:ADC FFE 在第 k 个样本才判第 k − n_pre 个符号,末尾 n_pre 个 `dec` 是没写过的 0 却被计分。截掉后 ADC 预置少 3–11 错。

@@ -155,16 +155,15 @@ job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量�
 
 ### 8. Duobinary / PR 整形
 1+D 预编码已实现(`precode` 开关),但**预编码 ≠ PR 整形**:前者是符号映射,
-后者要在发端有意引入受控 ISI 并配匹配的检测器。属于独立能力。
+后者要有意引入受控 ISI 并配匹配的检测器。
 
-DSP TX 阶段 0/1 已合入后,发端 PR 的位置已经留好:`TxPipeline.pr_filter` 在 FFE 与 DAC 之前(恒等占位),
-DAC 与驱动器压缩已建模,所以发端 PR 的 DAC 动态范围代价可以直接测。剩下的是方案文档的阶段 2(收端 1+αD:
-`zf_ffe/mmse_ffe` 的 target、LMS 期望值、DFE 起点、MLSD 光标、CDR `pd_offset`)与阶段 3(发端 PR 与三方同台)。
-`tx.bw` 已进统计引擎与接收端脉冲分析(2026-10-03,`TxPipeline.driver_response`)。
+**阶段 2(收端 1+aD)已合入**(2026-10-03,`PrConfig`、`docs/USAGE.md` §18、`cairn/DSP发端与PR.md` §7):
+示例 18 的信道上 a = 0.75 比 delta 目标 + Viterbi 多 reach(示例 36)。剩下的是**阶段 3:发端 PR**
+(`TxPipeline.pr_filter` 在 FFE 与 DAC 之前,恒等占位;`pr.at: tx` 现在抛 NotImplementedError),以及发端 / 收端 / 无 PR 三方同台。
+DAC 与驱动器压缩已建模,所以发端 PR 的 DAC 动态范围代价可以直接测。
 
-收端 1+αD 目标也是 MLSD 真正加 reach 的前提:示例 18(2026-10-03 改版)量到 LMS 收敛的 21 抽头 FFE 只留 < 0.002 的残余光标,
-MLSD memory-2 在任何损耗都是 1.0×;3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 拿回 1.9–4.4×(2026-10-03 噪声限带后重跑;此前 2.4–5.1×),但仍不如 21 抽头 FFE 单独用。
-即 delta 目标下 MLSD 只能替代 FFE 抽头,不能加 reach。
+不在阶段 2 范围、尚未做:a 的自适应(现在由配置给定)、长于 1 + aD 的目标(网格按 N^L 长)、统计引擎对 PR 逐符号判决
+(给 LMS / CDR 用的)的建模。
 
 ### 9. 多 lane 数据通路
 多 lane 目前只在**串扰侧**(`aggressor_bank`/`icn_rms`);链路本身仍是单 lane。
@@ -181,7 +180,7 @@ MLSD memory-2 在任何损耗都是 1.0×;3 抽头 FFE 留下 h2 ≈ −0.05…�
 
 ### 10. 测试与文档的长尾
 - GUI docstring 28%(核心库 66%);GUI 行覆盖 60%(核心库 89%)。
-- 36 个示例只做 **import 守卫**(`tests/test_examples_api.py`),不执行。
+- 37 个示例只做 **import 守卫**(`tests/test_examples_api.py`),不执行。
   全量执行太慢(多个用 10⁶ 符号),可考虑加一个"小符号数档"的夜间 CI job。
 - `LICENSE` 与 `CONTRIBUTING.md` 尚缺(许可证类型需要由项目所有者决定)。
 

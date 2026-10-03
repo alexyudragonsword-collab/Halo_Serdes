@@ -283,6 +283,10 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("rx.mlsd.seq_len", "Sliding window", "int"),
         _f("rx.mlsd.margin", "Sliding margin", "float"),
     ]),
+    ("pr", "Partial response (adc_dsp)", [
+        _f("pr.target", "Rx PR target [1, alpha]", "tuple_float"),
+        _f("pr.at", "Shaped at", "enum", options=["rx", "tx"]),
+    ]),
     ("cdr", "CDR", [
         _f("rx.cdr.kind", "Kind", "enum",
            options=["bang_bang", "mueller_muller"]),

@@ -540,6 +540,43 @@ class TopologyConfig:
 
 
 @dataclass(frozen=True)
+class PrConfig:
+    """Partial-response target the receiver equalises to: ``target`` is the
+    equalised pulse's cursors from the main one on, ``(1.0,)`` a delta (no
+    shaping), ``(1.0, a)`` the 1 + aD family. A sequence detector then
+    resolves the controlled cursor instead of the FFE inverting it, which
+    costs less noise enhancement on a lossy channel.
+
+    ``at="tx"`` (shaping in the transmitter, before the FFE and DAC) is the
+    next stage, ROADMAP P3 #8 stage 3; targets longer than 1 + aD are out of
+    scope (the trellis grows as N^L)."""
+    target: tuple[float, ...] = (1.0,)
+    at: Literal["rx", "tx"] = "rx"
+
+    def __post_init__(self):
+        _require_in(self.at, {"rx", "tx"}, "pr.at")
+        _require(len(self.target) in (1, 2),
+                 f"pr.target must be (1.0,) or (1.0, alpha), got {self.target!r}")
+        _require(self.target[0] == 1.0,
+                 f"pr.target[0] must be 1.0 (the main cursor), got {self.target[0]}")
+        if len(self.target) == 2:
+            _require(0.0 <= self.target[1] <= 1.0,
+                     f"pr.target alpha must be in [0, 1], got {self.target[1]}")
+        if self.at == "tx":
+            raise NotImplementedError(
+                "pr.at='tx' (transmit-side partial response) is not built yet: "
+                "ROADMAP P3 #8, stage 3")
+
+    @property
+    def active(self) -> bool:
+        return len(self.target) > 1
+
+    @property
+    def alpha(self) -> float:
+        return float(self.target[1]) if self.active else 0.0
+
+
+@dataclass(frozen=True)
 class LinkConfig:
     # defaults define the product mixed-signal anchor point: 16 GBd NRZ
     # (the canonical validated configuration, well inside the comfort zone)
@@ -559,6 +596,8 @@ class LinkConfig:
     # Optical interconnect: segment A -> E/O -> fibre -> O/E -> segment B in
     # place of ``channel``. None is the electrical link, byte for byte.
     topology: Optional[TopologyConfig] = None
+    # Receive-side partial-response target (ADC receiver only)
+    pr: PrConfig = field(default_factory=PrConfig)
 
     def __post_init__(self):
         _require_in(self.modulation, {"nrz", "pam4"}, "modulation")
@@ -575,6 +614,11 @@ class LinkConfig:
         n_lv = 4 if self.modulation == "pam4" else 2
         _require(self.tx.dac_bits is None or 2 ** self.tx.dac_bits >= n_lv,
                  f"tx.dac_bits={self.tx.dac_bits} cannot represent {n_lv} {self.modulation} levels")
+        # the mixed-signal slicer has no digital equaliser to shape a target
+        # with; that receiver's own blocks are where the two may differ
+        _require(not (self.pr.active and self.rx.arch == "mixed_signal"),
+                 "pr.target with rx.arch='mixed_signal': partial-response "
+                 "equalisation needs the ADC receiver's digital FFE")
         # NOTE: a touchstone channel with no file is intentionally allowed here
         # — LinkConfig() defaults to it, and ChannelModel.from_config raises a
         # precise error at load time if it is actually used.
