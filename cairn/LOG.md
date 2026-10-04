@@ -3,6 +3,13 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-04 · PR 目标的 a 由收端选(feat/pr-alpha-adapt,原 ROADMAP P3 #8 余项)
+
+- `pr.adapt`:`mmse` 闭式解单位主光标 MMSE 目标的 a(`mmse_pr_alpha`,残差对 a 二次);`lms` 从此起步、在内核里与 FFE 同误差更新 a。
+- 示例 36 第 4 部分:起始 a 0.60(27 dB)→ 0.76(39 dB),LMS 只动 < 0.01;reach 36.32 dB vs 固定 a 最优 36.33 dB —— 不用扫 a。
+- 测试:闭式解对暴力扫描 1e-3 内;内核从 a = 0.3 起找到真值 0.7(±0.03);numba == python(含 a 输出);引擎上 mmse / lms 与最优固定 a 同 BER;配置限制。
+- 专题 `DSP发端与PR.md` §9,USAGE §18,ROADMAP P3 #8 划掉 a 自适应。
+
 ## 2026-10-04 · PR 统计引擎扣掉相邻误差事件的重叠(fix/pr-event-overlap,原 ROADMAP P3 #8 缺口)
 
 - 根因:发端 1 + 0.5D 后 FFE 噪声 ρ1 = −0.67,长度 2–6 的交替事件距离持平且相邻共享噪声投影,简单 union bound 重复计 → 2.5–2.9× 悲观。

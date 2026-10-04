@@ -6,6 +6,13 @@
 
 ---
 
+## [未发布] — PR 目标的 a 由收端选(`pr.adapt`)
+
+### 新增
+- `PrConfig.adapt: none | mmse | lms`、`PrConfig.mu`;`dsp.ffe.mmse_pr_alpha`(闭式 MMSE 单位主光标目标);ADC 内核对 a 的 LMS
+  (步长 0 时逐位同前);`extras["pr_alpha"]` = (起始, 结束);表单 `pr.adapt`、`pr.mu`。
+- 示例 36 第 4 部分:收端自选 a 的 reach 36.32 dB,固定 a 最优 36.33 dB;a 从 27 dB 的 0.60 随损耗升到 39 dB 的 0.76。
+
 ## [未发布] — PR 统计引擎:相邻误差事件的重叠扣掉
 
 ### 修复
