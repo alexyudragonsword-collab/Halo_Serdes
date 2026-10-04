@@ -58,7 +58,9 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
     ``mu_alpha`` > 0 adapts the controlled cursor with the FFE (``pr_mode``
     1 only; the composite slicer assumes a = 1): the same error, the gradient
     taken in a, normalised by the mean symbol power and clipped to [0, 1].
-    ``alpha_out[0]`` returns the a the run ended on.
+    ``alpha_out[0]`` returns the a the run ended on (and ``alpha_out[1]``,
+    when there is one, the b of a three-cursor target, adapted the same way
+    against the decision two symbols back; a in [0, 2], b in [-1, 1] there).
 
     ``pr_nt`` 3 is a 1 + aD + bD^2 target: ``pr_beta`` times the decision two
     symbols back is subtracted as well, everywhere ``pr_alpha`` times the
@@ -69,6 +71,8 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
     nd = w_dfe.size
     nt = pr_nt if pr_mode > 0 else 1    # cursors the target accounts for
     a_pr = pr_alpha
+    b_pr = pr_beta
+    a_max = 2.0 if pr_nt == 3 else 1.0
     p_sym = 0.0
     for m in range(nl):
         p_sym += levels[m] * levels[m]
@@ -138,8 +142,10 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
             if pr_mode > 0 and s >= 1:
                 prev = levels[xl[s - 1]]
             ctl = a_pr * prev
+            prev2 = 0.0
             if nt == 3 and s >= 2:
-                ctl = ctl + pr_beta * levels[xl[s - 2]]
+                prev2 = levels[xl[s - 2]]
+                ctl = ctl + b_pr * prev2
             r_sl[s] = v - ctl
             q = 0
             if pr_mode == 2:
@@ -188,8 +194,14 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
                         a_pr += mu_alpha * e * prev / p_sym
                         if a_pr < 0.0:
                             a_pr = 0.0
-                        elif a_pr > 1.0:
-                            a_pr = 1.0
+                        elif a_pr > a_max:
+                            a_pr = a_max
+                        if nt == 3:
+                            b_pr += mu_alpha * e * prev2 / p_sym
+                            if b_pr < -1.0:
+                                b_pr = -1.0
+                            elif b_pr > 1.0:
+                                b_pr = 1.0
                 if mu_ffe > 0.0:
                     for i in range(nf):
                         j = k - i
@@ -239,6 +251,8 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
         pos += osr + corr_now / n_lanes
 
     alpha_out[0] = a_pr
+    if alpha_out.size > 1:
+        alpha_out[1] = b_pr
     return (dec[:n_symbols], y_sl[:n_symbols], phase[:n_symbols], wf, wd,
             lane_of[:n_symbols], q_hist[:n_symbols])
 

@@ -512,7 +512,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # the receiver's own clock, drawn last so an ideal clock changes nothing
     rx_clk = rx_clock_offsets_samples(n_sym, cfg, rng)
     mu_a = pr.mu if (pr.active and pr.adapt == "lms") else 0.0
-    alpha_out = np.array([alpha], dtype=np.float64)
+    alpha_out = np.array([alpha, beta], dtype=np.float64)
 
     dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = adc_rx(
         rx_y, osr, float(peak), n_sym, levels.astype(np.float64),
@@ -545,7 +545,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # score() undoes the precoder first: the slicer decided line symbols
     sc = score(cfg, dec=dec, dec_slicer=dec_slicer, y_slicer=y_sl,
                levels=levels, line_idx=ref_idx, user_idx=user_idx,
-               n_run=n_run, warmup=warm, pr_alpha=float(alpha_out[0]), pr_beta=beta)
+               n_run=n_run, warmup=warm, pr_alpha=float(alpha_out[0]),
+               pr_beta=float(alpha_out[1]) if n_t == 3 else 0.0)
     dec_c, ref_c = sc.decisions, sc.reference
 
     # per-lane SER (TI mismatch diagnostics)
@@ -571,6 +572,6 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "precode": cfg.precode,
                 # (start, end) of the controlled cursor a: equal unless pr.adapt is "lms"
                 "pr_alpha": (alpha, float(alpha_out[0])) if pr.active else None,
-                "pr_target": (1.0, float(alpha_out[0])) + ((beta,) if n_t == 3 else ())
+                "pr_target": (1.0, float(alpha_out[0])) + ((float(alpha_out[1]),) if n_t == 3 else ())
                 if pr.active else None,
                 "decisions": sc.decisions})
