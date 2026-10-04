@@ -11,7 +11,9 @@
 - 注入 ±1 UI 采样相位跳(6 个预设、两种架构):都报 1 次、位置 = 注入点 − warmup(±2)、BER 与不注入同量级。
 - 指纹:只有 `NRZ 32G static` 时域行变(本就不通,0.4998 → 0.4933,前 ~3000 符号对在 +4 UI);其余逐位同,另加 `x.cycle_slips` 0。
 - `extras["decisions"]` 仍是接收机原样输出,级联端到端不重排 —— 记入 pitfalls 与 `光互联建模.md`。
-- 验证:ruff 干净;jit 715 passed / 2 skipped;nojit 本文件 15 passed / 2 skipped。CI / Android totals 待补。
+- 验证:ruff 干净;jit 715 passed / 2 skipped;nojit 本文件 15 passed / 2 skipped。CI(11a5ff4)测试矩阵、lint、import-clean、
+  rtl-lockstep、vendor-drift 全绿;Android CI(b5953e2,run 37239822113,含全部代码改动):
+  `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-04 · 统计引擎计入 ADC 量化噪声(fix/stat-adc-noise,原 ROADMAP 4b)
 
