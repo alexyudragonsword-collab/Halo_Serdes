@@ -674,7 +674,7 @@ rx:
   mlsd: {kind: viterbi, memory: 2}
 pr:
   target: [1.0, 0.75]      # (1.0,) = delta(默认,逐位等于不设);只支持 1 + aD,a ∈ [0, 1]
-  at: rx                   # tx(发端 PR)是 ROADMAP P3 #8 阶段 3,现在抛 NotImplementedError
+  at: rx                   # rx:收端 FFE 整形;tx:发端在 FFE 与 DAC 之前整形(见下)
 precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 个合成电平再 mod N,不传播
 ```
 
@@ -688,3 +688,11 @@ precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 �
   的逐符号判决不传播。
 
 示例 `examples/36_pr_rx_alpha.py`:a ∈ {0, 0.25, 0.5, 0.75, 1} × 三个损耗,以及 reach 扫描(对照 a = 0 + Viterbi)。
+
+**发端 PR(`at: tx`)**:`TxPipeline.pr_filter` 在电平之后、FFE 与 DAC 之前做 (x_k + a·x_{k−1}) / (1 + a)。除以 1 + a 让合成信号的
+峰值等于不整形时的峰值 —— DAC 与驱动器的满量程不变,多出来的电平从电平间距里出。收端用同一个 1 + aD 目标检测
+(FFE 起始解、LMS、Viterbi 光标与收端 PR 相同);收端的主光标在不含 PR 的脉冲上定位(a = 1 时整形脉冲有两个等高光标)。
+
+线性链路、噪声在收端时,发端整形不改变收端 FFE 要反演的东西(信道,一直到 delta),所以拿不到收端 PR 省下的噪声放大;
+峰值受限时还要再付最多 20·log10(1 + a)。示例 `examples/37_pr_tx_vs_rx.py` 三方同台(无 PR / 收端 / 发端):发端 PR 的 reach ≈ 无 PR − 20·log10(1 + a),收端 PR 多 4.7 dB。
+

@@ -22,14 +22,22 @@ from halo_serdes.engine import run_time_link
 from halo_serdes.engine.statistical import run_statistical
 
 
+# Engine-level runs of 60k-600k symbols take 2-6 minutes each through the
+# pure-Python kernel. They check the PR model, not the fallback, so they run
+# where numba does; with HALO_NO_JIT=1 the kernel's own equivalence is
+# test_numba_kernel_matches_python_with_pr's job.
+needs_jit = pytest.mark.skipif(adc_rx is _adc_rx_py,
+                               reason="engine-level PR run; minutes through the pure-Python kernel")
+
+
 # ------------------------------------------------------------ configuration
 
 def test_config_limits():
     adc = RxConfig(arch="adc_dsp")
     assert not LinkConfig().pr.active and LinkConfig().pr.alpha == 0.0
     assert LinkConfig(rx=adc, pr=PrConfig(target=(1.0, 0.5))).pr.alpha == 0.5
-    with pytest.raises(NotImplementedError, match="P3 #8"):
-        PrConfig(target=(1.0, 0.5), at="tx")
+    assert PrConfig(target=(1.0, 0.5), at="tx").at_tx
+    assert not PrConfig(target=(1.0,), at="tx").at_tx            # nothing to shape
     for bad in ((0.9, 0.5), (1.0, 0.5, 0.2), (1.0, 1.5), ()):
         with pytest.raises(ValueError):
             PrConfig(target=bad)
@@ -219,6 +227,7 @@ def test_mm_cdr_holds_its_phase_under_a_pr_target(alpha, precode):
     assert abs(ph1 - ph0) < 0.05, (ph0, ph1)
 
 
+@needs_jit
 @pytest.mark.parametrize("alpha", [0.5, 1.0])
 def test_invariant3_with_a_pr_target(alpha):
     """LTI + AWGN + receive PR + Viterbi: statistical (union bound over the
@@ -236,6 +245,7 @@ def test_invariant3_with_a_pr_target(alpha):
     assert 0.5 < ratio < 2.0, (alpha, st.ber, mc.ber.ber, ratio)
 
 
+@needs_jit
 def test_pr_helps_on_a_lossy_channel_and_costs_nothing_on_a_short_one():
     """Direction only (example 36 has the numbers): at -33 dB the best alpha
     is above 0 and beats the delta target + MLSD; at -23 dB no alpha is
@@ -247,3 +257,81 @@ def test_pr_helps_on_a_lossy_channel_and_costs_nothing_on_a_short_one():
     assert deep[0.5] < 0.2 * deep[0.0], deep
     short = {a: ber(0.15, a) for a in (0.0, 0.5)}
     assert short[0.5].n_errors <= short[0.0].n_errors + 10, (short[0.0].n_errors, short[0.5].n_errors)
+
+
+# ------------------------------------------------------------ transmit side
+
+def _tx_pr(cfg, alpha, swing=None, ideal_adc=False):
+    cfg = dataclasses.replace(cfg, pr=PrConfig(target=(1.0, alpha), at="tx"))
+    if swing is not None:
+        cfg = dataclasses.replace(cfg, tx=dataclasses.replace(cfg.tx, swing=swing))
+    if ideal_adc:
+        cfg = dataclasses.replace(cfg, rx=dataclasses.replace(
+            cfg.rx, adc=dataclasses.replace(cfg.rx.adc, n_bits=12, enob=None, fullscale=1.2)))
+    return cfg
+
+
+@pytest.mark.parametrize("alpha", [0.5, 1.0])
+def test_tx_pr_filter_is_peak_normalised_and_in_the_symbol_response(alpha):
+    """(x_k + a x_{k-1}) / (1 + a): the composite peak is the unshaped one,
+    the DC gain is unchanged, and the receivers' pulse analysis sees it."""
+    from halo_serdes.tx.pipeline import TxPipeline
+
+    cfg = _tx_pr(_link(0.15, alpha, n_sym=1000), alpha)
+    pipe, plain = TxPipeline.from_config(cfg), TxPipeline.from_config(_link(0.15, 0.0, n_sym=1000))
+    x = np.random.default_rng(1).integers(0, 4, 400)
+    lv = pipe.levels(x)
+    shaped = pipe.pr_filter(lv)
+    assert np.allclose(shaped[1:], (lv[1:] + alpha * lv[:-1]) / (1 + alpha))
+    assert np.abs(shaped).max() <= np.abs(lv).max() + 1e-12
+    resp, ref = pipe.equivalent_symbol_response(), plain.equivalent_symbol_response()
+    assert resp.sum() == pytest.approx(ref.sum())                 # sum(pr_taps) = 1
+    assert np.array_equal(pipe.equivalent_symbol_response(shaping=False), ref)
+    assert pipe.symbol_response_lead() == plain.symbol_response_lead()
+    # receive-side PR leaves the Tx untouched
+    rx_pipe = TxPipeline.from_config(_link(0.15, alpha, n_sym=1000))
+    assert rx_pipe.pr_taps is None and np.array_equal(rx_pipe.pr_filter(lv), lv)
+
+
+@needs_jit
+@pytest.mark.parametrize("alpha", [0.5, 1.0])
+def test_tx_pr_is_rx_pr_moved_plus_its_peak_cost(alpha):
+    """Linear chain, noise at the receiver: shaping in the Tx does not change
+    what the receive FFE must invert (the channel, down to a delta), so
+    without the peak limit (swing x (1 + a)) it lands within ~2.5 dB of the
+    receive-side target; peak-normalised it loses up to 20 log10(1 + a) more
+    (all of it where the slicer SNR is noise-limited)."""
+    rx = _link(0.24, alpha, n_sym=60_000, enob=None)
+    rx = dataclasses.replace(rx, rx=dataclasses.replace(
+        rx.rx, adc=dataclasses.replace(rx.rx.adc, n_bits=12, fullscale=1.2)))
+    snr_rx = run_time_link(rx).slicer_snr_db
+    snr_free = run_time_link(_tx_pr(rx, alpha, swing=1.0 + alpha)).slicer_snr_db
+    snr_peak = run_time_link(_tx_pr(rx, alpha)).slicer_snr_db
+    assert 0.0 <= snr_rx - snr_free < 3.0, (snr_rx, snr_free)
+    # at most the full 20 log10(1 + a): residual ISI does not shrink with the swing
+    cost = 20 * np.log10(1 + alpha)
+    assert cost - 1.5 < snr_free - snr_peak < cost + 0.5, (snr_free, snr_peak)
+
+
+def test_tx_pr_main_cursor_is_the_symbols_own():
+    """At a = 1 the shaped pulse has two equal cursors and its peak can be the
+    a x_{k-1} one; the receiver locates x_k on the unshaped pulse. Located by
+    argmax this link reads 1.5e-2, located on the unshaped pulse 3.7e-3."""
+    res = run_time_link(_tx_pr(_link(0.20, 1.0, n_sym=40_000, precode=True), 1.0))
+    assert res.ber.ber < 7e-3, res.summary()
+
+
+@needs_jit
+def test_invariant3_with_a_tx_pr_target():
+    """Precoded duobinary from the Tx, Viterbi at the receiver: statistical
+    within 2x of the time engine. (a = 0.5 from the Tx is 2.5-2.9x
+    pessimistic: with lag-1 noise correlation -0.67 the alternating error
+    events of every length sit at nearly the same distance and the union
+    bound counts the nested ones several times -- ROADMAP P3 #8.)"""
+    cfg = _tx_pr(_link(0.20, 1.0, n_sym=400_000, noise=0.0022, enob=None, precode=True), 1.0)
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 100, mc.ber.n_errors
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert 0.5 < st.ber / mc.ber.ber < 2.0, (st.ber, mc.ber.ber)
+
