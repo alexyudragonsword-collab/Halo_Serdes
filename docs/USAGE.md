@@ -675,6 +675,9 @@ rx:
 pr:
   target: [1.0, 0.75]      # (1.0,) = delta(默认,逐位等于不设);只支持 1 + aD,a ∈ [0, 1]
   at: rx                   # rx:收端 FFE 整形;tx:发端在 FFE 与 DAC 之前整形(见下)
+  adapt: none              # none:用上面的 a;mmse:按起始脉冲解 MMSE 最优 a(主光标固定为 1);
+                           # lms:从 mmse 的 a 起,与 FFE 一起 LMS 跟踪(只限收端)
+  mu: 2.0e-4               # adapt: lms 的步长(按平均符号功率归一,无量纲)
 precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 个合成电平再 mod N,不传播
 ```
 

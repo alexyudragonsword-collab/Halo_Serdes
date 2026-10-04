@@ -31,7 +31,8 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
                pd_use_ffe: int, loop_latency_blocks: int,
                ref_idx: np.ndarray, train_len: int, adapt_start: int,
                rx_clock_offset_samples: np.ndarray,
-               pr_alpha: float, pr_mode: int, pr_levels: np.ndarray):
+               pr_alpha: float, pr_mode: int, pr_levels: np.ndarray,
+               mu_alpha: float, alpha_out: np.ndarray):
     """Returns (dec, y_slicer, phase, w_ffe_out, w_dfe_out, lane_of, q_codes).
 
     ``rx_clock_offset_samples[k]`` is the receiver sampling clock's own error
@@ -52,11 +53,21 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
     pulse h(+1) = alpha and the detector's gradient fades as alpha grows (the
     loop walked off 0.4-3 UI at alpha 0.75-1), on the residual it is a delta
     pulse again. ``pr_mode`` 0 is the delta target, bit for bit.
+
+    ``mu_alpha`` > 0 adapts the controlled cursor with the FFE (``pr_mode``
+    1 only; the composite slicer assumes a = 1): the same error, the gradient
+    taken in a, normalised by the mean symbol power and clipped to [0, 1].
+    ``alpha_out[0]`` returns the a the run ended on.
     """
     nl = levels.size
     nf = w_ffe.size
     nd = w_dfe.size
     nt = 2 if pr_mode > 0 else 1        # cursors the target accounts for
+    a_pr = pr_alpha
+    p_sym = 0.0
+    for m in range(nl):
+        p_sym += levels[m] * levels[m]
+    p_sym = p_sym / nl
     wf = w_ffe.copy()
     wd = w_dfe.copy()
 
@@ -121,7 +132,7 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
             prev = 0.0
             if pr_mode > 0 and s >= 1:
                 prev = levels[xl[s - 1]]
-            r_sl[s] = v - pr_alpha * prev
+            r_sl[s] = v - a_pr * prev
             q = 0
             if pr_mode == 2:
                 bd = abs(v - pr_levels[0])
@@ -133,7 +144,7 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
                 best = q - (dec[s - 1] if s >= 1 else 0)
                 best = best % nl
             else:
-                u = v - pr_alpha * prev
+                u = v - a_pr * prev
                 best = 0
                 bd = abs(u - levels[0])
                 for m in range(1, nl):
@@ -164,7 +175,13 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
                 elif pr_mode == 2 and not training:
                     e = v - pr_levels[q]
                 else:
-                    e = v - (levels[xl[s]] + pr_alpha * prev)
+                    e = v - (levels[xl[s]] + a_pr * prev)
+                    if mu_alpha > 0.0 and pr_mode == 1 and p_sym > 0.0:
+                        a_pr += mu_alpha * e * prev / p_sym
+                        if a_pr < 0.0:
+                            a_pr = 0.0
+                        elif a_pr > 1.0:
+                            a_pr = 1.0
                 if mu_ffe > 0.0:
                     for i in range(nf):
                         j = k - i
@@ -213,6 +230,7 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
 
         pos += osr + corr_now / n_lanes
 
+    alpha_out[0] = a_pr
     return (dec[:n_symbols], y_sl[:n_symbols], phase[:n_symbols], wf, wd,
             lane_of[:n_symbols], q_hist[:n_symbols])
 

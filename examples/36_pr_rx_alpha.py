@@ -18,6 +18,9 @@ Viterbi, ENOB 6.5, 1.5 mV receiver noise):
 3. a = 1 with and without 1/(1+D) precoding: the per-symbol decisions the
    LMS and CDR use propagate errors without it; the BER after Viterbi is
    what the precoding changes.
+4. a chosen by the receiver (``pr.adapt = "lms"``): the monic MMSE target of
+   the start-up pulse, then tracked by LMS with the FFE -- does it land
+   where the best fixed a of part 2 is?
 
 Pass ``--quick`` for a smoke run (fewer symbols, half the sweep).
 """
@@ -61,7 +64,7 @@ if QUICK:
 
 
 def make_cfg(length_m: float, alpha: float, precode: bool = False,
-             n_sym: int = N_SYM) -> LinkConfig:
+             n_sym: int = N_SYM, adapt: str = "none") -> LinkConfig:
     """Example 18's 21-tap receiver, a memory-2 Viterbi detector, and the
     receive target ``(1, alpha)`` (``alpha`` 0 is the delta target)."""
     return LinkConfig(
@@ -79,7 +82,7 @@ def make_cfg(length_m: float, alpha: float, precode: bool = False,
                     cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
                     noise_rms=0.0015),
         sim=SimConfig(n_symbols=n_sym, seed=3, pattern="prbs13q"),
-        pr=PrConfig(target=(1.0,) if alpha == 0.0 else (1.0, alpha)),
+        pr=PrConfig(target=(1.0,) if alpha == 0.0 else (1.0, alpha), adapt=adapt),
     )
 
 
@@ -145,11 +148,25 @@ L_pc = LOSS_LENGTHS[1]
 b_plain, b_pre = run(L_pc, 1.0, False), run(L_pc, 1.0, True)
 print(f"\na = 1 at {loss_db(L_pc):.1f} dB: plain {b_plain:.2e}, precoded {b_pre:.2e}")
 
+# ------------------------------------------------- 4. a chosen by the receiver --
+print("\nreceiver-chosen a (pr.adapt = 'lms': MMSE start, LMS-tracked):")
+ber_ad, a_ad = [], []
+for x, L in zip(il, LENGTHS):
+    res = run_time_link(make_cfg(L, a_best, adapt="lms"))
+    ber_ad.append(max(res.ber.ber, 0.5 / res.ber.n_checked))
+    a_ad.append(res.extras["pr_alpha"])
+    print(f"  {x:4.1f} dB  a {a_ad[-1][0]:.3f} -> {a_ad[-1][1]:.3f}  BER {ber_ad[-1]:8.1e}")
+ber_ad = np.array(ber_ad)
+reach_ad = reach_db(ber_ad)
+print(f"  reach {reach_ad:6.2f} dB  ({reach_ad - reach[a_best]:+.2f} dB vs the best fixed a = {a_best:g})")
+
 # direction, as measured (cairn/DSP发端与PR.md has the numbers): on the
-# deepest loss some a > 0 beats the delta target, and the best a buys reach
+# deepest loss some a > 0 beats the delta target, the best a buys reach, and
+# the receiver-chosen a gets within half a dB of the best fixed one
 deep = part1[LOSS_LENGTHS[-1]]
 assert deep[1:].min() < deep[0], deep
 assert reach[a_best] > reach[0.0], reach
+assert reach_ad > reach[a_best] - 0.5, (reach_ad, reach[a_best])
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
@@ -164,6 +181,7 @@ ax.grid(True, which="both", alpha=0.3)
 ax = axes[1]
 for a in ALPHAS:
     ax.semilogy(il, sweep[a], "o-" if a else "s--k", label=f"a = {a:g}" + (" (control)" if a == 0 else ""))
+ax.semilogy(il, ber_ad, "^:k", label="a chosen by the receiver (MMSE + LMS)")
 ax.axhline(P_STAR, color="r", ls="--", lw=1)
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="pre-FEC BER after Viterbi",
        title=f"reach: control {reach[0.0]:.1f} dB, a = {a_best:g} {reach[a_best]:.1f} dB")

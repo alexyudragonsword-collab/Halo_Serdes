@@ -551,9 +551,18 @@ class PrConfig:
     DAC, scaled by 1 / (1 + a) so the Tx peak swing stays what it was (the
     DAC and driver range is the constraint, and the extra levels come out of
     it); the receiver then detects the same 1 + aD target. Targets longer
-    than 1 + aD are out of scope (the trellis grows as N^L)."""
+    than 1 + aD are out of scope (the trellis grows as N^L).
+
+    ``adapt`` chooses a instead of taking the configured one (receive side
+    only): ``"mmse"`` solves the start-up pulse for the a that minimises the
+    FFE's mean-square error with the main cursor held at 1 and keeps it;
+    ``"lms"`` starts there and adapts a with the FFE, step ``mu``
+    (dimensionless: normalised by the mean symbol power). Both minimise the
+    same cost, so LMS tracks what the start-up solve predicted."""
     target: tuple[float, ...] = (1.0,)
     at: Literal["rx", "tx"] = "rx"
+    adapt: Literal["none", "mmse", "lms"] = "none"
+    mu: float = 2e-4
 
     def __post_init__(self):
         _require_in(self.at, {"rx", "tx"}, "pr.at")
@@ -564,6 +573,11 @@ class PrConfig:
         if len(self.target) == 2:
             _require(0.0 <= self.target[1] <= 1.0,
                      f"pr.target alpha must be in [0, 1], got {self.target[1]}")
+        _require_in(self.adapt, {"none", "mmse", "lms"}, "pr.adapt")
+        _require(self.adapt == "none" or (len(self.target) == 2 and self.at == "rx"),
+                 f"pr.adapt={self.adapt!r} chooses a receive-side alpha: it needs "
+                 f"pr.target=(1.0, alpha) and pr.at='rx', got {self.target!r}, at={self.at!r}")
+        _require(self.mu > 0.0, f"pr.mu must be > 0, got {self.mu}")
 
     @property
     def active(self) -> bool:

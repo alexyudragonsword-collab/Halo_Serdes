@@ -384,7 +384,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     """
     from ..afe.adc import TiAdc
     from ..cdr.adc_kernel import adc_rx
-    from ..dsp import mmse_ffe
+    from ..dsp import mmse_ffe, mmse_pr_alpha
     from ..dsp.ffe import equalized_cursors
 
     rng = np.random.default_rng(cfg.sim.seed)
@@ -447,7 +447,17 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak_rx)
     n_taps = fcfg.n_pre + 1 + fcfg.n_post
     pr = cfg.pr
-    target = pr.target if pr.active else None
+    alpha = pr.alpha
+    if pr.active and pr.adapt != "none":
+        # the monic MMSE target for this pulse, against the noise the FFE
+        # sees: the receiver's and the ADC's (ENOB, or bare quantisation)
+        acfg = cfg.rx.adc
+        bits = acfg.enob if acfg.enob is not None else acfg.n_bits
+        adc_var = acfg.fullscale ** 2 / 12.0 * 2.0 ** (-2.0 * bits)
+        alpha = mmse_pr_alpha(cursors, n_pre_c, n_taps, fcfg.n_pre,
+                              noise_var=cfg.rx.noise_rms ** 2 + adc_var,
+                              symbol_power=float(np.mean(_levels(cfg) ** 2)))
+    target = (1.0, alpha) if pr.active else None
     n_t = len(pr.target)
     w_ffe0 = mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
                       noise_var=cfg.rx.noise_rms ** 2, target=target)
@@ -469,7 +479,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "which costs what the target saved -- set rx.mlsd.kind", stacklevel=2)
         # precoded 1 + D slices the composite levels and stops error
         # propagation; any other alpha subtracts it from the previous decision
-        pr_mode = 2 if (cfg.precode and pr.alpha == 1.0) else 1
+        pr_mode = 2 if (cfg.precode and alpha == 1.0 and pr.adapt == "none") else 1
         if pr_mode == 2:
             n_lv = levels.size
             pr_levels = np.array([np.mean([levels[i] + levels[q - i]
@@ -499,6 +509,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     # the receiver's own clock, drawn last so an ideal clock changes nothing
     rx_clk = rx_clock_offsets_samples(n_sym, cfg, rng)
+    mu_a = pr.mu if (pr.active and pr.adapt == "lms") else 0.0
+    alpha_out = np.array([alpha], dtype=np.float64)
 
     dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = adc_rx(
         rx_y, osr, float(peak), n_sym, levels.astype(np.float64),
@@ -509,7 +521,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         float(kp), float(ki), float(clamp), pd_offset,
         1 if cfg.mm_pd_input == "ffe" else 0, lat_blocks,
         sched.reference, int(train_end), int(settle), rx_clk,
-        float(pr.alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64))
+        float(alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64),
+        float(mu_a), alpha_out)
 
     # The FFE emits symbol k - n_pre at ADC sample k, so the kernel's last
     # n_pre decisions were never made (they hold the array's initial 0). They
@@ -530,7 +543,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # score() undoes the precoder first: the slicer decided line symbols
     sc = score(cfg, dec=dec, dec_slicer=dec_slicer, y_slicer=y_sl,
                levels=levels, line_idx=ref_idx, user_idx=user_idx,
-               n_run=n_run, warmup=warm, pr_alpha=pr.alpha)
+               n_run=n_run, warmup=warm, pr_alpha=float(alpha_out[0]))
     dec_c, ref_c = sc.decisions, sc.reference
 
     # per-lane SER (TI mismatch diagnostics)
@@ -554,4 +567,6 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 # baseline the MLSD gain is measured against
                 "ser_slicer": sc.ser_slicer,
                 "precode": cfg.precode,
+                # (start, end) of the controlled cursor a: equal unless pr.adapt is "lms"
+                "pr_alpha": (alpha, float(alpha_out[0])) if pr.active else None,
                 "decisions": sc.decisions})

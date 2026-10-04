@@ -286,6 +286,8 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
     ("pr", "Partial response (adc_dsp)", [
         _f("pr.target", "Rx PR target [1, alpha]", "tuple_float"),
         _f("pr.at", "Shaped at", "enum", options=["rx", "tx"]),
+        _f("pr.adapt", "Choose alpha", "enum", options=["none", "mmse", "lms"]),
+        _f("pr.mu", "Alpha LMS step", "float"),
     ]),
     ("cdr", "CDR", [
         _f("rx.cdr.kind", "Kind", "enum",
