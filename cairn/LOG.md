@@ -9,6 +9,7 @@
 - 示例 36 第 4 部分:起始 a 0.60(27 dB)→ 0.76(39 dB),LMS 只动 < 0.01;reach 36.32 dB vs 固定 a 最优 36.33 dB —— 不用扫 a。
 - 测试:闭式解对暴力扫描 1e-3 内;内核从 a = 0.3 起找到真值 0.7(±0.03);numba == python(含 a 输出);引擎上 mmse / lms 与最优固定 a 同 BER;配置限制。
 - 专题 `DSP发端与PR.md` §9,USAGE §18,ROADMAP P3 #8 划掉 a 自适应。
+- 验证:adapt 关时指纹逐位同 main(488 + 44 值,内核步长 0 逐位同前);ruff 干净;jit 679 passed / 2 skipped。
 
 ## 2026-10-04 · PR 统计引擎扣掉相邻误差事件的重叠(fix/pr-event-overlap,原 ROADMAP P3 #8 缺口)
 
