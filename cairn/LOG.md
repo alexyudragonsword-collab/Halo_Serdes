@@ -10,6 +10,8 @@
 - 测试:闭式解对暴力扫描 1e-3 内;内核从 a = 0.3 起找到真值 0.7(±0.03);numba == python(含 a 输出);引擎上 mmse / lms 与最优固定 a 同 BER;配置限制。
 - 专题 `DSP发端与PR.md` §9,USAGE §18,ROADMAP P3 #8 划掉 a 自适应。
 - 验证:adapt 关时指纹逐位同 main(488 + 44 值,内核步长 0 逐位同前);ruff 干净;jit 679 passed / 2 skipped。
+- CI(6adee96)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿;Android CI(9b13c98,run 37187817962,含全部代码改动):
+  `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-04 · PR 统计引擎扣掉相邻误差事件的重叠(fix/pr-event-overlap,原 ROADMAP P3 #8 缺口)
 
