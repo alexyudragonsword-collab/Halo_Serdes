@@ -99,29 +99,43 @@ def mmse_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
     return w
 
 
-def mmse_pr_alpha(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
-                  noise_var: float = 0.0, symbol_power: float = 1.0) -> float:
-    """The a in [0, 1] of a 1 + aD target that minimises the FFE's mean-square
-    error, main cursor held at 1 (the monic MMSE target).
+def mmse_pr_target(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
+                   noise_var: float = 0.0, symbol_power: float = 1.0,
+                   n_target: int = 2) -> tuple[float, ...]:
+    """The monic target (1, a[, b]) that minimises the FFE's mean-square
+    error, main cursor held at 1; a clipped to [0, 1] (to [0, 2] with b, the
+    EPR4 family 1 + 2D + D^2 included), b to [-1, 1].
 
-    With the FFE optimal for each target d = e0 + a e1, the residual is
-    J(a) = d' Q d, Q = P I - P^2 M (P M'M + s2 I)^-1 M' (P the symbol power,
-    s2 the noise variance): a quadratic in a, minimised at
-    a = -(e1' Q e0) / (e1' Q e1). It costs one solve, the same one as
-    ``mmse_ffe``, and is what an LMS adapting a with the FFE converges to.
+    With the FFE optimal for each target d, the residual is
+    J(d) = d' Q d, Q = P I - P^2 M (P M'M + s2 I)^-1 M' (P the symbol power,
+    s2 the noise variance), a quadratic form; with d[0] = 1 fixed its minimum
+    over the tail t solves Q_tt t = -Q_t0. One solve, the same one as
+    ``mmse_ffe``, and the point an LMS adapting the tail with the FFE
+    converges to.
     """
     M = _conv_matrix(cursors, n_taps)
     A = symbol_power * (M.T @ M) + noise_var * np.eye(n_taps)
     m0 = c_pre + tap_pre
-    if m0 + 1 >= M.shape[0]:
-        return 0.0
-    # Q e for the two unit vectors only: columns m0 and m0 + 1
-    rows = M[[m0, m0 + 1], :]
-    sol = np.linalg.solve(A, rows.T)                     # A^-1 M' e
-    q = symbol_power * np.eye(2) - symbol_power ** 2 * (rows @ sol)
-    if q[1, 1] <= 0.0:
-        return 0.0
-    return float(np.clip(-q[0, 1] / q[1, 1], 0.0, 1.0))
+    n = min(n_target, M.shape[0] - m0)
+    if n < 2:
+        return (1.0,)
+    rows = M[m0:m0 + n, :]
+    q = symbol_power * np.eye(n) - symbol_power ** 2 * (rows @ np.linalg.solve(A, rows.T))
+    try:
+        tail = np.linalg.solve(q[1:, 1:], -q[1:, 0])
+    except np.linalg.LinAlgError:
+        return (1.0,) + (0.0,) * (n - 1)
+    lo = np.array([0.0, -1.0])[: n - 1]
+    hi = np.array([1.0, 1.0] if n == 2 else [2.0, 1.0])[: n - 1]
+    return (1.0,) + tuple(float(x) for x in np.clip(tail, lo, hi))
+
+
+def mmse_pr_alpha(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
+                  noise_var: float = 0.0, symbol_power: float = 1.0) -> float:
+    """The a in [0, 1] of the monic MMSE 1 + aD target (``mmse_pr_target``
+    with two cursors)."""
+    t = mmse_pr_target(cursors, c_pre, n_taps, tap_pre, noise_var, symbol_power, 2)
+    return t[1] if len(t) > 1 else 0.0
 
 
 def apply_ffe(y_baud: np.ndarray, w: np.ndarray, tap_pre: int) -> np.ndarray:

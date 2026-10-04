@@ -135,7 +135,7 @@ class Score:
 def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
           y_slicer: np.ndarray, levels: np.ndarray, line_idx: np.ndarray,
           user_idx: np.ndarray, n_run: int, warmup: int,
-          pr_alpha: float = 0.0) -> Score:
+          pr_alpha: float = 0.0, pr_beta: float = 0.0) -> Score:
     """Score one receiver's decisions.
 
     Parameters
@@ -163,6 +163,8 @@ def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
         A receive-side 1 + aD target: the slicer input is then expected to
         carry ``pr_alpha`` times the previous symbol too, and SNR is taken
         against that composite.
+    pr_beta
+        The second controlled cursor of a 1 + aD + bD^2 target, likewise.
     """
     dec_c = user_decisions(cfg, dec)[warmup:n_run]
     ref_c = user_idx[warmup:n_run]
@@ -186,11 +188,12 @@ def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
     from ..analysis.metrics import slicer_snr_db
 
     ideal = levels[line_idx[warmup:n_run]]
-    if pr_alpha:
-        prev = line_idx[max(warmup - 1, 0):n_run - 1]
-        if warmup == 0:
-            prev = np.concatenate([[line_idx[0]], prev])
-        ideal = ideal + pr_alpha * levels[prev]
+    for lag, c in ((1, pr_alpha), (2, pr_beta)):
+        if c:
+            prev = line_idx[max(warmup - lag, 0):n_run - lag]
+            if warmup < lag:
+                prev = np.concatenate([np.full(lag - warmup, line_idx[0]), prev])
+            ideal = ideal + c * levels[prev]
     snr_db = slicer_snr_db(y_slicer[warmup:n_run], ideal)
 
     ser_slicer = float(np.mean(

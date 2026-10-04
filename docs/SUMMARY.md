@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**679 项测试**、双引擎(时域 + StatEye 统计)、38 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **679 tests**, dual engines (time-domain + StatEye), 38 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**692 项测试**、双引擎(时域 + StatEye 统计)、39 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **692 tests**, dual engines (time-domain + StatEye), 39 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -136,6 +136,7 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 | **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+5.3 dB** | ADC 功耗 / power |
 | **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.8 dB** | 开销 6%→24% / overhead |
 | **收端 PR 整形**(FFE 均衡到 1+0.75D,Viterbi 解受控光标)/ RX partial response | **+4.7 dB** | Viterbi 网格(N² 状态)/ trellis |
+| **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.0 dB** | 网格 ×4(256 状态)/ trellis ×4 |
 
 - **MLSD 只拿回短 FFE 留下的 ISI**(示例 18):21 抽头 LMS FFE 收敛到 MMSE,残余光标 < 0.002,MLSD memory-2 在每个损耗都是 1.0×;
   3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 从 −28.8 dB 起拿回 1.9×、−33.3 dB 处 4.4× —— 但 3 抽头 + MLSD 仍不如 21 抽头 FFE 单独用。
@@ -272,4 +273,4 @@ tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 679 项测试 · 双引擎 · 38 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 692 项测试 · 双引擎 · 39 个实验脚本*

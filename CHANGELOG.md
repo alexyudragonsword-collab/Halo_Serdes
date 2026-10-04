@@ -6,6 +6,13 @@
 
 ---
 
+## [未发布] — 第二个受控光标:1 + aD + bD²
+
+### 新增
+- `pr.target = (1.0, a, b)`(a ∈ [0, 2]、b ∈ [−1, 1]);内核 `pr_beta`、`pr_nt`;`dsp.ffe.mmse_pr_target`(`adapt="mmse"` 联合解 a、b);
+  统计引擎同号误差事件族(b < 0);`extras["pr_target"]`。
+- 示例 `38_pr_three_cursor.py`:无 PR 31.6 dB、MMSE 1 + aD 36.3 dB、MMSE 1 + aD + bD² **38.6 dB**。
+
 ## [未发布] — PR 目标的 a 由收端选(`pr.adapt`)
 
 ### 新增

@@ -48,8 +48,10 @@ class TxPipeline:
         tx = cfg.tx
         self.fir_taps = np.asarray(tx.fir_taps, dtype=np.float64)
         self.fir_n_pre = int(tx.fir_n_pre)
-        a = cfg.pr.alpha if cfg.pr.at_tx else 0.0
-        self.pr_taps = np.array([1.0, a]) / (1.0 + a) if a > 0.0 else None
+        t = np.asarray(cfg.pr.target, dtype=np.float64) if cfg.pr.at_tx else np.ones(1)
+        # 1/sum|t| keeps the composite peak at the unshaped one (for 1 + aD,
+        # a >= 0, that is the 1/(1 + a) of before)
+        self.pr_taps = t / np.abs(t).sum() if np.any(t[1:] != 0.0) else None
         self.dac_model = dac
         self.driver_nl = driver_nl
         self.stats = {"dac_clipped": 0}
@@ -94,13 +96,15 @@ class TxPipeline:
         return symbols_to_voltages(symbols, self.cfg)
 
     def pr_filter(self, v: np.ndarray) -> np.ndarray:
-        """Transmit-side 1 + aD shaping, (v[k] + a v[k-1]) / (1 + a); identity
-        unless ``pr.at == "tx"`` with a > 0. Causal: the first symbol has no
-        predecessor (the sequence starts from 0)."""
+        """Transmit-side shaping by the target over its absolute sum,
+        (v[k] + a v[k-1] [+ b v[k-2]]) / (1 + |a| [+ |b|]); identity unless
+        ``pr.at == "tx"`` with a controlled cursor. Causal: the first symbols
+        have no predecessors (the sequence starts from 0)."""
         if self.pr_taps is None:
             return v
         out = v * self.pr_taps[0]
-        out[1:] += self.pr_taps[1] * v[:-1]
+        for lag in range(1, self.pr_taps.size):
+            out[lag:] += self.pr_taps[lag] * v[:-lag]
         return out
 
     def _symbol_taps(self, shaping: bool = True) -> tuple[np.ndarray, int] | None:

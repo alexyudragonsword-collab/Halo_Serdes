@@ -550,8 +550,13 @@ class PrConfig:
     ``at="tx"`` shapes in the transmitter instead, before the FFE and the
     DAC, scaled by 1 / (1 + a) so the Tx peak swing stays what it was (the
     DAC and driver range is the constraint, and the extra levels come out of
-    it); the receiver then detects the same 1 + aD target. Targets longer
-    than 1 + aD are out of scope (the trellis grows as N^L).
+    it); the receiver then detects the same 1 + aD target.
+
+    ``(1.0, a, b)`` is the 1 + aD + bD^2 family (a in [0, 2], b in [-1, 1];
+    EPR4, 1 + 2D + D^2, is the edge):
+    the sequence detector's trellis grows by a factor N, the per-symbol
+    decision subtracts both controlled cursors. Longer targets are out of
+    scope (the trellis grows as N^L).
 
     ``adapt`` chooses a instead of taking the configured one (receive side
     only): ``"mmse"`` solves the start-up pulse for the a that minimises the
@@ -566,17 +571,22 @@ class PrConfig:
 
     def __post_init__(self):
         _require_in(self.at, {"rx", "tx"}, "pr.at")
-        _require(len(self.target) in (1, 2),
-                 f"pr.target must be (1.0,) or (1.0, alpha), got {self.target!r}")
+        _require(len(self.target) in (1, 2, 3),
+                 f"pr.target must be (1.0,), (1.0, a) or (1.0, a, b), got {self.target!r}")
         _require(self.target[0] == 1.0,
                  f"pr.target[0] must be 1.0 (the main cursor), got {self.target[0]}")
         if len(self.target) == 2:
             _require(0.0 <= self.target[1] <= 1.0,
                      f"pr.target alpha must be in [0, 1], got {self.target[1]}")
+        if len(self.target) == 3:
+            _require(0.0 <= self.target[1] <= 2.0 and -1.0 <= self.target[2] <= 1.0,
+                     f"pr.target (1.0, a, b) needs a in [0, 2], b in [-1, 1], got {self.target!r}")
         _require_in(self.adapt, {"none", "mmse", "lms"}, "pr.adapt")
-        _require(self.adapt == "none" or (len(self.target) == 2 and self.at == "rx"),
-                 f"pr.adapt={self.adapt!r} chooses a receive-side alpha: it needs "
-                 f"pr.target=(1.0, alpha) and pr.at='rx', got {self.target!r}, at={self.at!r}")
+        _require(self.adapt == "none" or (len(self.target) >= 2 and self.at == "rx"),
+                 f"pr.adapt={self.adapt!r} chooses a receive-side target: it needs "
+                 f"pr.target=(1.0, a[, b]) and pr.at='rx', got {self.target!r}, at={self.at!r}")
+        _require(self.adapt != "lms" or len(self.target) == 2,
+                 "pr.adapt='lms' tracks a 1 + aD target only; use 'mmse' for (1.0, a, b)")
         _require(self.mu > 0.0, f"pr.mu must be > 0, got {self.mu}")
 
     @property
@@ -590,6 +600,10 @@ class PrConfig:
     @property
     def alpha(self) -> float:
         return float(self.target[1]) if self.active else 0.0
+
+    @property
+    def beta(self) -> float:
+        return float(self.target[2]) if len(self.target) == 3 else 0.0
 
 
 @dataclass(frozen=True)

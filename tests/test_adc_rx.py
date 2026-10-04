@@ -69,7 +69,7 @@ def _run_kernel(y, n_sym, kernel=adc_rx, n_lanes=4, kp_shift=6, ki_shift=13,
                   np.asarray(w_ffe, float), n_pre, mu_f,
                   np.zeros(n_dfe), mu_d,
                   OSR * 2.0 ** (-kp_shift), OSR * 2.0 ** (-ki_shift), 0.0, 0.0,
-                  0, 0, ref, 0, 0, np.zeros(n_sym), 0.0, 0, np.zeros(1), 0.0, np.zeros(1))
+                  0, 0, ref, 0, 0, np.zeros(n_sym), 0.0, 0, np.zeros(1), 0.0, np.zeros(1), 0.0, 1)
 
 
 def test_kernel_decides_clean_nrz():

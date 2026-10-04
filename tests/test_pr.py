@@ -38,7 +38,8 @@ def test_config_limits():
     assert LinkConfig(rx=adc, pr=PrConfig(target=(1.0, 0.5))).pr.alpha == 0.5
     assert PrConfig(target=(1.0, 0.5), at="tx").at_tx
     assert not PrConfig(target=(1.0,), at="tx").at_tx            # nothing to shape
-    for bad in ((0.9, 0.5), (1.0, 0.5, 0.2), (1.0, 1.5), ()):
+    assert PrConfig(target=(1.0, 0.5, -0.2)).beta == -0.2
+    for bad in ((0.9, 0.5), (1.0, 0.5, 0.2, 0.1), (1.0, 0.5, 1.5), (1.0, 1.5), ()):
         with pytest.raises(ValueError):
             PrConfig(target=bad)
     with pytest.raises(ValueError, match="mixed_signal"):
@@ -132,7 +133,7 @@ def _kernel_on_composites(user, alpha, precode, sigma, seed=3, osr=16):
     dec, *_ = adc_rx(y, osr, 4.0 * osr + osr / 2, n_sym, levels, 4, np.zeros(4), np.ones(4),
                      np.zeros(4), 6.0 / 4096, 2047, np.zeros(n_sym + 8), np.array([1.0]), 0, 0.0,
                      np.zeros(0), 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, ref, 50, 50, np.zeros(n_sym),
-                     float(alpha), mode, comp if mode == 2 else np.zeros(1), 0.0, np.zeros(1))
+                     float(alpha), mode, comp if mode == 2 else np.zeros(1), 0.0, np.zeros(1), 0.0, 2)
     out = unprecode_1plusd(dec, n_lv) if precode else dec
     return out, user[: out.size]
 
@@ -180,7 +181,7 @@ def test_numba_kernel_matches_python_with_pr(mode_args):
             np.array([0.0, 0.2, -0.1, 0.05]), 2.0 / 4096, 2047, np.zeros(n_sym + 8),
             np.array([0.02, 1.0, -0.05]), 1, 1e-4, np.array([0.05]), 1e-4,
             osr / 128, osr / 8192, 0.0, 0.0, 1, 0, ref, 500, 200, np.zeros(n_sym),
-            float(alpha), mode, pr_levels, 0.0, np.zeros(1))
+            float(alpha), mode, pr_levels, 0.0, np.zeros(1), 0.0, 2)
     a, b = adc_rx(*args), _adc_rx_py(*args)
     for x, z in zip(a, b):
         np.testing.assert_allclose(np.asarray(x, dtype=float), np.asarray(z, dtype=float),
@@ -381,7 +382,7 @@ def _adapting_kernel(alpha_true, alpha0, mu_alpha, n_sym=20_000, osr=8):
     args = (y, osr, 4.0 * osr + osr / 2, n_sym, levels, 4, np.zeros(4), np.ones(4),
             np.zeros(4), 6.0 / 4096, 2047, np.zeros(n_sym + 8), np.array([1.0]), 0, 1e-6,
             np.zeros(0), 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, ref, 400, 100, np.zeros(n_sym),
-            float(alpha0), 1, np.zeros(1), float(mu_alpha), a_out)
+            float(alpha0), 1, np.zeros(1), float(mu_alpha), a_out, 0.0, 2)
     return args, a_out
 
 
@@ -424,7 +425,122 @@ def test_adapted_alpha_lands_where_the_best_fixed_one_is():
 def test_adapt_config_limits():
     adc = RxConfig(arch="adc_dsp")
     assert LinkConfig(rx=adc, pr=PrConfig(target=(1.0, 0.5), adapt="lms")).pr.adapt == "lms"
+    assert PrConfig(target=(1.0, 0.5, 0.0), adapt="mmse").adapt == "mmse"
     for kw in (dict(target=(1.0,), adapt="mmse"), dict(target=(1.0, 0.5), at="tx", adapt="lms"),
-               dict(target=(1.0, 0.5), adapt="rls"), dict(target=(1.0, 0.5), adapt="lms", mu=0.0)):
+               dict(target=(1.0, 0.5), adapt="rls"), dict(target=(1.0, 0.5), adapt="lms", mu=0.0),
+               dict(target=(1.0, 0.5, 0.2), adapt="lms")):
         with pytest.raises(ValueError):
             PrConfig(**kw)
+
+
+# ------------------------------------------------------------ 1 + aD + bD^2
+
+def test_mmse_target_with_two_controlled_cursors_is_the_residual_minimum():
+    from halo_serdes.dsp.ffe import _conv_matrix, mmse_pr_target
+
+    c = np.array([0.04, 1.0, 0.62, 0.31, 0.14, 0.06, 0.02])
+    c_pre, n_taps, tap_pre, s2, ps = 1, 11, 3, 4e-3, 5 / 9
+    M = _conv_matrix(c, n_taps)
+
+    def mse(a, b):
+        d = np.zeros(M.shape[0])
+        d[c_pre + tap_pre: c_pre + tap_pre + 3] = (1.0, a, b)
+        w = np.linalg.solve(ps * M.T @ M + s2 * np.eye(n_taps), ps * M.T @ d)
+        r = M @ w - d
+        return ps * r @ r + s2 * w @ w
+
+    aa, bb = np.meshgrid(np.linspace(0.0, 2.0, 201), np.linspace(-1.0, 1.0, 201))
+    j = np.vectorize(mse)(aa, bb)
+    k = np.unravel_index(np.argmin(j), j.shape)
+    t = mmse_pr_target(c, c_pre, n_taps, tap_pre, noise_var=s2, symbol_power=ps, n_target=3)
+    assert t[1] == pytest.approx(aa[k], abs=0.011) and t[2] == pytest.approx(bb[k], abs=0.011)
+    # the two-cursor answer is the one-cursor solver's
+    from halo_serdes.dsp.ffe import mmse_pr_alpha
+    assert mmse_pr_target(c, c_pre, n_taps, tap_pre, s2, ps, 2)[1] == mmse_pr_alpha(c, c_pre, n_taps, tap_pre, s2, ps)
+
+
+@pytest.mark.parametrize("target", [(1.0, 1.0, 0.4), (1.0, 0.75, -0.2)])
+def test_zf_ffe_equalises_to_a_three_cursor_target(target):
+    c = np.array([0.05, 1.0, 0.45, 0.2, 0.08, 0.03])
+    w = zf_ffe(c, 1, 17, 4, target=target)
+    eq, pre = equalized_cursors(c, w, 1, 4)
+    shaped = eq / eq[pre]
+    assert shaped[pre + 1: pre + 3] == pytest.approx(target[1:], abs=0.01)
+    resid, _ = equalized_cursors(c, w, 1, 4, target=target)
+    assert np.max(np.abs(resid[pre - 4: pre + 12])) < 0.01 * abs(eq[pre])
+
+
+def _three_cursor_kernel(target, sigma, n_sym=6_000, osr=8):
+    levels = np.array([-1.0, -1 / 3, 1 / 3, 1.0])
+    user = np.random.default_rng(9).integers(0, 4, n_sym + 8)
+    lv = levels[user]
+    v = lv + target[1] * np.concatenate([[0.0], lv[:-1]]) + target[2] * np.concatenate([[0.0, 0.0], lv[:-2]])
+    v = v + np.random.default_rng(10).normal(scale=sigma, size=v.size)
+    y = np.concatenate([np.zeros(4 * osr), np.repeat(v, osr), np.zeros(4 * osr)])
+    ref = np.full(n_sym, -1, dtype=np.int64)
+    ref[:50] = user[:50]
+    args = (y, osr, 4.0 * osr + osr / 2, n_sym, levels, 4, np.zeros(4), np.ones(4),
+            np.zeros(4), 8.0 / 4096, 2047, np.zeros(n_sym + 8), np.array([1.0]), 0, 0.0,
+            np.zeros(0), 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, ref, 50, 50, np.zeros(n_sym),
+            float(target[1]), 1, np.zeros(1), 0.0, np.zeros(1), float(target[2]), 3)
+    return args, user[:n_sym]
+
+
+@pytest.mark.parametrize("target", [(1.0, 1.0, 0.4), (1.0, 0.75, -0.2), (1.0, 2.0, 1.0)])
+def test_kernel_decides_a_noiseless_three_cursor_composite(target):
+    """Both controlled cursors are subtracted before slicing: a clean
+    composite decides every symbol right."""
+    args, user = _three_cursor_kernel(target, 0.0)
+    dec = adc_rx(*args)[0]
+    assert np.array_equal(dec[60:-10], user[60:dec.size - 10])
+
+
+def test_numba_kernel_matches_python_with_a_three_cursor_target():
+    if adc_rx is _adc_rx_py:
+        pytest.skip("numba not active")
+    args, _ = _three_cursor_kernel((1.0, 1.0, 0.4), 0.05)
+    for x, z in zip(adc_rx(*args), _adc_rx_py(*args)):
+        np.testing.assert_allclose(np.asarray(x, dtype=float), np.asarray(z, dtype=float),
+                                   rtol=0, atol=1e-12)
+
+
+def test_tx_shaping_by_a_three_cursor_target_keeps_the_peak():
+    from halo_serdes.tx.pipeline import TxPipeline
+
+    cfg = _link(0.15, 0.5, n_sym=1000)
+    cfg = dataclasses.replace(cfg, pr=PrConfig(target=(1.0, 0.5, -0.25), at="tx"))
+    pipe = TxPipeline.from_config(cfg)
+    lv = pipe.levels(np.random.default_rng(1).integers(0, 4, 500))
+    shaped = pipe.pr_filter(lv)
+    assert np.allclose(shaped[2:], (lv[2:] + 0.5 * lv[1:-1] - 0.25 * lv[:-2]) / 1.75)
+    assert np.abs(shaped).max() <= np.abs(lv).max() + 1e-12
+
+
+@needs_jit
+@pytest.mark.parametrize("target,noise", [((1.0, 1.0, 0.4), 0.0022), ((1.0, 0.75, -0.2), 0.0022)])
+def test_invariant3_with_a_three_cursor_target(target, noise):
+    """1 + aD + bD^2, Viterbi over [1, a, b, r...]: statistical within 2x of
+    the time engine (b < 0 brings in the same-sign error events too)."""
+    cfg = dataclasses.replace(_link(0.26, 0.5, n_sym=500_000, noise=noise, enob=None),
+                              pr=PrConfig(target=target))
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 100, mc.ber.n_errors
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert 0.5 < st.ber / mc.ber.ber < 2.0, (target, st.ber, mc.ber.ber)
+
+
+@needs_jit
+def test_a_second_controlled_cursor_buys_ber_on_a_long_channel():
+    """Example 36's channel at -36 dB, both targets chosen by the MMSE solve:
+    the three-cursor one leaves the FFE less to invert (measured 2.4e-4 ->
+    1.8e-5 at 400k symbols)."""
+    def ber(target):
+        cfg = _link(0.24, 0.75, n_sym=200_000)
+        cfg = dataclasses.replace(cfg, pr=PrConfig(target=target, adapt="mmse"))
+        res = run_time_link(cfg)
+        return res.ber.ber, res.extras["pr_target"]
+    b2, t2 = ber((1.0, 0.75))
+    b3, t3 = ber((1.0, 0.75, 0.0))
+    assert len(t3) == 3 and t3[2] > 0.2, t3
+    assert b3 < 0.3 * b2, (b2, b3, t2, t3)

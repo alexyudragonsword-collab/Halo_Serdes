@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-04 · 第二个受控光标 1 + aD + bD²(feat/pr-longer-target,叠在 feat/pr-alpha-adapt 上)
+
+- `pr.target=(1.0, a, b)`:内核减两个受控光标(判决、残差、LMS),DFE 从第三光标后起;Viterbi [1, a, b, r…];`mmse_pr_target` 联合解;
+  统计引擎 b < 0 时加同号事件族;发端除以 Σ|target|。
+- 示例 38:31.6(无 PR)/ 36.3(1 + aD)/ **38.6 dB**(1 + aD + bD²);MMSE 目标 (0.77, 0.28) → (1.17, 0.51),比 EPR4 平。
+- 统计 / 时域 1.15–1.54×。专题 `DSP发端与PR.md` §10,USAGE §18,ROADMAP P3 #8 余项改写。
+- 验证:1 + aD 与无 PR 时指纹逐位同 feat/pr-alpha-adapt(488 + 44 值);ruff 干净;jit 692 passed / 2 skipped(首跑 2 项失败:
+  config 测试仍把 (1, 0.5, 0.25) 当非法、USAGE 注释里 `[-1, 1](EPR4…)` 被当成链接,改后 92/92)。
+- CI(61160c9)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿(f72ed5a 上的 2 项失败即上面两项,5803d0b 已修);
+  Android CI(f72ed5a,run 37188794340,含全部代码改动):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
+
 ## 2026-10-04 · PR 目标的 a 由收端选(feat/pr-alpha-adapt,原 ROADMAP P3 #8 余项)
 
 - `pr.adapt`:`mmse` 闭式解单位主光标 MMSE 目标的 a(`mmse_pr_alpha`,残差对 a 二次);`lms` 从此起步、在内核里与 FFE 同误差更新 a。

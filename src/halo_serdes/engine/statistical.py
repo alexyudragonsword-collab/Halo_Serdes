@@ -178,7 +178,8 @@ def _bvn_upper(a: float, b: float, r: float) -> float:
 
 def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
                     precoded: bool, max_len: int = 12,
-                    snr: float | None = None) -> list[tuple[float, float]]:
+                    snr: float | None = None,
+                    families: tuple[str, ...] = ("alternating",)) -> list[tuple[float, float]]:
     """(distance gain, weight) per error event of a sequence detector on a
     partial-response target, for a union bound.
 
@@ -208,6 +209,11 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     bivariate normal of the two events' statistics -- the chain form of
     Hunter's bound, still an upper bound on the union, at the SNR given
     (the ISI around it is left out of the overlap).
+
+    ``families`` adds ``"constant"`` (+1, +1, ...): with a negative
+    controlled cursor (1 + aD + bD^2, b < 0) a run of same-sign errors is
+    pulled close by it, where for a non-negative target it lies far.
+    Each family is chained on its own.
     """
     h = np.asarray(cursors, dtype=float)
     rho = np.asarray(noise_acf, dtype=float) / float(noise_acf[0])
@@ -216,9 +222,15 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     r_mat = np.where(np.abs(lag[:, None] - lag[None, :]) < rho.size,
                      rho[np.minimum(np.abs(lag[:, None] - lag[None, :]), rho.size - 1)], 0.0)
     out = []
+    pairs = [(fam, n) for fam in families for n in range(1, max_len + 1)
+             if not (fam == "constant" and n == 1)]       # L = 1 is the same event
     prev = None                         # (d padded, sqrt(d' R d), g) of length L - 1
-    for n in range(1, max_len + 1):
-        e = np.where(np.arange(n) % 2 == 0, 1.0, -1.0)
+    first = None                        # the single error both families start from
+    for fam, n in pairs:
+        if fam == "constant" and n == 2:
+            prev = first
+        e = (np.where(np.arange(n) % 2 == 0, 1.0, -1.0) if fam == "alternating"
+             else np.ones(n))
         d = np.zeros(size)
         d[: n + h.size - 1] = np.convolve(e, h)
         sd = float(np.sqrt(max(d @ r_mat @ d, 1e-300)))
@@ -237,6 +249,8 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
                 w *= max(1.0 - _bvn_upper(g * snr, prev[2] * snr, min(corr, 1.0)) / p_l, 0.0)
         out.append((g, w))
         prev = (d, sd, g)
+        if n == 1:
+            first = prev
     return out
 
 
@@ -337,10 +351,11 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     peak = int(np.argmax(np.abs(pulse.y)))
     pr_active = cfg.pr.active
-    if pr_active and peak >= osr and abs(pulse.y[peak - osr]) >= 0.5 * abs(pulse.y[peak]):
-        # equalised to [1, a] the pulse has two comparable cursors (equal at
-        # a = 1) and nothing before them: the main one is the earlier
-        peak -= osr
+    for _ in range(len(cfg.pr.target) - 1 if pr_active else 0):
+        # equalised to [1, a(, b)] the pulse has comparable cursors (equal at
+        # a = 1) and nothing before them: the main one is the earliest
+        if peak >= osr and abs(pulse.y[peak - osr]) >= 0.5 * abs(pulse.y[peak]):
+            peak -= osr
     n_dfe = cfg.rx.dfe.n_taps
     n_t = len(cfg.pr.target)
     mlsd_mem = cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none" else 0
@@ -384,9 +399,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # decision subtracts it like an ideal DFE tap)
         head = [1.0]
         if pr_active:
-            head.append(isi[n_pre] / main if main else 0.0)
             isi = isi.copy()
-            isi[n_pre] = 0.0
+            for j in range(n_t - 1):
+                head.append(isi[n_pre + j] / main if main else 0.0)
+                isi[n_pre + j] = 0.0
         # ideal DFE removes the n_dfe postcursors after the target
         if n_dfe > 0:
             isi_list = list(isi)
@@ -425,7 +441,9 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             half_gap = 0.5 * abs(main) * float(np.min(np.diff(np.sort(levels_norm))))
             events = pr_error_events(np.concatenate([head, np.asarray(res)]), noise_acf,
                                      n_levels, cfg.precode,
-                                     snr=half_gap / noise_sigma if noise_sigma > 0 else None)
+                                     snr=half_gap / noise_sigma if noise_sigma > 0 else None,
+                                     families=(("alternating", "constant") if cfg.pr.beta < 0.0
+                                               else ("alternating",)))
 
         if pattern_sigma is not None:
             # the binned neighbours leave the random ISI and become a shift
