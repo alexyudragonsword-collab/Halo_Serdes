@@ -9,6 +9,8 @@
 - 示例 38:LMS 38.58 dB vs MMSE 38.63 dB。坑:reach 外(42.4 dB)错判把 (a, b) 拉偏,BER 4.9e-2 vs 固定 8.0e-3 —— 记入专题 §10。
 - 测试:内核从 (0.5, 0) 找到 (1.0, 0.4)(±0.04);numba == python(含 a、b);引擎上 lms 与 mmse 目标差 < 0.05、BER 同。
 - 验证:指纹逐位同 main(488 + 44 值);ruff 干净;jit 695 passed / 2 skipped。
+- CI(71263f2)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿;Android CI(f65ddf3,run 37195017468,含全部代码改动):
+  `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-04 · 第二个受控光标 1 + aD + bD²(feat/pr-longer-target,叠在 feat/pr-alpha-adapt 上)
 
