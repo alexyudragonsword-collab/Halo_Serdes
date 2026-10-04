@@ -6,6 +6,15 @@
 
 ---
 
+## [未发布] — 统计引擎计入 ADC 量化噪声(原 ROADMAP 4b)
+
+### 修复
+- `rx.arch="adc_dsp"` 时统计引擎把 ADC 噪声 σ = fullscale/√12 · 2^(−ENOB)(无 ENOB 或 ENOB ≥ n_bits 时用 n_bits)与
+  `rx.noise_rms` 按功率相加,再走 FFE 噪声放大(`engine.statistical.adc_noise_sigma`)。此前只有时域建了它:ENOB 5 的链路
+  统计 0、时域 1.46e-4;修后统计 / 时域 0.91(ENOB 5)、0.94(ENOB 6.5)。
+- 变化只在 ADC 架构的统计结果:预设指纹 `noise_sigma` +2.4–3.5 mV、SER 变动 ≤ 0.004;示例 31 统计 BER 由 5.8e-16 量级升到
+  9.5e-6(时域 2.8e-5)。mixed-signal 与全部时域结果逐位不变。
+
 ## [未发布] — 三光标目标的 LMS 跟踪
 
 ### 新增
