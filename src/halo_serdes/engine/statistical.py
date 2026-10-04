@@ -14,6 +14,9 @@ of the three reference libraries has.
 Non-LTI approximations (each cross-checked against the time engine):
 - DFE: ideal cancellation of the covered postcursors (weights assumed exact);
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
+- ADC receiver: the ADC's noise, fullscale^2/12 * 2^(-2 ENOB) (bare
+  quantisation without an ENOB), joins the receiver noise at the FFE input
+  (``adc_noise_sigma``); clipping and TI lane mismatch are not modelled;
 - sampling jitter: BER(phi) smeared with the RJ Gaussian on the phase axis;
 - receive-side partial response (``cfg.pr``): the controlled cursor (the
   first postcursor of the FFE-shaped pulse, whatever it is at each phase)
@@ -263,6 +266,16 @@ def gaussian_kernel(sigma: float, dv: float, n_sigma: float = 8.0) -> np.ndarray
     return k / k.sum()
 
 
+def adc_noise_sigma(cfg: LinkConfig) -> float:
+    """RMS noise of the ADC at its input [V]: the n-bit quantiser's
+    step^2 / 12, plus the excess that ``afe.adc.TiAdc`` adds to realise the
+    configured ENOB, which together are fullscale^2 / 12 * 2^(-2 ENOB). Clipping
+    and lane mismatch are not in it."""
+    acfg = cfg.rx.adc
+    bits = acfg.enob if acfg.enob is not None and acfg.enob < acfg.n_bits else acfg.n_bits
+    return float(acfg.fullscale / np.sqrt(12.0) * 2.0 ** (-bits))
+
+
 def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> float:
     """sigma at the slicer of a white per-UI error of ``sigma_q`` added at the
     DAC output: sqrt(sum_k p_k^2) sigma_q with p_k the symbol response from the
@@ -334,6 +347,11 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     if tx_resp is not None:
         h = np.convolve(h, tx_resp)
     noise_sigma = cfg.rx.noise_rms
+    if cfg.rx.arch == "adc_dsp":
+        # the ADC's own noise, white per sample like the receiver's and at the
+        # same node (the FFE input): quantisation, plus the excess that
+        # brings it to the configured ENOB -- fs^2/12 * 2^(-2 ENOB) in all
+        noise_sigma = float(np.hypot(noise_sigma, adc_noise_sigma(cfg)))
     h_pre_ffe = h
     if ffe_taps is not None and len(ffe_taps) > 1:
         h = np.convolve(h, upsampled_taps(ffe_taps, osr))

@@ -262,3 +262,36 @@ def test_mixed_signal_cross_check_within_2x(mod, length_m, noise, n_dfe):
     stat = run_statistical(cfg, channel=cm)
     ratio = stat.ber / mc.ber.ber
     assert 0.5 < ratio < 2.0, (mod, length_m, noise, n_dfe, stat.ber, mc.ber.ber, ratio)
+
+
+@pytest.mark.parametrize("enob,length_m", [(5.0, 0.15), (6.5, 0.22), (8.0, 0.28)])
+def test_adc_noise_is_in_the_statistical_engine(enob, length_m):
+    """ADC receiver with 0.5 mV of receiver noise, so the ADC's own noise
+    (fullscale^2/12 * 2^(-2 ENOB)) carries the BER: statistical within 2x of
+    the time engine. Without it the statistical engine read 0 at ENOB 5,
+    where the time engine counts 1.5e-4."""
+    from halo_serdes.engine.statistical import adc_noise_sigma
+
+    cfg = _adc_link_for_noise(length_m, enob)
+    assert adc_noise_sigma(cfg) == pytest.approx(0.6 / np.sqrt(12) * 2.0 ** -enob)
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 30, mc.ber.n_errors
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert 0.5 < st.ber / mc.ber.ber < 2.0, (enob, st.ber, mc.ber.ber)
+
+
+def _adc_link_for_noise(length_m, enob):
+    from halo_serdes.config.schema import AdcConfig, CdrConfig, CtleConfig, FfeConfig, RxConfig
+
+    return LinkConfig(
+        modulation="pam4", symbol_rate=112e9, osr=16,
+        channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=5.0, r_skin=2.0e-3,
+                              loss_tangent=0.012, n_freq=8192),
+        tx=TxConfig(swing=1.0, fir_taps=(-0.06, 1.0, -0.12), fir_n_pre=1),
+        rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=6.0),
+                    adc=AdcConfig(n_bits=10, n_lanes=16, enob=enob, fullscale=0.6),
+                    ffe=FfeConfig(n_pre=6, n_post=14, adapt="lms", mu=3e-5),
+                    cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
+                    noise_rms=0.0005),
+        sim=SimConfig(n_symbols=400_000, seed=3, pattern="prbs13q"))
