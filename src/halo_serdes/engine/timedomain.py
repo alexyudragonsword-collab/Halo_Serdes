@@ -384,7 +384,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     """
     from ..afe.adc import TiAdc
     from ..cdr.adc_kernel import adc_rx
-    from ..dsp import mmse_ffe, mmse_pr_alpha
+    from ..dsp import mmse_ffe, mmse_pr_target
     from ..dsp.ffe import equalized_cursors
 
     rng = np.random.default_rng(cfg.sim.seed)
@@ -447,18 +447,20 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak_rx)
     n_taps = fcfg.n_pre + 1 + fcfg.n_post
     pr = cfg.pr
-    alpha = pr.alpha
+    n_t = len(pr.target)
+    target = tuple(pr.target) if pr.active else None
     if pr.active and pr.adapt != "none":
         # the monic MMSE target for this pulse, against the noise the FFE
         # sees: the receiver's and the ADC's (ENOB, or bare quantisation)
         acfg = cfg.rx.adc
         bits = acfg.enob if acfg.enob is not None else acfg.n_bits
         adc_var = acfg.fullscale ** 2 / 12.0 * 2.0 ** (-2.0 * bits)
-        alpha = mmse_pr_alpha(cursors, n_pre_c, n_taps, fcfg.n_pre,
-                              noise_var=cfg.rx.noise_rms ** 2 + adc_var,
-                              symbol_power=float(np.mean(_levels(cfg) ** 2)))
-    target = (1.0, alpha) if pr.active else None
-    n_t = len(pr.target)
+        target = mmse_pr_target(cursors, n_pre_c, n_taps, fcfg.n_pre,
+                                noise_var=cfg.rx.noise_rms ** 2 + adc_var,
+                                symbol_power=float(np.mean(_levels(cfg) ** 2)), n_target=n_t)
+        target = target + (0.0,) * (n_t - len(target))
+    alpha = target[1] if pr.active else 0.0
+    beta = target[2] if (pr.active and n_t == 3) else 0.0
     w_ffe0 = mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
                       noise_var=cfg.rx.noise_rms ** 2, target=target)
     eq_cursors, eq_pre = equalized_cursors(cursors, w_ffe0, n_pre_c, fcfg.n_pre)
@@ -479,7 +481,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "which costs what the target saved -- set rx.mlsd.kind", stacklevel=2)
         # precoded 1 + D slices the composite levels and stops error
         # propagation; any other alpha subtracts it from the previous decision
-        pr_mode = 2 if (cfg.precode and alpha == 1.0 and pr.adapt == "none") else 1
+        pr_mode = 2 if (cfg.precode and n_t == 2 and alpha == 1.0 and pr.adapt == "none") else 1
         if pr_mode == 2:
             n_lv = levels.size
             pr_levels = np.array([np.mean([levels[i] + levels[q - i]
@@ -522,7 +524,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         1 if cfg.mm_pd_input == "ffe" else 0, lat_blocks,
         sched.reference, int(train_end), int(settle), rx_clk,
         float(alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64),
-        float(mu_a), alpha_out)
+        float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1))
 
     # The FFE emits symbol k - n_pre at ADC sample k, so the kernel's last
     # n_pre decisions were never made (they hold the array's initial 0). They
@@ -534,7 +536,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     resid_ratios = _residual_ratios(eq_final, eq_pre_f, n_dfe,
                                     cfg.rx.mlsd.memory, n_t)
     # the trellis takes the controlled cursor as the FFE actually shaped it
-    head = (np.array([1.0, eq_final[eq_pre_f + 1] / eq_final[eq_pre_f]])
+    head = (eq_final[eq_pre_f: eq_pre_f + n_t] / eq_final[eq_pre_f]
             if pr.active else None)
     dec_slicer = dec
     dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios, head)
@@ -543,7 +545,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # score() undoes the precoder first: the slicer decided line symbols
     sc = score(cfg, dec=dec, dec_slicer=dec_slicer, y_slicer=y_sl,
                levels=levels, line_idx=ref_idx, user_idx=user_idx,
-               n_run=n_run, warmup=warm, pr_alpha=float(alpha_out[0]))
+               n_run=n_run, warmup=warm, pr_alpha=float(alpha_out[0]), pr_beta=beta)
     dec_c, ref_c = sc.decisions, sc.reference
 
     # per-lane SER (TI mismatch diagnostics)
@@ -569,4 +571,6 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "precode": cfg.precode,
                 # (start, end) of the controlled cursor a: equal unless pr.adapt is "lms"
                 "pr_alpha": (alpha, float(alpha_out[0])) if pr.active else None,
+                "pr_target": (1.0, float(alpha_out[0])) + ((beta,) if n_t == 3 else ())
+                if pr.active else None,
                 "decisions": sc.decisions})
