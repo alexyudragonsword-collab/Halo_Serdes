@@ -426,9 +426,9 @@ def test_adapt_config_limits():
     adc = RxConfig(arch="adc_dsp")
     assert LinkConfig(rx=adc, pr=PrConfig(target=(1.0, 0.5), adapt="lms")).pr.adapt == "lms"
     assert PrConfig(target=(1.0, 0.5, 0.0), adapt="mmse").adapt == "mmse"
+    assert PrConfig(target=(1.0, 0.5, 0.0), adapt="lms").adapt == "lms"
     for kw in (dict(target=(1.0,), adapt="mmse"), dict(target=(1.0, 0.5), at="tx", adapt="lms"),
-               dict(target=(1.0, 0.5), adapt="rls"), dict(target=(1.0, 0.5), adapt="lms", mu=0.0),
-               dict(target=(1.0, 0.5, 0.2), adapt="lms")):
+               dict(target=(1.0, 0.5), adapt="rls"), dict(target=(1.0, 0.5), adapt="lms", mu=0.0)):
         with pytest.raises(ValueError):
             PrConfig(**kw)
 
@@ -544,3 +544,48 @@ def test_a_second_controlled_cursor_buys_ber_on_a_long_channel():
     b3, t3 = ber((1.0, 0.75, 0.0))
     assert len(t3) == 3 and t3[2] > 0.2, t3
     assert b3 < 0.3 * b2, (b2, b3, t2, t3)
+
+
+def test_lms_finds_both_controlled_cursors_from_a_wrong_start():
+    """Three-cursor target: a and b adapted with the same error, each against
+    its own past decision, from (0.5, 0.0) to the true (1.0, 0.4)."""
+    args, _ = _three_cursor_kernel((1.0, 1.0, 0.4), 0.03, n_sym=30_000)
+    args = list(args)
+    args[14] = 1e-6                                  # mu_ffe > 0: the LMS block runs
+    args[27], args[30], args[32] = 0.5, 2e-3, 0.0    # start a, mu_alpha, start b
+    out = np.zeros(2)
+    args[31] = out
+    adc_rx(*args)
+    assert out[0] == pytest.approx(1.0, abs=0.04) and out[1] == pytest.approx(0.4, abs=0.04), out
+
+
+@needs_jit
+def test_lms_three_cursor_target_tracks_the_mmse_start():
+    """Example 36's channel at -36 dB: LMS on (a, b) starts at the MMSE target
+    and stays near it; the BER is the MMSE target's."""
+    def run(mode):
+        cfg = _link(0.24, 0.75, n_sym=200_000)
+        cfg = dataclasses.replace(cfg, pr=PrConfig(target=(1.0, 0.75, 0.0), adapt=mode))
+        return run_time_link(cfg)
+    fixed, tracked = run("mmse"), run("lms")
+    t0, t1 = fixed.extras["pr_target"], tracked.extras["pr_target"]
+    assert abs(t1[1] - t0[1]) < 0.05 and abs(t1[2] - t0[2]) < 0.05, (t0, t1)
+    assert tracked.ber.ber < 1.5 * fixed.ber.ber + 2e-5, (tracked.ber.ber, fixed.ber.ber)
+
+
+
+def test_numba_kernel_matches_python_adapting_both_cursors():
+    if adc_rx is _adc_rx_py:
+        pytest.skip("numba not active")
+    outs = []
+    for fn in (adc_rx, _adc_rx_py):
+        args, _ = _three_cursor_kernel((1.0, 1.0, 0.4), 0.05)
+        args = list(args)
+        args[14], args[27], args[30], args[32] = 1e-6, 0.5, 2e-3, 0.0
+        args[31] = np.zeros(2)
+        res = fn(*args)
+        outs.append((res, args[31].copy()))
+    for x, z in zip(outs[0][0], outs[1][0]):
+        np.testing.assert_allclose(np.asarray(x, dtype=float), np.asarray(z, dtype=float),
+                                   rtol=0, atol=1e-12)
+    np.testing.assert_allclose(outs[0][1], outs[1][1], rtol=0, atol=1e-12)

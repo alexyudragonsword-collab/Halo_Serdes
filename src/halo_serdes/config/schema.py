@@ -562,8 +562,9 @@ class PrConfig:
     only): ``"mmse"`` solves the start-up pulse for the a that minimises the
     FFE's mean-square error with the main cursor held at 1 and keeps it;
     ``"lms"`` starts there and adapts a with the FFE, step ``mu``
-    (dimensionless: normalised by the mean symbol power). Both minimise the
-    same cost, so LMS tracks what the start-up solve predicted."""
+    (dimensionless: normalised by the mean symbol power), b too for a
+    three-cursor target. Both minimise the same cost, so LMS tracks what the
+    start-up solve predicted."""
     target: tuple[float, ...] = (1.0,)
     at: Literal["rx", "tx"] = "rx"
     adapt: Literal["none", "mmse", "lms"] = "none"
@@ -585,8 +586,6 @@ class PrConfig:
         _require(self.adapt == "none" or (len(self.target) >= 2 and self.at == "rx"),
                  f"pr.adapt={self.adapt!r} chooses a receive-side target: it needs "
                  f"pr.target=(1.0, a[, b]) and pr.at='rx', got {self.target!r}, at={self.at!r}")
-        _require(self.adapt != "lms" or len(self.target) == 2,
-                 "pr.adapt='lms' tracks a 1 + aD target only; use 'mmse' for (1.0, a, b)")
         _require(self.mu > 0.0, f"pr.mu must be > 0, got {self.mu}")
 
     @property

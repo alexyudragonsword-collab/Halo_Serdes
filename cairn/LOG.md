@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-04 · 三光标目标的 LMS 跟踪(feat/pr-lms-three-cursor)
+
+- 内核对 b 与 a 同误差更新(b 对 x₋₂ 求梯度,功率归一,a ∈ [0, 2]、b ∈ [−1, 1]);配置不再拒绝 lms + 三光标。1 + aD 逐位同前。
+- 示例 38:LMS 38.58 dB vs MMSE 38.63 dB。坑:reach 外(42.4 dB)错判把 (a, b) 拉偏,BER 4.9e-2 vs 固定 8.0e-3 —— 记入专题 §10。
+- 测试:内核从 (0.5, 0) 找到 (1.0, 0.4)(±0.04);numba == python(含 a、b);引擎上 lms 与 mmse 目标差 < 0.05、BER 同。
+- 验证:指纹逐位同 main(488 + 44 值);ruff 干净;jit 695 passed / 2 skipped。
+- CI(71263f2)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿;Android CI(f65ddf3,run 37195017468,含全部代码改动):
+  `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
+
 ## 2026-10-04 · 第二个受控光标 1 + aD + bD²(feat/pr-longer-target,叠在 feat/pr-alpha-adapt 上)
 
 - `pr.target=(1.0, a, b)`:内核减两个受控光标(判决、残差、LMS),DFE 从第三光标后起;Viterbi [1, a, b, r…];`mmse_pr_target` 联合解;

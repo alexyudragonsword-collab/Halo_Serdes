@@ -8,7 +8,8 @@ bigger (memory 2 behind the target: 256 states for PAM4).
 
 Both targets are the receiver's own choice (``pr.adapt = "mmse"``: the monic
 target that minimises the FFE's mean-square error for the start-up pulse),
-so the comparison is not of hand-picked numbers. Same receiver as examples
+so the comparison is not of hand-picked numbers; the last row lets LMS track
+(a, b) from that start with the FFE. Same receiver as examples
 18 / 36 (21-tap LMS FFE, MM-CDR, memory-2 Viterbi, ENOB 6.5, 1.5 mV):
 
   control  -- delta target + Viterbi
@@ -54,7 +55,8 @@ if QUICK:
 
 CASES = {"control (delta + Viterbi)": PrConfig(),
          "1 + aD (MMSE a)": PrConfig(target=(1.0, 0.5), adapt="mmse"),
-         "1 + aD + bD^2 (MMSE a, b)": PrConfig(target=(1.0, 0.5, 0.0), adapt="mmse")}
+         "1 + aD + bD^2 (MMSE a, b)": PrConfig(target=(1.0, 0.5, 0.0), adapt="mmse"),
+         "1 + aD + bD^2 (LMS-tracked)": PrConfig(target=(1.0, 0.5, 0.0), adapt="lms")}
 
 
 def make_cfg(length_m: float, pr: PrConfig, n_sym: int = N_SYM) -> LinkConfig:
@@ -122,10 +124,11 @@ for name, v in reach.items():
 # direction, as measured (cairn/DSP发端与PR.md §10 has the numbers)
 names = list(CASES)
 assert reach[names[2]] > reach[names[1]] > ctrl, reach
+assert abs(reach[names[3]] - reach[names[2]]) < 0.5, reach
 
 # ------------------------------------------------------------------ plot ---
 fig, ax = plt.subplots(figsize=(7.5, 4.8))
-for name, style in zip(CASES, ("s--k", "o-C0", "^-C3")):
+for name, style in zip(CASES, ("s--k", "o-C0", "^-C3", "v:C2")):
     ax.semilogy(il, sweep[name], style, label=f"{name}: {reach[name]:.1f} dB")
 ax.axhline(P_STAR, color="r", ls="--", lw=1, label=f"KP4 1e-15 ({P_STAR:.1e})")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="pre-FEC BER after Viterbi",
