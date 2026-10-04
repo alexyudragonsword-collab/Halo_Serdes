@@ -132,7 +132,7 @@ def _kernel_on_composites(user, alpha, precode, sigma, seed=3, osr=16):
     dec, *_ = adc_rx(y, osr, 4.0 * osr + osr / 2, n_sym, levels, 4, np.zeros(4), np.ones(4),
                      np.zeros(4), 6.0 / 4096, 2047, np.zeros(n_sym + 8), np.array([1.0]), 0, 0.0,
                      np.zeros(0), 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, ref, 50, 50, np.zeros(n_sym),
-                     float(alpha), mode, comp if mode == 2 else np.zeros(1))
+                     float(alpha), mode, comp if mode == 2 else np.zeros(1), 0.0, np.zeros(1))
     out = unprecode_1plusd(dec, n_lv) if precode else dec
     return out, user[: out.size]
 
@@ -180,7 +180,7 @@ def test_numba_kernel_matches_python_with_pr(mode_args):
             np.array([0.0, 0.2, -0.1, 0.05]), 2.0 / 4096, 2047, np.zeros(n_sym + 8),
             np.array([0.02, 1.0, -0.05]), 1, 1e-4, np.array([0.05]), 1e-4,
             osr / 128, osr / 8192, 0.0, 0.0, 1, 0, ref, 500, 200, np.zeros(n_sym),
-            float(alpha), mode, pr_levels)
+            float(alpha), mode, pr_levels, 0.0, np.zeros(1))
     a, b = adc_rx(*args), _adc_rx_py(*args)
     for x, z in zip(a, b):
         np.testing.assert_allclose(np.asarray(x, dtype=float), np.asarray(z, dtype=float),
@@ -338,3 +338,93 @@ def test_invariant3_with_a_tx_pr_target(alpha):
     st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
     assert 0.5 < st.ber / mc.ber.ber < 2.0, (st.ber, mc.ber.ber)
 
+
+
+# ------------------------------------------------------------ adaptive a
+
+def test_mmse_pr_alpha_is_the_minimum_of_the_ffe_residual():
+    """The closed form against a brute-force scan of the FFE's MSE with the
+    target (1, a), main cursor fixed at 1."""
+    from halo_serdes.dsp.ffe import _conv_matrix, mmse_pr_alpha
+
+    c = np.array([0.04, 1.0, 0.62, 0.31, 0.14, 0.06, 0.02])
+    c_pre, n_taps, tap_pre, s2, ps = 1, 11, 3, 4e-3, 5 / 9
+    M = _conv_matrix(c, n_taps)
+
+    def mse(a):
+        d = np.zeros(M.shape[0])
+        d[c_pre + tap_pre: c_pre + tap_pre + 2] = (1.0, a)
+        w = np.linalg.solve(ps * M.T @ M + s2 * np.eye(n_taps), ps * M.T @ d)
+        r = M @ w - d
+        return ps * r @ r + s2 * w @ w
+
+    grid = np.linspace(0.0, 1.0, 2001)
+    best = grid[int(np.argmin([mse(a) for a in grid]))]
+    a = mmse_pr_alpha(c, c_pre, n_taps, tap_pre, noise_var=s2, symbol_power=ps)
+    assert a == pytest.approx(best, abs=1e-3)
+    assert 0.0 < a < 1.0
+    # an equalised (delta) channel wants no controlled cursor
+    assert mmse_pr_alpha(np.array([0.0, 1.0, 0.0]), 1, 5, 2, noise_var=1e-3) == pytest.approx(0.0, abs=1e-9)
+
+
+def _adapting_kernel(alpha_true, alpha0, mu_alpha, n_sym=20_000, osr=8):
+    """The kernel on a waveform that already is levels[x] + a levels[x-1]
+    (unit FFE, no channel), a started at ``alpha0``."""
+    levels = np.array([-1.0, -1 / 3, 1 / 3, 1.0])
+    user = np.random.default_rng(5).integers(0, 4, n_sym + 8)
+    v = levels[user] + alpha_true * np.concatenate([[0.0], levels[user[:-1]]])
+    v = v + np.random.default_rng(6).normal(scale=0.03, size=v.size)
+    y = np.concatenate([np.zeros(4 * osr), np.repeat(v, osr), np.zeros(4 * osr)])
+    ref = np.full(n_sym, -1, dtype=np.int64)
+    ref[:400] = user[:400]
+    a_out = np.zeros(1)
+    args = (y, osr, 4.0 * osr + osr / 2, n_sym, levels, 4, np.zeros(4), np.ones(4),
+            np.zeros(4), 6.0 / 4096, 2047, np.zeros(n_sym + 8), np.array([1.0]), 0, 1e-6,
+            np.zeros(0), 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, ref, 400, 100, np.zeros(n_sym),
+            float(alpha0), 1, np.zeros(1), float(mu_alpha), a_out)
+    return args, a_out
+
+
+def test_lms_finds_the_controlled_cursor_from_a_wrong_start():
+    args, a_out = _adapting_kernel(0.7, 0.3, 2e-3)
+    adc_rx(*args)
+    assert a_out[0] == pytest.approx(0.7, abs=0.03), a_out[0]
+    args, a_out = _adapting_kernel(0.7, 0.3, 0.0)                 # no step: a stays
+    adc_rx(*args)
+    assert a_out[0] == 0.3
+
+
+def test_numba_kernel_matches_python_while_adapting_a():
+    if adc_rx is _adc_rx_py:
+        pytest.skip("numba not active")
+    args_a, out_a = _adapting_kernel(0.7, 0.3, 2e-3, n_sym=6_000)
+    args_b, out_b = _adapting_kernel(0.7, 0.3, 2e-3, n_sym=6_000)
+    a, b = adc_rx(*args_a), _adc_rx_py(*args_b)
+    for x, z in zip(a, b):
+        np.testing.assert_allclose(np.asarray(x, dtype=float), np.asarray(z, dtype=float),
+                                   rtol=0, atol=1e-12)
+    assert out_a[0] == pytest.approx(out_b[0], abs=1e-12)
+
+
+@needs_jit
+def test_adapted_alpha_lands_where_the_best_fixed_one_is():
+    """Example 36's channel at -36 dB: the MMSE start is within 0.05 of the
+    reach-optimal 0.75, LMS moves it by under 0.02, and the BER is that of
+    the best fixed a."""
+    fixed = run_time_link(_link(0.24, 0.75, n_sym=200_000))
+    for mode in ("mmse", "lms"):
+        cfg = _link(0.24, 0.75, n_sym=200_000)
+        cfg = dataclasses.replace(cfg, pr=PrConfig(target=(1.0, 0.75), adapt=mode))
+        res = run_time_link(cfg)
+        a0, a1 = res.extras["pr_alpha"]
+        assert abs(a0 - 0.75) < 0.05 and abs(a1 - a0) < 0.02, (mode, a0, a1)
+        assert res.ber.ber < 1.5 * fixed.ber.ber + 2e-5, (mode, res.ber.ber, fixed.ber.ber)
+
+
+def test_adapt_config_limits():
+    adc = RxConfig(arch="adc_dsp")
+    assert LinkConfig(rx=adc, pr=PrConfig(target=(1.0, 0.5), adapt="lms")).pr.adapt == "lms"
+    for kw in (dict(target=(1.0,), adapt="mmse"), dict(target=(1.0, 0.5), at="tx", adapt="lms"),
+               dict(target=(1.0, 0.5), adapt="rls"), dict(target=(1.0, 0.5), adapt="lms", mu=0.0)):
+        with pytest.raises(ValueError):
+            PrConfig(**kw)

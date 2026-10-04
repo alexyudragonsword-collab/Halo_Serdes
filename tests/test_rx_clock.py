@@ -150,7 +150,7 @@ def test_ideal_receiver_clock_is_bit_identical_to_the_pre_change_kernels(arch):
                 np.array([0.05, 1.0, -0.2]), 1, 1e-4, np.array([0.3]), 1e-4,
                 osr / 128, osr / 8192, 0.0, 0.0, 0, 1, ref, 0, 100)
         # a delta target (pr_mode 0) is the pre-PR kernel too
-        new, ref_out = _adc_rx_py(*args, zeros, 0.0, 0, np.zeros(1)), old._adc_rx_py(*args)
+        new, ref_out = _adc_rx_py(*args, zeros, 0.0, 0, np.zeros(1), 0.0, np.zeros(1)), old._adc_rx_py(*args)
     assert len(new) == len(ref_out)
     for a, b in zip(new, ref_out):
         assert np.array_equal(np.asarray(a), np.asarray(b))

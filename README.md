@@ -74,7 +74,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 硬件 | `rtl/` | FFE+DFE+slicer 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**(2026-10-03):核心库 ~9.8k 行 / 应用层与 GUI ~4.2k 行 / 测试 ~7.3k 行 / 示例 ~4.4k 行;
-**674 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**679 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
 **38 个编号示例**(`examples/00`–`37`)。
 
 ## 路线图

@@ -99,6 +99,31 @@ def mmse_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
     return w
 
 
+def mmse_pr_alpha(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
+                  noise_var: float = 0.0, symbol_power: float = 1.0) -> float:
+    """The a in [0, 1] of a 1 + aD target that minimises the FFE's mean-square
+    error, main cursor held at 1 (the monic MMSE target).
+
+    With the FFE optimal for each target d = e0 + a e1, the residual is
+    J(a) = d' Q d, Q = P I - P^2 M (P M'M + s2 I)^-1 M' (P the symbol power,
+    s2 the noise variance): a quadratic in a, minimised at
+    a = -(e1' Q e0) / (e1' Q e1). It costs one solve, the same one as
+    ``mmse_ffe``, and is what an LMS adapting a with the FFE converges to.
+    """
+    M = _conv_matrix(cursors, n_taps)
+    A = symbol_power * (M.T @ M) + noise_var * np.eye(n_taps)
+    m0 = c_pre + tap_pre
+    if m0 + 1 >= M.shape[0]:
+        return 0.0
+    # Q e for the two unit vectors only: columns m0 and m0 + 1
+    rows = M[[m0, m0 + 1], :]
+    sol = np.linalg.solve(A, rows.T)                     # A^-1 M' e
+    q = symbol_power * np.eye(2) - symbol_power ** 2 * (rows @ sol)
+    if q[1, 1] <= 0.0:
+        return 0.0
+    return float(np.clip(-q[0, 1] / q[1, 1], 0.0, 1.0))
+
+
 def apply_ffe(y_baud: np.ndarray, w: np.ndarray, tap_pre: int) -> np.ndarray:
     """Baud-rate FFE: output[k] = sum_j w[j] * y[k + tap_pre - j], aligned so
     sample k still corresponds to symbol k."""
