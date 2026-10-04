@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-04 · PR 统计引擎扣掉相邻误差事件的重叠(fix/pr-event-overlap,原 ROADMAP P3 #8 缺口)
+
+- 根因:发端 1 + 0.5D 后 FFE 噪声 ρ1 = −0.67,长度 2–6 的交替事件距离持平且相邻共享噪声投影,简单 union bound 重复计 → 2.5–2.9× 悲观。
+- 修:`pr_error_events(snr=)` 对 L ≥ 2 乘 1 − P(A_L ∩ A_{L−1}) / P(A_L)(二元正态 via Owen T,Hunter 链式上界,仍是上界)。
+- 统计 / 时域:发端 a = 0.5 1.78–1.79×、发端 a = 1 预编码 1.00×、收端 a = 0.5 1.29–1.56×、收端 a = 1 预编码 1.28–1.34×(BER 7e-5…6e-3)。
+- 测试:`test_invariant3_with_a_tx_pr_target` 加 a = 0.5(main 上 2.9× → 红,修后绿);`test_mlsd_fec` 加重叠权重与二元正态精度。
+  专题 `DSP发端与PR.md` §8 更正、`architecture-invariants.md` §3、pitfalls 1 条、ROADMAP P3 #8 删去该缺口。
+- 验证:无 PR 时指纹逐位同 main(488 值,统计引擎改动只在 PR + 序列检测器分支);ruff 干净;jit 674 passed / 2 skipped。
+- CI(bb48600)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿;Android CI(9eedac9,run 37179068939):首跑解释型 APK 的
+  `UiRenderTest#runningTheStatisticalEngineDrawsABathtub` 等 BER 超 180 s(默认预置、无 PR,本改动不触及),重跑一次通过:
+  `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,编译型 APK 首跑即过。
+
 ## 2026-10-03 · 发端 PR 整形与三方同台(feat/tx-pr,原 ROADMAP P3 #8 阶段 3)
 
 - `pr.at: tx`:`TxPipeline.pr_filter` = (x_k + a·x_{k−1}) / (1 + a)(峰值归一),并进等效符号响应;收端沿用 1 + aD 检测。
