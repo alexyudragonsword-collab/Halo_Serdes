@@ -12,7 +12,8 @@
   TX 指纹 ADC 统计行 2.4e-247 → 3.5e-208、0 → 1.5e-255。时域与 mixed-signal 逐位同。
 - 示例重跑(04 / 31 / 32 / 33 新旧对照):只有 31 变 —— 统计 BER 5.8e-16…9.4e-6 → 8.8e-6…3.2e-4,时域 1.0e-5…2.4e-4(比 0.3–1.4×),
   收尾说明改写;04、32、33 输出逐字同。专题 `architecture-invariants.md` 补注;`DSP发端与PR.md` §7 旧说法作废。
-- 验证:ruff 干净;jit 698 passed / 2 skipped。CI / Android totals 待补。
+- 验证:ruff 干净;jit 698 passed / 2 skipped。CI(226d5df)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿;
+  Android CI(071b3e7,run 37207966064,含全部代码改动):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-04 · 三光标目标的 LMS 跟踪(feat/pr-lms-three-cursor)
 
