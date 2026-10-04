@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-04 · 整 UI 周跳后按段重对齐计分(fix/cycle-slip-rescore,原 ROADMAP 4c)
+
+- `score()` 加 `find_slips`:512 符号窗,当前偏移错 > 1/4 且相对 ±4 内某偏移错不到一半才换,边界取两段错数和最小处;
+  偏移无上限(先按绝对 ±4 做,慢漂的 kp 8 链路只找到 2 次、仍 0.49 —— 改成相对当前偏移)。`extras["cycle_slips"]` / `slip_at`。
+- 示例 24 −18 dB:0.5 / −3.37 dB → 5.51e-3 / 6.98 dB(训练期内滑了一位)。时钟剖面快漂 kp 8:16 次周跳,段内 0.32(原 0.2–0.5)。
+- 注入 ±1 UI 采样相位跳(6 个预设、两种架构):都报 1 次、位置 = 注入点 − warmup(±2)、BER 与不注入同量级。
+- 指纹:只有 `NRZ 32G static` 时域行变(本就不通,0.4998 → 0.4933,前 ~3000 符号对在 +4 UI);其余逐位同,另加 `x.cycle_slips` 0。
+- `extras["decisions"]` 仍是接收机原样输出,级联端到端不重排 —— 记入 pitfalls 与 `光互联建模.md`。
+- 验证:ruff 干净;jit 715 passed / 2 skipped;nojit 本文件 15 passed / 2 skipped。CI / Android totals 待补。
+
 ## 2026-10-04 · 统计引擎计入 ADC 量化噪声(fix/stat-adc-noise,原 ROADMAP 4b)
 
 - 根因:时域内核按 ENOB 加 ADC 噪声,统计引擎从不加 —— ADC 链路上统计偏乐观到"0 误码"(ENOB 5:统计 0、时域 1.46e-4)。
