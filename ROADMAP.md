@@ -93,13 +93,6 @@ overlap-save 分块,**但波形数组本身没有窗口化** —— `tx_wave`、
 (b) 保持现状但在 `load_ami_model` 里对"两个模型 flag 不一致"发 warning。
 倾向 (a) + 在 `docs/USAGE.md` §12 已有的提示上再加一句。
 
-### 4c. CDR 整 UI 周跳后,计分不重新对齐
-**现状**:bang-bang / MM 环路偶发整 UI 周跳(示例 24 在 −18 dB、种子 6 时修前修后都出现),判决流随之错一个符号,
-`score()` 按固定延迟比对,BER 读成 ~0.5 而不是周跳附近的几个错。
-**怎么做**:`score()` 在滑窗里检测相对延迟跳变(±1 符号互相关峰),按段重对齐并把周跳次数报进 `extras`;
-真实链路靠 FEC 帧同步恢复,模型应报"周跳 N 次 + 段内 BER",不报 0.5。
-**验收**:人为注入一次 +1 UI 相位跳的链路,BER 回到注入前量级,`extras["cycle_slips"] == 1`。
-
 ### 5. 桌面版发 GitHub Release
 
 CI 已经在构建三种 Windows 产物(PyInstaller / Nuitka standalone / Nuitka onefile)

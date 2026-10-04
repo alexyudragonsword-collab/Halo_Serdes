@@ -206,6 +206,7 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                              # the solved FFE is the link's total linear-EQ
                              # budget, not an RX circuit block (see module doc)
                              "eq_semantics": "link_budget",
+                             "cycle_slips": sc.cycle_slips,
                              "decisions": sc.decisions})
 
 

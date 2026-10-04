@@ -144,6 +144,7 @@ res.extras         # 诊断字典,见下
 | `levels` / `main_cursor` | 两者 | 判决电平、主光标 |
 | `settle` / `train_end` / `warmup` | 两者 | 启动状态机分界 |
 | `ser_slicer` / `mlsd_resid` | 两者 | MLSD 前的原始基线、残余光标 |
+| `cycle_slips` / `slip_at` | 两者 | 计分时找到的整 UI 周跳次数与位置(计分后判决序号);BER 按段重对齐计,不读成 0.5 |
 | `w_dfe_hist` / `n_ave` | mixed-signal | DFE 抽头收敛轨迹 |
 | `pd_hist` | mixed-signal | 鉴相器输出 |
 | `lane_ser` / `adc` / `q_hist_head` | ADC | 逐 lane SER、ADC 模型、码字直方 |

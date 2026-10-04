@@ -20,9 +20,11 @@ slicer produced and the reference it should have produced, and knows nothing
 about equalisers, sampling or architecture. That is exactly what lets all three
 engines (mixed-signal, ADC-based, and the static link) share it.
 
-This module holds no numerical decisions of its own: every expression was moved
-here verbatim, and the refactor was gated on the engine outputs being bit-for-bit
-unchanged across all nine presets.
+This module held no numerical decisions of its own when it was split out: every
+expression was moved here verbatim, and the refactor was gated on the engine
+outputs being bit-for-bit unchanged across all nine presets. The one it has
+gained since is :func:`find_slips` (whole-UI CDR slips are scored around, not
+read as BER 0.5); a run without a slip still scores exactly as before.
 """
 
 from __future__ import annotations
@@ -114,6 +116,74 @@ def warmup_symbols(cfg: LinkConfig, train_end: int, n_run: int) -> int:
     return min(warm, n_run - 1)
 
 
+#: Window the slip search counts errors over. Long enough that a misaligned
+#: window (errors at chance, a half of NRZ symbols and three quarters of PAM4)
+#: cannot be mistaken for a bad aligned one, short enough to bracket a slip.
+SLIP_WINDOW = 512
+
+#: How far from the current offset a window looks, in UI either way. The
+#: offset itself is unbounded: a loop that keeps slipping walks it along.
+SLIP_MAX_STEP = 4
+
+
+def find_slips(dec: np.ndarray, ref: np.ndarray, start: int) -> np.ndarray | None:
+    """Per-decision offset ``s`` with ``dec[i]`` matching ``ref[start + i + s[i]]``.
+
+    A loop that slips a whole UI goes on deciding correctly, one symbol off;
+    against a fixed alignment every later decision reads as chance and the run
+    reports BER ~0.5. A real link's FEC framer finds the frame again, so the
+    model should too: count the slip, score each segment at its own offset.
+
+    Returns None when no window strays from offset 0 (the common case, which
+    then scores exactly as before). An offset is only taken over when the
+    current one is near chance (> 1/4 of a window wrong) and the new one has
+    less than half its errors: a merely bad aligned link sits at its own SER
+    under offset 0 and at chance under every other, so it never switches.
+    """
+    n, w = dec.size, SLIP_WINDOW
+    n_w = n // w
+    if n_w < 2:
+        return None
+    pos = start + np.arange(n)
+
+    def miss(shift: int, a: int, b: int) -> np.ndarray:
+        j = pos[a:b] + shift
+        ok = (j >= 0) & (j < ref.size)
+        out = ~ok
+        out[ok] = dec[a:b][ok] != ref[j[ok]]
+        return out
+
+    if not np.any(miss(0, 0, n_w * w).reshape(n_w, w).sum(axis=1) > w // 4):
+        return None
+
+    bounds, offs = [0], [0]
+    for k in range(n_w):
+        cur = offs[-1]
+        a, b = k * w, (k + 1) * w
+        e_cur = int(miss(cur, a, b).sum())
+        if e_cur <= w // 4:
+            continue
+        cands = [cur + d for d in range(-SLIP_MAX_STEP, SLIP_MAX_STEP + 1) if d]
+        errs = [int(miss(c, a, b).sum()) for c in cands]
+        best = cands[int(np.argmin(errs))]
+        if 2 * min(errs) >= e_cur:
+            continue
+        # the slip sits in this window or the one before: put the boundary
+        # where the old offset's errors before it plus the new one's after it
+        # are fewest
+        lo = max(a - w, bounds[-1])
+        before = np.concatenate([[0], np.cumsum(miss(cur, lo, b))])
+        after = np.concatenate([np.cumsum(miss(best, lo, b)[::-1])[::-1], [0]])
+        bounds.append(lo + int(np.argmin(before + after)))
+        offs.append(best)
+    if len(offs) == 1:
+        return None
+    off = np.empty(n, dtype=np.int64)
+    for b0, b1, o in zip(bounds, bounds[1:] + [n], offs):
+        off[b0:b1] = o
+    return off
+
+
 @dataclass(frozen=True)
 class Score:
     """Everything scoring produces, for all three engines."""
@@ -123,9 +193,11 @@ class Score:
     snr_db: float
     ser_slicer: float
     warmup: int
-    decisions: np.ndarray       # user-domain decisions actually scored
-    reference: np.ndarray       # user-domain references they were scored against
+    decisions: np.ndarray       # user-domain decisions, as the receiver produced them
+    reference: np.ndarray       # what each was scored against; -1 where a slip left none
     y_slicer: np.ndarray        # capped slicer-input trace, for diagnostics
+    cycle_slips: int = 0        # whole-UI slips found and scored around
+    slip_at: tuple = ()         # where each took effect, in scored-decision index
 
     @property
     def n_scored(self) -> int:
@@ -167,16 +239,26 @@ def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
         The second controlled cursor of a 1 + aD + bD^2 target, likewise.
     """
     dec_c = user_decisions(cfg, dec)[warmup:n_run]
-    ref_c = user_idx[warmup:n_run]
+    off = find_slips(dec_c, user_idx, warmup)
+    if off is None:
+        j = None
+        ref_c = user_idx[warmup:n_run]
+        dec_s, ref_s = dec_c, ref_c
+    else:
+        j = warmup + np.arange(dec_c.size) + off
+        ok = (j >= 0) & (j < user_idx.size)
+        ref_c = np.full(dec_c.size, -1, dtype=user_idx.dtype)
+        ref_c[ok] = user_idx[j[ok]]
+        dec_s, ref_s = dec_c[ok], ref_c[ok]
 
-    ser = float(np.mean(dec_c != ref_c))
+    ser = float(np.mean(dec_s != ref_s))
     if cfg.modulation == "pam4":
         # Gray-coded PAM4: one symbol error is not one bit error, so BER comes
         # from the checker rather than from scaling SER.
-        ber = prbs_mod.symbol_checker(ref_c, dec_c, gray=True)
+        ber = prbs_mod.symbol_checker(ref_s, dec_s, gray=True)
     else:
-        idx = np.nonzero(dec_c != ref_c)[0]
-        ber = BerResult(n_checked=dec_c.size, n_errors=idx.size, error_idx=idx)
+        idx = np.nonzero(dec_s != ref_s)[0]
+        ber = BerResult(n_checked=dec_s.size, n_errors=idx.size, error_idx=idx)
 
     # SNR is a slicer-input metric, so the reference is the *line* symbols the
     # slicer saw — not the user symbols BER is scored on.
@@ -187,19 +269,34 @@ def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
     # analysis.jitter the same way.
     from ..analysis.metrics import slicer_snr_db
 
-    ideal = levels[line_idx[warmup:n_run]]
-    for lag, c in ((1, pr_alpha), (2, pr_beta)):
-        if c:
-            prev = line_idx[max(warmup - lag, 0):n_run - lag]
-            if warmup < lag:
-                prev = np.concatenate([np.full(lag - warmup, line_idx[0]), prev])
-            ideal = ideal + c * levels[prev]
-    snr_db = slicer_snr_db(y_slicer[warmup:n_run], ideal)
-
-    ser_slicer = float(np.mean(
-        user_decisions(cfg, dec_slicer)[warmup:n_run] != ref_c))
+    if j is None:
+        ideal = levels[line_idx[warmup:n_run]]
+        for lag, c in ((1, pr_alpha), (2, pr_beta)):
+            if c:
+                prev = line_idx[max(warmup - lag, 0):n_run - lag]
+                if warmup < lag:
+                    prev = np.concatenate([np.full(lag - warmup, line_idx[0]), prev])
+                ideal = ideal + c * levels[prev]
+        snr_db = slicer_snr_db(y_slicer[warmup:n_run], ideal)
+        ser_slicer = float(np.mean(
+            user_decisions(cfg, dec_slicer)[warmup:n_run] != ref_c))
+        slips, slip_at = 0, ()
+    else:
+        jk = j[ok]
+        ideal = levels[line_idx[jk]]
+        for lag, c in ((1, pr_alpha), (2, pr_beta)):
+            if c:
+                ideal = ideal + c * levels[line_idx[np.maximum(jk - lag, 0)]]
+        snr_db = slicer_snr_db(y_slicer[warmup:n_run][ok], ideal)
+        ser_slicer = float(np.mean(
+            user_decisions(cfg, dec_slicer)[warmup:n_run][ok] != ref_s))
+        # an offset already non-zero at the first scored symbol slipped
+        # during training and counts too
+        change = np.nonzero(np.diff(np.concatenate([[0], off])))[0]
+        slips, slip_at = int(change.size), tuple(int(i) for i in change)
 
     return Score(
         ber=ber, ser=ser, snr_db=snr_db, ser_slicer=ser_slicer,
         warmup=warmup, decisions=dec_c, reference=ref_c,
-        y_slicer=y_slicer[warmup: warmup + SLICER_CAPTURE_SYMBOLS])
+        y_slicer=y_slicer[warmup: warmup + SLICER_CAPTURE_SYMBOLS],
+        cycle_slips=slips, slip_at=slip_at)
