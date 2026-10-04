@@ -369,6 +369,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "mlsd_resid": resid_ratios,
                 "ser_slicer": sc.ser_slicer,
                 "precode": cfg.precode,
+                "cycle_slips": sc.cycle_slips, "slip_at": sc.slip_at,
                 "decisions": sc.decisions})
 
 
@@ -551,6 +552,10 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     # per-lane SER (TI mismatch diagnostics)
     lane_c = lane_of[warm:n_run]
+    if sc.cycle_slips:
+        # the few decisions a slip left without a reference are not lane errors
+        keep = ref_c >= 0
+        dec_c, ref_c, lane_c = dec_c[keep], ref_c[keep], lane_c[keep]
     lane_ser = np.array([
         float(np.mean(dec_c[lane_c == ln] != ref_c[lane_c == ln]))
         if np.any(lane_c == ln) else 0.0
@@ -574,4 +579,5 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "pr_alpha": (alpha, float(alpha_out[0])) if pr.active else None,
                 "pr_target": (1.0, float(alpha_out[0])) + ((float(alpha_out[1]),) if n_t == 3 else ())
                 if pr.active else None,
+                "cycle_slips": sc.cycle_slips, "slip_at": sc.slip_at,
                 "decisions": sc.decisions})

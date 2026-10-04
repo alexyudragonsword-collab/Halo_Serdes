@@ -190,7 +190,10 @@ half of updates that see a transition. A profile whose RMS phase *rate* inside
 the loop bandwidth is a sizeable part of that makes the kernel slip cycles
 (measured: BER 0.2–0.5, tracking error of several UI); the statistical engine
 warns (`slew-limited`) from 0.3 of the limit, where the kernel was still locked,
-and the kernel slipped from about 0.4.
+and the kernel slipped from about 0.4. Since scoring realigns around whole-UI
+slips (`extras["cycle_slips"]`), the BER figure there is the in-segment one: on
+the test's fast profile at `kp_shift 8`, 16 slips in 194k symbols and 0.32 —
+the loop spends long stretches sampling far off centre, not just one UI off.
 
 The same-RMS comparison the feature exists for, as measured on the clean
 16 GBd link at `kp_shift 6`: 0.11 UI of white phase noise leaves 0.119 UI on
