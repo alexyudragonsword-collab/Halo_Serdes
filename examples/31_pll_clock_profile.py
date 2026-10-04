@@ -145,9 +145,9 @@ for clock_name in CLOCKS:
 print("\nThe white clock's CDR error is the loop's own hunting plus untracked white noise; the\n"
       "model column for it is the rj_ui smear the statistical engine applies (no CDR model for\n"
       "kind=white, by design). For the PLL clocks the model column is the linearised loop's\n"
-      "sampling-instant sigma; the statistical BER is listed for the record -- on this ADC link\n"
-      "it is not expected to match the time engine (TI-ADC, quantisation and adaptation are\n"
-      "approximations there), the comparison that is in scope is the CDR error.")
+      "sampling-instant sigma. The statistical BER is listed for the record: with the ADC's\n"
+      "quantisation noise in it, it sits 0.3-1.4x of the time engine's here (TI-ADC and\n"
+      "adaptation stay approximations); the comparison that is in scope is the CDR error.")
 
 # ---------------------------------------------------------------- figure
 fig, axes = plt.subplots(1, 3, figsize=(15, 4.6))

@@ -235,8 +235,8 @@ def test_invariant3_with_a_pr_target(alpha):
     alternating error events of [1, alpha, r...] in the FFE-coloured noise,
     consecutive events' overlap taken out, pr_error_events) and time-domain
     BER within 2x. The operating point is BER ~1e-4.
-    No ADC excess noise -- the statistical engine does not model ENOB
-    (ROADMAP 4b)."""
+    No ADC excess noise (enob=None), so the check isolates the PR event
+    model; the ENOB term is pinned in test_statistical.py."""
     cfg = _link(0.24, alpha, n_sym=600_000, noise=0.0022, enob=None, precode=alpha == 1.0)
     cm = ChannelModel.from_config(cfg)
     mc = run_time_link(cfg, channel=cm)

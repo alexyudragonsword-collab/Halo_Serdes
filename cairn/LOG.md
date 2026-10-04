@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-04 · 统计引擎计入 ADC 量化噪声(fix/stat-adc-noise,原 ROADMAP 4b)
+
+- 根因:时域内核按 ENOB 加 ADC 噪声,统计引擎从不加 —— ADC 链路上统计偏乐观到"0 误码"(ENOB 5:统计 0、时域 1.46e-4)。
+- 修:`adc_noise_sigma(cfg)` = fullscale/√12 · 2^(−ENOB)(无 ENOB 或 ≥ n_bits 用 n_bits),仅 `adc_dsp`,与 `noise_rms` 功率相加后过 FFE。
+- 新测试 ENOB 5 / 6.5 / 8 统计 / 时域在 2× 内(实测 0.91、0.94);main 上红。
+- 指纹(修复,非逐位):只 ADC 统计行动,`noise_sigma` +2.4–3.5 mV(106 GBd 预设 0 → 3.19 mV),SER 变 ≤ 0.004;
+  TX 指纹 ADC 统计行 2.4e-247 → 3.5e-208、0 → 1.5e-255。时域与 mixed-signal 逐位同。
+- 示例重跑(04 / 31 / 32 / 33 新旧对照):只有 31 变 —— 统计 BER 5.8e-16…9.4e-6 → 8.8e-6…3.2e-4,时域 1.0e-5…2.4e-4(比 0.3–1.4×),
+  收尾说明改写;04、32、33 输出逐字同。专题 `architecture-invariants.md` 补注;`DSP发端与PR.md` §7 旧说法作废。
+- 验证:ruff 干净;jit 698 passed / 2 skipped。CI(226d5df)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿;
+  Android CI(071b3e7,run 37207966064,含全部代码改动):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
+
 ## 2026-10-04 · 三光标目标的 LMS 跟踪(feat/pr-lms-three-cursor)
 
 - 内核对 b 与 a 同误差更新(b 对 x₋₂ 求梯度,功率归一,a ∈ [0, 2]、b ∈ [−1, 1]);配置不再拒绝 lms + 三光标。1 + aD 逐位同前。

@@ -214,7 +214,7 @@ mixed-signal + PR 在 `LinkConfig` 构造时拒绝(没有数字 FFE 可整形);�
 **统计引擎**:受控光标移出 ISI PDF;有序列检测器时对交替误差事件(长度 1–12)做 union bound,噪声自相关取自 FFE 抽头
 (`pr_error_events`)。只用最小距离时比时域乐观 2.5–20 倍(PR 下 FFE 输出噪声 ρ1 ≈ −0.25、ρ2 ≈ −0.31;a ≈ 1 时各长度事件距离相同)。
 与时域比(`enob=None`,36.4 dB 信道):a = 0.5 1.47–1.52×、a = 1 预编码 1.00–1.35×(BER 2e-5…3e-4);BER 1e-2 以上
-union bound 偏悲观(a = 0.5 3.2×)。统计引擎仍不建 ADC 量化噪声(ROADMAP 4b)。
+union bound 偏悲观(a = 0.5 3.2×)。上述对照不含 ADC 量化噪声;2026-10-04 起统计引擎按 ENOB 把它计入(`adc_noise_sigma`,原"仍不建,ROADMAP 4b"作废)。
 
 **示例 36**(示例 18 的 21 抽头 LMS FFE + MM-CDR + memory-2 Viterbi,ENOB 6.5,1.5 mV,40 万符号):
 
