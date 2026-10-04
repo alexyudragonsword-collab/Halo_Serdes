@@ -9,6 +9,8 @@
   统计引擎 b < 0 时加同号事件族;发端除以 Σ|target|。
 - 示例 38:31.6(无 PR)/ 36.3(1 + aD)/ **38.6 dB**(1 + aD + bD²);MMSE 目标 (0.77, 0.28) → (1.17, 0.51),比 EPR4 平。
 - 统计 / 时域 1.15–1.54×。专题 `DSP发端与PR.md` §10,USAGE §18,ROADMAP P3 #8 余项改写。
+- 验证:1 + aD 与无 PR 时指纹逐位同 feat/pr-alpha-adapt(488 + 44 值);ruff 干净;jit 692 passed / 2 skipped(首跑 2 项失败:
+  config 测试仍把 (1, 0.5, 0.25) 当非法、USAGE 注释里 `[-1, 1](EPR4…)` 被当成链接,改后 92/92)。
 
 ## 2026-10-04 · PR 目标的 a 由收端选(feat/pr-alpha-adapt,原 ROADMAP P3 #8 余项)
 

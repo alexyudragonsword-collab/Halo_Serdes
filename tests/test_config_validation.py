@@ -95,7 +95,7 @@ from halo_serdes.config.schema import (
     # and only where a digital FFE can shape it
     (lambda: PrConfig(target=()), "pr.target"),
     (lambda: PrConfig(target=(0.8, 0.5)), "pr.target[0]"),
-    (lambda: PrConfig(target=(1.0, 0.5, 0.25)), "pr.target"),
+    (lambda: PrConfig(target=(1.0, 0.5, 0.25, 0.1)), "pr.target"),
     (lambda: PrConfig(target=(1.0, -0.1)), "alpha"),
     (lambda: PrConfig(target=(1.0, 1.2)), "alpha"),
     (lambda: PrConfig(at="both"), "pr.at"),

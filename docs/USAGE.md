@@ -674,7 +674,7 @@ rx:
   mlsd: {kind: viterbi, memory: 2}
 pr:
   target: [1.0, 0.75]      # (1.0,) = delta(默认,逐位等于不设);1 + aD:a ∈ [0, 1];
-                           # 1 + aD + bD²:[1.0, a, b],a ∈ [0, 2]、b ∈ [-1, 1](EPR4 = [1, 2, 1])
+                           # 1 + aD + bD²:[1.0, a, b],a ∈ [0, 2]、b ∈ [-1, 1];EPR4 即 (1, 2, 1)
   at: rx                   # rx:收端 FFE 整形;tx:发端在 FFE 与 DAC 之前整形(见下)
   adapt: none              # none:用上面的 a;mmse:按起始脉冲解 MMSE 最优 a(三光标时 a、b 一起解;主光标固定为 1);
                            # lms:从 mmse 的 a 起,与 FFE 一起 LMS 跟踪(只限收端、只限 1 + aD)
