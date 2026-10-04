@@ -11,6 +11,8 @@
 - 统计 / 时域 1.15–1.54×。专题 `DSP发端与PR.md` §10,USAGE §18,ROADMAP P3 #8 余项改写。
 - 验证:1 + aD 与无 PR 时指纹逐位同 feat/pr-alpha-adapt(488 + 44 值);ruff 干净;jit 692 passed / 2 skipped(首跑 2 项失败:
   config 测试仍把 (1, 0.5, 0.25) 当非法、USAGE 注释里 `[-1, 1](EPR4…)` 被当成链接,改后 92/92)。
+- CI(61160c9)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿(f72ed5a 上的 2 项失败即上面两项,5803d0b 已修);
+  Android CI(f72ed5a,run 37188794340,含全部代码改动):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-04 · PR 目标的 a 由收端选(feat/pr-alpha-adapt,原 ROADMAP P3 #8 余项)
 
