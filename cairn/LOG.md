@@ -10,6 +10,7 @@
 - 统计 / 时域:发端 a = 0.5 1.78–1.79×、发端 a = 1 预编码 1.00×、收端 a = 0.5 1.29–1.56×、收端 a = 1 预编码 1.28–1.34×(BER 7e-5…6e-3)。
 - 测试:`test_invariant3_with_a_tx_pr_target` 加 a = 0.5(main 上 2.9× → 红,修后绿);`test_mlsd_fec` 加重叠权重与二元正态精度。
   专题 `DSP发端与PR.md` §8 更正、`architecture-invariants.md` §3、pitfalls 1 条、ROADMAP P3 #8 删去该缺口。
+- 验证:无 PR 时指纹逐位同 main(488 值,统计引擎改动只在 PR + 序列检测器分支);ruff 干净;jit 674 passed / 2 skipped。
 
 ## 2026-10-03 · 发端 PR 整形与三方同台(feat/tx-pr,原 ROADMAP P3 #8 阶段 3)
 
