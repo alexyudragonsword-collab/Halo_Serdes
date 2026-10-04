@@ -128,6 +128,25 @@ def test_pr_error_events_reduce_to_the_minimum_distance_in_white_noise():
     assert g_col > np.sqrt(2.0)
 
 
+def test_pr_error_event_overlap_only_lowers_the_longer_events():
+    """With an SNR the events of length >= 2 lose the part they share with
+    the one before (a chain Hunter bound): L = 1 is untouched, no weight
+    grows, and events whose statistics are almost the same keep almost
+    nothing."""
+    from halo_serdes.engine.statistical import _bvn_upper, pr_error_events
+
+    acf = np.array([1.0, -0.67, 0.26, -0.1])
+    plain = pr_error_events(np.array([1.0, 0.5]), acf, 4, False)
+    tight = pr_error_events(np.array([1.0, 0.5]), acf, 4, False, snr=3.0)
+    assert tight[0] == plain[0]
+    assert all(t[0] == p[0] and t[1] <= p[1] for t, p in zip(tight, plain))
+    assert sum(w for _, w in tight[1:]) < 0.75 * sum(w for _, w in plain[1:])   # 0.53 here
+    assert _bvn_upper(3.0, 3.0, 1.0) == pytest.approx(_bvn_upper(3.0, 3.0, 1.0 - 1e-9), rel=1e-3)
+    from scipy.stats import multivariate_normal as mvn
+    for a, b, r in ((1.0, 1.5, 0.5), (3.0, 3.2, 0.9), (2.5, 2.6, 0.99)):
+        assert _bvn_upper(a, b, r) == pytest.approx(mvn([0, 0], [[1, r], [r, 1]]).cdf([-a, -b]), rel=1e-6)
+
+
 def test_post_detect_beats_slicer_on_real_residual():
     """post_detect turns the kernels into a drop-in post-detector; on a residual
     channel both Viterbi and the sliding detector beat the memoryless slicer."""

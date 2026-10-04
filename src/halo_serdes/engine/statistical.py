@@ -21,10 +21,11 @@ Non-LTI approximations (each cross-checked against the time engine):
   [1, alpha, r...], without one it is cancelled like an ideal DFE tap. The
   DFE then starts after it. With a sequence detector the BER is not the
   plain MLSD's minimum-distance gain but a union bound over the alternating error
-  events, in the noise the shaping FFE coloured (``pr_error_events``): the
-  minimum distance alone was 2.5-20x optimistic against the time engine;
-  the bound is within 1.5x at BER <= 5e-4 and loose (up to 3x pessimistic)
-  above 1e-2. The time engine's per-symbol PR decision and its LMS
+  events, in the noise the shaping FFE coloured, each event's overlap with
+  the one before taken out (``pr_error_events``): the minimum distance alone
+  was 2.5-20x optimistic against the time engine, the plain sum up to 2.9x
+  pessimistic (transmit a = 0.5); with the overlap 1.0-1.8x across receive
+  and transmit PR at BER 7e-5 to 6e-3. The time engine's per-symbol PR decision and its LMS
   reference are not modelled (outside the LTI + AWGN cross-check);
 - sampling phase: the ADC receiver is read at the bathtub minimum; the
   mixed-signal receiver at the bang-bang loop's lock point (where its edge
@@ -157,8 +158,27 @@ def isi_pdf(cursor_amps: np.ndarray, levels_norm: np.ndarray,
     return pdf
 
 
+def _bvn_upper(a: float, b: float, r: float) -> float:
+    """P(X > a, Y > b) for standard normals with correlation r (Owen's T;
+    every term is a tail, so it keeps its relative precision far out)."""
+    from scipy.special import ndtr, owens_t
+
+    if r >= 1.0 - 1e-12:
+        return float(ndtr(-max(a, b)))
+    h, k = -a, -b                      # P(X > a, Y > b) = Phi2(-a, -b; r)
+    q = np.sqrt(1.0 - r * r)
+
+    def t(x, y):
+        x = x if x != 0.0 else 1e-300   # the limit; never reached at a positive SNR
+        return float(owens_t(x, (y - r * x) / (x * q)))
+
+    corr = 0.5 if (h * k < 0.0 or (h * k == 0.0 and h + k < 0.0)) else 0.0
+    return max(0.5 * float(ndtr(h)) + 0.5 * float(ndtr(k)) - t(h, k) - t(k, h) - corr, 0.0)
+
+
 def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
-                    precoded: bool, max_len: int = 12) -> list[tuple[float, float]]:
+                    precoded: bool, max_len: int = 12,
+                    snr: float | None = None) -> list[tuple[float, float]]:
     """(distance gain, weight) per error event of a sequence detector on a
     partial-response target, for a union bound.
 
@@ -177,22 +197,46 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
 
     The gain is relative to the memoryless slicer's half-distance; with white
     noise and L = 1 it is |d|, the plain MLSD path's sqrt(d_min^2).
+
+    ``snr`` (that half-distance over the noise sigma) takes the overlap of
+    consecutive events out: an event of length L and the one of length L - 1
+    share their start and most of their noise projection, and where the
+    noise is strongly anticorrelated (rho1 = -0.67 behind a transmit 1 + 0.5D)
+    the distances of lengths 2-6 sit within 10 % of each other, so a plain
+    sum counts one detector error several times (2.5-2.9x pessimistic).
+    Each L >= 2 is weighted by P(A_L and not A_{L-1}) / P(A_L), from the
+    bivariate normal of the two events' statistics -- the chain form of
+    Hunter's bound, still an upper bound on the union, at the SNR given
+    (the ISI around it is left out of the overlap).
     """
     h = np.asarray(cursors, dtype=float)
     rho = np.asarray(noise_acf, dtype=float) / float(noise_acf[0])
+    size = max_len + h.size - 1
+    lag = np.arange(size)
+    r_mat = np.where(np.abs(lag[:, None] - lag[None, :]) < rho.size,
+                     rho[np.minimum(np.abs(lag[:, None] - lag[None, :]), rho.size - 1)], 0.0)
     out = []
+    prev = None                         # (d padded, sqrt(d' R d), g) of length L - 1
     for n in range(1, max_len + 1):
         e = np.where(np.arange(n) % 2 == 0, 1.0, -1.0)
-        d = np.convolve(e, h)
-        acf_d = np.correlate(d, d, "full")[d.size - 1:]
-        k = min(acf_d.size, rho.size)
-        proj = acf_d[0] + 2.0 * float(np.dot(acf_d[1:k], rho[1:k]))
-        g = float(acf_d[0] / np.sqrt(max(proj, 1e-300)))
+        d = np.zeros(size)
+        d[: n + h.size - 1] = np.convolve(e, h)
+        sd = float(np.sqrt(max(d @ r_mat @ d, 1e-300)))
+        g = float(d @ d / sd)
         if precoded:
             errs = int(np.count_nonzero(np.convolve(e, [1.0, 1.0]).round().astype(int) % n_levels))
         else:
             errs = n
-        out.append((g, ((n_levels - 1) / n_levels) ** (n - 1) * errs))
+        w = ((n_levels - 1) / n_levels) ** (n - 1) * errs
+        if snr is not None and prev is not None:
+            from scipy.special import ndtr
+
+            corr = float(d @ r_mat @ prev[0]) / (sd * prev[1])
+            p_l = float(ndtr(-g * snr))
+            if p_l > 0.0:
+                w *= max(1.0 - _bvn_upper(g * snr, prev[2] * snr, min(corr, 1.0)) / p_l, 0.0)
+        out.append((g, w))
+        prev = (d, sd, g)
     return out
 
 
@@ -378,8 +422,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # detector works a partial-response target (pr_error_events)
         events = [(g_mlsd, 1.0)]
         if pr_active and mlsd_mem > 0:
+            half_gap = 0.5 * abs(main) * float(np.min(np.diff(np.sort(levels_norm))))
             events = pr_error_events(np.concatenate([head, np.asarray(res)]), noise_acf,
-                                     n_levels, cfg.precode)
+                                     n_levels, cfg.precode,
+                                     snr=half_gap / noise_sigma if noise_sigma > 0 else None)
 
         if pattern_sigma is not None:
             # the binned neighbours leave the random ISI and become a shift

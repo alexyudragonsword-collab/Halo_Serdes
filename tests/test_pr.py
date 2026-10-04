@@ -232,8 +232,8 @@ def test_mm_cdr_holds_its_phase_under_a_pr_target(alpha, precode):
 def test_invariant3_with_a_pr_target(alpha):
     """LTI + AWGN + receive PR + Viterbi: statistical (union bound over the
     alternating error events of [1, alpha, r...] in the FFE-coloured noise,
-    pr_error_events) and time-domain BER within 2x. The operating point is
-    BER ~1e-4: a union bound is loose above ~1e-3 (3x at 3e-2, alpha 0.5).
+    consecutive events' overlap taken out, pr_error_events) and time-domain
+    BER within 2x. The operating point is BER ~1e-4.
     No ADC excess noise -- the statistical engine does not model ENOB
     (ROADMAP 4b)."""
     cfg = _link(0.24, alpha, n_sym=600_000, noise=0.0022, enob=None, precode=alpha == 1.0)
@@ -322,13 +322,16 @@ def test_tx_pr_main_cursor_is_the_symbols_own():
 
 
 @needs_jit
-def test_invariant3_with_a_tx_pr_target():
-    """Precoded duobinary from the Tx, Viterbi at the receiver: statistical
-    within 2x of the time engine. (a = 0.5 from the Tx is 2.5-2.9x
-    pessimistic: with lag-1 noise correlation -0.67 the alternating error
-    events of every length sit at nearly the same distance and the union
-    bound counts the nested ones several times -- ROADMAP P3 #8.)"""
-    cfg = _tx_pr(_link(0.20, 1.0, n_sym=400_000, noise=0.0022, enob=None, precode=True), 1.0)
+@pytest.mark.parametrize("alpha", [0.5, 1.0])
+def test_invariant3_with_a_tx_pr_target(alpha):
+    """From the Tx (a = 1 precoded), Viterbi at the receiver: statistical
+    within 2x of the time engine. At a = 0.5 the lag-1 noise correlation is
+    -0.67 and the alternating events of lengths 2-6 sit within 10 % of each
+    other's distance; summed as a plain union bound they read 2.5-2.9x
+    pessimistic, with consecutive events' overlap taken out 1.8x."""
+    noise = 0.0019 if alpha == 0.5 else 0.0022
+    cfg = _tx_pr(_link(0.20, alpha, n_sym=600_000, noise=noise, enob=None,
+                       precode=alpha == 1.0), alpha)
     cm = ChannelModel.from_config(cfg)
     mc = run_time_link(cfg, channel=cm)
     assert mc.ber.n_errors > 100, mc.ber.n_errors
