@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**731 项测试**、双引擎(时域 + StatEye 统计)、39 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **731 tests**, dual engines (time-domain + StatEye), 39 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**737 项测试**、双引擎(时域 + StatEye 统计)、39 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **737 tests**, dual engines (time-domain + StatEye), 39 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -273,4 +273,4 @@ tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 731 项测试 · 双引擎 · 39 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 737 项测试 · 双引擎 · 39 个实验脚本*

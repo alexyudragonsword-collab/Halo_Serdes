@@ -496,6 +496,32 @@ def test_cancel_is_distinguishable_from_failure(values):
     assert "osr" in p["job_error"]["message"]
 
 
+def test_time_run_reports_the_receiver_loop_and_cancels_inside_it(values):
+    """The receiver runs in chunks of ``sim.chunk_symbols``, so ``poll`` sees
+    the loop's progress as a fraction and a cancel lands mid-loop instead of
+    after it (it used to wait for the whole kernel call)."""
+    import time as _t
+    job = call("start_time_run", values={**values, "sim.chunk_symbols": "2048"},
+               quality="precise")["data"]["job"]
+    seen = None
+    deadline = _t.monotonic() + 300.0
+    while _t.monotonic() < deadline:
+        p = call("poll", job=job)["data"]
+        f = p["fraction"]
+        if f is not None and 0.0 < f < 1.0:
+            seen = p
+            break
+        if p["state"] in ("done", "error", "cancelled"):
+            break
+        _t.sleep(0.005)
+    call("cancel", job=job)
+    end = _await_job(job, timeout=300.0)
+    assert seen is not None, "no fraction strictly between 0 and 1 was ever polled"
+    assert seen["stage"] == "time-domain engine"
+    assert end["state"] == "cancelled"
+    assert end["fraction"] < 1.0
+
+
 def test_unknown_job_and_quality_are_data(values):
     assert call("poll", job="nope")["ok"] is False
     assert call("cancel", job="nope")["ok"] is False

@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-05 · 接收机内核分块续跑(feat/chunked-kernels,原 ROADMAP P1 #3)
+
+- 两个内核拆成 `[k0, k1)` 的 core + `MsRxRun` / `AdcRxRun`;状态:MS = 位置、积分器、求和节点反馈、上一符号符号 + LMS 批计数、
+  抽头历史行 + `w` / `corr`;ADC = 位置、PD 累加、积分器、当前修正、a、b + PD 块计数、队列下标 + `wf` / `wd` / 延迟队列。
+  输出数组本身就是回看历史(dec、xl、q_hist…),预分配全长。`ms_rx` / `adc_rx` 改为调一次 core 的包装,签名不变。
+- 验证:冻结旧核对照(test_rx_clock)、JIT == Python(test_pr / test_cdr_kernel)、新 `test_chunked_kernels`(整段 vs 997 vs 1 符号一块,
+  两架构,ADC 含 PR + LMS a;波形中途耗尽;进度序列;回调抛异常即取消)JIT 与 nojit 都过;预设指纹逐位同(默认分块已实际生效)。
+- App:progress(stage, fraction);poll 加 `fraction`;新测试:chunk 2048 的 precise 跑能 poll 到 0 < fraction < 1、其后 cancel → cancelled。
+  Android:确定进度条 + 通知百分比 + 取消文案;runner / api / Kotlin 注释里"内核不可中断"的旧判断都改写并注明更正。
+- 内存(P1 #2)没动:内核仍读整条 `rx_y`。ROADMAP #2 已改写为"剩下的一半"。
+- 全量(JIT):737 passed / 2 skipped(+5 分块、+1 API 取消);PR #28。CI 全绿;Android instrumented 34 tests / 0 failures(API 34、API 35、编译版 APK 三个模拟器 job 均过)。
+
 ## 2026-10-05 · Android edge-to-edge + API 35 模拟器(fix/android-edge-to-edge,原 ROADMAP P2 #6b)
 
 - `enableEdgeToEdge()`(API 34 也按 15 的方式布局)+ Scaffold 内容 `consumeWindowInsets(pad).imePadding()`(键盘成 inset 后表单仍可滚到焦点框)。

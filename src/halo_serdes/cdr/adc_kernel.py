@@ -20,96 +20,68 @@ from .kernels import _farrow_py
 _farrow_local = _farrow_py
 
 
-def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
-               levels: np.ndarray,
-               n_lanes: int, offsets: np.ndarray, gains: np.ndarray,
-               skews: np.ndarray, q_step: float, code_max: int,
-               noise: np.ndarray,
-               w_ffe: np.ndarray, n_pre_ffe: int, mu_ffe: float,
-               w_dfe: np.ndarray, mu_dfe: float,
-               kp: float, ki: float, clamp: float, pd_offset: float,
-               pd_use_ffe: int, loop_latency_blocks: int,
-               ref_idx: np.ndarray, train_len: int, adapt_start: int,
-               rx_clock_offset_samples: np.ndarray,
-               pr_alpha: float, pr_mode: int, pr_levels: np.ndarray,
-               mu_alpha: float, alpha_out: np.ndarray,
-               pr_beta: float, pr_nt: int):
-    """Returns (dec, y_slicer, phase, w_ffe_out, w_dfe_out, lane_of, q_codes).
+def _adc_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
+                    levels: np.ndarray,
+                    n_lanes: int, offsets: np.ndarray, gains: np.ndarray,
+                    skews: np.ndarray, q_step: float, code_max: int,
+                    noise: np.ndarray,
+                    wf: np.ndarray, n_pre_ffe: int, mu_ffe: float,
+                    wd: np.ndarray, mu_dfe: float,
+                    kp: float, ki: float, clamp: float, pd_offset: float,
+                    pd_use_ffe: int, loop_latency_blocks: int,
+                    ref_idx: np.ndarray, train_len: int, adapt_start: int,
+                    rx_clock_offset_samples: np.ndarray,
+                    pr_mode: int, pr_levels: np.ndarray,
+                    mu_alpha: float, pr_nt: int,
+                    corr_queue: np.ndarray, fs: np.ndarray, ist: np.ndarray,
+                    dec: np.ndarray, xl: np.ndarray, y_sl: np.ndarray,
+                    r_sl: np.ndarray, phase: np.ndarray, lane_of: np.ndarray,
+                    q_hist: np.ndarray):
+    """Symbols ``k0 <= k < k1`` of the loop :func:`_adc_rx_py` describes.
 
-    ``rx_clock_offset_samples[k]`` is the receiver sampling clock's own error
-    at symbol ``k`` [samples], added to the loop phase before the lane skew;
-    ``phase`` reports the position actually sampled (offset included). Zeros
-    reproduce the ideal-clock kernel bit for bit.
+    Everything carried from one symbol to the next is in the arguments: the
+    FFE / DFE taps ``wf`` / ``wd`` and the loop-latency queue ``corr_queue``
+    (updated in place), ``fs`` = [position, PD accumulator, integrator,
+    applied correction, a, b], ``ist`` = [PD block count, queue index], and
+    the output arrays the FFE, DFE and detector read back from. Any split of
+    [0, n) into consecutive calls is the same arithmetic in the same order
+    as one call, bit for bit.
 
-    Partial response (``pr_mode`` > 0): the FFE is driven towards
-    ``levels[x_s] + pr_alpha * levels[x_{s-1}]``, the DFE starts after the
-    controlled cursor, and the per-symbol decision -- for the LMS and the CDR;
-    the final one is a sequence detector's -- either subtracts ``pr_alpha``
-    times the previous decision before slicing (``pr_mode`` 1, propagates
-    errors) or, for precoded 1 + D, slices to the 2N - 1 composite
-    ``pr_levels`` and takes the line symbol as (q - x_{s-1}) mod N
-    (``pr_mode`` 2: the user symbol is q mod N, so an error does not
-    propagate). The Mueller-Muller detector on equalised samples reads the
-    same sample less ``pr_alpha`` times the previous decision: on the shaped
-    pulse h(+1) = alpha and the detector's gradient fades as alpha grows (the
-    loop walked off 0.4-3 UI at alpha 0.75-1), on the residual it is a delta
-    pulse again. ``pr_mode`` 0 is the delta target, bit for bit.
-
-    ``mu_alpha`` > 0 adapts the controlled cursor with the FFE (``pr_mode``
-    1 only; the composite slicer assumes a = 1): the same error, the gradient
-    taken in a, normalised by the mean symbol power and clipped to [0, 1].
-    ``alpha_out[0]`` returns the a the run ended on (and ``alpha_out[1]``,
-    when there is one, the b of a three-cursor target, adapted the same way
-    against the decision two symbols back; a in [0, 2], b in [-1, 1] there).
-
-    ``pr_nt`` 3 is a 1 + aD + bD^2 target: ``pr_beta`` times the decision two
-    symbols back is subtracted as well, everywhere ``pr_alpha`` times the
-    previous one is, and the DFE starts after both controlled cursors.
+    Returns (symbols done, 1 if the waveform ran out else 0).
     """
     nl = levels.size
-    nf = w_ffe.size
-    nd = w_dfe.size
+    nf = wf.size
+    nd = wd.size
     nt = pr_nt if pr_mode > 0 else 1    # cursors the target accounts for
-    a_pr = pr_alpha
-    b_pr = pr_beta
     a_max = 2.0 if pr_nt == 3 else 1.0
     p_sym = 0.0
     for m in range(nl):
         p_sym += levels[m] * levels[m]
     p_sym = p_sym / nl
-    wf = w_ffe.copy()
-    wd = w_dfe.copy()
-
-    dec = np.zeros(n_symbols, dtype=np.int64)
-    # line-symbol estimates the DFE and the PR residual subtract; the same as
-    # dec except for precoded 1 + D, where dec's mod-N chain is right for the
-    # user symbol but, after one wrong composite, wrong for every line symbol
-    # that follows. This chain clips instead, and the composite's extremes
-    # (both symbols at the bottom or top level) resynchronise it.
-    xl = np.zeros(n_symbols, dtype=np.int64)
-    y_sl = np.zeros(n_symbols, dtype=np.float64)
-    r_sl = np.zeros(n_symbols, dtype=np.float64)   # PR: sample less the controlled cursor
-    phase = np.zeros(n_symbols, dtype=np.float64)
-    lane_of = np.zeros(n_symbols, dtype=np.int64)
-    q_hist = np.zeros(n_symbols, dtype=np.float64)  # dequantized samples
-
-    # PD state
-    acc = 0.0
-    n_acc = 0
-    integ = 0.0
-    corr_now = 0.0
+    pos = fs[0]
+    acc = fs[1]
+    integ = fs[2]
+    corr_now = fs[3]
+    a_pr = fs[4]
+    b_pr = fs[5]
+    n_acc = ist[0]
+    qi = ist[1]
     lat = loop_latency_blocks
-    corr_queue = np.zeros(lat + 1, dtype=np.float64)
-    qi = 0
 
-    pos = pos0
-    for k in range(n_symbols):
+    for k in range(k0, k1):
         lane = k % n_lanes
         p_clk = pos + rx_clock_offset_samples[k]
         p = p_clk + skews[lane]
         if p + osr + 2 >= y.size or p < 1:
-            n_symbols = k
-            break
+            fs[0] = pos
+            fs[1] = acc
+            fs[2] = integ
+            fs[3] = corr_now
+            fs[4] = a_pr
+            fs[5] = b_pr
+            ist[0] = n_acc
+            ist[1] = qi
+            return k, 1
         x = _farrow_local(y, p) * gains[lane] + offsets[lane] + noise[k]
         # mid-rise quantizer
         code = np.floor(x / q_step)
@@ -250,20 +222,161 @@ def _adc_rx_py(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
 
         pos += osr + corr_now / n_lanes
 
-    alpha_out[0] = a_pr
-    if alpha_out.size > 1:
-        alpha_out[1] = b_pr
-    return (dec[:n_symbols], y_sl[:n_symbols], phase[:n_symbols], wf, wd,
-            lane_of[:n_symbols], q_hist[:n_symbols])
+    fs[0] = pos
+    fs[1] = acc
+    fs[2] = integ
+    fs[3] = corr_now
+    fs[4] = a_pr
+    fs[5] = b_pr
+    ist[0] = n_acc
+    ist[1] = qi
+    return k1, 0
 
 
+class AdcRxRun:
+    """One ADC receiver run, advanced in as many calls as wanted.
+
+    ``advance(k1)`` runs the loop up to symbol ``k1`` (or until the waveform
+    runs out); ``result()`` gives what :func:`adc_rx` returns and fills
+    ``alpha_out``. One ``advance`` to ``n_symbols`` is :func:`adc_rx`; any
+    sequence of smaller ones gives the same arrays bit for bit.
+    """
+
+    def __init__(self, y, osr, pos0, n_symbols, levels, n_lanes, offsets, gains,
+                 skews, q_step, code_max, noise, w_ffe, n_pre_ffe, mu_ffe,
+                 w_dfe, mu_dfe, kp, ki, clamp, pd_offset, pd_use_ffe,
+                 loop_latency_blocks, ref_idx, train_len, adapt_start,
+                 rx_clock_offset_samples, pr_alpha, pr_mode, pr_levels,
+                 mu_alpha, alpha_out, pr_beta, pr_nt, core=None):
+        self.core = core if core is not None else _adc_rx_core
+        self.y, self.osr = y, osr
+        self.wf = w_ffe.copy()
+        self.wd = w_dfe.copy()
+        self.params = (levels, n_lanes, offsets, gains, skews, q_step, code_max,
+                       noise, self.wf, n_pre_ffe, mu_ffe, self.wd, mu_dfe, kp, ki,
+                       clamp, pd_offset, pd_use_ffe, loop_latency_blocks, ref_idx,
+                       train_len, adapt_start, rx_clock_offset_samples, pr_mode,
+                       pr_levels, mu_alpha, pr_nt,
+                       np.zeros(loop_latency_blocks + 1, dtype=np.float64))
+        self.fs = np.array([pos0, 0.0, 0.0, 0.0, pr_alpha, pr_beta], dtype=np.float64)
+        self.ist = np.zeros(2, dtype=np.int64)
+        self.alpha_out = alpha_out
+        self.n_symbols = n_symbols
+        self.out = (np.zeros(n_symbols, dtype=np.int64),     # dec
+                    # line-symbol estimates the DFE and the PR residual
+                    # subtract; the same as dec except for precoded 1 + D,
+                    # where dec's mod-N chain is right for the user symbol but,
+                    # after one wrong composite, wrong for every line symbol
+                    # that follows. This chain clips instead, and the
+                    # composite's extremes resynchronise it.
+                    np.zeros(n_symbols, dtype=np.int64),     # xl
+                    np.zeros(n_symbols, dtype=np.float64),   # y_sl
+                    np.zeros(n_symbols, dtype=np.float64),   # r_sl: less the controlled cursor
+                    np.zeros(n_symbols, dtype=np.float64),   # phase
+                    np.zeros(n_symbols, dtype=np.int64),     # lane_of
+                    np.zeros(n_symbols, dtype=np.float64))   # q_hist: dequantized samples
+        self.done = 0
+        self.stopped = False
+
+    def advance(self, k1: int) -> int:
+        k1 = min(int(k1), self.n_symbols)
+        if self.stopped or k1 <= self.done:
+            return self.done
+        done, out = self.core(self.y, self.osr, self.done, k1, *self.params,
+                              self.fs, self.ist, *self.out)
+        self.done = int(done)
+        self.stopped = bool(out)
+        return self.done
+
+    @property
+    def finished(self) -> bool:
+        return self.stopped or self.done >= self.n_symbols
+
+    def result(self):
+        n = self.done
+        dec, _xl, y_sl, _r_sl, phase, lane_of, q_hist = self.out
+        self.alpha_out[0] = self.fs[4]
+        if self.alpha_out.size > 1:
+            self.alpha_out[1] = self.fs[5]
+        return (dec[:n], y_sl[:n], phase[:n], self.wf, self.wd,
+                lane_of[:n], q_hist[:n])
+
+
+def _adc_rx_with(core):
+    def adc_rx(y: np.ndarray, osr: int, pos0: float, n_symbols: int,
+               levels: np.ndarray,
+               n_lanes: int, offsets: np.ndarray, gains: np.ndarray,
+               skews: np.ndarray, q_step: float, code_max: int,
+               noise: np.ndarray,
+               w_ffe: np.ndarray, n_pre_ffe: int, mu_ffe: float,
+               w_dfe: np.ndarray, mu_dfe: float,
+               kp: float, ki: float, clamp: float, pd_offset: float,
+               pd_use_ffe: int, loop_latency_blocks: int,
+               ref_idx: np.ndarray, train_len: int, adapt_start: int,
+               rx_clock_offset_samples: np.ndarray,
+               pr_alpha: float, pr_mode: int, pr_levels: np.ndarray,
+               mu_alpha: float, alpha_out: np.ndarray,
+               pr_beta: float, pr_nt: int):
+        run = AdcRxRun(y, osr, pos0, n_symbols, levels, n_lanes, offsets, gains,
+                       skews, q_step, code_max, noise, w_ffe, n_pre_ffe, mu_ffe,
+                       w_dfe, mu_dfe, kp, ki, clamp, pd_offset, pd_use_ffe,
+                       loop_latency_blocks, ref_idx, train_len, adapt_start,
+                       rx_clock_offset_samples, pr_alpha, pr_mode, pr_levels,
+                       mu_alpha, alpha_out, pr_beta, pr_nt, core=core)
+        run.advance(n_symbols)
+        return run.result()
+    return adc_rx
+
+
+_ADC_RX_DOC = """Returns (dec, y_slicer, phase, w_ffe_out, w_dfe_out, lane_of, q_codes).
+
+    ``rx_clock_offset_samples[k]`` is the receiver sampling clock's own error
+    at symbol ``k`` [samples], added to the loop phase before the lane skew;
+    ``phase`` reports the position actually sampled (offset included). Zeros
+    reproduce the ideal-clock kernel bit for bit.
+
+    Partial response (``pr_mode`` > 0): the FFE is driven towards
+    ``levels[x_s] + pr_alpha * levels[x_{s-1}]``, the DFE starts after the
+    controlled cursor, and the per-symbol decision -- for the LMS and the CDR;
+    the final one is a sequence detector's -- either subtracts ``pr_alpha``
+    times the previous decision before slicing (``pr_mode`` 1, propagates
+    errors) or, for precoded 1 + D, slices to the 2N - 1 composite
+    ``pr_levels`` and takes the line symbol as (q - x_{s-1}) mod N
+    (``pr_mode`` 2: the user symbol is q mod N, so an error does not
+    propagate). The Mueller-Muller detector on equalised samples reads the
+    same sample less ``pr_alpha`` times the previous decision: on the shaped
+    pulse h(+1) = alpha and the detector's gradient fades as alpha grows (the
+    loop walked off 0.4-3 UI at alpha 0.75-1), on the residual it is a delta
+    pulse again. ``pr_mode`` 0 is the delta target, bit for bit.
+
+    ``mu_alpha`` > 0 adapts the controlled cursor with the FFE (``pr_mode``
+    1 only; the composite slicer assumes a = 1): the same error, the gradient
+    taken in a, normalised by the mean symbol power and clipped to [0, 1].
+    ``alpha_out[0]`` returns the a the run ended on (and ``alpha_out[1]``,
+    when there is one, the b of a three-cursor target, adapted the same way
+    against the decision two symbols back; a in [0, 2], b in [-1, 1] there).
+
+    ``pr_nt`` 3 is a 1 + aD + bD^2 target: ``pr_beta`` times the decision two
+    symbols back is subtracted as well, everywhere ``pr_alpha`` times the
+    previous one is, and the DFE starts after both controlled cursors.
+
+    The loop itself is :func:`_adc_rx_core_py`; :class:`AdcRxRun` runs it in
+    chunks with the same result.
+    """
+
+
+_adc_rx_core = _adc_rx_core_py
+#: the pure-Python loop, whatever the JIT does (tests compare the two)
+_adc_rx_py = _adc_rx_with(_adc_rx_core_py)
+_adc_rx_py.__doc__ = _ADC_RX_DOC
+adc_rx = _adc_rx_py
 if os.environ.get("HALO_NO_JIT") != "1":
     try:
         import numba
 
         _farrow_local = numba.njit(cache=True, inline="always")(_farrow_py)
-        adc_rx = numba.njit(cache=True)(_adc_rx_py)
+        _adc_rx_core = numba.njit(cache=True)(_adc_rx_core_py)
+        adc_rx = _adc_rx_with(_adc_rx_core)
+        adc_rx.__doc__ = _ADC_RX_DOC
     except ImportError:
-        adc_rx = _adc_rx_py
-else:
-    adc_rx = _adc_rx_py
+        pass

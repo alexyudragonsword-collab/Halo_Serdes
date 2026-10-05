@@ -82,21 +82,21 @@ def engines_for(cfg: LinkConfig) -> tuple[str, ...]:
 def run_link(cfg: LinkConfig, engines: tuple[str, ...] | None = None,
              collect_eye: bool = True, collect_jitter: bool = False,
              channel: ChannelModel | None = None,
-             progress: "Callable[[str], None] | None" = None,
+             progress: "Callable[..., None] | None" = None,
              **engine_kw) -> RunRecord:
     """Run the requested engines on ``cfg`` and register the result.
 
-    ``progress`` is called with a stage name at each boundary. The stages are
-    deliberately coarse — building the channel, each engine, done — because
-    that is where this layer can see. Inside ``run_time_link`` the receiver is
-    one call into a numba/pure-Python kernel that runs the whole symbol loop;
-    reporting from within it would mean chunking that loop and carrying the
-    CDR and DFE state across the seams, which is exactly the code architecture
-    invariants #3 and #4 rest on. A progress bar is not worth reopening it.
+    ``progress(stage, fraction=None)`` is called at each stage boundary
+    (building the channel, each engine, done) and, inside the time-domain
+    engine, after every receiver chunk of ``sim.chunk_symbols`` symbols with
+    the fraction of the run done. (This used to stop at stage boundaries: the
+    receiver was one kernel call. Since 2026-10-05 the kernels carry their
+    loop state across chunks, bit for bit, so the time engine reports from
+    inside the loop -- the earlier "not worth reopening" no longer holds.)
 
     A callback may raise :class:`Cancelled` to abandon the run; that one
     exception is re-raised rather than recorded, so the caller can tell a
-    cancellation from a failure. It can only take effect at a stage boundary.
+    cancellation from a failure. It takes effect at the next chunk.
     """
     engines = engines or engines_for(cfg)
     rid = uuid.uuid4().hex[:12]
@@ -112,9 +112,14 @@ def run_link(cfg: LinkConfig, engines: tuple[str, ...] | None = None,
             if "time" in engines:
                 if progress:
                     progress("time-domain engine")
+                kernel_progress = None
+                if progress:
+                    def kernel_progress(done, total):
+                        progress("time-domain engine", done / max(total, 1))
                 rec.sim = run_time_link(cfg, channel=channel,
                                         collect_eye=collect_eye,
                                         collect_jitter=collect_jitter,
+                                        progress=kernel_progress,
                                         **engine_kw)
             elif "static" in engines:
                 if progress:

@@ -36,6 +36,9 @@ data class TimeRunState(
     /** queued | running | done | error | cancelled — from the Python side. */
     val state: String = "idle",
     val stage: String = "",
+    /** Fraction of the receiver loop done, or null outside it. The kernel
+     *  runs in chunks and reports between them, so this is measured. */
+    val fraction: Double? = null,
     val quality: Quality = Quality.FAST,
     val elapsedS: Double = 0.0,
     val cancelPending: Boolean = false,
@@ -110,6 +113,7 @@ object TimeRunController {
             _state.value = _state.value.copy(
                 state = d.optString("state"),
                 stage = d.optString("stage"),
+                fraction = if (d.isNull("fraction")) null else d.optDouble("fraction"),
                 elapsedS = d.optDouble("elapsed_s", 0.0),
                 cancelPending = d.optBoolean("cancel_pending"),
                 handle = d.stringOrNull("handle"),
@@ -123,9 +127,9 @@ object TimeRunController {
     /**
      * Ask the run to stop.
      *
-     * Honoured at the next stage boundary only — the receiver kernel is one
-     * uninterruptible call. The state carries `cancelPending` so the screen can
-     * say "stopping" instead of implying the work has already ended.
+     * Honoured at the next receiver chunk (a few thousand symbols) or stage
+     * boundary. The state carries `cancelPending` so the screen can say
+     * "stopping" until the Python side has actually unwound.
      */
     fun cancel(context: Context) {
         val job = _state.value.job ?: return

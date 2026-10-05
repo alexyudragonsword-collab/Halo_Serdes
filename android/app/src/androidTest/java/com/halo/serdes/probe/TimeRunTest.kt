@@ -81,12 +81,11 @@ class TimeRunTest {
      * A stopped run must not be reported as a broken one.
      *
      * The outcome is deliberately not pinned to "cancelled". Cancellation is
-     * honoured at a stage boundary, and the only boundary before the engine is
-     * ~5 ms after the job starts — less than one round trip through this side's
-     * dispatcher. So whether the flag arrives in time is a race this test
-     * cannot win reliably, and the honest assertion is the one that was
-     * actually broken once: a cancelled run came back as `error`, because
-     * `run_link` swallowed the cancellation along with real failures.
+     * honoured at a stage boundary or between receiver chunks, and a fast-tier
+     * run can still finish before the flag arrives — a race this test cannot
+     * win reliably. The honest assertion is the one that was actually broken
+     * once: a cancelled run came back as `error`, because `run_link`
+     * swallowed the cancellation along with real failures.
      *
      * The fast tier, not precise: losing the race on `precise` would mean
      * waiting out 500 000 symbols on an emulator.
