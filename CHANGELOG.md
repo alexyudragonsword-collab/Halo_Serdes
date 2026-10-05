@@ -6,6 +6,14 @@
 
 ---
 
+## [未发布] — 桌面版随版本 tag 发 GitHub Release(原 ROADMAP P2 #5)
+
+### 新增
+- `build-windows.yml` 加 `release` job:推 `vX.Y.Z` tag 时,用通过 `--selfcheck` 的产物发 Release —— Nuitka onefile exe(带图标)
+  与 PyInstaller 文件夹 zip。tag 与 `pyproject.toml` 版本不符即失败、不发;onefile 构建失败(允许)时只发 zip。
+- 触发器加 `branches: ["**"]` + `tags: ["v*"]`(只写 tags 会让分支推送不再触发;tag 推送不受路径过滤)。
+- onefile 的 `--product-version` 改从 `pyproject.toml` 读(CI 与 `build_nuitka_onefile.ps1`),原写死 0.0.1。
+
 ## [未发布] — COM:ADC 架构用 178A 式 Rx FFE、计入 ADC 量化噪声(原 ROADMAP P2 #6)
 
 ### 新增 / 修复

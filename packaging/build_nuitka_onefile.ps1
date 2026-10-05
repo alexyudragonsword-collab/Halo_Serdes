@@ -14,6 +14,9 @@ python -m pip install --upgrade pip
 pip install -e ".[gui,desktop]"
 pip install "nuitka>=2.0" ordered-set zstandard
 
+# the exe's version resource follows the package (as in CI)
+$ver = python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+
 python -m nuitka --onefile --assume-yes-for-downloads `
   --include-package=dash --include-package=plotly `
   --include-package=dash_bootstrap_components `
@@ -28,7 +31,7 @@ python -m nuitka --onefile --assume-yes-for-downloads `
   --nofollow-import-to=galois --nofollow-import-to=pytest `
   --windows-console-mode=disable `
   --windows-icon-from-ico=packaging/icon.ico `
-  --product-name=Halo_Serdes --product-version=0.0.1 `
+  --product-name=Halo_Serdes --product-version=$ver `
   --onefile-tempdir-spec="{CACHE_DIR}/Halo_Serdes/{VERSION}" `
   --output-dir=build_nuitka_onefile --output-filename=Halo_Serdes_GUI `
   src/halo_serdes_gui/desktop.py
