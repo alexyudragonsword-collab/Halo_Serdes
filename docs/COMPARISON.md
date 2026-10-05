@@ -66,7 +66,7 @@
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
    30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、727 个测试全通过、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、731 个测试全通过、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -92,7 +92,7 @@ TDECQ(`analysis/tdecq.py`,示例 34)。
 - ✅ **COM(Channel Operating Margin)** —— **本轮补齐 + 升级为标准 COM**:`io/ami.py` 的
   `ComAdapter` 有两个实现:`NativeCom`(基于均衡脉冲响应的透明行为级 RSS 图,快、易读)与
   `Com93a`(**忠实的 IEEE 802.3 Clause 93A/178A COM**,`analysis/com.py`:CTLE/DFE 网格按
-  FOM 优化均衡器、DFE 抽头由光标经 b_max 上界导出、A_ni 从**卷积后的干扰+噪声 PDF**在目标
+  FOM 优化均衡器(ADC 架构另有 178A 式 MMSE Rx FFE)、DFE 抽头由光标经 b_max 上界导出、A_ni 从**卷积后的干扰+噪声 PDF**在目标
   DER 处读取——非高斯 RSS)。两者共用同一 `compute` 接口,官方 802.3 工具亦可经此接入;
   示例 `26_com_802p3.py`。
 - ✅ **抖动分解接入管线** —— **本轮补齐**:`stage_jitter_budget`/`total_jitter` +
@@ -149,5 +149,5 @@ TDECQ(`analysis/tdecq.py`,示例 34)。
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 727 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 731 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。

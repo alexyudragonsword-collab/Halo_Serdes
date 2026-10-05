@@ -89,15 +89,6 @@ CI 已经在构建三种 Windows 产物(PyInstaller / Nuitka standalone / Nuitka
 并做 `--selfcheck` 冒烟,但只作为 **artifact 上传,会过期**。加一个 tag → Release 的
 job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量最小的一项。
 
-### 6. Rx-FFE 纳入 COM 优化网格
-
-`analysis/com.py` 现在优化 CTLE peaking × 采样相位 × (可选)Tx FFE,DFE 抽头由光标
-经 `b_max` 导出 —— 这是 **93A 参考接收机(CTLE+DFE)** 的形态。178A 风格的
-**Rx-FFE** 尚未纳入网格。`ComParams` 里已留了 `tx_fir_grid` 扩展位,加 `rx_ffe_grid`
-是自然延伸。做完之后 ADC 架构的 COM 才与其真实接收机结构对齐。
-
----
-
 ### 6b. Android:`targetSdk = 35` 但没有 edge-to-edge / WindowInsets 处理
 
 **现状**:`MainActivity.onCreate` 只有 `setContent { HaloTheme { HaloApp() } }`,

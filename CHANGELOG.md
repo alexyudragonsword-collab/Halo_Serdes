@@ -6,6 +6,16 @@
 
 ---
 
+## [未发布] — COM:ADC 架构用 178A 式 Rx FFE、计入 ADC 量化噪声(原 ROADMAP P2 #6)
+
+### 新增 / 修复
+- `ComParams.rx_ffe`(默认 `"auto"`:ADC 架构取 `rx.ffe` 大小,mixed-signal 无;`None` 关掉;或 `(n_pre, n_post)`)。
+  每个 (CTLE, Tx, 相位) 候选上 FFE 抽头按 MMSE 解:DFE 覆盖的后光标不算误差、接收噪声与串扰经抽头计入;
+  ISI / 串扰 / 噪声 / 抖动都在 FFE 之后取。`detail["rx_ffe"]`、`detail["rx_ffe_taps"]`。
+- ADC 架构的 σ_N 加上量化噪声(`adc_noise_sigma`,与统计引擎同式)。
+- 预设 COM:mixed-signal 不变;ADC 106 GBd −8.35 → 4.58、112 GBd stress −7.15 → 5.42、deep-LR −8.99 → 4.78、TI mismatch −6.23 → 9.26、
+  LPO −9.41 → 19.78 dB。示例 26(IL 16.2 dB,含串扰)−5.40 → −1.96 dB;示例 28 无串扰 2.76 → 15.01、12 个干扰 −10.86 → −10.25 dB。
+
 ## [未发布] — AMI 模型的 `has_getwave` 默认值统一(原 ROADMAP P2 #4)
 
 ### 变更
