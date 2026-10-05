@@ -377,7 +377,7 @@ class SimConfig:
     seed: int = 1
     engine: Literal["time", "stat", "both"] = "time"
     pattern: str = "prbs31"             # prbs7|prbs13|prbs31|prbs13q|prbs31q|prqs10
-    chunk_symbols: int = 65536          # streaming block size for the time engine
+    chunk_symbols: int = 65536          # receiver-loop chunk: progress / cancel granularity
     # staged startup (hard rule: CDR settle -> data-aided training -> DD)
     cdr_settle: int = 2000              # symbols for CDR to lock before adaptation
     train_symbols: int = 4000           # data-aided LMS span after settle

@@ -146,13 +146,18 @@ private fun RunningRow(s: TimeRunState, onCancel: () -> Unit) = Column {
             Text(if (s.cancelPending) "Stopping" else "Cancel")
         }
     }
-    // Indeterminate for the same reason the notification is: the receiver
-    // kernel is one call, so a percentage would be invented.
-    LinearProgressIndicator(
-        Modifier.fillMaxWidth().padding(top = 8.dp).testTag(TestTags.BUSY))
+    // Determinate inside the receiver loop, which reports after every chunk;
+    // indeterminate for the stages around it, which have no measure.
+    val f = s.fraction
+    if (f != null) {
+        LinearProgressIndicator(progress = { f.toFloat() },
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+    } else {
+        LinearProgressIndicator(
+            Modifier.fillMaxWidth().padding(top = 8.dp).testTag(TestTags.BUSY))
+    }
     if (s.cancelPending) {
-        Note("Cancellation lands at the next stage boundary; the receiver " +
-             "kernel cannot be interrupted part-way.")
+        Note("Cancellation lands at the next chunk of the receiver loop.")
     }
 }
 

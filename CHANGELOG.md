@@ -6,6 +6,16 @@
 
 ---
 
+## [未发布] — 接收机内核分块续跑:时域长跑可报进度、可中途取消(原 ROADMAP P1 #3)
+
+### 新增
+- `cdr.kernels.MsRxRun` / `cdr.adc_kernel.AdcRxRun`:内核循环拆成 `[k0, k1)` 的 core,循环状态(相位、积分器、DFE/FFE 抽头、
+  LMS 累加、环路延迟队列、PR 的 a/b…)全在参数里;任意分块与整段**逐位一致**。`ms_rx` / `adc_rx` 签名与行为不变。
+- 时域引擎按 `sim.chunk_symbols`(默认 65536)分块推进;`run_time_link(progress=)` 每块后回调 `(done, total)`,回调抛异常即中止。
+- App 层:`run_link` 的 progress 在引擎内带 fraction;`poll` 新增 `fraction`;`cancel` 在下一块生效(原先要等整个内核调用跑完)。
+  Android 运行卡与通知在接收机循环内显示确定进度条,取消提示改为"下一块生效"。
+- 预设指纹逐位同(506 + 44 值,默认分块已实际生效:预设 200k–400k 符号)。
+
 ## [未发布] — Android edge-to-edge,API 35 模拟器(原 ROADMAP P2 #6b)
 
 ### 变更

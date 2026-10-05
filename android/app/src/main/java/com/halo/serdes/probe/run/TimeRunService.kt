@@ -54,7 +54,7 @@ class TimeRunService : Service() {
                 if (!s.active) return@collectLatest
                 notificationManager.notify(
                     NOTIFICATION_ID,
-                    buildNotification(s.stage, s.elapsedS, s.cancelPending),
+                    buildNotification(s.stage, s.elapsedS, s.cancelPending, s.fraction),
                 )
             }
         }
@@ -82,6 +82,7 @@ class TimeRunService : Service() {
 
     private fun buildNotification(
         stage: String, elapsedS: Double, cancelPending: Boolean,
+        fraction: Double? = null,
     ): Notification {
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
@@ -91,7 +92,7 @@ class TimeRunService : Service() {
             PendingIntent.FLAG_IMMUTABLE)
 
         val text = buildString {
-            append(if (cancelPending) "stopping after this stage" else stage)
+            append(if (cancelPending) "stopping" else stage)
             if (elapsedS > 0) append("  ·  %.0f s".format(elapsedS))
         }
         return Notification.Builder(this, CHANNEL_ID)
@@ -99,9 +100,9 @@ class TimeRunService : Service() {
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
-            // Indeterminate on purpose: the receiver kernel is a single call
-            // that dominates the run, so any percentage would be invented.
-            .setProgress(0, 0, true)
+            // Measured inside the receiver loop (it reports per chunk),
+            // indeterminate around it.
+            .setProgress(100, ((fraction ?: 0.0) * 100).toInt(), fraction == null)
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(
                 null, if (cancelPending) "Stopping…" else "Cancel", cancel).build())

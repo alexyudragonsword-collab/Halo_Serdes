@@ -21,7 +21,7 @@ from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
 from ..core.waveform import Waveform
-from ..cdr import ms_rx
+from ..cdr.kernels import MsRxRun
 from ..dsp import channel_cursors
 from ..cdr.rx_clock import rx_clock_offsets_samples
 from ..tx.pipeline import TxPipeline
@@ -182,19 +182,40 @@ def _optical_pass(tx_y: np.ndarray, stages, channel: ChannelModel,
     return fft_filter(opt.noise.inject(y_pd, rng), h2)
 
 
+def _drive(run, chunk: int, progress):
+    """Advance a receiver run ``chunk`` symbols at a time to its end.
+
+    ``progress(done, total)`` is called after each chunk; whatever it raises
+    stops the run there (that is how a caller cancels). The kernels carry
+    their whole loop state across the calls, so the result does not depend
+    on the chunk size.
+    """
+    step = max(int(chunk), 1)
+    while not run.finished:
+        run.advance(run.done + step)
+        if progress is not None:
+            progress(run.done, run.n_symbols)
+    return run.result()
+
+
 def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False,
                   collect_jitter: bool = False,
                   tx_ami=None, rx_ami=None, xtalk=None,
-                  symbols: np.ndarray | None = None) -> SimResult:
+                  symbols: np.ndarray | None = None,
+                  progress=None) -> SimResult:
     """``symbols``: the user symbol stream to send instead of ``sim.pattern``
     (symbol indices, one per UI). A retimer feeds one segment's decisions to
     the next this way; the stream enters the waveform domain only through
     ``tx/builder.py`` (invariant #5). With the pattern's own stream the
-    result is identical to leaving it None."""
+    result is identical to leaving it None.
+
+    ``progress(done, total)``: called between receiver chunks of
+    ``sim.chunk_symbols`` symbols; an exception it raises abandons the run
+    (cancellation). The chunk size does not change the result."""
     if cfg.rx.arch == "adc_dsp":
         return _run_adc_link(cfg, channel, collect_eye, collect_jitter,
-                             tx_ami, rx_ami, xtalk, symbols)
+                             tx_ami, rx_ami, xtalk, symbols, progress)
     from ..config.schema import (
         MS_COMFORT_DATA_RATE,
         MS_HARD_MAX_BAUD,
@@ -337,12 +358,12 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # the receiver's own clock, drawn last so an ideal clock changes nothing
     rx_clk = rx_clock_offsets_samples(n_sym, cfg, rng)
 
-    dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = ms_rx(
+    dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = _drive(MsRxRun(
         rx_y, osr, float(peak), n_sym,
         levels.astype(np.float64), np.asarray(w_dfe0, dtype=np.float64),
         float(mu), LMS_BATCH_SYMBOLS, float(kp), float(ki), float(clamp),
         float(sum_alpha), sched.reference, int(train_end), int(settle),
-        int(tap1_unrolled), branch_off, rx_clk)
+        int(tap1_unrolled), branch_off, rx_clk), cfg.sim.chunk_symbols, progress)
 
     n_run = dec.size
     # --- optional MLSD over the postcursors the DFE left behind ---
@@ -377,14 +398,14 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                   collect_eye: bool = False,
                   collect_jitter: bool = False,
                   tx_ami=None, rx_ami=None, xtalk=None,
-                  symbols: np.ndarray | None = None) -> SimResult:
+                  symbols: np.ndarray | None = None, progress=None) -> SimResult:
     """ADC-based RX: light CTLE -> TI-ADC -> digital FFE/DFE -> MM-CDR.
 
     Primary metrics for this architecture are slicer-input SNR and SER
     (post-EQ eye information is low); BER via the same checkers.
     """
     from ..afe.adc import TiAdc
-    from ..cdr.adc_kernel import adc_rx
+    from ..cdr.adc_kernel import AdcRxRun
     from ..dsp import mmse_ffe, mmse_pr_target
     from ..dsp.ffe import equalized_cursors
 
@@ -515,7 +536,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     mu_a = pr.mu if (pr.active and pr.adapt == "lms") else 0.0
     alpha_out = np.array([alpha, beta], dtype=np.float64)
 
-    dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = adc_rx(
+    dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = _drive(AdcRxRun(
         rx_y, osr, float(peak), n_sym, levels.astype(np.float64),
         adc.n_lanes, adc.offsets, adc.gains, adc.skews,
         adc.q_step, adc.code_max, enob_noise,
@@ -525,7 +546,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         1 if cfg.mm_pd_input == "ffe" else 0, lat_blocks,
         sched.reference, int(train_end), int(settle), rx_clk,
         float(alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64),
-        float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1))
+        float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1)),
+        cfg.sim.chunk_symbols, progress)
 
     # The FFE emits symbol k - n_pre at ADC sample k, so the kernel's last
     # n_pre decisions were never made (they hold the array's initial 0). They

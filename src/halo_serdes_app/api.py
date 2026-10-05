@@ -444,6 +444,7 @@ class _Job:
     id: str
     state: str = "queued"           # queued | running | done | error | cancelled
     stage: str = ""
+    fraction: float | None = None   # of the receiver loop; None outside it
     handle: str | None = None
     error: dict | None = None
     started: float = 0.0
@@ -487,10 +488,11 @@ def _m_start_time_run(payload: dict) -> dict:
 
 
 def _run_job(job: _Job, values: dict) -> None:
-    def progress(stage: str) -> None:
+    def progress(stage: str, fraction: float | None = None) -> None:
         if job.cancel.is_set():
             raise runner.Cancelled()
         job.stage = stage
+        job.fraction = fraction
 
     job.state = "running"
     try:
@@ -517,27 +519,27 @@ def _m_poll(payload: dict) -> dict:
     if job is None:
         raise KeyError(f"unknown job {payload.get('job')!r}")
     return {"job": job.id, "state": job.state, "stage": job.stage,
+            "fraction": None if job.fraction is None else round(job.fraction, 4),
             "handle": job.handle, "elapsed_s": round(job.elapsed_s, 3),
             "cancel_pending": job.cancel.is_set() and job.state == "running",
             "job_error": job.error}
 
 
 def _m_cancel(payload: dict) -> dict:
-    """Request cancellation. Takes effect at the next stage boundary.
+    """Request cancellation. Takes effect at the next receiver chunk
+    (``sim.chunk_symbols`` symbols) or stage boundary, whichever comes first.
 
-    The receiver kernel is one uninterruptible call, so a cancel raised while
-    it is running is not honoured until it returns — which for a long run is
-    most of the wait. Say so rather than showing a button that appears to stop
-    the work: ``poll`` reports ``cancel_pending`` until the unwind actually
-    happens.
+    (Until 2026-10-05 the receiver kernel was one uninterruptible call and a
+    cancel waited for it to return.) ``poll`` still reports ``cancel_pending``
+    until the unwind actually happens, which with the default chunk is well
+    under a second.
     """
     job = _JOBS.get(payload.get("job"))
     if job is None:
         raise KeyError(f"unknown job {payload.get('job')!r}")
     job.cancel.set()
     return {"job": job.id, "state": job.state,
-            "note": "takes effect at the next stage boundary; the receiver "
-                    "kernel cannot be interrupted mid-run"}
+            "note": "takes effect at the next receiver chunk or stage boundary"}
 
 
 # ------------------------------------------------------ touchstone import ---
