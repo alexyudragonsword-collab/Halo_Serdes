@@ -12,7 +12,8 @@
   两架构,ADC 含 PR + LMS a;波形中途耗尽;进度序列;回调抛异常即取消)JIT 与 nojit 都过;预设指纹逐位同(默认分块已实际生效)。
 - App:progress(stage, fraction);poll 加 `fraction`;新测试:chunk 2048 的 precise 跑能 poll 到 0 < fraction < 1、其后 cancel → cancelled。
   Android:确定进度条 + 通知百分比 + 取消文案;runner / api / Kotlin 注释里"内核不可中断"的旧判断都改写并注明更正。
-- 内存(P1 #2)没动:内核仍读整条 `rx_y`。ROADMAP #2 已改写为"剩下的一半"。CI / totals 待补。
+- 内存(P1 #2)没动:内核仍读整条 `rx_y`。ROADMAP #2 已改写为"剩下的一半"。
+- 全量(JIT):737 passed / 2 skipped(+5 分块、+1 API 取消);PR #28。Android instrumented totals 待 CI。
 
 ## 2026-10-05 · Android edge-to-edge + API 35 模拟器(fix/android-edge-to-edge,原 ROADMAP P2 #6b)
 
