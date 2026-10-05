@@ -3,6 +3,14 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-05 · 桌面版随版本 tag 发 GitHub Release(ci/desktop-release,原 ROADMAP P2 #5)
+
+- `build-windows.yml` 加 `release` job(ubuntu,`contents: write`,`gh release create --generate-notes --verify-tag`):
+  onefile exe + PyInstaller zip;tag 必须等于 pyproject 版本;onefile 失败时只发 zip(`if` 显式写状态,隐式 success() 会整体跳过)。
+- 坑:`push` 只写 `tags` 会让分支推送不再触发,所以加 `branches: ["**"]`;路径过滤对 tag 推送不生效。
+- onefile `--product-version` 从 pyproject 读(CI + 本地 ps1)。actionlint 干净。
+- 未验证:release job 本身要推 tag 才会跑(会真的发 Release,由用户决定);分支推送验证三种构建仍过、release 被跳过。
+
 ## 2026-10-05 · COM:ADC 架构的 178A 式 Rx FFE + 量化噪声(feat/com-rx-ffe,原 ROADMAP P2 #6)
 
 - `ComParams.rx_ffe`("auto":ADC 取 `rx.ffe` 大小,mixed-signal 无);每候选相位 MMSE 解抽头(DFE 覆盖的后光标不计、噪声与串扰经抽头计入),
