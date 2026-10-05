@@ -97,16 +97,6 @@ overlap-save 分块,**但波形数组本身没有窗口化** —— `tx_wave`、
 **怎么做**:模拟器矩阵加一档 API 35,或在真机上跑一次并截图;确认后按需补
 `enableEdgeToEdge()` + `WindowInsets` 内边距。
 
-### 6c. Android:APK 打进了 `halo_serdes_gui`(手机永远不 import)
-
-**现状**:`android/app/build.gradle.kts` 的
-`setSrcDirs(listOf("src/main/python", "../../src"))` 把整棵 `src/` 交给 Chaquopy,
-其中 `halo_serdes_gui` 是 680 K 的 Dash 桌面 UI 源码,手机侧没有任何代码路径会 import 它。
-
-**为什么不是"顺手就改"**:动了打包内容就要按铁律 #6 两端重验,而 `halo_serdes_gui`
-里有对 `halo_serdes_app` 的 re-export shim,桌面侧依赖它 —— 排除时要确认排的只是 APK
-的打包范围,不是别的。
-
 ## P3 — 能力扩展
 
 ### 7. 片上校准回路

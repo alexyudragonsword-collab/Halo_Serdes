@@ -55,7 +55,8 @@ cdr/__init__,core/__init__,core/fixed,core/mapping,core/waveform,dsp/__init__,ds
 
 skill 的 `android_wheel.py` 假设「一个发行版 = 一个可导入包」,本仓库不是:
 `halo-serdes` 这一个发行版下有 `halo_serdes` / `halo_serdes_app` / `halo_serdes_gui`
-三个包,而 app 需要**前两个装在一起**。
+三个包,而 app 需要**前两个装在一起**。(编译型 wheel 只打前两个;2026-10-05 起解释型 APK 也用
+`exclude("halo_serdes_gui/**")` 排除第三个,CI 用 `inspect_apk.py --absent halo_serdes_gui` 两型都卡。)
 
 1. **一包一 wheel → 文件名相撞。** 两次调用产出的 wheel 同名同 dist-info,装第二个
    会把第一个卸掉。需要一个合并步骤:解开两个 wheel 到同一棵树、**重算 `RECORD`**
