@@ -6,6 +6,14 @@
 
 ---
 
+## [未发布] — 统计引擎建模 PR 逐符号判决(原 ROADMAP P3 #8 余项)
+
+### 新增 / 修复
+- `engine.statistical.pr_symbol_decisions`:受控光标由前面的判决减掉、错判会传播,用最近一或两个判决误差的马尔可夫链算 SER;
+  预编码 a = 1 走合成电平(不传播)。`StatResult.extras["ser_slicer"]` 报它(对照时域同名键)。
+- `rx.mlsd.kind: none` + PR 时统计 BER 改用它:与时域 0.8–1.6×,原按理想抽头 2.7–4.1× 偏乐观。有 Viterbi 时 BER 不变。
+  无 PR 时逐位同前(预设指纹 488 + 44 值)。
+
 ## [未发布] — 整 UI 周跳后按段重对齐计分(原 ROADMAP 4c)
 
 ### 修复

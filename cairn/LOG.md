@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-05 · 统计引擎建模 PR 逐符号判决(feat/pr-symbol-decisions,原 ROADMAP P3 #8 余项)
+
+- `pr_symbol_decisions`:最近一或两个判决误差的马尔可夫链(受控光标 × 误差平移 PDF,平稳分布取 SER);预编码 a = 1 走合成电平。
+  `extras["ser_slicer"]`;`mlsd: none` 时即 BER。对 numpy 逐符号判决 MC:7 种情形都在 10 % 内。
+- 时域 / 统计(`mlsd: none`,示例 18 信道 0.24 m、`enob=None`):a 0.5 / 0.75 / 1 / 1 预编码 2.66 / 2.98 / 4.09 / 1.21× → 1.64 / 0.83 / 1.03 / 0.97×;
+  Viterbi 下 `ser_slicer` 0.84–1.64×,Viterbi BER 不变。专题 `DSP发端与PR.md` §11;ROADMAP P3 #8 只剩四光标。
+- 指纹逐位同 main(506 + 44 值,无 PR 预设)。口径:DFE 仍理想,对 LMS / CDR 的反作用不建。
+- 验证:ruff 干净;jit 726 passed / 2 skipped;nojit 新测试 8 passed / 3 skipped(引擎级 needs_jit)。CI(695b041)测试矩阵、lint、
+  import-clean、rtl-lockstep、vendor-drift 全绿;Android CI(8eed042,run 37245979942,含全部代码改动):
+  `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
+
 ## 2026-10-04 · 整 UI 周跳后按段重对齐计分(fix/cycle-slip-rescore,原 ROADMAP 4c)
 
 - `score()` 加 `find_slips`:512 符号窗,当前偏移错 > 1/4 且相对 ±4 内某偏移错不到一半才换,边界取两段错数和最小处;
