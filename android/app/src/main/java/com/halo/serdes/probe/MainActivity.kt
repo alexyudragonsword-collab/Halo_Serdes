@@ -3,6 +3,7 @@ package com.halo.serdes.probe
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import com.halo.serdes.probe.ui.HaloTheme
 import com.halo.serdes.probe.ui.HaloApp
 
@@ -18,6 +19,12 @@ import com.halo.serdes.probe.ui.HaloApp
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // targetSdk 35 draws behind the system bars on Android 15 whether or
+        // not this is called; calling it makes every API level lay out the
+        // same way, so the API 34 emulator tests the layout an Android 15
+        // phone shows. The Scaffold's bars take the system-bar insets; the
+        // content takes the keyboard's (HaloApp).
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent { HaloTheme { HaloApp() } }
     }

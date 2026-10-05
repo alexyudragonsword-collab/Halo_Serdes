@@ -7,6 +7,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -16,6 +20,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
@@ -205,9 +211,56 @@ class UiRenderTest {
         shoot("03-timerun")
     }
 
+    /**
+     * Edge to edge (forced on Android 15 at targetSdk 35, and switched on
+     * everywhere by MainActivity), nothing stops the app drawing under the
+     * status bar or the gesture bar except the insets being honoured. The
+     * Material bars themselves reach behind the system bars on purpose (their
+     * colour fills that strip) and pad their content, so what is checked is
+     * the content: the title wholly below the status bar, the tab labels
+     * wholly above the navigation bar, in window coordinates, on whatever API
+     * level this runs (CI: 34 and 35).
+     */
+    @Test
+    fun theTitleAndTabsClearTheSystemBars() {
+        awaitText("Halo SerDes")
+        var status = 0
+        var nav = 0
+        var height = 0
+        compose.runOnUiThread {
+            val decor = compose.activity.window.decorView
+            val insets = ViewCompat.getRootWindowInsets(decor)
+            if (insets != null) {
+                status = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+                nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            }
+            height = decor.height
+        }
+        // a status bar to clear, or this checks nothing
+        assertTrue("no status bar inset reported", status > 0)
+        val title = compose.onNode(hasText("Halo SerDes") and hasAnyAncestor(hasTestTag(TestTags.TOP_BAR)),
+                                   useUnmergedTree = true).fetchSemanticsNode().boundsInWindow
+        assertTrue("title top ${title.top} is under the status bar ($status)", title.top >= status - 1)
+        val tab = compose.onNode(hasText("Link") and hasAnyAncestor(hasTestTag(TestTags.NAV_BAR)),
+                                 useUnmergedTree = true).fetchSemanticsNode().boundsInWindow
+        assertTrue("tab label bottom ${tab.bottom} is under the navigation bar ($height - $nav)",
+                   tab.bottom <= height - nav + 1)
+        shoot("00-insets")
+    }
+
     @Test
     fun runningTheStatisticalEngineDrawsABathtub() {
         awaitText("Run statistical engine")
+        // The button exists before it is usable: it is enabled only once the
+        // startup preset probe has settled on a runnable channel, and that can
+        // be a moment with no spinner on screen. A click on the disabled
+        // button is silently dropped, and the wait for "BER " below then ran
+        // out its whole 180 s -- three CI runs failed that way (#16, #24, #27),
+        // each on a commit that did not touch this path.
+        compose.waitUntil(120_000) {
+            compose.onAllNodes(hasText("Run statistical engine") and isEnabled())
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText("Run statistical engine").performClick()
 
         // ~0.4 s of engine on ARM; longer on a loaded emulator. awaitText also
