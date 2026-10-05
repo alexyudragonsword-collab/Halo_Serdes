@@ -78,8 +78,7 @@ base = run_time_link(cfg, channel=ch).slicer_snr_db
 snr = {}
 for flow, gw in (("Init (LTI)", False), ("GetWave", True)):
     cm = AmiCModel(so, taps=TAPS, n_pre=N_PRE, has_getwave=gw)
-    nm = NativeFirAmi(TAPS, n_pre=N_PRE, sample_spaced=False)
-    nm.has_getwave = gw
+    nm = NativeFirAmi(TAPS, n_pre=N_PRE, sample_spaced=False, has_getwave=gw)
     sc = run_time_link(cfg, channel=ch, tx_ami=cm).slicer_snr_db
     sn = run_time_link(cfg, channel=ch, tx_ami=nm).slicer_snr_db
     snr[flow] = (sc, sn)

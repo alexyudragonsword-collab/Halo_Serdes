@@ -83,16 +83,6 @@ overlap-save 分块,**但波形数组本身没有窗口化** —— `tx_wave`、
 
 ## P2 — 一致性与交付
 
-### 4. `has_getwave` 默认值不一致
-
-`NativeFirAmi` 默认 `True`、`AmiCModel` 默认 `False`。语义上都说得通(前者两条流都
-实现;后者让调用方明示),但**对比两个 AMI 模型时若不显式对齐,会把"走了不同的流"
-误当成模型差异** —— 开发中确实踩过,一度以为 2.62 dB 的差异是 bug。
-
-**怎么做**:两个选项 —— (a) 统一默认值并在 `AmiModel` 基类文档里写清;
-(b) 保持现状但在 `load_ami_model` 里对"两个模型 flag 不一致"发 warning。
-倾向 (a) + 在 `docs/USAGE.md` §12 已有的提示上再加一句。
-
 ### 5. 桌面版发 GitHub Release
 
 CI 已经在构建三种 Windows 产物(PyInstaller / Nuitka standalone / Nuitka onefile)

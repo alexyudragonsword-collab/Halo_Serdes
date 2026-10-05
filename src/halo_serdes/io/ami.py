@@ -50,6 +50,12 @@ class AmiModel(ABC):
     Subclasses implement whichever flow(s) they support. ``has_getwave``
     tells the host whether the GetWave (time-domain) flow is available;
     Init-only LTI models leave :meth:`get_wave` at its passthrough default.
+
+    Every shipped model that implements GetWave defaults to using it, as an
+    IBIS-AMI host does when ``GetWave_Exists`` is true. The two flows give
+    different link results (a 2.62 dB gap was once chased as a model bug),
+    so models are only comparable on the same flow: when one is switched to
+    Init, switch the other too.
     """
 
     #: True when the model implements the time-domain GetWave flow.
@@ -93,11 +99,13 @@ class NativeFirAmi(AmiModel):
         sample_spaced: if True the taps are dt-spaced (apply directly to the
             oversampled wave); if False they are UI-spaced and are expanded to
             the oversample grid at :meth:`get_wave` time via ``osr = ui/dt``.
+        has_getwave: offer the host the GetWave flow (the default, as for
+            every model here); False makes it use Init.
     """
 
-    has_getwave = True
-
-    def __init__(self, taps, n_pre: int = 0, sample_spaced: bool = True):
+    def __init__(self, taps, n_pre: int = 0, sample_spaced: bool = True,
+                 has_getwave: bool = True):
+        self.has_getwave = bool(has_getwave)
         self.taps = np.asarray(taps, dtype=np.float64)
         self.n_pre = int(n_pre)
         self.sample_spaced = bool(sample_spaced)
@@ -254,12 +262,13 @@ class AmiCModel(AmiModel):
         taps / n_pre: convenience — rendered into the AMI parameter string
             ``(halo_fir (taps ...) (n_pre k))`` the reference model parses.
         params: a raw AMI parameter string, overriding ``taps``/``n_pre``.
-        has_getwave: expose the GetWave (time-domain) flow to the host; when
-            False the host uses the Init (LTI impulse-transform) flow.
+        has_getwave: expose the GetWave (time-domain) flow to the host (the
+            default, as for every model here); when False the host uses the
+            Init (LTI impulse-transform) flow.
     """
 
     def __init__(self, so_file: str, *, taps=None, n_pre: int = 0,
-                 params: str | None = None, has_getwave: bool = False):
+                 params: str | None = None, has_getwave: bool = True):
         self._lib = ctypes.CDLL(str(so_file))
         c = ctypes
         self._init_fn = self._lib.AMI_Init
@@ -341,23 +350,29 @@ class AmiCModel(AmiModel):
 def load_ami_model(ami_file: str | None = None, dll_file: str | None = None,
                    *, so_file: str | None = None, taps=None, n_pre: int = 0,
                    sample_spaced: bool = True, params=None,
-                   has_getwave: bool = False) -> AmiModel:
+                   has_getwave: bool = True) -> AmiModel:
     """Factory for an :class:`AmiModel`.
 
     * ``so_file=...`` → :class:`AmiCModel` (a compiled model run over the C ABI);
     * ``ami_file=..., dll_file=...`` → :class:`IbisAmiModel` (pyibisami backend);
     * ``taps=[...], n_pre=k`` → :class:`NativeFirAmi` (dependency-free reference).
+
+    ``has_getwave`` is the same for all three: GetWave when the model has it
+    (an IBIS-AMI model's ``GetWave_Exists`` false still wins), Init when False.
     """
     if so_file:
         return AmiCModel(so_file, taps=taps, n_pre=n_pre,
                          params=params if isinstance(params, str) else None,
                          has_getwave=has_getwave)
     if ami_file and dll_file:
-        return IbisAmiModel(ami_file, dll_file,
-                            params=params if isinstance(params, dict) else None)
+        m = IbisAmiModel(ami_file, dll_file,
+                         params=params if isinstance(params, dict) else None)
+        m.has_getwave = m.has_getwave and bool(has_getwave)
+        return m
     if taps is None:
         taps = [1.0]
-    return NativeFirAmi(taps, n_pre=n_pre, sample_spaced=sample_spaced)
+    return NativeFirAmi(taps, n_pre=n_pre, sample_spaced=sample_spaced,
+                        has_getwave=has_getwave)
 
 
 # --------------------------------------------------------------------------- #
