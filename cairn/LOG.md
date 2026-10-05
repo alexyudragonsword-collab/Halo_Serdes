@@ -9,7 +9,8 @@
   构造参数,`load_ami_model(has_getwave=)` 对三种都生效(厂商 `GetWave_Exists` 为假仍走 Init)。基类文档写明"比较须同流"。
 - 行为变更:不显式指定的 `AmiCModel` 旧调用改走 GetWave;仓库内调用都显式或只调 Init,示例 29 输出逐字同(Init 15.370 / GetWave 12.780 dB)。
 - 新测试 `test_every_model_defaults_to_the_same_flow`(main 上红)。pitfalls 条目改写,旧默认保留。
-- 验证:ruff 干净;jit 727 passed / 2 skipped。CI / Android totals 待补。
+- 验证:ruff 干净;jit 727 passed / 2 skipped。CI(484fcc1)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿;
+  Android CI(77b9b57,run 37251407880,含全部代码改动):`instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-05 · 统计引擎建模 PR 逐符号判决(feat/pr-symbol-decisions,原 ROADMAP P3 #8 余项)
 
