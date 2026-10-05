@@ -9,7 +9,10 @@
 - 测试断言的是**内容**:Material `TopAppBar` / `NavigationBar` 有意把底色铺到系统栏后面、只给内容加 padding,量 bar 自身边界会误报;
   所以量标题文字(状态栏 inset 之下)与 "Link" Tab 标签(导航栏 inset 之上),窗口坐标。新加 TestTags TOP_BAR / NAV_BAR。
 - android.yml 解释型 emulator job 改 matrix [34, 35](fail-fast: false),artifact 名带 api 后缀;actionlint 干净。
-- 本地无 Android SDK,Kotlin 编译与两档模拟器结果由 CI 判定;`consumeWindowInsets` 是否仍是 ExperimentalLayoutApi 不确定,已 OptIn。CI / totals 待补。
+- 本地无 Android SDK,Kotlin 编译与两档模拟器结果由 CI 判定;`consumeWindowInsets` 是否仍是 ExperimentalLayoutApi 不确定,已 OptIn。
+- 首跑(6e1c410):编译过,新测试过;API 34 上 `runningTheStatisticalEngineDrawsABathtub` 又 180 s 超时 —— 第三次(#16、#24、#27)。
+  根因判断:按钮 `enabled = s.ready`(还要求 `channelIssue == null`、无字段错误),启动探预设期间可能无 spinner 但按钮未启用,
+  测试只等了文字与 spinner,点到禁用按钮被静默丢弃。修:点击前 `waitUntil(hasText(...) and isEnabled())`。CI / totals 待补。
 
 ## 2026-10-05 · 解释型 APK 排除 halo_serdes_gui(fix/apk-drop-gui,原 ROADMAP P2 #6c)
 

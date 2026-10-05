@@ -10,6 +10,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -250,6 +251,16 @@ class UiRenderTest {
     @Test
     fun runningTheStatisticalEngineDrawsABathtub() {
         awaitText("Run statistical engine")
+        // The button exists before it is usable: it is enabled only once the
+        // startup preset probe has settled on a runnable channel, and that can
+        // be a moment with no spinner on screen. A click on the disabled
+        // button is silently dropped, and the wait for "BER " below then ran
+        // out its whole 180 s -- three CI runs failed that way (#16, #24, #27),
+        // each on a commit that did not touch this path.
+        compose.waitUntil(120_000) {
+            compose.onAllNodes(hasText("Run statistical engine") and isEnabled())
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText("Run statistical engine").performClick()
 
         // ~0.4 s of engine on ARM; longer on a loaded emulator. awaitText also
