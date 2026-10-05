@@ -271,7 +271,16 @@ NativeCom().compute(ch, cfg)
 from halo_serdes.analysis.com import ComParams, compute_com
 compute_com(ch, cfg, params=ComParams(target_der=1e-5, n_dfe=2, b_max=0.85,
                                       ctle_peak_grid_db=(0, 3, 6, 9, 12)))
+compute_com(ch, cfg, params=ComParams(rx_ffe=(4, 10)))   # 指定 Rx FFE;rx_ffe=None 关掉
 ```
+
+- **参考接收机按架构**:mixed-signal 是 93A 的 CTLE + DFE;ADC 是 178A 式 CTLE + 波特间隔 Rx FFE + DFE,
+  FFE 大小默认取 `rx.ffe`(`ComParams.rx_ffe="auto"`)。每个相位上 FFE 抽头按 MMSE 解:DFE 覆盖的后光标不算误差,
+  接收噪声与串扰经抽头放大一并计入(否则无噪声时 FFE 会迫零)。`r.detail["rx_ffe_taps"]` 给出所选抽头。
+  Rx FFE 的抽头上限(178A 限前光标)不建。
+- **噪声 σ_N**:`rx.noise_rms`,ADC 架构再按功率加上量化噪声(与统计引擎同一式,`adc_noise_sigma`)。
+- 2026-10-05 前 ADC 架构的 COM 也按 93A 接收机算、且不含量化噪声:各 ADC 预设读 −6…−9 dB(链路实际能跑);
+  现在 4.6–19.8 dB。mixed-signal 不变。
 
 ---
 

@@ -92,7 +92,7 @@ TDECQ(`analysis/tdecq.py`,示例 34)。
 - ✅ **COM(Channel Operating Margin)** —— **本轮补齐 + 升级为标准 COM**:`io/ami.py` 的
   `ComAdapter` 有两个实现:`NativeCom`(基于均衡脉冲响应的透明行为级 RSS 图,快、易读)与
   `Com93a`(**忠实的 IEEE 802.3 Clause 93A/178A COM**,`analysis/com.py`:CTLE/DFE 网格按
-  FOM 优化均衡器、DFE 抽头由光标经 b_max 上界导出、A_ni 从**卷积后的干扰+噪声 PDF**在目标
+  FOM 优化均衡器(ADC 架构另有 178A 式 MMSE Rx FFE)、DFE 抽头由光标经 b_max 上界导出、A_ni 从**卷积后的干扰+噪声 PDF**在目标
   DER 处读取——非高斯 RSS)。两者共用同一 `compute` 接口,官方 802.3 工具亦可经此接入;
   示例 `26_com_802p3.py`。
 - ✅ **抖动分解接入管线** —— **本轮补齐**:`stage_jitter_budget`/`total_jitter` +

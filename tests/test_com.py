@@ -1,5 +1,7 @@
 """IEEE 802.3 COM (analysis/com.py) — the faithful PDF-based method."""
 
+import dataclasses
+
 import numpy as np
 
 from halo_serdes.analysis.com import ComParams, compute_com
@@ -17,8 +19,9 @@ def _cfg(length=0.20, modulation="pam4", rate=53.125e9, n_dfe=1, rj=0.0, dcd=0.0
         channel=ChannelConfig(kind="analytic", length_m=length, rdc=5.0,
                               r_skin=2e-3, loss_tangent=0.012, n_freq=8192),
         tx=TxConfig(swing=1.0, fir_taps=(-0.1, 1.0, -0.15), fir_n_pre=1, clock=ClockConfig(rj_ui=rj, dcd_ui=dcd)),
+        # receiver noise: without it the Rx FFE is free to zero-force
         rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=4.0),
-                    dfe=DfeConfig(n_taps=n_dfe)),
+                    dfe=DfeConfig(n_taps=n_dfe), noise_rms=0.001),
         sim=SimConfig(n_symbols=1000, seed=1, pattern="prbs13q"))
 
 
@@ -87,3 +90,55 @@ def test_com93a_adapter_matches_engine():
     assert isinstance(res, ComResult)
     assert res.detail["method"] == "802.3-93A/178A"
     assert abs(res.com_db - compute_com(ch, cfg).com_db) < 1e-9
+
+
+def test_rx_ffe_is_the_adc_receivers_reference():
+    """178A: the ADC receiver's COM runs its baud-spaced FFE (rx.ffe size)
+    between the CTLE and the DFE; mixed-signal stays the 93A CTLE + DFE.
+    On a lossy channel the FFE buys a lot of margin (the 93A receiver for an
+    ADC link was the pessimistic one), and None turns it off."""
+    cfg = _cfg(length=0.35)
+    ch = ChannelModel.from_config(cfg)
+    with_ffe = compute_com(ch, cfg)
+    without = compute_com(ch, cfg, params=ComParams(rx_ffe=None))
+    assert with_ffe.detail["rx_ffe"] == (cfg.rx.ffe.n_pre, cfg.rx.ffe.n_post)
+    assert with_ffe.detail["rx_ffe_taps"].size == cfg.rx.ffe.n_pre + cfg.rx.ffe.n_post + 1
+    assert without.detail["rx_ffe"] is None
+    assert with_ffe.com_db > without.com_db + 10.0
+    ms = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, arch="mixed_signal"))
+    assert compute_com(ch, ms).detail["rx_ffe"] is None
+
+
+def test_rx_ffe_pays_for_the_noise_it_enhances():
+    """More receiver noise -> the MMSE taps back off (smaller norm) and the
+    COM falls; noise-free the FFE would zero-force."""
+    cfg = _cfg(length=0.5)
+    ch = ChannelModel.from_config(cfg)
+    out = []
+    for nz in (0.0005, 0.002, 0.008):
+        c = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=nz))
+        r = compute_com(ch, c)
+        out.append((r.com_db, float(np.linalg.norm(r.detail["rx_ffe_taps"]))))
+    assert out[0][0] > out[1][0] > out[2][0]
+    assert out[0][1] > out[2][1]
+
+
+def test_mixed_signal_com_ignores_the_adc_receiver_settings():
+    """The 93A receiver (mixed-signal): no Rx FFE and no ADC noise, so its
+    COM does not move with rx.ffe or rx.adc."""
+    from halo_serdes.config.schema import AdcConfig, FfeConfig
+    cfg = _cfg(length=0.25)
+    ch = ChannelModel.from_config(cfg)
+    ms = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, arch="mixed_signal"))
+    other = dataclasses.replace(ms, rx=dataclasses.replace(
+        ms.rx, ffe=FfeConfig(n_pre=8, n_post=20), adc=AdcConfig(n_bits=4)))
+    assert compute_com(ch, ms).com_db == compute_com(ch, other).com_db
+
+
+def test_adc_quantisation_noise_costs_margin():
+    from halo_serdes.config.schema import AdcConfig
+    cfg = _cfg(length=0.25)
+    ch = ChannelModel.from_config(cfg)
+    fine = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, adc=AdcConfig(n_bits=10)))
+    coarse = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, adc=AdcConfig(n_bits=10, enob=5.0)))
+    assert compute_com(ch, coarse).com_db < compute_com(ch, fine).com_db - 1.0

@@ -11,9 +11,16 @@ The recipe (93A/178A, behavioral-level):
 1. **Equalizer optimization.** Search a grid of Rx CTLE peaking (and, optionally,
    Tx FFE presets). For each candidate the through pulse response is rebuilt
    (Tx FIR ⊗ channel ⊗ CTLE), sampled at the baud interval at each of ``osr``
-   sampling phases. A reference DFE with ``n_dfe`` taps is set directly from the
-   cursors, ``b_n = clamp(h_post_n / h_main, ±b_max)`` (the 802.3 rule — taps
-   are *derived*, not adapted), cancelling the covered postcursors.
+   sampling phases. With a 178A-style receiver a baud-spaced Rx FFE follows
+   (``ComParams.rx_ffe``; by default the ADC receiver's own ``rx.ffe`` size,
+   none for mixed-signal, which is the 93A CTLE + DFE receiver): its taps are
+   the MMSE solution on that phase's cursors, the postcursors the DFE covers
+   left free, the receiver noise and the crosstalk counted through the taps
+   (so the FFE does not buy ISI with noise it does not see). A reference DFE
+   with ``n_dfe`` taps is then set directly from the (equalized) cursors,
+   ``b_n = clamp(h_post_n / h_main, ±b_max)`` (the 802.3 rule — taps are
+   *derived*, not adapted), cancelling the covered postcursors. Rx FFE tap
+   limits (178A bounds the precursor taps) are not applied.
 2. **Figure of merit.** ``FOM = A_s / sqrt(σ_ISI² + σ_XT² + σ_N² + σ_J²)``
    (Gaussian approximation) selects the best (CTLE, Tx, phase).
 3. **A_ni via PDF.** For the winner the full noise PDF is built by convolving the
@@ -25,6 +32,10 @@ The recipe (93A/178A, behavioral-level):
 Reference TX: no DAC / driver model. COM's transmitter is the 802.3 reference
 (Tx FFE taps on the pulse, nothing else), so ``tx.dac_*`` / ``tx.drv_*`` do not
 reach it; ``_apply_tx_fir`` is deliberately not ``tx.pipeline.TxPipeline``.
+
+Receiver noise ``σ_N`` is ``rx.noise_rms``, plus for the ADC receiver its
+quantisation noise (``engine.statistical.adc_noise_sigma``, ENOB or n_bits),
+taken through the Rx FFE taps.
 
 ``A_s`` is the signal amplitude = main cursor × half the minimum normalized
 level spacing (so PAM4's inner eye and R_LM are handled automatically).
@@ -42,7 +53,8 @@ from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
 from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
-from ..engine.statistical import _shift_add, gaussian_kernel, isi_pdf
+from ..dsp.ffe import _conv_matrix
+from ..engine.statistical import _shift_add, adc_noise_sigma, gaussian_kernel, isi_pdf
 from ..engine.static_link import _levels
 
 
@@ -55,6 +67,9 @@ class ComParams:
     b_max: float = 1.0                     # per-tap DFE bound |b_n| ≤ b_max
     ctle_peak_grid_db: tuple[float, ...] | None = None  # None -> auto sweep
     tx_fir_grid: tuple[tuple[float, ...], ...] | None = None  # None -> cfg Tx only
+    # baud-spaced Rx FFE (n_pre, n_post): "auto" -> rx.ffe for adc_dsp, none for
+    # mixed_signal; None -> no Rx FFE (the 93A CTLE + DFE receiver)
+    rx_ffe: tuple[int, int] | None | str = "auto"
     v_bins: int = 8192
     n_pre_cursor: int = 20
     n_post_cursor: int = 80
@@ -127,6 +142,33 @@ def _dfe_residual(cursors: np.ndarray, main_i: int, n_dfe: int,
     return resid
 
 
+def _rx_ffe_taps(c: np.ndarray, mi: int, n_pre: int, n_post: int, n_dfe: int,
+                 sym_var: float, sig_n: float, agg: list) -> np.ndarray:
+    """MMSE Rx FFE taps on baud cursors ``c`` (main at ``mi``).
+
+    Minimises sym_var ||M w - d||^2 over the output cursors the DFE does not
+    cover, plus sig_n^2 ||w||^2 and each aggressor's sym_var ||M_a w||^2, d
+    the original main cursor at the equalized main position; then scaled so
+    the equalized main cursor equals the original (A_s stays in volts of the
+    same pulse).
+    """
+    n_taps = n_pre + n_post + 1
+    m = _conv_matrix(c, n_taps)
+    me = mi + n_pre
+    keep = np.ones(m.shape[0], dtype=bool)
+    keep[me + 1: me + 1 + n_dfe] = False
+    mk = m[keep]
+    d = np.zeros(m.shape[0])
+    d[me] = c[mi]
+    a = sym_var * (mk.T @ mk) + sig_n ** 2 * np.eye(n_taps)
+    for ac in agg:
+        ma = _conv_matrix(ac, n_taps)
+        a += sym_var * (ma.T @ ma)
+    w = np.linalg.solve(a, sym_var * (mk.T @ d[keep]))
+    out = float(m[me] @ w)
+    return w * (c[mi] / out) if out != 0.0 else w
+
+
 def compute_com(channel: ChannelModel, cfg: LinkConfig,
                 xtalk_pulses: list[Waveform] | None = None,
                 params: ComParams | None = None) -> ComResult93a:
@@ -150,9 +192,19 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
         else:
             peak_grid = (0.0,)
     tx_grid = p.tx_fir_grid or (tuple(cfg.tx.fir_taps),)
+    rx_ffe = p.rx_ffe
+    if rx_ffe == "auto":
+        rx_ffe = ((cfg.rx.ffe.n_pre, cfg.rx.ffe.n_post)
+                  if cfg.rx.arch == "adc_dsp" and cfg.rx.ffe.n_pre + cfg.rx.ffe.n_post > 0
+                  else None)
 
     h_ch = _channel_impulse(channel, cfg)
     swing = cfg.tx.swing / 2.0
+    # the ADC receiver's quantisation noise is receiver noise like any other
+    # (the same term the statistical engine adds); mixed-signal has none
+    rx_noise = float(cfg.rx.noise_rms)
+    if cfg.rx.arch == "adc_dsp":
+        rx_noise = float(np.hypot(rx_noise, adc_noise_sigma(cfg)))
 
     # precompute aggressor baud-cursor magnitudes per phase (phase-independent
     # peak alignment: sample each aggressor pulse around its own peak)
@@ -177,17 +229,36 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
                 main = c[mi]
                 if main <= 0:
                     continue
+                sig_n = rx_noise
+                agg = agg_cursors
+                w = None
+                if rx_ffe is not None:
+                    w = _rx_ffe_taps(c, mi, rx_ffe[0], rx_ffe[1], n_dfe, sym_var,
+                                     sig_n, agg_cursors)
+                    # the pulse's slope at every cursor, for the jitter term below
+                    si_all = pk + phase + (np.arange(c.size) - mi) * osr
+                    ok = (si_all > 0) & (si_all < pulse.y.size - 1)
+                    sl = np.zeros(c.size)
+                    sl[ok] = (pulse.y[si_all[ok] + 1] - pulse.y[si_all[ok] - 1]) / (2 * cfg.dt)
+                    c = np.convolve(c, w)
+                    mi = mi + rx_ffe[0]
+                    main = c[mi]
+                    if main <= 0:
+                        continue
+                    agg = [np.convolve(ac, w) for ac in agg_cursors]
+                    sig_n = sig_n * float(np.linalg.norm(w))
                 resid = _dfe_residual(c, mi, n_dfe, p.b_max)
                 a_s = main * half_gap
 
                 sig_isi = float(np.sqrt(np.sum(resid ** 2) * sym_var))
-                sig_xt = float(np.sqrt(sum(np.sum(ac ** 2) for ac in agg_cursors)
-                                       * sym_var)) if agg_cursors else 0.0
-                sig_n = float(cfg.rx.noise_rms)
+                sig_xt = float(np.sqrt(sum(np.sum(ac ** 2) for ac in agg)
+                                       * sym_var)) if agg else 0.0
                 # jitter: slope at the sampling instant -> voltage noise
                 si = pk + phase
                 slope = 0.0
-                if 0 < si < pulse.y.size - 1:
+                if w is not None:
+                    slope = abs(float(np.convolve(sl, w)[mi]))
+                elif 0 < si < pulse.y.size - 1:
                     slope = abs(pulse.y[si + 1] - pulse.y[si - 1]) / (2 * cfg.dt)
                 slope *= swing
                 a_dd_v = slope * cfg.tx.clock.dcd_ui * cfg.ui         # dual-Dirac half
@@ -202,7 +273,7 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
                         peak_db=peak_db, taps=taps, phase=phase, main=main,
                         a_s=a_s, resid=resid, sig_isi=sig_isi, sig_xt=sig_xt,
                         sig_n=sig_n, sig_j=sig_j, a_dd_v=a_dd_v,
-                        sig_rj_v=sig_rj_v))
+                        sig_rj_v=sig_rj_v, agg=agg, w=w))
 
     b = best[1]
 
@@ -212,7 +283,7 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
     v = np.linspace(-span, span, p.v_bins)
     dv = v[1] - v[0]
     pdf = isi_pdf(b["resid"], levels_norm, v)
-    for ac in agg_cursors:
+    for ac in b["agg"]:
         pdf = np.convolve(pdf, isi_pdf(ac, levels_norm, v), mode="same")
     gk = gaussian_kernel(float(np.hypot(b["sig_n"], b["sig_rj_v"])), dv)
     if gk.size > 1:
@@ -251,4 +322,6 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
         detail={"ctle_peak_db": b["peak_db"], "tx_fir_taps": b["taps"],
                 "sample_phase": b["phase"], "main_cursor": b["main"],
                 "n_dfe": n_dfe, "b_max": p.b_max, "target_der": der,
-                "n_aggressors": len(agg_cursors)})
+                "n_aggressors": len(agg_cursors),
+                "rx_ffe": rx_ffe,
+                "rx_ffe_taps": None if b["w"] is None else np.asarray(b["w"])})
