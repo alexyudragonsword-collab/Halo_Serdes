@@ -13,7 +13,7 @@
 - App:progress(stage, fraction);poll 加 `fraction`;新测试:chunk 2048 的 precise 跑能 poll 到 0 < fraction < 1、其后 cancel → cancelled。
   Android:确定进度条 + 通知百分比 + 取消文案;runner / api / Kotlin 注释里"内核不可中断"的旧判断都改写并注明更正。
 - 内存(P1 #2)没动:内核仍读整条 `rx_y`。ROADMAP #2 已改写为"剩下的一半"。
-- 全量(JIT):737 passed / 2 skipped(+5 分块、+1 API 取消);PR #28。Android instrumented totals 待 CI。
+- 全量(JIT):737 passed / 2 skipped(+5 分块、+1 API 取消);PR #28。CI 全绿;Android instrumented 34 tests / 0 failures(API 34、API 35、编译版 APK 三个模拟器 job 均过)。
 
 ## 2026-10-05 · Android edge-to-edge + API 35 模拟器(fix/android-edge-to-edge,原 ROADMAP P2 #6b)
 
