@@ -21,15 +21,19 @@ Non-LTI approximations (each cross-checked against the time engine):
 - receive-side partial response (``cfg.pr``): the controlled cursor (the
   first postcursor of the FFE-shaped pulse, whatever it is at each phase)
   leaves the ISI PDF; with a sequence detector it joins the trellis cursors
-  [1, alpha, r...], without one it is cancelled like an ideal DFE tap. The
+  [1, alpha, r...], without one the per-symbol decision cancels it (below). The
   DFE then starts after it. With a sequence detector the BER is not the
   plain MLSD's minimum-distance gain but a union bound over the alternating error
   events, in the noise the shaping FFE coloured, each event's overlap with
   the one before taken out (``pr_error_events``): the minimum distance alone
   was 2.5-20x optimistic against the time engine, the plain sum up to 2.9x
   pessimistic (transmit a = 0.5); with the overlap 1.0-1.8x across receive
-  and transmit PR at BER 7e-5 to 6e-3. The time engine's per-symbol PR decision and its LMS
-  reference are not modelled (outside the LTI + AWGN cross-check);
+  and transmit PR at BER 7e-5 to 6e-3. The per-symbol decisions the LMS and
+  the CDR read (and, without a sequence detector, the detector) take the
+  controlled cursors off with earlier decisions, errors included: a Markov
+  chain over the last decision errors (``pr_symbol_decisions``) gives their
+  SER, reported as ``extras['ser_slicer']``; as an ideal tap it was 2.7-4.1x
+  optimistic, now 0.8-1.6x. Its effect on the LMS and the CDR is not modelled;
 - sampling phase: the ADC receiver is read at the bathtub minimum; the
   mixed-signal receiver at the bang-bang loop's lock point (where its edge
   samples balance, ``cdr.linear.lock_offset_samples``), because that loop
@@ -257,6 +261,109 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     return out
 
 
+def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
+                        head, composite: bool, precoded: bool) -> tuple[float, float]:
+    """(SER, bit errors per symbol) of the per-symbol decisions a receive
+    partial-response target leaves the LMS and the CDR, or the detector
+    itself when there is no sequence detector.
+
+    Those decisions take the controlled cursors off with the receiver's own
+    previous decisions (sample - a x_{k-1} - b x_{k-2}), so they are a DFE
+    on those cursors, errors and all: one wrong decision leaves a times its
+    error on the next sample, and at a = 1 that is a whole level step. Taken
+    as an ideal tap the time engine's figure was 2.7x (a = 0.5) to 4.1x
+    (a = 1) above this engine's. Here the errors are a Markov chain: the
+    state is the last one or two decision errors (in level steps), the next
+    error's distribution is the per-level tail of the ISI + noise PDF shifted
+    by what the state leaves, averaged over a uniform symbol, and the SER is
+    its stationary rate.
+
+    ``composite`` is precoded 1 + D at a = 1 as the kernel runs it: the
+    sample is sliced to the 2N - 1 levels x_k + x_{k-1} and the user symbol
+    is that mod N, so an error does not propagate; only the composite levels'
+    unequal occupancy (inner ones are hit more often) differs from a plain
+    slicer. ``precoded`` without ``composite`` scores user symbols
+    (x_k + x_{k-1}) mod N off a propagating chain.
+
+    ``pdf_lv`` is the ISI + noise PDF per transmitted level (on
+    ``v_centers``) and ``lv`` the levels at the slicer; the levels are taken
+    as evenly spaced. Bits per wrong symbol follow the checker:
+    min(|index difference|, 2).
+    """
+    n = lv.size
+    order = np.argsort(lv)
+    ls = lv[order]
+    sym = order                                  # sorted index -> symbol index
+    step = float(np.mean(np.diff(ls))) if n > 1 else 1.0
+    cdf = [np.cumsum(pdf_lv[int(o)]) for o in order]
+
+    def decide(j: int, levels: np.ndarray, center: float) -> np.ndarray:
+        """P(decision = k) per slicer level, the sample at ``center`` with
+        sorted symbol j's ISI + noise around it (same bins as the slicer
+        tails in run_statistical)."""
+        edges = 0.5 * (levels[1:] + levels[:-1]) - center
+        i = np.searchsorted(v_centers, edges) - 1
+        f = np.where(i >= 0, cdf[j][np.clip(i, 0, v_centers.size - 1)], 0.0)
+        return np.diff(np.concatenate([[0.0], f, [1.0]]))
+
+    def bits(u: int, v: int) -> int:
+        return min(abs(int(u) - int(v)), 2)
+
+    if composite:
+        comp = 2 * ls[0] + step * np.arange(2 * n - 1)
+        # composite index in symbol order (an inverting slicer reverses it)
+        c_sym = np.arange(2 * n - 1) if sym[0] == 0 else np.arange(2 * n - 2, -1, -1)
+        ser = nbe = 0.0
+        for j in range(n):                       # current symbol, sorted
+            for i in range(n):                   # previous one
+                c = j + i
+                p = decide(j, comp, comp[c])
+                ser += (1.0 - p[c]) / n ** 2
+                for k in range(2 * n - 1):
+                    if k != c:
+                        nbe += p[k] * bits(c_sym[c] % n, c_sym[k] % n) / n ** 2
+        return float(ser), float(nbe)
+
+    h = np.asarray(head, dtype=float)[1:]
+    depth = h.size
+    vals = np.arange(-(n - 1), n)                # decision error = sent - decided index
+    states = [()] if depth == 0 else [tuple(int(v) for v in t) for t in np.array(
+        np.meshgrid(*([vals] * depth), indexing="ij")).reshape(depth, -1).T]
+    index = {st: k for k, st in enumerate(states)}
+    trans = np.zeros((len(states), len(states)))
+    p_err = np.zeros(len(states))
+    b_err = np.zeros(len(states))
+    for k, st in enumerate(states):
+        offset = step * float(np.dot(h, st)) if depth else 0.0
+        dist = np.zeros(vals.size)               # P(error = e) at this state
+        for j in range(n):
+            p = decide(j, ls, ls[j] + offset)
+            for d in range(n):
+                dist[j - d + n - 1] += p[d] / n
+                if not precoded and j != d:
+                    b_err[k] += p[d] * bits(sym[j], sym[d]) / n
+        for e, pe in zip(vals, dist):
+            nxt = ((int(e),) + st[:-1]) if depth else ()
+            trans[k, index[nxt]] += pe
+            if precoded:
+                # the user symbol (x_k + x_{k-1}) mod N is wrong unless the
+                # two errors cancel mod N; bits over a uniform user symbol
+                delta = (int(e) + (st[0] if depth else 0)) % n
+                if delta:
+                    p_err[k] += pe
+                    b_err[k] += pe * float(np.mean([bits(u, (u - delta) % n) for u in range(n)]))
+            elif e:
+                p_err[k] += pe
+    # stationary distribution of the error chain
+    a_mat = trans.T - np.eye(len(states))
+    a_mat[-1] = 1.0
+    rhs = np.zeros(len(states))
+    rhs[-1] = 1.0
+    pi = np.clip(np.linalg.solve(a_mat, rhs), 0.0, None)
+    pi = pi / pi.sum()
+    return float(pi @ p_err), float(pi @ b_err)
+
+
 def gaussian_kernel(sigma: float, dv: float, n_sigma: float = 8.0) -> np.ndarray:
     if sigma <= 0:
         return np.array([1.0])
@@ -392,6 +499,12 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     eye_pdf = np.zeros((v_bins, osr))
     ser_phi = np.zeros(osr)
     ber_phi = np.zeros(osr)
+    ser_sym_phi = np.zeros(osr)
+    ber_sym_phi = np.zeros(osr)
+    # precoded 1 + D at a = 1 slices composite levels in the kernel (no
+    # propagation); the same condition as engine.timedomain's pr_mode 2
+    pr_composite = (pr_active and cfg.precode and n_t == 2 and cfg.pr.alpha == 1.0
+                    and cfg.pr.adapt == "none")
 
     n_levels = levels_norm.size
     bits_per_sym = cfg.bits_per_symbol
@@ -414,7 +527,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         isi = np.delete(c, n_pre)
         # a partial-response target's controlled cursor is signal, not ISI:
         # the sequence detector resolves it (or, without one, the per-symbol
-        # decision subtracts it like an ideal DFE tap)
+        # decision subtracts it, pr_symbol_decisions)
         head = [1.0]
         if pr_active:
             isi = isi.copy()
@@ -479,11 +592,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 xc[xval] = xp.y[xidx[xval]]
                 pdf = np.convolve(pdf, isi_pdf(xc * swing, levels_norm, v_centers),
                                   mode="same")
-        ser = 0.0
-        nbe = 0.0
         pdf_isi = pdf
-        pdf_eye = None
-        for g_ev, w_ev in events:
+
+        def noisy(g_ev: float) -> list:
+            """ISI + noise PDF per transmitted level, the noise divided by g_ev."""
             pdf = pdf_isi
             # noise kernel: one for an electrical link; one per *transmitted*
             # level when the noise follows the level (an inverting channel flips
@@ -512,6 +624,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     nk = gaussian_kernel(np.sqrt(noise_sigma ** 2 + sk ** 2) / g_ev, dv)
                     pk = np.convolve(pdf, nk, mode="same") if nk.size > 1 else pdf
                     pdf_lv.append(pk / max(pk.sum(), 1e-300))
+            return pdf_lv
+
+        ser = 0.0
+        nbe = 0.0
+        pdf_eye = None
+        for g_ev, w_ev in events:
+            pdf_lv = noisy(g_ev)
 
             # tail CDFs per level
             cdf_up = [np.cumsum(p[::-1])[::-1] for p in pdf_lv]   # P(x >= v)
@@ -544,6 +663,15 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         pdf_lv = pdf_eye
         ser_phi[pi] = ser
         ber_phi[pi] = nbe / bits_per_sym
+        if pr_active:
+            # the per-symbol decisions the LMS and the CDR read; without a
+            # sequence detector they are the detector, error propagation and all
+            s_sym, b_sym = pr_symbol_decisions(
+                pdf_lv if mlsd_mem == 0 else noisy(1.0), v_centers, levels_norm * main, head,
+                composite=pr_composite, precoded=cfg.precode)
+            ser_sym_phi[pi], ber_sym_phi[pi] = s_sym, b_sym / bits_per_sym
+            if mlsd_mem == 0:
+                ser_phi[pi], ber_phi[pi] = ser_sym_phi[pi], ber_sym_phi[pi]
 
         # marginal slicer PDF (mixture over transmitted levels) for the eye
         eye_col = np.zeros(v_bins)
@@ -566,6 +694,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         ber_phi = np.convolve(bp, k, mode="valid")
         sp = np.pad(ser_phi, pad, mode="edge")
         ser_phi = np.convolve(sp, k, mode="valid")
+        if pr_active:
+            ser_sym_phi = np.convolve(np.pad(ser_sym_phi, pad, mode="edge"), k, mode="valid")
 
     best = int(np.argmin(ber_phi))
     ber, ser = float(ber_phi[best]), float(ser_phi[best])
@@ -587,6 +717,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         ber = float(np.interp(lock, phi_offsets, ber_phi))
         ser = float(np.interp(lock, phi_offsets, ser_phi))
         best = int(np.argmin(np.abs(phi_offsets - lock)))
+        # mixed-signal has no PR (LinkConfig refuses it), so best is the ADC's
         lock_ui = lock / osr
     return StatResult(
         ber_phi=ber_phi, ser_phi=ser_phi, best_phi=best,
@@ -598,7 +729,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "jitter_sigma_ui": sigma_ui,
                 "clock_loop": loop_sol,
                 "lock_phase_ui": lock_ui,
-                "ber_min_phase": float(ber_phi.min())})
+                "ber_min_phase": float(ber_phi.min()),
+                # SER of the per-symbol PR decisions (the time engine's
+                # extras['ser_slicer']); None without a PR target
+                "ser_slicer": float(ser_sym_phi[best]) if pr_active else None})
 
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,

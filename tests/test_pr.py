@@ -19,7 +19,7 @@ from halo_serdes.core.mapping import precode_1plusd, unprecode_1plusd
 from halo_serdes.dsp.ffe import equalized_cursors, mmse_ffe, zf_ffe
 from halo_serdes.dsp.mlsd import mlse_gain_over_dfe_db, viterbi_mlsd
 from halo_serdes.engine import run_time_link
-from halo_serdes.engine.statistical import run_statistical
+from halo_serdes.engine.statistical import pr_symbol_decisions, run_statistical
 
 
 # Engine-level runs of 60k-600k symbols take 2-6 minutes each through the
@@ -589,3 +589,89 @@ def test_numba_kernel_matches_python_adapting_both_cursors():
         np.testing.assert_allclose(np.asarray(x, dtype=float), np.asarray(z, dtype=float),
                                    rtol=0, atol=1e-12)
     np.testing.assert_allclose(outs[0][1], outs[1][1], rtol=0, atol=1e-12)
+
+
+# ------------------------------------------------ per-symbol PR decisions
+
+def _gauss_pdfs(n_levels, sigma, v):
+    p = np.exp(-0.5 * (v / sigma) ** 2)
+    return [p / p.sum()] * n_levels
+
+
+def _mc_decisions(levels, head, sigma, composite=False, precoded=False, n=400_000, seed=1):
+    """The kernel's per-symbol decision, written out in numpy: subtract the
+    controlled cursors times the previous decisions (or slice composites)."""
+    rng = np.random.default_rng(seed)
+    m = levels.size
+    x = rng.integers(0, m, n)
+    y = levels[x] + rng.normal(scale=sigma, size=n)
+    for t, c in enumerate(head[1:], start=1):
+        y[t:] += c * levels[x[:-t]]
+    d = np.zeros(n, dtype=np.int64)
+    if composite:
+        comp = 2 * levels[0] + (levels[1] - levels[0]) * np.arange(2 * m - 1)
+        q = np.argmin(np.abs(y[:, None] - comp[None, :]), axis=1)
+        sent = (x + np.concatenate([[0], x[:-1]])) % m
+        got = q % m
+        return float(np.mean(sent[1:] != got[1:]))
+    for k in range(n):
+        u = y[k] - sum(c * levels[d[k - t]] for t, c in enumerate(head[1:], start=1) if k >= t)
+        d[k] = int(np.argmin(np.abs(u - levels)))
+    if precoded:
+        sent = (x[1:] + x[:-1]) % m
+        got = (d[1:] + d[:-1]) % m
+        return float(np.mean(sent != got))
+    return float(np.mean(x[1:] != d[1:]))
+
+
+@pytest.mark.parametrize("head,m,sigma,kw", [
+    ((1.0,), 4, 0.11, {}),                          # no controlled cursor: a plain slicer
+    ((1.0, 0.5), 4, 0.11, {}),
+    ((1.0, 1.0), 4, 0.11, {}),                      # a whole level step propagates
+    ((1.0, 1.0), 2, 0.4, {}),
+    ((1.0, 0.8, 0.3), 4, 0.1, {}),                  # two decisions back
+    ((1.0, 0.5), 4, 0.11, {"precoded": True}),      # propagating chain, user = mod-N sum
+    ((1.0, 1.0), 4, 0.11, {"composite": True}),     # precoded a = 1: no propagation
+])
+def test_symbol_decision_chain_matches_monte_carlo(head, m, sigma, kw):
+    """The Markov chain over decision errors against the decision rule run
+    symbol by symbol, in AWGN: within 10 % at SER 1e-3...1e-2."""
+    levels = np.linspace(-1.0, 1.0, m)
+    v = np.linspace(-3.0, 3.0, 6001)
+    ser, _ = pr_symbol_decisions(_gauss_pdfs(m, sigma, v), v, levels, head,
+                                 composite=kw.get("composite", False),
+                                 precoded=kw.get("precoded", False) or kw.get("composite", False))
+    mc = _mc_decisions(levels, head, sigma, **kw)
+    assert mc > 3e-4, mc
+    assert ser == pytest.approx(mc, rel=0.1), (ser, mc)
+
+
+def test_propagation_costs_more_than_an_ideal_tap():
+    levels = np.linspace(-1.0, 1.0, 4)
+    v = np.linspace(-3.0, 3.0, 6001)
+    pdfs = _gauss_pdfs(4, 0.11, v)
+    ideal, _ = pr_symbol_decisions(pdfs, v, levels, (1.0,), composite=False, precoded=False)
+    for a, factor in ((0.5, 1.3), (1.0, 2.5)):
+        ser, _ = pr_symbol_decisions(pdfs, v, levels, (1.0, a), composite=False, precoded=False)
+        assert ser > factor * ideal, (a, ser, ideal)
+
+
+@needs_jit
+@pytest.mark.parametrize("alpha,precode", [(0.5, False), (1.0, False), (1.0, True)])
+def test_engines_agree_on_per_symbol_pr_decisions(alpha, precode):
+    """Without a sequence detector the per-symbol decisions are the detector:
+    statistical BER within 2x of the time engine (as an ideal tap it was
+    2.7-4.1x optimistic). With one, extras['ser_slicer'] is the same figure
+    beside the Viterbi's."""
+    cfg = _link(0.24, alpha, n_sym=300_000, noise=0.0022, enob=None, precode=precode, mlsd="none")
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 100, mc.ber.n_errors
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert 0.5 < st.ber / mc.ber.ber < 2.0, (st.ber, mc.ber.ber)
+    assert st.extras["ser_slicer"] == st.ser
+    cfg_v = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig(kind="viterbi", memory=2)))
+    mc_v = run_time_link(cfg_v, channel=cm)
+    st_v = run_statistical(cfg_v, channel=cm, ffe_taps=mc_v.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert 0.5 < st_v.extras["ser_slicer"] / mc_v.extras["ser_slicer"] < 2.0
+    assert st_v.ser < st_v.extras["ser_slicer"]
