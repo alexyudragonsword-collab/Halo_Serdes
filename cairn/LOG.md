@@ -16,7 +16,7 @@
 - 新 `tests/test_stream.py`(15 项):ZOH 窗口逐位、FIR 读法无关、噪声 FIR 带宽与能量、流式分块逐位(两架构含 tx.bw)、
   流式 vs 默认统计一致(两架构 × 有无极点)、眼图、不支持路径报错、5×10⁶ 冒烟(needs_jit)。
 - 剩余:光 / 串扰 / AMI / collect_jitter 的流式 → ROADMAP P2 #2。
-- 全量(JIT):752 passed / 2 skipped(+15);流式 + 分块测试 nojit 19 passed / 1 skipped(5×10⁶ 冒烟 needs_jit)。Android totals 待 CI。
+- 全量(JIT):752 passed / 2 skipped(+15);流式 + 分块测试 nojit 19 passed / 1 skipped(5×10⁶ 冒烟 needs_jit)。PR #29;Android instrumented 34 tests / 0 failures(API 34、API 35、编译版 APK,代码提交 06c6558 上)。
 
 ## 2026-10-05 · 接收机内核分块续跑(feat/chunked-kernels,原 ROADMAP P1 #3)
 
