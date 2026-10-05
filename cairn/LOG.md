@@ -8,7 +8,9 @@
 - Chaquopy 源集加 `exclude("halo_serdes_gui/**")`;只影响解释型(编译型 wheel 只打 halo_serdes / halo_serdes_app)。
   确认 `src/halo_serdes`、`halo_serdes_app`、`android/.../python` 无 import 它;桌面端的 shim 不在 APK 范围内,不受影响。
 - `inspect_apk.py --absent`(假 APK 两例:含 → exit 1,不含 → exit 0);android.yml 两个 gate 都加。actionlint、ruff 干净。
-- Chaquopy 16.1 是否认 `exclude` 本地无法验证 —— 由 CI 的 `--absent` 判定。CI / Android totals 待补。
+- Chaquopy 16.1 认 `exclude`:CI(2b89202,run 37315518172)解释型 APK gate `ok halo_serdes_gui: not in this APK`
+  (halo_serdes 72 / halo_serdes_app 5 个源文件照常);编译型 gate 同过。两型模拟器
+  `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`;测试 CI 全绿。
 
 ## 2026-10-05 · 桌面版随版本 tag 发 GitHub Release(ci/desktop-release,原 ROADMAP P2 #5)
 
