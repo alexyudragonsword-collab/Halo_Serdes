@@ -12,7 +12,10 @@
 - 本地无 Android SDK,Kotlin 编译与两档模拟器结果由 CI 判定;`consumeWindowInsets` 是否仍是 ExperimentalLayoutApi 不确定,已 OptIn。
 - 首跑(6e1c410):编译过,新测试过;API 34 上 `runningTheStatisticalEngineDrawsABathtub` 又 180 s 超时 —— 第三次(#16、#24、#27)。
   根因判断:按钮 `enabled = s.ready`(还要求 `channelIssue == null`、无字段错误),启动探预设期间可能无 spinner 但按钮未启用,
-  测试只等了文字与 spinner,点到禁用按钮被静默丢弃。修:点击前 `waitUntil(hasText(...) and isEnabled())`。CI / totals 待补。
+  测试只等了文字与 spinner,点到禁用按钮被静默丢弃。修:点击前 `waitUntil(hasText(...) and isEnabled())`。
+  (6e1c410 上 push 触发的那次同代码 Android run 是全过的 —— 间歇性,不是本 PR 的布局造成。)
+- 修后(c76ab83):push 与 pull_request 两次 Android run 全过 —— 解释型 API 34 ×2、API 35 ×2、编译型 ×2;
+  API 35 `instrumented totals: 34 tests, 0 failures, 0 errors, 0 skipped`(含新测试);测试 CI 全绿。
 
 ## 2026-10-05 · 解释型 APK 排除 halo_serdes_gui(fix/apk-drop-gui,原 ROADMAP P2 #6c)
 
