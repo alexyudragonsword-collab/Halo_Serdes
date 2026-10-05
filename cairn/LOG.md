@@ -10,7 +10,9 @@
 - 时域 / 统计(`mlsd: none`,示例 18 信道 0.24 m、`enob=None`):a 0.5 / 0.75 / 1 / 1 预编码 2.66 / 2.98 / 4.09 / 1.21× → 1.64 / 0.83 / 1.03 / 0.97×;
   Viterbi 下 `ser_slicer` 0.84–1.64×,Viterbi BER 不变。专题 `DSP发端与PR.md` §11;ROADMAP P3 #8 只剩四光标。
 - 指纹逐位同 main(506 + 44 值,无 PR 预设)。口径:DFE 仍理想,对 LMS / CDR 的反作用不建。
-- 验证:ruff 干净;jit 726 passed / 2 skipped;nojit 新测试 8 passed / 3 skipped(引擎级 needs_jit)。CI / Android totals 待补。
+- 验证:ruff 干净;jit 726 passed / 2 skipped;nojit 新测试 8 passed / 3 skipped(引擎级 needs_jit)。CI(695b041)测试矩阵、lint、
+  import-clean、rtl-lockstep、vendor-drift 全绿;Android CI(8eed042,run 37245979942,含全部代码改动):
+  `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`,解释型与编译型 APK 都过。
 
 ## 2026-10-04 · 整 UI 周跳后按段重对齐计分(fix/cycle-slip-rescore,原 ROADMAP 4c)
 
