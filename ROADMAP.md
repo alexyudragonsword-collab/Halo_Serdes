@@ -83,20 +83,6 @@ overlap-save 分块,**但波形数组本身没有窗口化** —— `tx_wave`、
 
 ## P2 — 一致性与交付
 
-### 6b. Android:`targetSdk = 35` 但没有 edge-to-edge / WindowInsets 处理
-
-**现状**:`MainActivity.onCreate` 只有 `setContent { HaloTheme { HaloApp() } }`,
-没有 `enableEdgeToEdge()`,界面完全依赖 Material3 `Scaffold` / `TopAppBar` /
-`NavigationBar` 自带的 inset 默认值。
-
-**为什么要紧**:API 35 起 edge-to-edge 是强制的,系统栏后面会画内容。默认值大概率够用,
-但**这件事目前没有被任何测试或任何一次运行验证过** —— CI 的模拟器是 API 34,
-真机验证只在 M0 探针那次做过。带挖孔/手势条的机器上,最上面一个控件被状态栏压住是
-典型症状,且只在设备上看得见。
-
-**怎么做**:模拟器矩阵加一档 API 35,或在真机上跑一次并截图;确认后按需补
-`enableEdgeToEdge()` + `WindowInsets` 内边距。
-
 ## P3 — 能力扩展
 
 ### 7. 片上校准回路

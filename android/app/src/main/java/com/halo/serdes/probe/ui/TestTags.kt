@@ -18,6 +18,8 @@ object TestTags {
     const val EYE = "chart.eye"
     const val STUDY_PANEL = "chart.study"
     const val BUNDLED_CHANNELS = "row.bundledChannels"
+    const val TOP_BAR = "bar.top"
+    const val NAV_BAR = "bar.nav"
 
     /**
      * Every indeterminate progress indicator in the app.

@@ -6,6 +6,14 @@
 
 ---
 
+## [未发布] — Android edge-to-edge,API 35 模拟器(原 ROADMAP P2 #6b)
+
+### 变更
+- `MainActivity` 调 `enableEdgeToEdge()`:所有 API 级别都按 Android 15(targetSdk 35 强制)的方式铺满,API 34 模拟器测的就是 15 上的布局。
+- Scaffold 内容加 `consumeWindowInsets(pad).imePadding()`:铺满后键盘不再缩窗口而是作为 inset 到达,表单靠它把焦点框滚到键盘上方。
+- 新 instrumented 测试 `theTitleAndTabsClearTheSystemBars`:标题在状态栏下、Tab 标签在导航栏上(窗口坐标)。
+- Android CI 解释型模拟器 job 改为矩阵 API 34 / 35;报告与截图 artifact 名带 `-api34` / `-api35`。
+
 ## [未发布] — 解释型 APK 不再打包桌面 GUI(原 ROADMAP P2 #6c)
 
 ### 变更

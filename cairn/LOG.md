@@ -3,6 +3,14 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-05 · Android edge-to-edge + API 35 模拟器(fix/android-edge-to-edge,原 ROADMAP P2 #6b)
+
+- `enableEdgeToEdge()`(API 34 也按 15 的方式布局)+ Scaffold 内容 `consumeWindowInsets(pad).imePadding()`(键盘成 inset 后表单仍可滚到焦点框)。
+- 测试断言的是**内容**:Material `TopAppBar` / `NavigationBar` 有意把底色铺到系统栏后面、只给内容加 padding,量 bar 自身边界会误报;
+  所以量标题文字(状态栏 inset 之下)与 "Link" Tab 标签(导航栏 inset 之上),窗口坐标。新加 TestTags TOP_BAR / NAV_BAR。
+- android.yml 解释型 emulator job 改 matrix [34, 35](fail-fast: false),artifact 名带 api 后缀;actionlint 干净。
+- 本地无 Android SDK,Kotlin 编译与两档模拟器结果由 CI 判定;`consumeWindowInsets` 是否仍是 ExperimentalLayoutApi 不确定,已 OptIn。CI / totals 待补。
+
 ## 2026-10-05 · 解释型 APK 排除 halo_serdes_gui(fix/apk-drop-gui,原 ROADMAP P2 #6c)
 
 - Chaquopy 源集加 `exclude("halo_serdes_gui/**")`;只影响解释型(编译型 wheel 只打 halo_serdes / halo_serdes_app)。
