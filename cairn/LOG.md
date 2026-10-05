@@ -11,7 +11,10 @@
   只加 FFE 不加量化噪声时 106 GBd 读 17.3 dB —— 量化噪声是大头。示例 26 −5.40 → −1.96、示例 28 无串扰 2.76 → 15.01 dB。
 - 坑:无接收噪声时 MMSE FFE 退化成迫零,COM 不再随损耗单调(test_com 的配置原 noise 0,补 1 mV)。旧指纹脚本调 `compute_com` 签名错,
   从未覆盖 COM —— 本次另跑逐预设对照。invariants #2 补注(按架构分参考接收机不破坏公平)。
-- 验证:ruff 干净;jit 731 passed / 2 skipped。CI / Android totals 待补。
+- 验证:ruff 干净;jit 731 passed / 2 skipped。CI(7bab7eb)测试矩阵、lint、import-clean、rtl-lockstep、vendor-drift 全绿;
+  Android CI(cc899da,run 37257274811,含全部代码改动):解释型 `instrumented totals: 33 tests, 0 failures, 0 errors, 0 skipped`;
+  编译型首跑 `UiRenderTest#runningTheStatisticalEngineDrawsABathtub` 180 s 超时(统计引擎路径,不经 com.py;#16 曾同样超时一次),
+  重跑一次后 33 / 0 failures,PR 上留言说明。
 
 ## 2026-10-05 · AMI 模型 `has_getwave` 默认值统一(fix/ami-getwave-default,原 ROADMAP P2 #4)
 
