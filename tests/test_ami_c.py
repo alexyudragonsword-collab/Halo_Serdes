@@ -79,13 +79,31 @@ def test_c_model_matches_native_through_engine(so_path, getwave):
     cfg = _cfg()
     ch = ChannelModel.from_config(cfg)
     c = AmiCModel(so_path, taps=TAPS, n_pre=N_PRE, has_getwave=getwave)
-    n = NativeFirAmi(TAPS, n_pre=N_PRE, sample_spaced=False)
-    n.has_getwave = getwave
+    n = NativeFirAmi(TAPS, n_pre=N_PRE, sample_spaced=False, has_getwave=getwave)
     rc = run_time_link(cfg, channel=ch, tx_ami=c)
     rn = run_time_link(cfg, channel=ch, tx_ami=n)
     assert rc.slicer_snr_db == pytest.approx(rn.slicer_snr_db, abs=1e-9)
     base = run_time_link(cfg, channel=ch)
     assert rc.slicer_snr_db > base.slicer_snr_db
+    c.close()
+
+
+def test_every_model_defaults_to_the_same_flow(so_path):
+    """Compared without arguments, the compiled and the native model take the
+    same flow (they used to differ: Init vs GetWave, read as a 2.62 dB model
+    difference), and the factory's flag reaches both."""
+    assert AmiCModel(so_path, taps=TAPS, n_pre=N_PRE).has_getwave
+    assert NativeFirAmi(TAPS, n_pre=N_PRE).has_getwave
+    assert load_ami_model(so_file=so_path, taps=TAPS, n_pre=N_PRE).has_getwave
+    assert load_ami_model(taps=TAPS, n_pre=N_PRE).has_getwave
+    assert not load_ami_model(so_file=so_path, taps=TAPS, n_pre=N_PRE, has_getwave=False).has_getwave
+    assert not load_ami_model(taps=TAPS, n_pre=N_PRE, has_getwave=False).has_getwave
+    cfg = _cfg()
+    ch = ChannelModel.from_config(cfg)
+    c = AmiCModel(so_path, taps=TAPS, n_pre=N_PRE)
+    rc = run_time_link(cfg, channel=ch, tx_ami=c)
+    rn = run_time_link(cfg, channel=ch, tx_ami=NativeFirAmi(TAPS, n_pre=N_PRE, sample_spaced=False))
+    assert rc.slicer_snr_db == pytest.approx(rn.slicer_snr_db, abs=1e-9)
     c.close()
 
 

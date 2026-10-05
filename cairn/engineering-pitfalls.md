@@ -86,10 +86,10 @@ float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2
 `TypeError: unsupported format string passed to BerResult.__format__`。
 
 **`has_getwave` 决定引擎走哪条流。** `True` → GetWave(时域块),`False` → Init
-(LTI 冲激变换)。**两者结果不同是正常的**。`NativeFirAmi` 默认 `True`、`AmiCModel`
-默认 `False` —— 对比两个 AMI 模型时必须让这个标志一致,否则会把"走了不同的流"
-误当成模型差异。踩过一次:一度以为 2.62 dB 的差异是 bug,实际只是流不同;
-对齐后两者逐位一致。
+(LTI 冲激变换)。**两者结果不同是正常的**。对比两个 AMI 模型时必须让这个标志一致,否则会把"走了不同的流"
+误当成模型差异。踩过一次:一度以为 2.62 dB 的差异是 bug,实际只是流不同;对齐后两者逐位一致。
+当时 `NativeFirAmi` 默认 `True`、`AmiCModel` 默认 `False`;**2026-10-05 起三个模型与 `load_ami_model` 都默认 `True`**
+(原"默认不一致"作废),不带参数对比即同流。改一个模型的流时另一个也要改。
 
 **重构"不改变行为"要用数值指纹证明,不能用"测试通过"代替。** 测试断言的是阈值和关系
 (`snr_db > 12`、`a > b`),它对"结果变了一点点但仍然满足断言"完全无感。动引擎代码前先跑一遍

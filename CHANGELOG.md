@@ -6,6 +6,14 @@
 
 ---
 
+## [未发布] — AMI 模型的 `has_getwave` 默认值统一(原 ROADMAP P2 #4)
+
+### 变更
+- `AmiCModel` 与 `load_ami_model(so_file=...)` 的 `has_getwave` 默认由 `False` 改为 `True`,与 `NativeFirAmi`、`IbisAmiModel` 一致:
+  不带参数对比两个模型时走同一条流(此前 Init vs GetWave,曾被当成 2.62 dB 的模型差异)。**不显式指定的旧调用现在走 GetWave。**
+- `NativeFirAmi(has_getwave=...)` 构造参数;`load_ami_model(has_getwave=False)` 对三种模型都生效(厂商模型 `GetWave_Exists` 为假时仍走 Init)。
+- 仓库内调用都显式指定或只调 Init,结果不变。
+
 ## [未发布] — 统计引擎建模 PR 逐符号判决(原 ROADMAP P3 #8 余项)
 
 ### 新增 / 修复

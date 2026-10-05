@@ -451,7 +451,9 @@ res = run_time_link(cfg, channel=ch, tx_ami=m)        # 或 rx_ami=
 
 **注意 `has_getwave`**:`True` 时引擎走 GetWave(时域块)流,`False` 时走
 Init(LTI 冲激变换)流 —— 两者结果不同是正常的,不是 bug。
-`NativeFirAmi` 默认 `True`,`AmiCModel` 默认 `False`,按需显式指定。
+三个模型(`NativeFirAmi`、`AmiCModel`、`IbisAmiModel`)和 `load_ami_model` 都默认 `True`(厂商模型的
+`GetWave_Exists` 为假时仍走 Init);对比两个模型时把它们放在同一条流上,改一个就两个一起改
+(`has_getwave=False`)。2026-10-05 前 `AmiCModel` 默认 `False`,不显式指定的旧调用现在走 GetWave。
 
 ---
 
