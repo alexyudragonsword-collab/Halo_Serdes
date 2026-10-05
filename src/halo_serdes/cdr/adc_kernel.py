@@ -15,12 +15,13 @@ import os
 
 import numpy as np
 
-from .kernels import _farrow_py
+from .kernels import MsRxRun, _farrow_py, check_window_status
 
 _farrow_local = _farrow_py
 
 
-def _adc_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
+def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
+                    k0: int, k1: int,
                     levels: np.ndarray,
                     n_lanes: int, offsets: np.ndarray, gains: np.ndarray,
                     skews: np.ndarray, q_step: float, code_max: int,
@@ -47,7 +48,10 @@ def _adc_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
     [0, n) into consecutive calls is the same arithmetic in the same order
     as one call, bit for bit.
 
-    Returns (symbols done, 1 if the waveform ran out else 0).
+    ``y`` is samples ``[y_off, y_off + y.size)`` of an ``n_total``-sample
+    waveform, with the status codes of the mixed-signal core
+    (:func:`~halo_serdes.cdr.kernels._ms_rx_core_py`): 0 done, 1 out of
+    waveform, 2 needs samples past the window's end, 3 needs dropped ones.
     """
     nl = levels.size
     nf = wf.size
@@ -67,12 +71,20 @@ def _adc_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
     n_acc = ist[0]
     qi = ist[1]
     lat = loop_latency_blocks
+    w_end = y_off + y.size
 
     for k in range(k0, k1):
         lane = k % n_lanes
         p_clk = pos + rx_clock_offset_samples[k]
         p = p_clk + skews[lane]
-        if p + osr + 2 >= y.size or p < 1:
+        st = 0
+        if p + osr + 2 >= n_total or p < 1:
+            st = 1
+        elif w_end < n_total and int(np.floor(p)) + 2 >= w_end:
+            st = 2
+        elif y_off > 0 and int(np.floor(p)) - 1 < y_off:
+            st = 3
+        if st != 0:
             fs[0] = pos
             fs[1] = acc
             fs[2] = integ
@@ -81,8 +93,8 @@ def _adc_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
             fs[5] = b_pr
             ist[0] = n_acc
             ist[1] = qi
-            return k, 1
-        x = _farrow_local(y, p) * gains[lane] + offsets[lane] + noise[k]
+            return k, st
+        x = _farrow_local(y, p - y_off) * gains[lane] + offsets[lane] + noise[k]
         # mid-rise quantizer
         code = np.floor(x / q_step)
         if code > code_max:
@@ -249,7 +261,8 @@ class AdcRxRun:
                  rx_clock_offset_samples, pr_alpha, pr_mode, pr_levels,
                  mu_alpha, alpha_out, pr_beta, pr_nt, core=None):
         self.core = core if core is not None else _adc_rx_core
-        self.y, self.osr = y, osr
+        self.osr = osr
+        self.set_window(y)
         self.wf = w_ffe.copy()
         self.wd = w_dfe.copy()
         self.params = (levels, n_lanes, offsets, gains, skews, q_step, code_max,
@@ -277,16 +290,26 @@ class AdcRxRun:
                     np.zeros(n_symbols, dtype=np.float64))   # q_hist: dequantized samples
         self.done = 0
         self.stopped = False
+        self.need_more = False
+
+    set_window = MsRxRun.set_window
 
     def advance(self, k1: int) -> int:
         k1 = min(int(k1), self.n_symbols)
+        self.need_more = False
         if self.stopped or k1 <= self.done:
             return self.done
-        done, out = self.core(self.y, self.osr, self.done, k1, *self.params,
-                              self.fs, self.ist, *self.out)
+        done, st = self.core(self.y, self.y_off, self.n_total, self.osr, self.done, k1,
+                             *self.params, self.fs, self.ist, *self.out)
         self.done = int(done)
-        self.stopped = bool(out)
+        check_window_status(st)
+        self.stopped = st == 1
+        self.need_more = st == 2
         return self.done
+
+    def next_position(self) -> float:
+        k = min(self.done, self.n_symbols - 1)
+        return float(self.fs[0] + self.params[22][k])
 
     @property
     def finished(self) -> bool:

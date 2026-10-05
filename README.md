@@ -99,7 +99,7 @@ JTOL、RTL lockstep、Windows 打包。
 关键达标指标:
 - 统计引擎 vs 蒙特卡洛交叉校验比值 **1.03×**(要求 <2×);
 - 10⁶ 符号 @106.25 GBd 时域全链路 **OSR16 8.1 s / OSR32 11.6 s**(要求 ≤2 min;
-  本机实测,峰值内存约 0.9 GB);
+  本机实测,峰值内存约 0.9 GB;长跑开 `sim.stream`,10⁶ 符号 OSR32 峰值 0.33 GB、5×10⁶ 符号可跑);
 - 双架构对比复现业界结论:mixed-signal 在 ~-15 dB Nyquist 损耗后崩溃,
   ADC/DSP 架构到 -25 dB 仍保持 ~1e-5 SER;
 - 定点数据通路 ≥7 bit 权重与浮点 bit-true 一致,DragonPHY2 流片位宽(10b)

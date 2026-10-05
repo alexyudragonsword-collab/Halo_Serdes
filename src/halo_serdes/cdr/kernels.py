@@ -29,7 +29,8 @@ def _farrow_py(y: np.ndarray, pos: float) -> float:
                   + (-y0 + 3.0 * y1 - 3.0 * y2 + y3) * mu * mu * mu)
 
 
-def _ms_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
+def _ms_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
+                   k0: int, k1: int,
                    levels: np.ndarray, w: np.ndarray, corr: np.ndarray,
                    mu_dfe: float, n_ave: int, kp: float, ki: float,
                    clamp: float, sum_alpha: float, ref_idx: np.ndarray,
@@ -49,7 +50,18 @@ def _ms_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
     So any split of [0, n) into consecutive calls runs the same arithmetic in
     the same order as one call -- bit for bit.
 
-    Returns (symbols done, 1 if the waveform ran out else 0).
+    ``y`` holds samples ``[y_off, y_off + y.size)`` of a waveform ``n_total``
+    samples long: the whole of it (``y_off`` 0, ``n_total == y.size``), or a
+    window the streaming engine slides along. Positions stay absolute; a
+    window only changes which element a sample is read from, and taking an
+    integer off a position is exact in floating point (both are multiples of
+    the position's ulp), so the values read -- and everything after -- do not
+    depend on where the window sits.
+
+    Returns (symbols done, status): 0 reached ``k1``, 1 the waveform ran out,
+    2 symbol ``k`` needs samples past the window's end (none of its state has
+    changed: slide the window and call again from ``k``), 3 it needs samples
+    the window already dropped.
     """
     nl = levels.size
     nt = w.size
@@ -61,7 +73,23 @@ def _ms_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
     n_acc = ist[0]
     h_i = ist[1]
 
+    w_end = y_off + y.size
     for k in range(k0, k1):
+        # window check first, before this symbol changes any state
+        p_w = pos + rx_clock_offset_samples[k]
+        st = 0
+        if w_end < n_total and int(np.floor(p_w)) + 2 >= w_end:
+            st = 2
+        elif y_off > 0 and int(np.floor(p_w - osr / 2.0)) - 1 < y_off:
+            st = 3
+        if st != 0:
+            fs[0] = pos
+            fs[1] = integ
+            fs[2] = fb_f
+            fs[3] = s_prev
+            ist[0] = n_acc
+            ist[1] = h_i
+            return k, st
         if k % n_ave == 0 and h_i < n_hist:
             for i in range(nt):
                 w_hist[h_i, i] = w[i]
@@ -73,7 +101,7 @@ def _ms_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
         # before this parameter existed, and its truncation semantics stay.
         off = rx_clock_offset_samples[k]
         p_d = pos + off
-        if off != 0.0 and (p_d + osr + 2 >= y.size or p_d - osr < 1):
+        if off != 0.0 and (p_d + osr + 2 >= n_total or p_d - osr < 1):
             fs[0] = pos
             fs[1] = integ
             fs[2] = fb_f
@@ -81,8 +109,8 @@ def _ms_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
             ist[0] = n_acc
             ist[1] = h_i
             return k, 1
-        y_d = _farrow(y, p_d)
-        y_e = _farrow(y, p_d - osr / 2.0)
+        y_d = _farrow(y, p_d - y_off)
+        y_e = _farrow(y, p_d - osr / 2.0 - y_off)
 
         # --- DFE feedback ---
         # direct mode: all taps through the summing node (sum_alpha settling).
@@ -153,7 +181,7 @@ def _ms_rx_core_py(y: np.ndarray, osr: int, k0: int, k1: int,
             elif corr_step < -clamp:
                 corr_step = -clamp
         pos += osr + corr_step
-        if pos + osr + 2 >= y.size:
+        if pos + osr + 2 >= n_total:
             # truncate: out of waveform
             fs[0] = pos
             fs[1] = integ
@@ -188,7 +216,8 @@ class MsRxRun:
                  rx_clock_offset_samples, core=None):
         nt = w_dfe.size
         self.core = core if core is not None else _ms_rx_core
-        self.args = (y, osr)
+        self.osr = osr
+        self.set_window(y)
         self.params = (levels, w_dfe.copy(), np.zeros(nt, dtype=np.float64),
                        mu_dfe, n_ave, kp, ki, clamp, sum_alpha, ref_idx,
                        train_len, adapt_start, tap1_unrolled, branch_offsets,
@@ -204,17 +233,35 @@ class MsRxRun:
         self.w_hist = np.zeros((n_symbols // n_ave + 2, nt), dtype=np.float64)
         self.done = 0
         self.stopped = False
+        self.need_more = False
+
+    def set_window(self, y, y_off: int = 0, n_total: int | None = None) -> None:
+        """Read samples ``[y_off, y_off + y.size)`` of an ``n_total``-sample
+        waveform from now on (default: ``y`` is the whole waveform)."""
+        self.y = y
+        self.y_off = int(y_off)
+        self.n_total = int(y.size + y_off if n_total is None else n_total)
 
     def advance(self, k1: int) -> int:
+        """Run to symbol ``k1``, or less: ``stopped`` when the waveform ends,
+        ``need_more`` when the next symbol needs samples past the window."""
         k1 = min(int(k1), self.n_symbols)
+        self.need_more = False
         if self.stopped or k1 <= self.done:
             return self.done
-        y, osr = self.args
-        done, out = self.core(y, osr, self.done, k1, *self.params, self.fs, self.ist,
-                              self.dec, self.y_sum, self.phase, self.pd_hist, self.w_hist)
+        done, st = self.core(self.y, self.y_off, self.n_total, self.osr, self.done, k1,
+                             *self.params, self.fs, self.ist,
+                             self.dec, self.y_sum, self.phase, self.pd_hist, self.w_hist)
         self.done = int(done)
-        self.stopped = bool(out)
+        check_window_status(st)
+        self.stopped = st == 1
+        self.need_more = st == 2
         return self.done
+
+    def next_position(self) -> float:
+        """Absolute sample position the next symbol is read around."""
+        k = min(self.done, self.n_symbols - 1)
+        return float(self.fs[0] + self.params[14][k])
 
     @property
     def finished(self) -> bool:
@@ -224,6 +271,12 @@ class MsRxRun:
         n = self.done
         return (self.dec[:n], self.y_sum[:n], self.phase[:n], self.params[1],
                 self.pd_hist[:n], self.w_hist[:int(self.ist[1])])
+
+
+def check_window_status(st) -> None:
+    if st == 3:
+        raise RuntimeError("the receiver needs waveform samples the streaming window "
+                           "already dropped (its sampling position moved back too far)")
 
 
 def _ms_rx_with(core):

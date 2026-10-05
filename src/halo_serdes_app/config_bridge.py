@@ -305,6 +305,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("sim.engine", "Engine", "enum", options=["time", "stat", "both"]),
         _f("sim.pattern", "Pattern", "enum", options=PATTERNS),
         _f("sim.chunk_symbols", "Chunk symbols", "int"),
+        _f("sim.stream", "Stream waveform (long runs)", "bool"),
         _f("sim.cdr_settle", "CDR settle [sym]", "int"),
         _f("sim.train_symbols", "Train [sym]", "int"),
         _f("sim.warmup_discard", "Warmup discard [sym]", "opt_int"),

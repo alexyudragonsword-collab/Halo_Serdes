@@ -512,8 +512,23 @@ bash rtl/run_lockstep.sh          # -> LOCKSTEP PASS  n=1985  errors=0
 
 - **numba 是性能层不是正确性层**:`HALO_NO_JIT=1` 走纯 Python 内核,结果一致但慢
   (CI 两条路径都跑)。首次调用有 JIT 编译开销,基准测试记得先热身。
-- **内存**随 `n_symbols × osr` 线性增长(波形全量驻留)。10⁶ 符号 OSR32 约 0.9 GB;
-  要跑更长或更高 OSR 就降 `osr`(16 通常足够)或分批跑。
+- **内存**:默认引擎的波形全量驻留,随 `n_symbols × osr` 线性增长。长跑开 **`sim.stream=True`**:
+  波形按块生成、接收机读滑动窗口,内存只剩每符号几十字节的记账数组(判决、相位、参考……)。
+
+  | 10⁶ 符号,OSR32(峰值 RSS,含 ~180 MB 解释器 + numba) | 默认 | `sim.stream` |
+  |---|---|---|
+  | `PAM4 224G ADC (TI mismatch)` 预设 | 1.89 GB,16.1 s | 0.33 GB,4.9 s |
+  | `NRZ 28G analytic (COM/xtalk)` 预设 | 1.89 GB,13.6 s | 0.31 GB,4.7 s |
+
+  5×10⁶ 符号 NRZ @OSR16 流式:13 s,tracemalloc 峰值 0.70 GB(一条全长波形就要 0.64 GB)。
+  (上表的默认引擎峰值高于早先记的"0.9 GB":那是另一配置下的 tracemalloc / RSS 口径,本表四行同机同口径。)
+
+  流式的代价:默认引擎的接收噪声限带(整段 FFT 砖墙)与发端单极点 `tx.bw`(整段 rFFT)是循环算子,每个输出样本
+  依赖全部输入,没法分块。流式里换成等价的 FIR —— 噪声用**同一批白噪抽样**过 Kaiser 窗 sinc(居中、单位能量),
+  单极点用统计引擎本来就用的 `TxPipeline.driver_response` —— 其余随机抽取(比较器失调、Rx 时钟、ADC 失配与噪声)
+  一个不差。所以流式与默认是**同一个链路实例**,结果统计一致(SNR 差 < 0.1 dB、误码数在 Poisson 内,
+  `tests/test_stream.py`),不逐位;流式内部,任意 `chunk_symbols` 逐位一致。
+  暂不支持(会直接报错,不静默退回):IBIS-AMI、光拓扑、串扰注入、`collect_jitter`;`collect_eye` 支持(取波形开头)。
 - 扫描优先用 `run_statistical`,它不生成波形。
 
 ---

@@ -14,6 +14,8 @@ same front half in Phase 4.
 
 from __future__ import annotations
 
+import copy
+
 import numpy as np
 
 from ..afe import Ctle
@@ -182,6 +184,106 @@ def _optical_pass(tx_y: np.ndarray, stages, channel: ChannelModel,
     return fft_filter(opt.noise.inject(y_pd, rng), h2)
 
 
+def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipeline,
+               line_symbols: np.ndarray, rng: np.random.Generator,
+               tx_ami, rx_ami, xtalk, collect_jitter: bool):
+    """Tx -> channel + CTLE + VGA -> [AMI] -> [crosstalk] -> noise.
+
+    Returns ``(h, rx, jitter_budget)``: the impulse the receivers' pulse
+    analysis works from and the received waveform -- an array, or with
+    ``sim.stream`` a :class:`~halo_serdes.engine.stream.StreamRx` produced as
+    the receiver consumes it. Shared by both receiver architectures.
+    """
+    osr = cfg.osr
+    if cfg.sim.stream:
+        v_sym = tx_pipe.symbol_stage(line_symbols)
+        jit = tx_pipe.edge_offsets(v_sym, rng)
+    else:
+        tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(line_symbols), rng)
+
+    if channel is None:
+        channel = ChannelModel.from_config(cfg)
+    if cfg.sim.stream:
+        _check_streamable(channel, tx_ami, rx_ami, xtalk, collect_jitter)
+    ch_rs = channel.response_set(cfg.dt)
+    h = ch_rs.h.y
+    if cfg.rx.ctle.enable:
+        ctle = Ctle.from_config(cfg.rx.ctle, cfg.f_nyquist)
+        nfft = int(2 ** np.ceil(np.log2(h.size * 4)))
+        f = np.fft.rfftfreq(nfft, d=cfg.dt)
+        h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: h.size * 2]
+    h = h * cfg.rx.vga_gain
+
+    if cfg.sim.stream:
+        from .stream import build_stream, skip_normals
+
+        # the noise is the default engine's white draws (a copy of the
+        # generator at that point reads them as the receiver goes), and the
+        # link's generator skips past them, so the comparator offsets, the Rx
+        # clock and the ADC draw what they draw without streaming
+        noise_rng = None
+        if cfg.rx.noise_rms > 0:
+            noise_rng = copy.deepcopy(rng)
+            skip_normals(rng, v_sym.size * osr)
+        return h, build_stream(cfg, tx_pipe, v_sym, jit, h, noise_rng), None
+
+    # optical topology: the response is the two stages' convolution, so it
+    # lines up with the waveform that is built in two stages below
+    stages = _optical_stages(cfg, channel, tx_ami, rx_ami)
+    if stages is not None:
+        h = _chain(stages)
+
+    # --- optional AMI Tx/Rx models (Init folds into h, GetWave into the wave) ---
+    h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
+
+    rx_y = fft_filter(tx_y, h) if stages is None else _optical_pass(tx_y, stages, channel, rng)
+    if rx_ami is not None and rx_ami.has_getwave:
+        rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
+
+    # --- FEXT/NEXT crosstalk: sum independent aggressors at the victim node ---
+    if xtalk:
+        from ..channel.crosstalk import inject_crosstalk
+
+        rx_y = inject_crosstalk(rx_y, xtalk, osr, cfg.modulation)
+
+    # --- optional per-stage jitter budget (Tx / channel / after-CTLE) ---
+    jitter_budget = None
+    if collect_jitter:
+        ch_only = fft_filter(tx_y, ch_rs.h.y * cfg.rx.vga_gain)
+        jitter_budget = _stage_jitter(cfg, {
+            "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
+
+    if cfg.rx.noise_rms > 0:
+        rx_y += receiver_awgn(rng, cfg.rx.noise_rms, rx_y.size, osr)
+    return h, rx_y, jitter_budget
+
+
+def _check_streamable(channel, tx_ami, rx_ami, xtalk, collect_jitter) -> None:
+    """What needs the whole waveform at once cannot stream; say so instead
+    of quietly falling back to the full-length engine."""
+    why = []
+    if tx_ami is not None or rx_ami is not None:
+        why.append("IBIS-AMI models")
+    if getattr(channel, "optical", None) is not None:
+        why.append("an optical topology")
+    if xtalk:
+        why.append("crosstalk aggressors")
+    if collect_jitter:
+        why.append("the per-stage jitter budget (collect_jitter)")
+    if why:
+        raise ValueError("sim.stream does not support " + ", ".join(why)
+                         + " yet: they work on the whole waveform; run with sim.stream=False")
+
+
+def _run_rx(run, rx, cfg: LinkConfig, progress):
+    """The receiver loop over a full waveform or a stream."""
+    if isinstance(rx, np.ndarray):
+        return _drive(run, cfg.sim.chunk_symbols, progress)
+    from .stream import drive_stream
+
+    return drive_stream(run, rx, cfg.sim.chunk_symbols, progress)
+
+
 def _drive(run, chunk: int, progress):
     """Advance a receiver run ``chunk`` symbols at a time to its end.
 
@@ -255,47 +357,9 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line_symbols = _tx_symbols(cfg, symbols)
     tx_pipe = TxPipeline.from_config(cfg)
-    tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(line_symbols), rng)
-
-    # --- channel + CTLE (single LTI impulse, overlap-save) ---
-    if channel is None:
-        channel = ChannelModel.from_config(cfg)
-    ch_rs = channel.response_set(cfg.dt)
-    h = ch_rs.h.y
-    ctle = Ctle.from_config(cfg.rx.ctle, cfg.f_nyquist) if cfg.rx.ctle.enable else None
-    if ctle is not None:
-        nfft = int(2 ** np.ceil(np.log2(h.size * 4)))
-        f = np.fft.rfftfreq(nfft, d=cfg.dt)
-        h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: h.size * 2]
-    h = h * cfg.rx.vga_gain
-    # optical topology: the response is the two stages' convolution, so it
-    # lines up with the waveform that is built in two stages below
-    stages = _optical_stages(cfg, channel, tx_ami, rx_ami)
-    if stages is not None:
-        h = _chain(stages)
-
-    # --- optional AMI Tx/Rx models (Init folds into h, GetWave into the wave) ---
-    h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
-
-    rx_y = fft_filter(tx_y, h) if stages is None else _optical_pass(tx_y, stages, channel, rng)
-    if rx_ami is not None and rx_ami.has_getwave:
-        rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
-
-    # --- FEXT/NEXT crosstalk: sum independent aggressors at the victim node ---
-    if xtalk:
-        from ..channel.crosstalk import inject_crosstalk
-
-        rx_y = inject_crosstalk(rx_y, xtalk, osr, cfg.modulation)
-
-    # --- optional per-stage jitter budget (Tx / channel / after-CTLE) ---
-    jitter_budget = None
-    if collect_jitter:
-        ch_only = fft_filter(tx_y, ch_rs.h.y * cfg.rx.vga_gain)
-        jitter_budget = _stage_jitter(cfg, {
-            "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
-
-    if cfg.rx.noise_rms > 0:
-        rx_y += receiver_awgn(rng, cfg.rx.noise_rms, rx_y.size, osr)
+    h, rx_y, jitter_budget = _front_end(cfg, channel, tx_pipe, line_symbols, rng,
+                                        tx_ami, rx_ami, xtalk, collect_jitter)
+    n_wave = rx_y.size if isinstance(rx_y, np.ndarray) else rx_y.n_total
 
     # --- pulse-response analysis: main cursor, initial phase, initial DFE taps ---
     # the pulse the receiver sees includes the Tx FFE; ``lead`` maps its peak
@@ -329,7 +393,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     # --- reference alignment: kernel starts at pos=peak, so decision k
     # samples the main cursor of symbol k directly ---
-    n_sym_max = (rx_y.size - peak - 4 * osr) // osr - 2
+    n_sym_max = (n_wave - peak - 4 * osr) // osr - 2
     n_sym = min(symbols.size - delay - 1, n_sym_max)
     # the slicer decides *line* symbols; BER is scored on user symbols
     ref_idx = line_symbols[:n_sym].astype(np.int64)
@@ -358,12 +422,14 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # the receiver's own clock, drawn last so an ideal clock changes nothing
     rx_clk = rx_clock_offsets_samples(n_sym, cfg, rng)
 
-    dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = _drive(MsRxRun(
-        rx_y, osr, float(peak), n_sym,
+    if collect_eye and not isinstance(rx_y, np.ndarray):
+        rx_y.keep_head(int(phase0) % osr + osr + 2000 * 2 * osr)
+    dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = _run_rx(MsRxRun(
+        rx_y if isinstance(rx_y, np.ndarray) else np.zeros(0), osr, float(peak), n_sym,
         levels.astype(np.float64), np.asarray(w_dfe0, dtype=np.float64),
         float(mu), LMS_BATCH_SYMBOLS, float(kp), float(ki), float(clamp),
         float(sum_alpha), sched.reference, int(train_end), int(settle),
-        int(tap1_unrolled), branch_off, rx_clk), cfg.sim.chunk_symbols, progress)
+        int(tap1_unrolled), branch_off, rx_clk), rx_y, cfg, progress)
 
     n_run = dec.size
     # --- optional MLSD over the postcursors the DFE left behind ---
@@ -376,7 +442,10 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                levels=levels, line_idx=ref_idx, user_idx=user_idx,
                n_run=n_run, warmup=warm)
 
-    eye = fold_eye(rx_y, osr, int(phase0) % osr, n_traces=2000) if collect_eye else None
+    eye = None
+    if collect_eye:
+        eye = fold_eye(rx_y if isinstance(rx_y, np.ndarray) else rx_y.head, osr,
+                       int(phase0) % osr, n_traces=2000)
 
     return SimResult(
         ber=sc.ber, ser=sc.ser, slicer_snr_db=sc.snr_db, n_symbols=sc.n_scored,
@@ -416,42 +485,9 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line_symbols = _tx_symbols(cfg, symbols)
     tx_pipe = TxPipeline.from_config(cfg)
-    tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(line_symbols), rng)
-
-    # --- channel + CTLE front end ---
-    if channel is None:
-        channel = ChannelModel.from_config(cfg)
-    ch_rs = channel.response_set(cfg.dt)
-    h = ch_rs.h.y
-    if cfg.rx.ctle.enable:
-        ctle = Ctle.from_config(cfg.rx.ctle, cfg.f_nyquist)
-        nfft = int(2 ** np.ceil(np.log2(h.size * 4)))
-        f = np.fft.rfftfreq(nfft, d=cfg.dt)
-        h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: h.size * 2]
-    h = h * cfg.rx.vga_gain
-    stages = _optical_stages(cfg, channel, tx_ami, rx_ami)
-    if stages is not None:
-        h = _chain(stages)
-
-    h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
-
-    rx_y = fft_filter(tx_y, h) if stages is None else _optical_pass(tx_y, stages, channel, rng)
-    if rx_ami is not None and rx_ami.has_getwave:
-        rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
-
-    if xtalk:
-        from ..channel.crosstalk import inject_crosstalk
-
-        rx_y = inject_crosstalk(rx_y, xtalk, osr, cfg.modulation)
-
-    jitter_budget = None
-    if collect_jitter:
-        ch_only = fft_filter(tx_y, ch_rs.h.y * cfg.rx.vga_gain)
-        jitter_budget = _stage_jitter(cfg, {
-            "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
-
-    if cfg.rx.noise_rms > 0:
-        rx_y += receiver_awgn(rng, cfg.rx.noise_rms, rx_y.size, osr)
+    h, rx_y, jitter_budget = _front_end(cfg, channel, tx_pipe, line_symbols, rng,
+                                        tx_ami, rx_ami, xtalk, collect_jitter)
+    n_wave = rx_y.size if isinstance(rx_y, np.ndarray) else rx_y.n_total
 
     # --- pulse analysis: initial FFE (MMSE), DFE, slicer levels ---
     # (the Tx FFE is part of the pulse the receiver equalises; see run_time_link)
@@ -513,7 +549,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # --- TI-ADC ---
     adc = TiAdc(cfg.rx.adc, osr, rng)
     delay = peak // osr
-    n_sym_max = (rx_y.size - peak - (fcfg.n_pre + 6) * osr) // osr - 2
+    n_sym_max = (n_wave - peak - (fcfg.n_pre + 6) * osr) // osr - 2
     n_sym = min(symbols.size - delay - fcfg.n_pre - 2, n_sym_max)
     # the slicer decides *line* symbols; BER is scored on user symbols
     ref_idx = line_symbols[:n_sym].astype(np.int64)
@@ -536,8 +572,9 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     mu_a = pr.mu if (pr.active and pr.adapt == "lms") else 0.0
     alpha_out = np.array([alpha, beta], dtype=np.float64)
 
-    dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = _drive(AdcRxRun(
-        rx_y, osr, float(peak), n_sym, levels.astype(np.float64),
+    dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = _run_rx(AdcRxRun(
+        rx_y if isinstance(rx_y, np.ndarray) else np.zeros(0), osr, float(peak), n_sym,
+        levels.astype(np.float64),
         adc.n_lanes, adc.offsets, adc.gains, adc.skews,
         adc.q_step, adc.code_max, enob_noise,
         np.asarray(w_ffe0, dtype=np.float64), fcfg.n_pre, float(mu_f),
@@ -547,7 +584,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         sched.reference, int(train_end), int(settle), rx_clk,
         float(alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64),
         float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1)),
-        cfg.sim.chunk_symbols, progress)
+        rx_y, cfg, progress)
 
     # The FFE emits symbol k - n_pre at ADC sample k, so the kernel's last
     # n_pre decisions were never made (they hold the array's initial 0). They
