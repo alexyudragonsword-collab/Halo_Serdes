@@ -65,6 +65,20 @@ runner (PyInstaller, Nuitka standalone, Nuitka onefile), smoke-tests each with
 Actions tab (workflow_dispatch) or by pushing changes under
 `src/halo_serdes_gui/` or `packaging/`.
 
+Artifacts expire after 14 days. For a download that stays, push a version tag:
+
+```bash
+git tag v0.0.1 && git push origin v0.0.1     # the tag must equal pyproject's version
+```
+
+The `release` job then publishes a GitHub Release with
+`Halo_Serdes_GUI-v0.0.1-windows.exe` (the Nuitka onefile, icon included) and
+`Halo_Serdes_GUI-v0.0.1-windows-pyinstaller.zip`, both from bundles that passed
+`--selfcheck`. A tag that does not match `pyproject.toml` fails the job before
+anything is published; if the onefile build failed (it is allowed to), the
+release carries the PyInstaller zip alone. The onefile exe's version resource
+is read from `pyproject.toml` too (CI and `build_nuitka_onefile.ps1`).
+
 ## Notes
 
 - **Cross-compile is not possible** — a Windows exe must be built on Windows

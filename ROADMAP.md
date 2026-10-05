@@ -83,12 +83,6 @@ overlap-save 分块,**但波形数组本身没有窗口化** —— `tx_wave`、
 
 ## P2 — 一致性与交付
 
-### 5. 桌面版发 GitHub Release
-
-CI 已经在构建三种 Windows 产物(PyInstaller / Nuitka standalone / Nuitka onefile)
-并做 `--selfcheck` 冒烟,但只作为 **artifact 上传,会过期**。加一个 tag → Release 的
-job,让 onefile exe(自带图标)成为长期可下载的交付物。工作量最小的一项。
-
 ### 6b. Android:`targetSdk = 35` 但没有 edge-to-edge / WindowInsets 处理
 
 **现状**:`MainActivity.onCreate` 只有 `setContent { HaloTheme { HaloApp() } }`,
