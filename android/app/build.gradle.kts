@@ -125,6 +125,14 @@ chaquopy {
             if (compiledVariant) listOf("src/main/python")
             else listOf("src/main/python", "../../src")
         )
+        // The Dash desktop UI (~680 K of source) is in ../../src too, and no
+        // code path on the phone imports it: the shared layer the app reads
+        // is halo_serdes_app, which the desktop package only re-exports. The
+        // compiled variant's wheels never carried it; this keeps the
+        // interpreted one from doing so. CI checks the APK with
+        // inspect_apk.py --absent halo_serdes_gui, so if the plugin ever
+        // stops honouring the filter the build says so.
+        exclude("halo_serdes_gui/**")
     }
 
     defaultConfig {

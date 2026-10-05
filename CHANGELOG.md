@@ -6,6 +6,13 @@
 
 ---
 
+## [未发布] — 解释型 APK 不再打包桌面 GUI(原 ROADMAP P2 #6c)
+
+### 变更
+- `android/app/build.gradle.kts`:Chaquopy 主源集 `exclude("halo_serdes_gui/**")`。手机侧无任何代码 import 它(读的是 `halo_serdes_app`,
+  桌面包只是 re-export);编译型 wheel 本来就不含它。桌面端不受影响(源码树未动)。
+- `android/tools/inspect_apk.py --absent`:断言某包完全不在 APK 里;CI 对解释型与编译型 APK 都加 `--absent halo_serdes_gui`。
+
 ## [未发布] — 桌面版随版本 tag 发 GitHub Release(原 ROADMAP P2 #5)
 
 ### 新增

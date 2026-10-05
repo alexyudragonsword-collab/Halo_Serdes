@@ -3,6 +3,13 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-05 · 解释型 APK 排除 halo_serdes_gui(fix/apk-drop-gui,原 ROADMAP P2 #6c)
+
+- Chaquopy 源集加 `exclude("halo_serdes_gui/**")`;只影响解释型(编译型 wheel 只打 halo_serdes / halo_serdes_app)。
+  确认 `src/halo_serdes`、`halo_serdes_app`、`android/.../python` 无 import 它;桌面端的 shim 不在 APK 范围内,不受影响。
+- `inspect_apk.py --absent`(假 APK 两例:含 → exit 1,不含 → exit 0);android.yml 两个 gate 都加。actionlint、ruff 干净。
+- Chaquopy 16.1 是否认 `exclude` 本地无法验证 —— 由 CI 的 `--absent` 判定。CI / Android totals 待补。
+
 ## 2026-10-05 · 桌面版随版本 tag 发 GitHub Release(ci/desktop-release,原 ROADMAP P2 #5)
 
 - `build-windows.yml` 加 `release` job(ubuntu,`contents: write`,`gh release create --generate-notes --verify-tag`):

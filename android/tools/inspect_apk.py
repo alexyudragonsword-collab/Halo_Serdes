@@ -29,6 +29,9 @@ into an assertion that fails the job.
     python inspect_apk.py compiled.apk --package mylib --native core,solvers
     python inspect_apk.py interpreted.apk --package mylib --pure core,solvers
 
+    # gate: a package that must not have been packaged at all
+    python inspect_apk.py app.apk --absent mylib_desktop_ui
+
 Exit status is 0 when every requested assertion holds (and, with no
 assertions, when every APK contained a readable Python payload).
 """
@@ -153,6 +156,17 @@ def check(counts: dict[str, tuple[int, int]], prefix: str,
     return False
 
 
+def check_absent(counts: dict[str, tuple[int, int]], prefix: str) -> bool:
+    """Assert a package was kept out of the APK (source and native alike)."""
+    if prefix not in counts:
+        print(f"  ok   {prefix}: not in this APK")
+        return True
+    src, obj = counts[prefix]
+    print(f"  FAIL {prefix}: {src} source and {obj} native files shipped -- "
+          f"the packaging filter that should keep it out did not apply")
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -163,10 +177,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="comma-separated subtrees that must be compiled")
     ap.add_argument("--pure", default="",
                     help="comma-separated subtrees that must NOT be compiled")
+    ap.add_argument("--absent", default="",
+                    help="comma-separated top-level packages that must not be "
+                         "in the APK at all (not prefixed by --package)")
     args = ap.parse_args(argv)
 
     native = [e for e in args.native.split(",") if e.strip()]
     pure = [e for e in args.pure.split(",") if e.strip()]
+    absent = [e.strip().replace(".", "/") for e in args.absent.split(",") if e.strip()]
 
     ok = True
     for apk in args.apks:
@@ -183,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
             ok &= check(counts, norm(args.package, entry), True)
         for entry in pure:
             ok &= check(counts, norm(args.package, entry), False)
+        for entry in absent:
+            ok &= check_absent(counts, entry)
     return 0 if ok else 1
 
 
