@@ -9,7 +9,8 @@
   onefile exe + PyInstaller zip;tag 必须等于 pyproject 版本;onefile 失败时只发 zip(`if` 显式写状态,隐式 success() 会整体跳过)。
 - 坑:`push` 只写 `tags` 会让分支推送不再触发,所以加 `branches: ["**"]`;路径过滤对 tag 推送不生效。
 - onefile `--product-version` 从 pyproject 读(CI + 本地 ps1)。actionlint 干净。
-- 未验证:release job 本身要推 tag 才会跑(会真的发 Release,由用户决定);分支推送验证三种构建仍过、release 被跳过。
+- 已验证(分支推送,run 37304439562,9706b05):`branches` 过滤生效(推送照常触发),pyinstaller / nuitka / nuitka-onefile 全过,
+  `release` = skipped;测试 CI(8347a74)全绿。未验证:release job 本身要推 tag 才会跑(会真的发 Release,由用户决定)。
 
 ## 2026-10-05 · COM:ADC 架构的 178A 式 Rx FFE + 量化噪声(feat/com-rx-ffe,原 ROADMAP P2 #6)
 
