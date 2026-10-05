@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-05 · COM:ADC 架构的 178A 式 Rx FFE + 量化噪声(feat/com-rx-ffe,原 ROADMAP P2 #6)
+
+- `ComParams.rx_ffe`("auto":ADC 取 `rx.ffe` 大小,mixed-signal 无);每候选相位 MMSE 解抽头(DFE 覆盖的后光标不计、噪声与串扰经抽头计入),
+  ISI / 串扰 / 噪声 / 抖动斜率都在 FFE 后取。ADC 的 σ_N 加 `adc_noise_sigma`(与统计引擎同式)。
+- 预设 COM:mixed-signal 逐位不变;ADC 106 GBd −8.35 → 4.58、112 stress −7.15 → 5.42、deep-LR −8.99 → 4.78、TI −6.23 → 9.26、LPO −9.41 → 19.78 dB。
+  只加 FFE 不加量化噪声时 106 GBd 读 17.3 dB —— 量化噪声是大头。示例 26 −5.40 → −1.96、示例 28 无串扰 2.76 → 15.01 dB。
+- 坑:无接收噪声时 MMSE FFE 退化成迫零,COM 不再随损耗单调(test_com 的配置原 noise 0,补 1 mV)。旧指纹脚本调 `compute_com` 签名错,
+  从未覆盖 COM —— 本次另跑逐预设对照。invariants #2 补注(按架构分参考接收机不破坏公平)。
+- 验证:ruff 干净;jit 731 passed / 2 skipped。CI / Android totals 待补。
+
 ## 2026-10-05 · AMI 模型 `has_getwave` 默认值统一(fix/ami-getwave-default,原 ROADMAP P2 #4)
 
 - 选 (a):`AmiCModel` / `load_ami_model(so_file=...)` 默认 False → True,与 `NativeFirAmi`、`IbisAmiModel` 同;`NativeFirAmi(has_getwave=)`
