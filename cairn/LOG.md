@@ -11,6 +11,7 @@
 - 引擎:定点 + viterbi 时在环路 slicer 字上跑整数版(此前浮点)。SV 第六段 16 状态通过。
 - 未建模:固定回溯深度(硬件会截断);写进 USAGE 与模块 docstring。
 - P1 清空;剩 P2 #2(流式覆盖光 / 串扰 / AMI / collect_jitter)与 P3。
+- PR #34;CI 全部 test job + rtl-lockstep 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):808 passed / 1 skipped(+13);定点 MLSD / Viterbi / RTL nojit 24 passed / 2 skipped;浮点指纹逐位同。
 
 ## 2026-10-06 · 定点 PR(feat/fixed-pr,ROADMAP P1 #1 的 PR 部分)
