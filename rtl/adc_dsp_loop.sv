@@ -12,7 +12,12 @@
 // Semantics (all signed 64-bit):
 //   FFE   acc = sum w_ffe[i] * x[k-i]; rounding add; >>> FFE_SHIFT; saturate
 //   DFE   fb  = sum w_dfe[d] * levels[dec[s-1-d]]; rounding add; >>> DFE_SHIFT
-//   slice nearest level, first minimum on ties
+//   slice nearest level, first minimum on ties; during training
+//         (s < TRAIN_LEN, ref_sym[s] >= 0) the decision is the reference
+//   LMS   from s >= ADAPT_START, e = v - levels[dec[s]]:
+//         wacc_f[i] -= rnd(e * x[k-i], SH_F); wacc_d[d] += rnd(e * levels[dec[s-1-d]], SH_D)
+//         (rnd: <<< for SH >= 0, else rounding add + >>>), saturated to the
+//         weight range G bits finer; the weights are wacc >>> G
 //   MM PD on symbol s-1: x1 * (sign x2 - sign x0), on FFE outputs (PD_FFE) or
 //         input words; summed over LANES symbols, then
 //         pd = -acc - PD_OFF; integ += pd <<< KI_SH; c = (pd <<< KP_SH) + integ
@@ -31,8 +36,11 @@ module adc_dsp_loop;
     `include "loop_dims.svh"
 
     longint xin    [N];
-    longint w_ffe  [NF];
+    longint ref_sym [N];
+    longint w_ffe  [NF];          // initial weights in, adapted weights out
     longint w_dfe  [ND];
+    longint wacc_f [NF];
+    longint wacc_d [ND];
     longint levels [NL];
     longint pi_out [N];
     longint dec    [N];
@@ -46,13 +54,27 @@ module adc_dsp_loop;
         return v >>> (-sh);
     endfunction
 
+    function automatic longint rnd(input longint v, input longint sh);
+        if (sh >= 0) return v <<< sh;
+        if (DO_ROUND == 1) return (v + (longint'(1) <<< (-sh - 1))) >>> (-sh);
+        return v >>> (-sh);
+    endfunction
+
+    function automatic longint clip(input longint a, input longint lo, input longint hi);
+        if (a > (hi <<< G) + (longint'(1) <<< G) - 1) return (hi <<< G) + (longint'(1) <<< G) - 1;
+        if (a < (lo <<< G)) return lo <<< G;
+        return a;
+    endfunction
+
     task automatic run();
-        longint acc, fb, v, dd, bd, x0, x1, x2, a0, a2, pd, c;
+        longint acc, fb, v, dd, bd, x0, x1, x2, a0, a2, pd, c, e;
         longint ph, integ, corr, pd_acc, pd_n, qi;
         longint queue [LAT + 1];
         int s, j, jj, best;
         ph = 0; integ = 0; corr = 0; pd_acc = 0; pd_n = 0; qi = 0;
         for (int q = 0; q <= LAT; q++) queue[q] = 0;
+        for (int i = 0; i < NF; i++) wacc_f[i] = w_ffe[i] <<< G;
+        for (int d = 0; d < ND; d++) wacc_d[d] = w_dfe[d] <<< G;
         for (int k = 0; k < N; k++) begin
             pi_out[k] = ph >>> PI_SH;
             s = k - N_PRE;
@@ -83,7 +105,29 @@ module adc_dsp_loop;
                     dd = (v > levels[m]) ? (v - levels[m]) : (levels[m] - v);
                     if (dd < bd) begin bd = dd; best = m; end
                 end
-                dec[s] = best;
+                if (s < TRAIN_LEN && ref_sym[s] >= 0) dec[s] = ref_sym[s];
+                else dec[s] = best;
+
+                if (s >= ADAPT_START && (LMS_F == 1 || LMS_D == 1)) begin
+                    e = v - levels[dec[s]];
+                    if (LMS_F == 1)
+                        for (int i = 0; i < NF; i++) begin
+                            j = k - i;
+                            if (j >= 0) begin
+                                wacc_f[i] = clip(wacc_f[i] - rnd(e * xin[j], SH_F), WF_LO, WF_HI);
+                                w_ffe[i] = wacc_f[i] >>> G;
+                            end
+                        end
+                    if (LMS_D == 1)
+                        for (int d = 0; d < ND; d++) begin
+                            jj = s - 1 - d;
+                            if (jj >= 0) begin
+                                wacc_d[d] = clip(wacc_d[d] + rnd(e * levels[dec[jj]], SH_D),
+                                                 WD_LO, WD_HI);
+                                w_dfe[d] = wacc_d[d] >>> G;
+                            end
+                        end
+                end
 
                 if (s >= 2) begin
                     if (PD_FFE == 1) begin

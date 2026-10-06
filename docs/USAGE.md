@@ -505,9 +505,9 @@ bash rtl/run_lockstep.sh          # -> LOCKSTEP PASS  n=1985  errors=0
 
 ### 带 CDR 的定点闭环(`numeric.mode: fixed`)
 
-`numeric.mode: fixed` 只对 `rx.arch: adc_dsp` 生效。引擎先照常跑浮点(训练、自适应),然后用**冻结的、量化后的**
-FFE/DFE 权重,从同一个起点把整个数字后端用 int64 再跑一遍闭环:FFE、DFE、slicer、MM 鉴相、环路滤波、相位寄存器,
-相位插值码决定采样点(`dsp/fixed_loop.py`)。返回的 BER / SNR / 判决都是定点环路的,
+`numeric.mode: fixed` 只对 `rx.arch: adc_dsp` 生效。引擎先照常跑浮点,然后从同一个起点、同样的初始(量化)权重和
+训练日程,把整个数字后端用 int64 再跑一遍闭环:FFE、DFE、slicer、数据辅助训练、**整数 LMS**、MM 鉴相、环路滤波、
+相位寄存器,相位插值码决定采样点(`dsp/fixed_loop.py`)。返回的 BER / SNR / 判决都是定点环路的,
 `extras["fixed"]` 里有环路参数(`loop`)和逐符号记录(`record`:ADC 字、PI 码、slicer 值、判决)。
 
 ```yaml
@@ -527,8 +527,10 @@ rx:
 - `rx.mlsd.kind: sliding` 在定点下跑整数版(`dsp/fixed_mlsd.py`):逐电平反馈表、残差平方右移
   `sq_shift` 后求和并饱和到 `numeric.mlsd_metric_bits`(默认 24)、margin 换算到度量 LSB;
   字长放宽时与浮点检测器判决一致。`viterbi` 在定点下仍是浮点(跑在定点 slicer 值上);
-- 不建模(直接报错):mixed-signal(DFE / CDR 是模拟的)、PR 目标、`sim.stream`、非 2 的幂 lane 数;
-  自适应(权重来自浮点训练)尚未定点化(ROADMAP P1 #1)。
+- 整数 LMS:权重累加器比权重细 `numeric.lms_guard_bits`(默认 24)位,权重取其高位;步长是最接近
+  `ffe.mu` / `dfe.mu` 的 2 的幂(换算到整数单位后),`float_equivalent_mu()` 给出精确对应的浮点步长。
+  保护位太少时小更新被舍入成 0,环路就不再自适应;
+- 不建模(直接报错):mixed-signal(DFE / CDR 是模拟的)、PR 目标、`sim.stream`、非 2 的幂 lane 数。
 
 RTL 对照的是"ADC 字之后"的部分:`replay_digital()` 从记录的 ADC 字流重放数字后端,与闭环逐位相同;
 `rtl/adc_dsp_loop.sv` 是它的独立 SV 实现,`run_lockstep.sh` 的第二段逐位比对 PI 码、slicer 值与判决。

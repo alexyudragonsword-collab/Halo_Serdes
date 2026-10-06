@@ -13,20 +13,19 @@
 
 ## P1 — 声称与实现的落差
 
-### 1. 定点自适应与定点 Viterbi
+### 1. 定点 Viterbi 与定点 PR
 
-**现状**(2026-10-06 起):`numeric.mode: fixed` 覆盖 ADC 接收机的 FFE + DFE + slicer + MM CDR 闭环
+**现状**(2026-10-06 起):`numeric.mode: fixed` 覆盖 ADC 接收机的 FFE + DFE + slicer + 训练 + 整数 LMS + MM CDR 闭环
 (`dsp/fixed_loop.py`)与 sliding-detector MLSD(`dsp/fixed_mlsd.py`),三段 SV 逐位对照(`rtl/run_lockstep.sh`)。
-**还没有**:FFE/DFE 权重来自浮点训练、在定点环路里冻结,没有整数 LMS;`rx.mlsd.kind: viterbi` 在定点下仍是浮点;
-PR 目标在定点下直接报错。
+**还没有**:`rx.mlsd.kind: viterbi` 在定点下仍是浮点;PR 目标(含 a 的 LMS)在定点下直接报错。
 
-**为什么要紧**:整数 LMS 的步长移位与权重累加器位宽决定自适应能否收敛、会不会被量化卡住
-(步长小于权重 LSB 时更新被截没);Viterbi 的路径度量归一化是另一个典型 RTL 坑。
+**为什么要紧**:Viterbi 的路径度量要归一化(或模运算比较),位宽不够时比较翻转 —— 典型 RTL 坑;
+PR 是本项目 224G 结论的主力路径,没有 bit-true 版本,那部分结论就没有 RTL 黄金模型。
 
-**怎么做**:LMS 先做 sign-error / sign-data 变体(硬件最常见),权重累加器比权重多若干位、取高位作权重;
-在 `fixed_loop._digital_step` 里按符号更新,保持"闭环 = 从 ADC 字重放"这一性质,SV 同步扩展。
+**怎么做**:Viterbi 先做 2 状态(NRZ / memory 1)的整数分支度量 + 减最小值归一化,再推广;
+PR 在 `_digital_step` 里加受控光标减法(与浮点核 pr_mode 1 对齐),SV 同步。
 
-**验收**:`HALO_NO_JIT=1` 与 JIT 一致;累加器位宽 → ∞ 时与浮点 LMS 收敛到同一组权重;lockstep 覆盖权重轨迹。
+**验收**:`HALO_NO_JIT=1` 与 JIT 一致;字长 → ∞ 时与浮点收敛;lockstep 覆盖。
 
 ---
 

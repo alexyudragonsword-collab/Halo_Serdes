@@ -466,9 +466,10 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "decisions": sc.decisions})
 
 
-def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe, w_dfe):
+def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, w_dfe0,
+                    sched):
     """``numeric.mode == 'fixed'``: the ADC receiver's digital back end --
-    FFE, DFE, slicer and the CDR loop -- in int64 (``dsp/fixed_loop.py``).
+    FFE, DFE, slicer, LMS and the CDR loop -- in int64 (``dsp/fixed_loop.py``).
 
     Returns what the float kernel's result unpacks to (decisions, slicer
     values in volts, sample positions, lanes, sampled values) plus the run's
@@ -482,8 +483,12 @@ def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe, w
             f"{tuple(cfg.pr.target)}): the bit-true back end models the delta target only")
     from ..dsp.fixed_loop import build_fixed_loop, run_fixed_loop
 
-    fl = build_fixed_loop(cfg, w_ffe, w_dfe, levels, adc.q_step)
-    rec = run_fixed_loop(fl, rx_y, cfg.osr, pos0, n_sym, adc, noise, rx_clk)
+    # from the float run's starting weights, training and adapting itself
+    # (integer LMS) on the float run's schedule
+    fl = build_fixed_loop(cfg, w_ffe0, w_dfe0, levels, adc.q_step,
+                          train_len=int(sched.train_end), adapt_start=int(sched.settle))
+    rec = run_fixed_loop(fl, rx_y, cfg.osr, pos0, n_sym, adc, noise, rx_clk,
+                         ref=sched.reference)
     n = rec["xin"].size
     # the score below trims the last n_pre symbols (the FFE never decided
     # them), so hand it the decisions padded to the symbols run
@@ -624,7 +629,11 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         # the float run trained the equaliser; the bit-true back end takes its
         # weights, frozen, and runs the whole loop again from the same start
         dec, y_sl, phase, lane_of, q_hist, fixed = _fixed_back_end(
-            cfg, rx_y, float(peak), n_sym, levels, adc, enob_noise, rx_clk, w_ffe, w_dfe)
+            cfg, rx_y, float(peak), n_sym, levels, adc, enob_noise, rx_clk, w_ffe0, w_dfe0,
+            sched)
+        # the weights the bit-true loop ended on, in float units
+        w_ffe = fixed["record"]["wf"] * 2.0 ** -cfg.numeric.ffe_weight.fl
+        w_dfe = fixed["record"]["wd"] * 2.0 ** -cfg.numeric.dfe_weight.fl
 
     # The FFE emits symbol k - n_pre at ADC sample k, so the kernel's last
     # n_pre decisions were never made (they hold the array's initial 0). They
