@@ -409,6 +409,16 @@ class NumericConfig:
     ffe_weight: QFormat = field(default_factory=lambda: QFormat(10, 8))
     dfe_weight: QFormat = field(default_factory=lambda: QFormat(10, 8))
     error: QFormat = field(default_factory=lambda: QFormat(9, 0))
+    # bit-true CDR (dsp/fixed_loop.py): phase-interpolator steps per UI as a
+    # power of two, and the phase register's bits below the PI code
+    pi_bits: int = 7
+    phase_frac_bits: int = 24
+
+    def __post_init__(self):
+        _require_in(self.mode, {"float", "fixed"}, "numeric.mode")
+        _require(1 <= self.pi_bits <= 20, f"numeric.pi_bits must be in [1, 20], got {self.pi_bits}")
+        _require(0 <= self.phase_frac_bits <= 32,
+                 f"numeric.phase_frac_bits must be in [0, 32], got {self.phase_frac_bits}")
 
 
 @dataclass(frozen=True)

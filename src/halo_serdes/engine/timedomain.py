@@ -350,6 +350,9 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
             "margin on the reference channel drops below ~25% of the level "
             "spacing — expect FEC-dependent operation and verify per channel",
             stacklevel=2)
+    if cfg.numeric.mode == "fixed":
+        raise ValueError("numeric.mode='fixed' is the ADC receiver's digital back end; "
+                         "the mixed-signal receiver's DFE and CDR are analog (rx.arch='adc_dsp')")
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 
@@ -461,6 +464,36 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "precode": cfg.precode,
                 "cycle_slips": sc.cycle_slips, "slip_at": sc.slip_at,
                 "decisions": sc.decisions})
+
+
+def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe, w_dfe):
+    """``numeric.mode == 'fixed'``: the ADC receiver's digital back end --
+    FFE, DFE, slicer and the CDR loop -- in int64 (``dsp/fixed_loop.py``).
+
+    Returns what the float kernel's result unpacks to (decisions, slicer
+    values in volts, sample positions, lanes, sampled values) plus the run's
+    record for the RTL lockstep."""
+    if not isinstance(rx_y, np.ndarray):
+        raise ValueError("numeric.mode='fixed' runs the loop a second time over the "
+                         "waveform; it cannot with sim.stream")
+    if cfg.pr.active:
+        raise NotImplementedError(
+            "numeric.mode='fixed' with a partial-response target (pr.target "
+            f"{tuple(cfg.pr.target)}): the bit-true back end models the delta target only")
+    from ..dsp.fixed_loop import build_fixed_loop, run_fixed_loop
+
+    fl = build_fixed_loop(cfg, w_ffe, w_dfe, levels, adc.q_step)
+    rec = run_fixed_loop(fl, rx_y, cfg.osr, pos0, n_sym, adc, noise, rx_clk)
+    n = rec["xin"].size
+    # the score below trims the last n_pre symbols (the FFE never decided
+    # them), so hand it the decisions padded to the symbols run
+    dec = np.zeros(n, dtype=np.int64)
+    dec[: rec["n_dec"]] = rec["dec"]
+    y_sl = np.zeros(n)
+    y_sl[: rec["n_dec"]] = rec["v_out"] * fl.out_lsb
+    lane_of = np.arange(n, dtype=np.int64) % adc.n_lanes
+    return (dec, y_sl, rec["phase"], lane_of, rec["xin"] * fl.in_lsb,
+            {"loop": fl, "record": rec})
 
 
 def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
@@ -586,6 +619,13 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1)),
         rx_y, cfg, progress)
 
+    fixed = None
+    if cfg.numeric.mode == "fixed":
+        # the float run trained the equaliser; the bit-true back end takes its
+        # weights, frozen, and runs the whole loop again from the same start
+        dec, y_sl, phase, lane_of, q_hist, fixed = _fixed_back_end(
+            cfg, rx_y, float(peak), n_sym, levels, adc, enob_noise, rx_clk, w_ffe, w_dfe)
+
     # The FFE emits symbol k - n_pre at ADC sample k, so the kernel's last
     # n_pre decisions were never made (they hold the array's initial 0). They
     # used to be scored: a fixed tail of wrong symbols, 3/(2N) in BER.
@@ -639,4 +679,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "pr_target": (1.0, float(alpha_out[0])) + ((float(alpha_out[1]),) if n_t == 3 else ())
                 if pr.active else None,
                 "cycle_slips": sc.cycle_slips, "slip_at": sc.slip_at,
-                "decisions": sc.decisions})
+                "decisions": sc.decisions,
+                # numeric.mode 'fixed': the bit-true loop and its record
+                # (dsp/fixed_loop.py; rtl/adc_dsp_loop.sv replays it)
+                "fixed": fixed})

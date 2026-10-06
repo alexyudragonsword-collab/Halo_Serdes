@@ -1,0 +1,72 @@
+// Lockstep testbench for adc_dsp_loop.sv: load the vectors
+// halo_serdes.dsp.fixed_loop.dump_loop_vectors wrote from a closed-loop run,
+// replay the input words through the SV back end, and require every PI code,
+// slicer value and decision to equal the Python golden. Exits non-zero on
+// any mismatch.
+//
+//   iverilog -g2012 -o sim -I <vecdir> adc_dsp_loop.sv tb_adc_dsp_loop.sv
+//   vvp sim +vecdir=<vecdir>
+
+`timescale 1ns/1ps
+module tb_adc_dsp_loop;
+    `include "loop_dims.svh"
+
+    adc_dsp_loop dut ();
+
+    longint pi_gold  [N];
+    longint dec_gold [N_DEC];
+    longint v_gold   [N_DEC];
+
+    string dir;
+    int fd, r, errors;
+    longint val;
+
+    initial begin
+        if (!$value$plusargs("vecdir=%s", dir)) dir = ".";
+
+        fd = $fopen({dir, "/loop_xin.txt"}, "r");
+        for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); dut.xin[i] = val; end
+        $fclose(fd);
+        fd = $fopen({dir, "/loop_w_ffe_int.txt"}, "r");
+        for (int i = 0; i < NF; i++) begin r = $fscanf(fd, "%d", val); dut.w_ffe[i] = val; end
+        $fclose(fd);
+        fd = $fopen({dir, "/loop_w_dfe_int.txt"}, "r");
+        for (int i = 0; i < ND; i++) begin r = $fscanf(fd, "%d", val); dut.w_dfe[i] = val; end
+        $fclose(fd);
+        fd = $fopen({dir, "/loop_levels_out.txt"}, "r");
+        for (int i = 0; i < NL; i++) begin r = $fscanf(fd, "%d", val); dut.levels[i] = val; end
+        $fclose(fd);
+        fd = $fopen({dir, "/loop_pi.txt"}, "r");
+        for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); pi_gold[i] = val; end
+        $fclose(fd);
+        fd = $fopen({dir, "/loop_dec.txt"}, "r");
+        for (int i = 0; i < N_DEC; i++) begin r = $fscanf(fd, "%d", val); dec_gold[i] = val; end
+        $fclose(fd);
+        fd = $fopen({dir, "/loop_v_out.txt"}, "r");
+        for (int i = 0; i < N_DEC; i++) begin r = $fscanf(fd, "%d", val); v_gold[i] = val; end
+        $fclose(fd);
+
+        dut.run();
+
+        errors = 0;
+        for (int i = 0; i < N; i++) begin
+            if (dut.pi_out[i] !== pi_gold[i]) begin
+                if (errors < 8)
+                    $display("  pi mismatch[%0d]: %0d/%0d (rtl/gold)", i, dut.pi_out[i], pi_gold[i]);
+                errors++;
+            end
+        end
+        for (int i = 0; i < N_DEC; i++) begin
+            if (dut.dec[i] !== dec_gold[i] || dut.v_out[i] !== v_gold[i]) begin
+                if (errors < 8)
+                    $display("  mismatch[%0d]: dec %0d/%0d  v %0d/%0d (rtl/gold)",
+                             i, dut.dec[i], dec_gold[i], dut.v_out[i], v_gold[i]);
+                errors++;
+            end
+        end
+        $display("LOOP LOCKSTEP %s  n=%0d  errors=%0d",
+                 (errors == 0) ? "PASS" : "FAIL", N, errors);
+        if (errors != 0) $fatal(1, "bit-exact mismatch");
+        $finish;
+    end
+endmodule

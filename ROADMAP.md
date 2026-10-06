@@ -13,25 +13,20 @@
 
 ## P1 — 声称与实现的落差
 
-### 1. 定点只覆盖数据通路,不覆盖引擎与时钟恢复
+### 1. 定点 MLSD 与定点自适应
 
-**现状**:`engine/timedomain.py` **完全不读 `numeric.mode`** —— 定点走
-`dsp/fixed_datapath.py` 的独立重放路径,只实现 FFE + DFE + slicer
-(`_ffe_dfe_fixed_py`)。`cdr/` 下没有任何 `QFormat` 引用,`dsp/mlsd.py` 也没有定点路径。
-`rtl/ffe_dfe_datapath.sv` 因此只能覆盖同样三级。
+**现状**(2026-10-06 起):`numeric.mode: fixed` 已覆盖 ADC 接收机的 FFE + DFE + slicer + **MM CDR**(鉴相、环路滤波、
+相位寄存器 → PI 码)闭环,`rtl/adc_dsp_loop.sv` 逐位对照(`dsp/fixed_loop.py`、`tests/test_fixed_loop.py`)。
+**还没有**:`dsp/mlsd.py` 没有定点路径(定点模式下 MLSD 在定点 slicer 值上用浮点跑);
+FFE/DFE 权重来自浮点训练、在定点环路里冻结,没有整数 LMS;PR 目标在定点下直接报错。
 
-**为什么要紧**:Phase 6 的目标是"作为将来 RTL 的黄金模型"。CDR 环路增益是移位量
-(`kp_shift`/`ki_shift`),本就是按硬件语义设计的,却没有 bit-true 路径去验证;
-MLSD 的定点化(度量位宽、路径度量归一化)是真实 RTL 里最容易出错的地方之一。
-现在的 lockstep 给人"黄金模型→RTL 已闭环"的印象,实际只闭了三分之一。
+**为什么要紧**:MLSD 的定点化(度量位宽、路径度量归一化)是真实 RTL 里最容易出错的地方之一;
+整数 LMS 的步长与累加器位宽决定自适应能否收敛。
 
-**怎么做**:先给 `mm_cdr` 加 int64 路径(PD 输出、环路累加器、相位插值索引),
-配 `dump_vectors` 出口与一个 SV 对照模块;MLSD 同理(优先 sliding-detector,
-它的定点化比 Viterbi 简单得多)。每一步都按现有范式:纯 Python 核 + numba 包装 +
-独立整数参考仲裁。
+**怎么做**:MLSD 先做 sliding-detector(定点化比 Viterbi 简单),度量用 slicer 字的整数差平方、带饱和;
+按现有范式:纯 Python 核 + numba + 独立整数参考 + SV 对照(`rtl/run_lockstep.sh` 加第三段)。
 
-**验收**:`rtl/run_lockstep.sh` 覆盖 FFE+DFE+slicer+CDR;`HALO_NO_JIT=1` 与 JIT
-两条路径一致;定点与浮点在字长 → ∞ 时收敛。
+**验收**:`HALO_NO_JIT=1` 与 JIT 一致;定点与浮点在字长 → ∞ 时收敛;lockstep 覆盖到 MLSD 输出。
 
 ---
 
