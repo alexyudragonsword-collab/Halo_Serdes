@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-06 · 定点 sliding MLSD + RTL 对照(feat/fixed-mlsd,ROADMAP P1 #1 的 MLSD 部分)
+
+- `dsp/fixed_mlsd.py`:逐电平反馈表 `fbt[m] = (rp·L[m] + ½) >> fl`;假设翻转按定义重算 e[k]、e[k+1](浮点版减的是
+  均匀 step 的签名;取整后电平不再严格均匀,两者不等,重算才让"接受后的残差流"与从头算一致)。
+- 校验:浮点运算精确的输入(电平 4 的倍数、r = 0.25)上与浮点 `sliding_detector` 两遍逐符号一致;独立参考(每个假设整窗重算)
+  覆盖非均匀电平、sq_shift、饱和、margin。
+- 发现:真实 ADC 链路上 MMSE FFE 把第一后光标几乎全吃掉(`resid_ratios[0]` 量化后 rp = 0),sliding 一次都不翻 —— 浮点也一样
+  (ser == ser_slicer)。所以 SV 向量用合成强残差流(r 0.45,291 → 254 错,81 次翻转)。
+- 剩余:整数 LMS、定点 Viterbi → ROADMAP P1 #1(已改写)。
+- 全量(JIT + iverilog):778 passed / 1 skipped;定点 / MLSD nojit 35 passed / 2 skipped;浮点指纹 506 + 44 值逐位同。
+
 ## 2026-10-06 · 定点 CDR 闭环 + RTL 对照(feat/fixed-cdr,ROADMAP P1 #1 的 CDR 部分)
 
 - `dsp/fixed_loop.py`:数字后端 + MM CDR 全 int64。输入字 2c+1(保住中点量化的半 LSB;旧 `fixed_datapath` 喂 c,丢了它)。

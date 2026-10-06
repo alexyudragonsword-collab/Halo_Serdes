@@ -413,12 +413,17 @@ class NumericConfig:
     # power of two, and the phase register's bits below the PI code
     pi_bits: int = 7
     phase_frac_bits: int = 24
+    # bit-true sliding MLSD (dsp/fixed_mlsd.py): width of the summed squared-
+    # error metric; squares are shifted right as far as needed to fit it
+    mlsd_metric_bits: int = 24
 
     def __post_init__(self):
         _require_in(self.mode, {"float", "fixed"}, "numeric.mode")
         _require(1 <= self.pi_bits <= 20, f"numeric.pi_bits must be in [1, 20], got {self.pi_bits}")
         _require(0 <= self.phase_frac_bits <= 32,
                  f"numeric.phase_frac_bits must be in [0, 32], got {self.phase_frac_bits}")
+        _require(4 <= self.mlsd_metric_bits <= 62,
+                 f"numeric.mlsd_metric_bits must be in [4, 62], got {self.mlsd_metric_bits}")
 
 
 @dataclass(frozen=True)

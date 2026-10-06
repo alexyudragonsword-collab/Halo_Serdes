@@ -8,6 +8,10 @@
    a wandering Rx clock so the phase interpolator has to move, and dumps the
    recorded ADC words, PI codes, slicer values and decisions plus
    loop_dims.svh (dsp/fixed_loop.dump_loop_vectors).
+3. The sliding-detector MLSD (dsp/fixed_mlsd): slicer words of a channel
+   with a strong residual postcursor, so the detector has errors to correct
+   (an MMSE FFE leaves the loop above none), with a non-zero metric shift,
+   saturation and margin, dumped with mlsd_dims.svh.
 
     python rtl/gen_vectors.py [out_dir]   (default: rtl/vectors)
 """
@@ -31,6 +35,9 @@ from halo_serdes.dsp.fixed_datapath import (  # noqa: E402
     dump_sv_package, dump_vectors, run_fixed_datapath,
 )
 from halo_serdes.dsp.fixed_loop import dump_loop_vectors, loop_artifacts  # noqa: E402
+from halo_serdes.dsp.fixed_mlsd import (  # noqa: E402
+    FixedSliding, dump_mlsd_vectors, run_fixed_sliding,
+)
 from halo_serdes.engine import run_time_link  # noqa: E402
 
 out = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "rtl" / "vectors"
@@ -83,3 +90,21 @@ art = loop_artifacts(fx["loop"], {k: (v[:3000] if k in ("xin", "pi") else v) for
 dump_loop_vectors(out, art)
 print(f"wrote loop vectors to {out}  (N={art['xin'].size}, PI codes "
       f"{int(art['pi'].min())}..{int(art['pi'].max())}, SER {res.ser:.2e})")
+
+# --- 3. the sliding-detector MLSD on a strong residual postcursor ---
+rng = np.random.default_rng(11)
+levels = np.array([-600, -200, 200, 600], dtype=np.int64)
+fbt = (int(round(0.45 * 256)) * levels + 128) >> 8
+sym = rng.integers(0, 4, 4000)
+v = levels[sym].copy()
+v[1:] += fbt[sym[:-1]]
+v += np.round(rng.normal(scale=110.0, size=v.size)).astype(np.int64)
+dec0 = np.zeros(v.size, dtype=np.int64)
+for k in range(v.size):
+    dec0[k] = int(np.argmin(np.abs(v[k] - (fbt[dec0[k - 1]] if k else 0) - levels)))
+fsd = FixedSliding(rp=int(round(0.45 * 256)), rp_fl=8, fbt=fbt, seq_len=4, margin=300,
+                   sq_shift=4, metric_max=(1 << 18) - 1)
+dec_m = run_fixed_sliding(fsd, v, dec0, levels)
+dump_mlsd_vectors(out, fsd, v, dec0, levels, dec_m)
+print(f"wrote MLSD vectors to {out}  (N={v.size}, flips {int(np.sum(dec_m != dec0))}, "
+      f"slicer errors {int(np.sum(dec0 != sym))} -> {int(np.sum(dec_m != sym))})")

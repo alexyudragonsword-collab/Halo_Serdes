@@ -13,20 +13,20 @@
 
 ## P1 — 声称与实现的落差
 
-### 1. 定点 MLSD 与定点自适应
+### 1. 定点自适应与定点 Viterbi
 
-**现状**(2026-10-06 起):`numeric.mode: fixed` 已覆盖 ADC 接收机的 FFE + DFE + slicer + **MM CDR**(鉴相、环路滤波、
-相位寄存器 → PI 码)闭环,`rtl/adc_dsp_loop.sv` 逐位对照(`dsp/fixed_loop.py`、`tests/test_fixed_loop.py`)。
-**还没有**:`dsp/mlsd.py` 没有定点路径(定点模式下 MLSD 在定点 slicer 值上用浮点跑);
-FFE/DFE 权重来自浮点训练、在定点环路里冻结,没有整数 LMS;PR 目标在定点下直接报错。
+**现状**(2026-10-06 起):`numeric.mode: fixed` 覆盖 ADC 接收机的 FFE + DFE + slicer + MM CDR 闭环
+(`dsp/fixed_loop.py`)与 sliding-detector MLSD(`dsp/fixed_mlsd.py`),三段 SV 逐位对照(`rtl/run_lockstep.sh`)。
+**还没有**:FFE/DFE 权重来自浮点训练、在定点环路里冻结,没有整数 LMS;`rx.mlsd.kind: viterbi` 在定点下仍是浮点;
+PR 目标在定点下直接报错。
 
-**为什么要紧**:MLSD 的定点化(度量位宽、路径度量归一化)是真实 RTL 里最容易出错的地方之一;
-整数 LMS 的步长与累加器位宽决定自适应能否收敛。
+**为什么要紧**:整数 LMS 的步长移位与权重累加器位宽决定自适应能否收敛、会不会被量化卡住
+(步长小于权重 LSB 时更新被截没);Viterbi 的路径度量归一化是另一个典型 RTL 坑。
 
-**怎么做**:MLSD 先做 sliding-detector(定点化比 Viterbi 简单),度量用 slicer 字的整数差平方、带饱和;
-按现有范式:纯 Python 核 + numba + 独立整数参考 + SV 对照(`rtl/run_lockstep.sh` 加第三段)。
+**怎么做**:LMS 先做 sign-error / sign-data 变体(硬件最常见),权重累加器比权重多若干位、取高位作权重;
+在 `fixed_loop._digital_step` 里按符号更新,保持"闭环 = 从 ADC 字重放"这一性质,SV 同步扩展。
 
-**验收**:`HALO_NO_JIT=1` 与 JIT 一致;定点与浮点在字长 → ∞ 时收敛;lockstep 覆盖到 MLSD 输出。
+**验收**:`HALO_NO_JIT=1` 与 JIT 一致;累加器位宽 → ∞ 时与浮点 LMS 收敛到同一组权重;lockstep 覆盖权重轨迹。
 
 ---
 
