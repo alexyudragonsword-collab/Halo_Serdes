@@ -3,6 +3,21 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-06 · 定点 CDR 闭环 + RTL 对照(feat/fixed-cdr,ROADMAP P1 #1 的 CDR 部分)
+
+- `dsp/fixed_loop.py`:数字后端 + MM CDR 全 int64。输入字 2c+1(保住中点量化的半 LSB;旧 `fixed_datapath` 喂 c,丢了它)。
+  增益 = 移位:`kp_tot = kp_shift + round(log2(L/x_lsb))`,相位寄存器 2^-(pi_bits+phase_frac_bits) UI,每符号加 `c >>> log2 L`。
+- 关键结构:闭环里每符号调用同一个 `_digital_step`,开环 `replay_digital` 也调它 → 从记录的 ADC 字重放与闭环逐位同。
+  RTL 只需实现"ADC 字之后",模拟侧已在输入里。
+- `numeric.mode: fixed` 首次生效:浮点训练 → 冻结量化权重 → 定点闭环重跑;mixed-signal / PR / stream / 非 2 幂 lane 报错。
+- SV:`rtl/adc_dsp_loop.sv` 写成 task(Icarus 12 对这么大的 always_comb 断言 `vvp_fun_anyedge_sa`)。向量用 Rx SJ 0.12 UI
+  + kp 3 / ki 7 + 钳位 + 32 符号时延:PI 码 -4..2;更大的 SJ 浮点与定点环路都跟不上(SER ~8–10%,两者一致)。
+- 收敛:pi_bits 16、权重 32 位、slicer 44 位时与浮点 ADC 内核相位差 < 1e-3 采样、判决差 < 1e-3,
+  ADC 字只在 PI 步把采样推过量化门限处偶有 ±1(< 0.1%)。默认字长误码与浮点同量级。
+- 剩余:定点 MLSD、整数 LMS → ROADMAP P1 #1(已改写)。
+- 全量(JIT,本机装了 iverilog,lockstep 两项也跑):767 passed / 1 skipped;定点相关 nojit 21 passed / 1 skipped;浮点指纹 506 + 44 值逐位同。
+- 顺带:仓库里提交的 `rtl/vectors/` 是很早(90bd81f)生成的旧向量,main 现在重生成就与之不同(已用 main 的 worktree 验证,与本分支一致),这次一并刷新。
+
 ## 2026-10-05 · 流式时域引擎 sim.stream(feat/waveform-windowing,原 ROADMAP P1 #2)
 
 - 取舍(用户选定):默认引擎的噪声砖墙与 `tx.bw` 单极点是整段循环 FFT,不可能流式且逐位同;所以加**可选**流式模式,

@@ -6,6 +6,24 @@
 
 ---
 
+## [未发布] — 定点 CDR 闭环与 RTL 对照(原 ROADMAP P1 #1 的 CDR 部分)
+
+### 新增
+- `dsp/fixed_loop.py`:ADC 接收机数字后端连同 MM CDR 全部 int64 —— FFE / DFE / slicer、MM 鉴相、移位增益环路滤波、钳位、
+  环路时延、相位寄存器 → 相位插值码 → 采样点。`run_fixed_loop` 闭环跑波形,`replay_digital` 只跑 ADC 字之后的部分,二者逐位相同。
+- `numeric.mode: fixed` 第一次真正生效(此前时域引擎完全不读它):ADC 架构下浮点训练后用冻结的量化权重再跑定点闭环,
+  结果与 `extras["fixed"]` 都是定点环路的。新字段 `numeric.pi_bits`(默认 7)、`numeric.phase_frac_bits`(默认 24)。
+- `rtl/adc_dsp_loop.sv` + `tb_adc_dsp_loop.sv`:独立 SV 实现,`run_lockstep.sh` 第二段逐位比对 PI 码、slicer 值、判决
+  (向量来自 Rx 时钟抖动 + 钳位 + 时延下的闭环,PI 码确实在动)。
+- `tests/test_fixed_loop.py`:重放 = 闭环;独立整数参考(含右移、钳位、时延、两种 PD 输入);JIT = Python;
+  宽字长收敛到浮点 ADC 内核(用 `float_equivalent_gains`);默认字长与浮点链路误码同量级;不支持的组合报错。
+
+### 变更
+- `numeric.mode: fixed` 配 mixed-signal、PR 目标、`sim.stream` 或非 2 的幂 lane 数现在**报错**(以前静默按浮点跑)。
+
+### 不变
+- 浮点路径全部预设指纹逐位同。
+
 ## [未发布] — 流式时域引擎 `sim.stream`:长跑内存不再随码长增长(原 ROADMAP P1 #2)
 
 ### 新增
