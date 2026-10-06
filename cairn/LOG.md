@@ -12,6 +12,7 @@
 - 发现:真实 ADC 链路上 MMSE FFE 把第一后光标几乎全吃掉(`resid_ratios[0]` 量化后 rp = 0),sliding 一次都不翻 —— 浮点也一样
   (ser == ser_slicer)。所以 SV 向量用合成强残差流(r 0.45,291 → 254 错,81 次翻转)。
 - 剩余:整数 LMS、定点 Viterbi → ROADMAP P1 #1(已改写)。
+- PR #31;CI 全部 test job + rtl-lockstep 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):778 passed / 1 skipped;定点 / MLSD nojit 35 passed / 2 skipped;浮点指纹 506 + 44 值逐位同。
 
 ## 2026-10-06 · 定点 CDR 闭环 + RTL 对照(feat/fixed-cdr,ROADMAP P1 #1 的 CDR 部分)
