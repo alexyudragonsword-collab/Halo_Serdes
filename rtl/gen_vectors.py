@@ -7,7 +7,9 @@
    numeric.mode='fixed' (the bit-true loop closes through the sampler), with
    a wandering Rx clock so the phase interpolator has to move, and dumps the
    recorded ADC words, PI codes, slicer values and decisions plus
-   loop_dims.svh (dsp/fixed_loop.dump_loop_vectors).
+   loop_dims.svh (dsp/fixed_loop.dump_loop_vectors); then the same loop with
+   a partial-response target -- 1 + aD + bD^2 with a and b adapted, into
+   <out>/pr, and precoded 1 + D on the composite slicer, into <out>/pre.
 3. The sliding-detector MLSD (dsp/fixed_mlsd): slicer words of a channel
    with a strong residual postcursor, so the detector has errors to correct
    (an MMSE FFE leaves the loop above none), with a non-zero metric shift,
@@ -29,7 +31,7 @@ import dataclasses  # noqa: E402
 
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, ClockConfig, CtleConfig, DfeConfig,
-    FfeConfig, NumericConfig, RxConfig, SimConfig, TxConfig,
+    FfeConfig, MlsdConfig, NumericConfig, PrConfig, RxConfig, SimConfig, TxConfig,
 )
 from halo_serdes.dsp.fixed_datapath import (  # noqa: E402
     dump_sv_package, dump_vectors, run_fixed_datapath,
@@ -89,10 +91,24 @@ fx = res.extras["fixed"]
 rec = fx["record"]
 art = loop_artifacts(fx["loop"], rec["xin"][:3000], rec["ref"][:3000])
 dump_loop_vectors(out, art)
+
 moved = int(np.abs(art["w_ffe_end"] - art["w_ffe_int"]).max())
 print(f"wrote loop vectors to {out}  (N={art['xin'].size}, PI codes "
       f"{int(art['pi'].min())}..{int(art['pi'].max())}, FFE weights moved up to {moved} LSB, "
       f"SER {res.ser:.2e})")
+
+for sub, extra in (("pr", dict(pr=PrConfig(target=(1.0, 0.6, 0.2), adapt="lms", mu=1e-2))),
+                   ("pre", dict(pr=PrConfig(target=(1.0, 1.0)), precode=True))):
+    pr_cfg = dataclasses.replace(
+        loop_cfg, rx=dataclasses.replace(loop_cfg.rx, mlsd=MlsdConfig(kind="viterbi", memory=1)),
+        **extra)
+    pr_res = run_time_link(pr_cfg)
+    pr_fx = pr_res.extras["fixed"]
+    pr_art = loop_artifacts(pr_fx["loop"], pr_fx["record"]["xin"][:3000],
+                            pr_fx["record"]["ref"][:3000])
+    dump_loop_vectors(out / sub, pr_art)
+    print(f"wrote PR loop vectors to {out / sub}  (mode {int(pr_fx['loop'].lp[11])}, "
+          f"a/b {pr_art['ab'].tolist()} -> {pr_art['ab_end'].tolist()}, SER {pr_res.ser:.2e})")
 
 # --- 3. the sliding-detector MLSD on a strong residual postcursor ---
 rng = np.random.default_rng(11)

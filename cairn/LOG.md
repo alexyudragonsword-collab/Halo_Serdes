@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-06 · 定点 PR(feat/fixed-pr,ROADMAP P1 #1 的 PR 部分)
+
+- `_digital_step` 加 PR(lp[11..18] + `pr_lv`、`prs`、`xl`、`r_out`),逐行对照浮点核 pr_mode 1 / 2:DFE 用 x̂、从 s − nt 起;
+  训练时 dec = x̂ = ref;误差三分支(delta / 合成 / 减光标);a 只在 FFE 或 DFE LMS 开着时才动(浮点核同);PD 读 r。
+- 顺带对齐:定点 sliding 的 dec0 改为平铺切片(浮点 `post_detect` 就是这么做的,此前用的是环路判决,训练段不同)。
+- SV:`%` 对负数保号(Python 取非负),合成判决写成 `((x % N) + N) % N`。
+- 观察:宽测试用的 a 步长 2e-2 下,a 在 20k 符号里随机游走 0.43 → ~0.32(定点 / 浮点都如此,等效步长比 0.90),
+  误码跟着各自游到哪(117 vs 42)—— 是步长问题不是字长;默认步长 2e-4 下两者误码 5 vs 8。
+- 剩余:定点 Viterbi → ROADMAP P1 #1(已改写)。
+- PR #33;CI 全部 test job + rtl-lockstep 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
+- 全量(JIT + iverilog):795 passed / 1 skipped(+17);定点 nojit 41 passed / 2 skipped;浮点指纹逐位同。
+
 ## 2026-10-06 · 定点训练 + 整数 LMS(feat/fixed-lms,ROADMAP P1 #1 的自适应部分)
 
 - `_digital_step` 加训练(s < train_len 且 ref ≥ 0 用参考判决)与 LMS(与浮点核同序:判决后、PD 前);参数打包成 `lp` 数组。

@@ -467,7 +467,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 
 
 def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, w_dfe0,
-                    sched):
+                    sched, pr_args):
     """``numeric.mode == 'fixed'``: the ADC receiver's digital back end --
     FFE, DFE, slicer, LMS and the CDR loop -- in int64 (``dsp/fixed_loop.py``).
 
@@ -477,16 +477,13 @@ def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, 
     if not isinstance(rx_y, np.ndarray):
         raise ValueError("numeric.mode='fixed' runs the loop a second time over the "
                          "waveform; it cannot with sim.stream")
-    if cfg.pr.active:
-        raise NotImplementedError(
-            "numeric.mode='fixed' with a partial-response target (pr.target "
-            f"{tuple(cfg.pr.target)}): the bit-true back end models the delta target only")
     from ..dsp.fixed_loop import build_fixed_loop, run_fixed_loop
 
     # from the float run's starting weights, training and adapting itself
     # (integer LMS) on the float run's schedule
     fl = build_fixed_loop(cfg, w_ffe0, w_dfe0, levels, adc.q_step,
-                          train_len=int(sched.train_end), adapt_start=int(sched.settle))
+                          train_len=int(sched.train_end), adapt_start=int(sched.settle),
+                          **pr_args)
     rec = run_fixed_loop(fl, rx_y, cfg.osr, pos0, n_sym, adc, noise, rx_clk,
                          ref=sched.reference)
     n = rec["xin"].size
@@ -630,7 +627,15 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         # weights, frozen, and runs the whole loop again from the same start
         dec, y_sl, phase, lane_of, q_hist, fixed = _fixed_back_end(
             cfg, rx_y, float(peak), n_sym, levels, adc, enob_noise, rx_clk, w_ffe0, w_dfe0,
-            sched)
+            sched, {"pr_mode": int(pr_mode), "pr_nt": int(n_t if pr.active else 1),
+                    "alpha": float(alpha), "beta": float(beta), "pr_levels": pr_levels,
+                    "mu_alpha": float(mu_a)})
+        if pr.active:
+            # the controlled cursor the bit-true loop ended on
+            ab = fixed["record"]["ab"] * 2.0 ** -cfg.numeric.dfe_weight.fl
+            alpha_out[0] = ab[0]
+            if alpha_out.size > 1:
+                alpha_out[1] = ab[1]
         # the weights the bit-true loop ended on, in float units
         w_ffe = fixed["record"]["wf"] * 2.0 ** -cfg.numeric.ffe_weight.fl
         w_dfe = fixed["record"]["wd"] * 2.0 ** -cfg.numeric.dfe_weight.fl
@@ -653,9 +658,13 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         from ..dsp.fixed_mlsd import build_fixed_sliding, run_fixed_sliding
 
         fl, rec = fixed["loop"], fixed["record"]
-        fsd = build_fixed_sliding(cfg, float(resid_ratios[0]), fl.levels_out,
-                                  fl.out_lsb, fl.out_bits)
-        dec = run_fixed_sliding(fsd, rec["v_out"][:n_run], dec[:n_run], fl.levels_out)
+        # the float detector's residual is the first cursor after the main
+        # one -- the target's own under PR -- and it starts from a plain slice
+        rp = float(head[1]) if head is not None and len(head) > 1 else float(resid_ratios[0])
+        fsd = build_fixed_sliding(cfg, rp, fl.levels_out, fl.out_lsb, fl.out_bits)
+        v_fx = rec["v_out"][:n_run]
+        dec0 = np.argmin(np.abs(v_fx[:, None] - fl.levels_out[None, :]), axis=1)
+        dec = run_fixed_sliding(fsd, v_fx, dec0, fl.levels_out)
         fixed["mlsd"] = {"detector": fsd, "dec": dec}
     else:
         # (in fixed mode a Viterbi still runs in float, on the loop's slicer values)

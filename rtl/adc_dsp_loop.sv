@@ -18,6 +18,12 @@
 //         wacc_f[i] -= rnd(e * x[k-i], SH_F); wacc_d[d] += rnd(e * levels[dec[s-1-d]], SH_D)
 //         (rnd: <<< for SH >= 0, else rounding add + >>>), saturated to the
 //         weight range G bits finer; the weights are wacc >>> G
+//   PR    (PR_MODE 1) ctl = rnd(a L[xl[s-1]] + b L[xl[s-2]], -PFL), slice v - ctl,
+//         the DFE starts NT symbols back on the line-symbol estimates xl,
+//         a / b adapted by LMS (LMS_A) on accumulators G bits finer, clipped
+//         to [0, A_MAX] / [B_LO, B_HI]; (PR_MODE 2, precoded 1 + D) slice the
+//         composite levels pr_lv to q, decide (q - dec[s-1]) mod NL, xl =
+//         clip(q - xl[s-1]); the PD reads v - ctl when PD_FFE
 //   MM PD on symbol s-1: x1 * (sign x2 - sign x0), on FFE outputs (PD_FFE) or
 //         input words; summed over LANES symbols, then
 //         pd = -acc - PD_OFF; integ += pd <<< KI_SH; c = (pd <<< KP_SH) + integ
@@ -42,6 +48,10 @@ module adc_dsp_loop;
     longint wacc_f [NF];
     longint wacc_d [ND];
     longint levels [NL];
+    longint pr_lv  [NPL];
+    longint ab     [2];           // a, b in; adapted a, b out
+    longint xl     [N];
+    longint r_out  [N];
     longint pi_out [N];
     longint dec    [N];
     longint v_out  [N];
@@ -68,6 +78,9 @@ module adc_dsp_loop;
 
     task automatic run();
         longint acc, fb, v, dd, bd, x0, x1, x2, a0, a2, pd, c, e;
+        longint prev, prev2, ctl, u, xc, acc_a, acc_b;
+        int q, nt;
+        bit training;
         longint ph, integ, corr, pd_acc, pd_n, qi;
         longint queue [LAT + 1];
         int s, j, jj, best;
@@ -75,6 +88,9 @@ module adc_dsp_loop;
         for (int q = 0; q <= LAT; q++) queue[q] = 0;
         for (int i = 0; i < NF; i++) wacc_f[i] = w_ffe[i] <<< G;
         for (int d = 0; d < ND; d++) wacc_d[d] = w_dfe[d] <<< G;
+        acc_a = ab[0] <<< G;
+        acc_b = ab[1] <<< G;
+        nt = (PR_MODE > 0) ? NT : 1;
         for (int k = 0; k < N; k++) begin
             pi_out[k] = ph >>> PI_SH;
             s = k - N_PRE;
@@ -90,8 +106,8 @@ module adc_dsp_loop;
                 else if (acc < LIM_LO) acc = LIM_LO;
                 fb = 0;
                 for (int d = 0; d < ND; d++) begin
-                    jj = s - 1 - d;
-                    if (jj >= 0) fb += w_dfe[d] * levels[dec[jj]];
+                    jj = s - nt - d;
+                    if (jj >= 0) fb += w_dfe[d] * levels[xl[jj]];
                 end
                 if (DO_ROUND == 1 && DFE_SHIFT > 0) fb += longint'(1) << (DFE_SHIFT - 1);
                 fb = fb >>> DFE_SHIFT;
@@ -99,17 +115,63 @@ module adc_dsp_loop;
                 if (v > LIM_HI) v = LIM_HI;
                 else if (v < LIM_LO) v = LIM_LO;
                 v_out[s] = v;
-                best = 0;
-                bd = (v > levels[0]) ? (v - levels[0]) : (levels[0] - v);
-                for (int m = 1; m < NL; m++) begin
-                    dd = (v > levels[m]) ? (v - levels[m]) : (levels[m] - v);
-                    if (dd < bd) begin bd = dd; best = m; end
+                prev = 0; prev2 = 0; ctl = 0;
+                if (PR_MODE > 0) begin
+                    if (s >= 1) prev = levels[xl[s - 1]];
+                    if (nt == 3 && s >= 2) prev2 = levels[xl[s - 2]];
+                    ctl = rnd((acc_a >>> G) * prev + (acc_b >>> G) * prev2, -PFL);
                 end
-                if (s < TRAIN_LEN && ref_sym[s] >= 0) dec[s] = ref_sym[s];
-                else dec[s] = best;
+                r_out[s] = v - ctl;
+                q = 0;
+                if (PR_MODE == 2) begin
+                    bd = (v > pr_lv[0]) ? (v - pr_lv[0]) : (pr_lv[0] - v);
+                    for (int m = 1; m < NPL; m++) begin
+                        dd = (v > pr_lv[m]) ? (v - pr_lv[m]) : (pr_lv[m] - v);
+                        if (dd < bd) begin bd = dd; q = m; end
+                    end
+                    best = q - ((s >= 1) ? dec[s - 1] : 0);
+                    best = ((best % NL) + NL) % NL;     // SV % keeps the dividend's sign
+                end else begin
+                    u = v - ctl;
+                    best = 0;
+                    bd = (u > levels[0]) ? (u - levels[0]) : (levels[0] - u);
+                    for (int m = 1; m < NL; m++) begin
+                        dd = (u > levels[m]) ? (u - levels[m]) : (levels[m] - u);
+                        if (dd < bd) begin bd = dd; best = m; end
+                    end
+                end
+                training = (s < TRAIN_LEN && ref_sym[s] >= 0);
+                if (training) begin
+                    dec[s] = ref_sym[s];
+                    xl[s] = ref_sym[s];
+                end else begin
+                    dec[s] = best;
+                    if (PR_MODE == 2) begin
+                        xc = q - ((s >= 1) ? xl[s - 1] : 0);
+                        if (xc < 0) xc = 0;
+                        else if (xc > NL - 1) xc = NL - 1;
+                        xl[s] = xc;
+                    end else xl[s] = best;
+                end
 
                 if (s >= ADAPT_START && (LMS_F == 1 || LMS_D == 1)) begin
-                    e = v - levels[dec[s]];
+                    if (PR_MODE == 0) e = v - levels[dec[s]];
+                    else if (PR_MODE == 2 && !training) e = v - pr_lv[q];
+                    else begin
+                        e = v - (levels[xl[s]] + ctl);
+                        if (LMS_A == 1 && PR_MODE == 1) begin
+                            acc_a = acc_a + rnd(e * prev, SH_A);
+                            if (acc_a < 0) acc_a = 0;
+                            else if (acc_a > (A_MAX <<< G) + (longint'(1) <<< G) - 1)
+                                acc_a = (A_MAX <<< G) + (longint'(1) <<< G) - 1;
+                            if (nt == 3) begin
+                                acc_b = acc_b + rnd(e * prev2, SH_A);
+                                if (acc_b < (B_LO <<< G)) acc_b = B_LO <<< G;
+                                else if (acc_b > (B_HI <<< G) + (longint'(1) <<< G) - 1)
+                                    acc_b = (B_HI <<< G) + (longint'(1) <<< G) - 1;
+                            end
+                        end
+                    end
                     if (LMS_F == 1)
                         for (int i = 0; i < NF; i++) begin
                             j = k - i;
@@ -120,9 +182,9 @@ module adc_dsp_loop;
                         end
                     if (LMS_D == 1)
                         for (int d = 0; d < ND; d++) begin
-                            jj = s - 1 - d;
+                            jj = s - nt - d;
                             if (jj >= 0) begin
-                                wacc_d[d] = clip(wacc_d[d] + rnd(e * levels[dec[jj]], SH_D),
+                                wacc_d[d] = clip(wacc_d[d] + rnd(e * levels[xl[jj]], SH_D),
                                                  WD_LO, WD_HI);
                                 w_dfe[d] = wacc_d[d] >>> G;
                             end
@@ -130,7 +192,9 @@ module adc_dsp_loop;
                 end
 
                 if (s >= 2) begin
-                    if (PD_FFE == 1) begin
+                    if (PD_FFE == 1 && PR_MODE > 0) begin
+                        x0 = r_out[s - 2]; x1 = r_out[s - 1]; x2 = r_out[s];
+                    end else if (PD_FFE == 1) begin
                         x0 = v_out[s - 2]; x1 = v_out[s - 1]; x2 = v;
                     end else begin
                         x0 = xin[s - 2]; x1 = xin[s - 1]; x2 = xin[s];
@@ -157,5 +221,7 @@ module adc_dsp_loop;
             end
             ph += corr >>> LANE_SHIFT;
         end
+        ab[0] = acc_a >>> G;
+        ab[1] = acc_b >>> G;
     endtask
 endmodule

@@ -530,7 +530,9 @@ rx:
 - 整数 LMS:权重累加器比权重细 `numeric.lms_guard_bits`(默认 24)位,权重取其高位;步长是最接近
   `ffe.mu` / `dfe.mu` 的 2 的幂(换算到整数单位后),`float_equivalent_mu()` 给出精确对应的浮点步长。
   保护位太少时小更新被舍入成 0,环路就不再自适应;
-- 不建模(直接报错):mixed-signal(DFE / CDR 是模拟的)、PR 目标、`sim.stream`、非 2 的幂 lane 数。
+- PR 目标(`pr.target`)在定点下同样是整数:1 + aD [+ bD²] 减受控光标再切(a、b 是 `dfe_weight.fl` 小数位的字,
+  `pr.adapt: lms` 时整数 LMS 跟踪),预编码 1 + D 走合成电平切片;sliding MLSD 的残差此时取目标的第一光标 a;
+- 不建模(直接报错):mixed-signal(DFE / CDR 是模拟的)、`sim.stream`、非 2 的幂 lane 数。
 
 RTL 对照的是"ADC 字之后"的部分:`replay_digital()` 从记录的 ADC 字流重放数字后端,与闭环逐位相同;
 `rtl/adc_dsp_loop.sv` 是它的独立 SV 实现,`run_lockstep.sh` 的第二段逐位比对 PI 码、slicer 值与判决。

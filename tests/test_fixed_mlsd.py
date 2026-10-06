@@ -133,6 +133,8 @@ def test_the_engine_runs_it_on_the_loops_words():
     fx = r.extras["fixed"]
     rec, fsd = fx["record"], fx["mlsd"]["detector"]
     n = fx["mlsd"]["dec"].size
-    again = run_fixed_sliding(fsd, rec["v_out"][:n], rec["dec"][:n], fx["loop"].levels_out)
+    lv = fx["loop"].levels_out
+    dec0 = np.argmin(np.abs(rec["v_out"][:n, None] - lv[None, :]), axis=1)   # a plain slice
+    again = run_fixed_sliding(fsd, rec["v_out"][:n], dec0, lv)
     assert np.array_equal(again, fx["mlsd"]["dec"])
     assert np.array_equal(r.extras["decisions"], fx["mlsd"]["dec"][r.extras["warmup"]:])

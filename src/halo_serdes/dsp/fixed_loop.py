@@ -76,13 +76,23 @@ def _rnd_shift(v, sh, do_round):
 def _digital_step_py(k, xi, n_pre, wf, ffe_shift, wd, dfe_shift, levels_out,
                      out_bits, do_round, pd_ffe, kp_sh, ki_sh, clamp_int, pd_off,
                      n_lanes, lane_shift, lat, lp, ref, wacc_f, wacc_d,
-                     xh, dec, v_out, queue, st):
+                     pr_lv, prs, xl, r_out, xh, dec, v_out, queue, st):
     """One symbol of the digital back end. ``st`` = [phase register,
     integrator, applied correction, PD accumulator, PD count, queue index];
     ``lp`` = [train_len, adapt_start, FFE LMS on, FFE step shift, DFE LMS
-    on, DFE step shift, guard bits, FFE weight min, max, DFE weight min, max];
-    ``wacc_f`` / ``wacc_d`` the weight accumulators (weights carry their top
-    bits, ``wf`` / ``wd`` the weights the datapath multiplies by)."""
+    on, DFE step shift, guard bits, FFE weight min, max, DFE weight min, max,
+    PR mode, PR cursors, PR fraction bits, PR LMS on, PR step shift, a max,
+    b min, b max]; ``wacc_f`` / ``wacc_d`` the weight accumulators (weights
+    carry their top bits, ``wf`` / ``wd`` the weights the datapath uses).
+
+    Partial response, as the float kernel's ``pr_mode``: 1 subtracts
+    ``ctl = (a L[x[s-1]] + b L[x[s-2]]) >>> fl`` before slicing (``prs`` holds
+    a and b with the guard bits, adapted with the FFE when PR LMS is on);
+    2 slices the composite levels ``pr_lv`` and takes the line symbol as
+    ``(q - d[s-1]) mod N`` (precoded 1 + D). ``xl`` is the line-symbol
+    estimate the DFE and the controlled cursor use, ``r_out`` the slicer
+    value less the controlled cursor (the phase detector's input under PR).
+    Mode 0 is the delta target, unchanged."""
     xh[k] = xi
     lim_hi = (1 << (out_bits - 1)) - 1
     lim_lo = -(1 << (out_bits - 1))
@@ -100,11 +110,14 @@ def _digital_step_py(k, xi, n_pre, wf, ffe_shift, wd, dfe_shift, levels_out,
             acc = lim_hi
         elif acc < lim_lo:
             acc = lim_lo
+        pr_mode = lp[11]
+        nt = lp[12] if pr_mode > 0 else 1
+        g = lp[6]
         fb = 0
         for d in range(wd.size):
-            jj = s - 1 - d
+            jj = s - nt - d
             if jj >= 0:
-                fb += wd[d] * levels_out[dec[jj]]
+                fb += wd[d] * levels_out[xl[jj]]
         if do_round == 1 and dfe_shift > 0:
             fb += 1 << (dfe_shift - 1)
         fb = fb >> dfe_shift
@@ -114,25 +127,76 @@ def _digital_step_py(k, xi, n_pre, wf, ffe_shift, wd, dfe_shift, levels_out,
         elif v < lim_lo:
             v = lim_lo
         v_out[s] = v
-        best = 0
-        bd = abs(v - levels_out[0])
-        for m in range(1, levels_out.size):
-            dd = abs(v - levels_out[m])
-            if dd < bd:
-                bd = dd
-                best = m
+        nl = levels_out.size
+        prev = 0
+        prev2 = 0
+        ctl = 0
+        if pr_mode > 0:
+            if s >= 1:
+                prev = levels_out[xl[s - 1]]
+            if nt == 3 and s >= 2:
+                prev2 = levels_out[xl[s - 2]]
+            ctl = _rnd_shift((prs[0] >> g) * prev + (prs[1] >> g) * prev2, -lp[13], do_round)
+        r_out[s] = v - ctl
+        q = 0
+        if pr_mode == 2:
+            bd = abs(v - pr_lv[0])
+            for m in range(1, pr_lv.size):
+                dd = abs(v - pr_lv[m])
+                if dd < bd:
+                    bd = dd
+                    q = m
+            best = (q - (dec[s - 1] if s >= 1 else 0)) % nl
+        else:
+            u = v - ctl
+            best = 0
+            bd = abs(u - levels_out[0])
+            for m in range(1, nl):
+                dd = abs(u - levels_out[m])
+                if dd < bd:
+                    bd = dd
+                    best = m
         # data-aided during training, as the float kernel
-        if s < lp[0] and ref[s] >= 0:
+        training = s < lp[0] and ref[s] >= 0
+        if training:
             dec[s] = ref[s]
+            xl[s] = ref[s]
         else:
             dec[s] = best
+            if pr_mode == 2:
+                xc = q - (xl[s - 1] if s >= 1 else 0)
+                if xc < 0:
+                    xc = 0
+                elif xc > nl - 1:
+                    xc = nl - 1
+                xl[s] = xc
+            else:
+                xl[s] = best
 
         # LMS on the error against the decided level, the float kernel's
         # update with the step a power of two (lp[3], lp[5]) on accumulators
         # lp[6] bits finer than the weights
         if s >= lp[1] and (lp[2] == 1 or lp[4] == 1):
-            e = v - levels_out[dec[s]]
-            g = lp[6]
+            if pr_mode == 0:
+                e = v - levels_out[dec[s]]
+            elif pr_mode == 2 and not training:
+                e = v - pr_lv[q]
+            else:
+                e = v - (levels_out[xl[s]] + ctl)
+                if lp[14] == 1 and pr_mode == 1:
+                    a = prs[0] + _rnd_shift(e * prev, lp[15], do_round)
+                    if a < 0:
+                        a = 0
+                    elif a > (lp[16] << g) + (1 << g) - 1:
+                        a = (lp[16] << g) + (1 << g) - 1
+                    prs[0] = a
+                    if nt == 3:
+                        b = prs[1] + _rnd_shift(e * prev2, lp[15], do_round)
+                        if b < (lp[17] << g):
+                            b = lp[17] << g
+                        elif b > (lp[18] << g) + (1 << g) - 1:
+                            b = (lp[18] << g) + (1 << g) - 1
+                        prs[1] = b
             if lp[2] == 1:
                 for i in range(wf.size):
                     j = k - i
@@ -146,9 +210,9 @@ def _digital_step_py(k, xi, n_pre, wf, ffe_shift, wd, dfe_shift, levels_out,
                         wf[i] = a >> g
             if lp[4] == 1:
                 for d in range(wd.size):
-                    jj = s - 1 - d
+                    jj = s - nt - d
                     if jj >= 0:
-                        a = wacc_d[d] + _rnd_shift(e * levels_out[dec[jj]], lp[5], do_round)
+                        a = wacc_d[d] + _rnd_shift(e * levels_out[xl[jj]], lp[5], do_round)
                         if a > (lp[10] << g) + (1 << g) - 1:
                             a = (lp[10] << g) + (1 << g) - 1
                         elif a < (lp[9] << g):
@@ -157,7 +221,11 @@ def _digital_step_py(k, xi, n_pre, wf, ffe_shift, wd, dfe_shift, levels_out,
                         wd[d] = a >> g
 
         if s >= 2:
-            if pd_ffe == 1:
+            if pd_ffe == 1 and pr_mode > 0:
+                x0 = r_out[s - 2]
+                x1 = r_out[s - 1]
+                x2 = r_out[s]
+            elif pd_ffe == 1:
                 x0 = v_out[s - 2]
                 x1 = v_out[s - 1]
                 x2 = v
@@ -190,8 +258,8 @@ def _fixed_loop_closed_py(y, osr, pos0, n_sym, pi_scale, pi_sh, offsets,
                           gains, skews, q_step, code_max, noise, rx_clk,
                           n_pre, wf, ffe_shift, wd, dfe_shift, levels_out, out_bits,
                           do_round, pd_ffe, kp_sh, ki_sh, clamp_int, pd_off, n_lanes,
-                          lane_shift, lat, lp, ref, wacc_f, wacc_d,
-                          xh, pi_out, phase_out, dec, v_out, queue, st):
+                          lane_shift, lat, lp, ref, wacc_f, wacc_d, pr_lv, prs, xl,
+                          r_out, xh, pi_out, phase_out, dec, v_out, queue, st):
     """The closed loop on waveform ``y``. Returns the symbols run (fewer than
     ``n_sym`` when the sampler leaves the waveform, as the float kernel)."""
     for k in range(n_sym):
@@ -212,21 +280,22 @@ def _fixed_loop_closed_py(y, osr, pos0, n_sym, pi_scale, pi_sh, offsets,
         _digital_step(k, 2 * int(code) + 1, n_pre, wf, ffe_shift, wd, dfe_shift,
                       levels_out, out_bits, do_round, pd_ffe, kp_sh, ki_sh,
                       clamp_int, pd_off, n_lanes, lane_shift, lat, lp, ref, wacc_f,
-                      wacc_d, xh, dec, v_out, queue, st)
+                      wacc_d, pr_lv, prs, xl, r_out, xh, dec, v_out, queue, st)
     return n_sym
 
 
 def _fixed_loop_digital_py(xin, pi_sh, n_pre, wf, ffe_shift, wd, dfe_shift,
                            levels_out, out_bits, do_round, pd_ffe, kp_sh, ki_sh,
                            clamp_int, pd_off, n_lanes, lane_shift, lat, lp, ref,
-                           wacc_f, wacc_d, xh, pi_out, dec, v_out, queue, st):
+                           wacc_f, wacc_d, pr_lv, prs, xl, r_out, xh, pi_out, dec, v_out,
+                           queue, st):
     """The digital part alone, from a recorded input-word stream."""
     for k in range(xin.size):
         pi_out[k] = st[0] >> pi_sh
         _digital_step(k, xin[k], n_pre, wf, ffe_shift, wd, dfe_shift, levels_out,
                       out_bits, do_round, pd_ffe, kp_sh, ki_sh, clamp_int, pd_off,
-                      n_lanes, lane_shift, lat, lp, ref, wacc_f, wacc_d, xh, dec,
-                      v_out, queue, st)
+                      n_lanes, lane_shift, lat, lp, ref, wacc_f, wacc_d, pr_lv, prs, xl,
+                      r_out, xh, dec, v_out, queue, st)
     return xin.size
 
 
@@ -277,7 +346,9 @@ class FixedLoop:
     in_lsb: float             # volts per input-word LSB (q_step / 2)
     out_lsb: float            # volts per slicer LSB
     pd_lsb: float             # volts per PD-input LSB
-    lp: np.ndarray            # LMS / training parameters (see _digital_step_py)
+    lp: np.ndarray            # LMS / training / PR parameters (see _digital_step_py)
+    pr_lv: np.ndarray         # composite slicer levels (PR mode 2) [slicer LSBs]
+    pr_ab: np.ndarray         # initial a, b [2^-pr_fl]
 
     @property
     def pi_sh(self) -> int:
@@ -299,13 +370,17 @@ def _lms_shift(mu: float, scale: float) -> int:
 
 def build_fixed_loop(cfg, w_ffe: np.ndarray, w_dfe: np.ndarray, levels: np.ndarray,
                      q_step: float, out_bits: int = OUT_BITS, train_len: int = 0,
-                     adapt_start: int = 0) -> FixedLoop:
+                     adapt_start: int = 0, pr_mode: int = 0, pr_nt: int = 1,
+                     alpha: float = 0.0, beta: float = 0.0,
+                     pr_levels: np.ndarray | None = None, mu_alpha: float = 0.0) -> FixedLoop:
     """Quantise a float receiver (weights, levels, CDR, LMS) for the loop.
 
     ``w_ffe`` / ``w_dfe`` are the weights it starts from: the float run's
     initial ones when the equaliser adapts (the loop then trains and adapts
     itself, data-aided over ``train_len`` symbols, from ``adapt_start``), its
-    final ones when it does not."""
+    final ones when it does not. ``pr_*`` / ``alpha`` / ``beta`` /
+    ``mu_alpha`` are the float kernel's partial-response arguments; a and b
+    are words with ``dfe_weight.fl`` fraction bits."""
     num = cfg.numeric
     acfg = cfg.rx.adc
     ccfg = cfg.rx.cdr
@@ -332,8 +407,19 @@ def build_fixed_loop(cfg, w_ffe: np.ndarray, w_dfe: np.ndarray, levels: np.ndarr
     sh_d = _lms_shift(mu_d, out_lsb * out_lsb * 2.0 ** (dq.fl + g)) if mu_d > 0 else 0
     lo_f, hi_f = -(1 << (wq.wl - 1)), (1 << (wq.wl - 1)) - 1
     lo_d, hi_d = -(1 << (dq.wl - 1)), (1 << (dq.wl - 1)) - 1
+    pfl = int(dq.fl)
+    lv_v = np.asarray(levels, dtype=float)
+    p_sym = float(np.mean(lv_v ** 2))
+    lms_a = int(mu_alpha > 0 and pr_mode == 1 and (mu_f > 0 or mu_d > 0))
+    sh_a = _lms_shift(mu_alpha / p_sym, out_lsb * out_lsb * 2.0 ** (pfl + g)) if lms_a else 0
+    a_max = (2 if pr_nt == 3 else 1) << pfl
     lp = np.array([train_len, adapt_start, int(mu_f > 0), sh_f, int(mu_d > 0), sh_d, g,
-                   lo_f, hi_f, lo_d, hi_d], dtype=np.int64)
+                   lo_f, hi_f, lo_d, hi_d, pr_mode, pr_nt if pr_mode > 0 else 1, pfl,
+                   lms_a, sh_a, a_max, -(1 << pfl), 1 << pfl], dtype=np.int64)
+    pr_lv = (np.round(np.asarray(pr_levels, dtype=float) / out_lsb).astype(np.int64)
+             if pr_mode == 2 and pr_levels is not None else np.zeros(1, dtype=np.int64))
+    pr_ab = np.array([int(np.round(alpha * 2.0 ** pfl)), int(np.round(beta * 2.0 ** pfl))],
+                     dtype=np.int64) if pr_mode > 0 else np.zeros(2, dtype=np.int64)
     return FixedLoop(
         wf=to_int(w_ffe, wq), wd=to_int(w_dfe, num.dfe_weight),
         ffe_shift=int(ffe_shift), dfe_shift=int(num.dfe_weight.fl),
@@ -346,7 +432,8 @@ def build_fixed_loop(cfg, w_ffe: np.ndarray, w_dfe: np.ndarray, levels: np.ndarr
         n_lanes=n_lanes, lane_shift=lane_shift,
         lat=max(0, ccfg.loop_latency_symbols // n_lanes),
         pi_bits=int(num.pi_bits), ph_frac=int(ph_frac),
-        in_lsb=float(in_lsb), out_lsb=float(out_lsb), pd_lsb=float(pd_lsb), lp=lp)
+        in_lsb=float(in_lsb), out_lsb=float(out_lsb), pd_lsb=float(pd_lsb), lp=lp,
+        pr_lv=pr_lv, pr_ab=pr_ab)
 
 
 def float_equivalent_gains(fl: FixedLoop, osr: int) -> tuple[float, float, float, float]:
@@ -358,19 +445,24 @@ def float_equivalent_gains(fl: FixedLoop, osr: int) -> tuple[float, float, float
     return gain(fl.kp_sh), gain(fl.ki_sh), clamp, fl.pd_off * fl.pd_lsb / fl.n_lanes
 
 
-def float_equivalent_mu(fl: FixedLoop, ffe_fl: int, dfe_fl: int) -> tuple[float, float]:
-    """The float kernel's LMS steps the loop's power-of-two ones implement."""
+def float_equivalent_mu(fl: FixedLoop, ffe_fl: int, dfe_fl: int,
+                        p_sym: float = 1.0) -> tuple[float, float, float]:
+    """The float kernel's LMS steps (FFE, DFE, PR a) the loop's power-of-two
+    ones implement; ``p_sym`` is the mean square of the slicer levels [V^2]."""
     g = int(fl.lp[6])
     mu_f = 2.0 ** fl.lp[3] / (fl.out_lsb * fl.in_lsb * 2.0 ** (ffe_fl + g)) if fl.lp[2] else 0.0
     mu_d = 2.0 ** fl.lp[5] / (fl.out_lsb ** 2 * 2.0 ** (dfe_fl + g)) if fl.lp[4] else 0.0
-    return mu_f, mu_d
+    mu_a = (2.0 ** fl.lp[15] * p_sym / (fl.out_lsb ** 2 * 2.0 ** (fl.lp[13] + g))
+            if fl.lp[14] else 0.0)
+    return mu_f, mu_d, mu_a
 
 
 def _weights(fl: FixedLoop):
-    """Working copies of the weights and their accumulators."""
+    """Working copies of the weights, their accumulators and the PR state
+    (a, b with the guard bits; line-symbol estimates; slicer less cursor)."""
     g = int(fl.lp[6])
     return (fl.wf.copy(), fl.wd.copy(), fl.wf.astype(np.int64) << g,
-            fl.wd.astype(np.int64) << g)
+            fl.wd.astype(np.int64) << g, fl.pr_ab.astype(np.int64) << g)
 
 
 def _state(fl: FixedLoop, n: int):
@@ -391,7 +483,8 @@ def run_fixed_loop(fl: FixedLoop, y: np.ndarray, osr: int, pos0: float, n_sym: i
     """
     xh, pi, dec, v_out, queue, st = _state(fl, n_sym)
     phase = np.zeros(n_sym)
-    wf, wd, wacc_f, wacc_d = _weights(fl)
+    wf, wd, wacc_f, wacc_d, prs = _weights(fl)
+    xl, r_out = np.zeros(n_sym, dtype=np.int64), np.zeros(n_sym, dtype=np.int64)
     ref = np.full(n_sym, -1, dtype=np.int64) if ref is None else np.asarray(ref, dtype=np.int64)
     done = _fixed_loop_closed(
         np.asarray(y, dtype=np.float64), osr, float(pos0), int(n_sym),
@@ -399,12 +492,13 @@ def run_fixed_loop(fl: FixedLoop, y: np.ndarray, osr: int, pos0: float, n_sym: i
         np.asarray(adc.offsets, dtype=np.float64), np.asarray(adc.gains, dtype=np.float64),
         np.asarray(adc.skews, dtype=np.float64), float(adc.q_step), int(adc.code_max),
         np.asarray(noise, dtype=np.float64), np.asarray(rx_clk, dtype=np.float64),
-        *_with_weights(fl, wf, wd), ref, wacc_f, wacc_d, xh, pi, phase, dec, v_out, queue, st)
+        *_with_weights(fl, wf, wd), ref, wacc_f, wacc_d, fl.pr_lv, prs, xl, r_out,
+        xh, pi, phase, dec, v_out, queue, st)
     done = int(done)
     n_dec = max(done - fl.n_pre, 0)
     return {"xin": xh[:done], "pi": pi[:done], "phase": phase[:done],
             "dec": dec[:n_dec], "v_out": v_out[:n_dec], "n_dec": n_dec,
-            "ref": ref[:done], "wf": wf, "wd": wd}
+            "ref": ref[:done], "wf": wf, "wd": wd, "ab": prs >> int(fl.lp[6])}
 
 
 def _with_weights(fl: FixedLoop, wf, wd):
@@ -421,13 +515,14 @@ def replay_digital(fl: FixedLoop, xin: np.ndarray, ref: np.ndarray | None = None
     xin = np.asarray(xin, dtype=np.int64)
     n = xin.size
     xh, pi, dec, v_out, queue, st = _state(fl, n)
-    wf, wd, wacc_f, wacc_d = _weights(fl)
+    wf, wd, wacc_f, wacc_d, prs = _weights(fl)
+    xl, r_out = np.zeros(n, dtype=np.int64), np.zeros(n, dtype=np.int64)
     ref = np.full(n, -1, dtype=np.int64) if ref is None else np.asarray(ref, dtype=np.int64)
     _fixed_loop_digital(xin, fl.pi_sh, *_with_weights(fl, wf, wd), ref, wacc_f, wacc_d,
-                        xh, pi, dec, v_out, queue, st)
+                        fl.pr_lv, prs, xl, r_out, xh, pi, dec, v_out, queue, st)
     n_dec = max(n - fl.n_pre, 0)
     return {"pi": pi, "dec": dec[:n_dec], "v_out": v_out[:n_dec], "n_dec": n_dec,
-            "wf": wf, "wd": wd}
+            "wf": wf, "wd": wd, "ab": prs >> int(fl.lp[6])}
 
 
 def loop_artifacts(fl: FixedLoop, xin: np.ndarray, ref: np.ndarray) -> dict:
@@ -441,6 +536,7 @@ def loop_artifacts(fl: FixedLoop, xin: np.ndarray, ref: np.ndarray) -> dict:
     return {"xin": xin, "ref": ref, "pi": rp["pi"], "dec": rp["dec"], "v_out": rp["v_out"],
             "w_ffe_int": fl.wf, "w_dfe_int": fl.wd, "levels_out": fl.levels_out,
             "w_ffe_end": rp["wf"], "w_dfe_end": rp["wd"],
+            "pr_lv": fl.pr_lv, "ab": fl.pr_ab, "ab_end": rp["ab"],
             "params": {"N": int(xin.size), "N_DEC": int(rp["n_dec"]),
                        "NF": int(fl.wf.size), "ND": int(fl.wd.size),
                        "NL": int(fl.levels_out.size), "N_PRE": fl.n_pre,
@@ -452,7 +548,10 @@ def loop_artifacts(fl: FixedLoop, xin: np.ndarray, ref: np.ndarray) -> dict:
                        "LAT": fl.lat, "PI_SH": fl.pi_sh,
                        "TRAIN_LEN": lp[0], "ADAPT_START": lp[1], "LMS_F": lp[2],
                        "SH_F": lp[3], "LMS_D": lp[4], "SH_D": lp[5], "G": lp[6],
-                       "WF_LO": lp[7], "WF_HI": lp[8], "WD_LO": lp[9], "WD_HI": lp[10]}}
+                       "WF_LO": lp[7], "WF_HI": lp[8], "WD_LO": lp[9], "WD_HI": lp[10],
+                       "PR_MODE": lp[11], "NT": lp[12], "PFL": lp[13], "LMS_A": lp[14],
+                       "SH_A": lp[15], "A_MAX": lp[16], "B_LO": lp[17], "B_HI": lp[18],
+                       "NPL": int(fl.pr_lv.size)}}
 
 
 def dump_loop_vectors(path, art: dict, cw: int = 64):
@@ -462,7 +561,7 @@ def dump_loop_vectors(path, art: dict, cw: int = 64):
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
     for name in ("xin", "ref", "pi", "dec", "v_out", "w_ffe_int", "w_dfe_int", "levels_out",
-                 "w_ffe_end", "w_dfe_end"):
+                 "w_ffe_end", "w_dfe_end", "pr_lv", "ab", "ab_end"):
         np.savetxt(path / f"loop_{name}.txt", np.atleast_1d(art[name]), fmt="%d")
     with open(path / "loop_dims.svh", "w", encoding="utf-8") as fh:
         fh.write("// generated by halo_serdes.dsp.fixed_loop.dump_loop_vectors\n")
