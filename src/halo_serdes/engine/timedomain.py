@@ -666,8 +666,19 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         dec0 = np.argmin(np.abs(v_fx[:, None] - fl.levels_out[None, :]), axis=1)
         dec = run_fixed_sliding(fsd, v_fx, dec0, fl.levels_out)
         fixed["mlsd"] = {"detector": fsd, "dec": dec}
+    elif fixed is not None and cfg.rx.mlsd.kind == "viterbi":
+        # the bit-true Viterbi on the loop's slicer words (dsp/fixed_viterbi.py),
+        # over the trellis the float one would use
+        from ..dsp.fixed_viterbi import build_fixed_viterbi, run_fixed_viterbi
+
+        fl, rec = fixed["loop"], fixed["record"]
+        cursors = np.concatenate([[1.0] if head is None else np.asarray(head, dtype=float),
+                                  np.asarray(resid_ratios, dtype=float)])
+        if not np.all(np.abs(cursors[1:]) < 1e-9):
+            fvd = build_fixed_viterbi(cfg, cursors, fl.levels_out, fl.out_bits)
+            dec = run_fixed_viterbi(fvd, rec["v_out"][:n_run], fl.levels_out.size)
+            fixed["mlsd"] = {"detector": fvd, "dec": dec}
     else:
-        # (in fixed mode a Viterbi still runs in float, on the loop's slicer values)
         dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios, head)
 
     warm = warmup_symbols(cfg, train_end, n_run)

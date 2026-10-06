@@ -13,19 +13,8 @@
 
 ## P1 — 声称与实现的落差
 
-### 1. 定点 Viterbi
-
-**现状**(2026-10-06 起):`numeric.mode: fixed` 覆盖 ADC 接收机的 FFE + DFE + slicer + 训练 + 整数 LMS + PR(含 a、b 的
-整数 LMS 与预编码 1 + D)+ MM CDR 闭环(`dsp/fixed_loop.py`)与 sliding-detector MLSD(`dsp/fixed_mlsd.py`),
-SV 逐位对照五段(`rtl/run_lockstep.sh`)。**还没有**:`rx.mlsd.kind: viterbi` 在定点下仍是浮点(跑在定点 slicer 值上)。
-
-**为什么要紧**:Viterbi 的路径度量要归一化(或模运算比较),位宽不够时比较翻转 —— 典型 RTL 坑;
-PR 链路(224G 结论的主力)默认配 Viterbi。
-
-**怎么做**:整数分支度量(slicer 字与期望值之差的平方,右移 + 饱和)、每步减最小度量归一化、回溯深度有限;
-先 memory 1(PAM4 4 状态),对照浮点 `viterbi_mlsd` 在精确输入上逐符号一致,再 SV。
-
-**验收**:`HALO_NO_JIT=1` 与 JIT 一致;字长 → ∞ 时与浮点一致;lockstep 覆盖。
+(2026-10-06 清空:原 #1 定点 —— FFE/DFE/slicer、训练、整数 LMS、PR、MM CDR、sliding 与 Viterbi MLSD —— 已全部 bit-true 并有
+SV 逐位对照,见 CHANGELOG 与 `rtl/README.md`;原 #2 流式见 P2 #2;原 #3 分块续跑已合入。)
 
 ---
 

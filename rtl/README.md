@@ -29,6 +29,12 @@ table, shifted and saturated squared-error metric, margin, two passes. Its
 vectors are a synthetic stream with a strong residual postcursor -- on the
 lockstep link the MMSE FFE leaves none and the detector has nothing to do.
 
+The fourth covers the **Viterbi MLSD** (`viterbi_mlsd.sv` against
+`halo_serdes.dsp.fixed_viterbi`): an expected-word table per (state, symbol),
+shifted and saturated squared-error branch metrics, minimum-subtracted path
+metrics, add-compare-select in a fixed order, full traceback. Vectors: PAM4
+through 1 + 0.6D + 0.2D^2, 16 states.
+
 ## Files
 
 | file | role |
@@ -39,7 +45,8 @@ lockstep link the MMSE FFE leaves none and the detector has nothing to do.
 | `adc_dsp_loop.sv` | the back end with its CDR loop — mirrors `fixed_loop._digital_step_py`; a task, not `always_comb` (the loop carries state per symbol, and Icarus 12 asserts on a combinational block this size). |
 | `tb_adc_dsp_loop.sv` | loads the closed-loop record, runs the loop, asserts every PI code / slicer value / decision. |
 | `sliding_mlsd.sv` / `tb_sliding_mlsd.sv` | the sliding-detector MLSD and its testbench (`fixed_mlsd._sliding_fixed_py`). |
-| `run_lockstep.sh` | generate → `iverilog` compile → `vvp` run, all three checks. |
+| `viterbi_mlsd.sv` / `tb_viterbi_mlsd.sv` | the Viterbi MLSD and its testbench (`fixed_viterbi._viterbi_fixed_py`). |
+| `run_lockstep.sh` | generate → `iverilog` compile → `vvp` run, all checks. |
 
 ## Run
 
@@ -49,6 +56,7 @@ bash rtl/run_lockstep.sh
 # -> LOCKSTEP PASS  n=1985  errors=0
 # -> LOOP LOCKSTEP PASS  n=3000  errors=0
 # -> MLSD LOCKSTEP PASS  n=4000  flips=81  errors=0
+# -> VITERBI LOCKSTEP PASS  n=3000  states=16  errors=0
 ```
 
 `tests/test_rtl_lockstep.py` runs the same flow (skipped if `iverilog` is
