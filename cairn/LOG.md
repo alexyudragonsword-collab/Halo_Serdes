@@ -3,6 +3,21 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-05 · 流式时域引擎 sim.stream(feat/waveform-windowing,原 ROADMAP P1 #2)
+
+- 取舍(用户选定):默认引擎的噪声砖墙与 `tx.bw` 单极点是整段循环 FFT,不可能流式且逐位同;所以加**可选**流式模式,
+  默认路径一字不动(指纹 506 + 44 值逐位同)。流式里两者换 FIR(噪声:同一批白噪 + Kaiser sinc,居中;单极点:`driver_response`)。
+- `engine/stream.py`:ZOH 窗口(= `jittered_zoh` 的区间限制,逐位同,含 ppm 斜坡与交叉边沿)、固定块 overlap-save `Fir`、`Lead`、
+  `drive_stream`(块级扩窗,保留下一采样点前 8 UI)。内核 core 加 `y_off` / `n_total` 与状态码 2(要更多)/ 3(已丢,报错)。
+- 链路主 RNG 跳过噪声抽样(`skip_normals`,分块抽取与整段抽取逐位同,已验),比较器失调 / Rx 时钟 / ADC 失配与默认同 →
+  同一链路实例。噪声 FIR 不居中时与默认噪声不相关(眼图差 √2σ),居中后差 0.06σ。
+- 实测(同机同口径 RSS):10⁶ 符号 OSR32 默认 1.89 GB / 16 s,流式 0.33 GB / 5 s;5×10⁶ @OSR16 流式 13 s、tracemalloc 0.70 GB。
+  ROADMAP 原写"0.9 GB"是另一配置 / 口径,USAGE §14 已注明,未覆盖原值。
+- 新 `tests/test_stream.py`(15 项):ZOH 窗口逐位、FIR 读法无关、噪声 FIR 带宽与能量、流式分块逐位(两架构含 tx.bw)、
+  流式 vs 默认统计一致(两架构 × 有无极点)、眼图、不支持路径报错、5×10⁶ 冒烟(needs_jit)。
+- 剩余:光 / 串扰 / AMI / collect_jitter 的流式 → ROADMAP P2 #2。
+- 全量(JIT):752 passed / 2 skipped(+15);流式 + 分块测试 nojit 19 passed / 1 skipped(5×10⁶ 冒烟 needs_jit)。PR #29;Android instrumented 34 tests / 0 failures(API 34、API 35、编译版 APK,代码提交 06c6558 上)。
+
 ## 2026-10-05 · 接收机内核分块续跑(feat/chunked-kernels,原 ROADMAP P1 #3)
 
 - 两个内核拆成 `[k0, k1)` 的 core + `MsRxRun` / `AdcRxRun`;状态:MS = 位置、积分器、求和节点反馈、上一符号符号 + LMS 批计数、

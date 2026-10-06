@@ -6,6 +6,20 @@
 
 ---
 
+## [未发布] — 流式时域引擎 `sim.stream`:长跑内存不再随码长增长(原 ROADMAP P1 #2)
+
+### 新增
+- `sim.stream`(默认 False;GUI / Android 表单 "Stream waveform (long runs)"):波形按固定块生成(`engine/stream.py`:
+  抖动 ZOH 窗口、驱动曲线、FIR 级、噪声源),两个接收机内核读滑动窗口(`MsRxRun` / `AdcRxRun.set_window`,
+  core 新增 `y_off` / `n_total` 与"窗口不够"状态码)。10⁶ 符号 OSR32 峰值 RSS 1.89 GB → 0.33 GB,耗时 16 s → 5 s;
+  5×10⁶ 符号 @OSR16 13 s / 0.70 GB(冒烟测试)。
+- 流式内部任意 `chunk_symbols` 逐位一致;与默认引擎是同一链路实例(同一批白噪与其他随机抽取),只把两个整段循环 FFT 算子
+  (噪声砖墙限带、`tx.bw` 单极点)换成等价 FIR,结果统计一致(SNR 差 < 0.1 dB,误码数在 Poisson 内)。
+- 流式暂不支持 IBIS-AMI、光拓扑、串扰、`collect_jitter`(明确报错);见 ROADMAP P2 #2。
+
+### 不变
+- 默认路径(`sim.stream=False`)全部预设指纹逐位同(506 + 44 值)。
+
 ## [未发布] — 接收机内核分块续跑:时域长跑可报进度、可中途取消(原 ROADMAP P1 #3)
 
 ### 新增
