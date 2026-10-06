@@ -10,6 +10,7 @@
 - `analysis/jitter.py`:`CrossingCollector` 分块收过零点,与整段逐位同(含 -0.0/+0.0 的 NaN 穿越,见 engineering-pitfalls)。
 - AMI GetWave 不流式,移入 ROADMAP「边界」;Init 流程可以。
 - 实测光链路 10⁶ 符号:默认 0.77 GB / 33.7 s → 流式 0.16 GB / 4.1 s,误码 17257 vs 17262(USAGE §14)。
+- PR #35;CI 全部 test job + rtl-lockstep 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):817 passed / 1 skipped(+9);stream/jitter/crosstalk nojit 40 passed / 1 skipped;浮点指纹逐位同。
 
 ## 2026-10-06 · 定点 Viterbi(feat/fixed-viterbi,ROADMAP P1 #1 收尾 → P1 清空)
