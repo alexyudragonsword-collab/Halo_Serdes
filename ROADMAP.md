@@ -13,19 +13,19 @@
 
 ## P1 — 声称与实现的落差
 
-### 1. 定点 Viterbi 与定点 PR
+### 1. 定点 Viterbi
 
-**现状**(2026-10-06 起):`numeric.mode: fixed` 覆盖 ADC 接收机的 FFE + DFE + slicer + 训练 + 整数 LMS + MM CDR 闭环
-(`dsp/fixed_loop.py`)与 sliding-detector MLSD(`dsp/fixed_mlsd.py`),三段 SV 逐位对照(`rtl/run_lockstep.sh`)。
-**还没有**:`rx.mlsd.kind: viterbi` 在定点下仍是浮点;PR 目标(含 a 的 LMS)在定点下直接报错。
+**现状**(2026-10-06 起):`numeric.mode: fixed` 覆盖 ADC 接收机的 FFE + DFE + slicer + 训练 + 整数 LMS + PR(含 a、b 的
+整数 LMS 与预编码 1 + D)+ MM CDR 闭环(`dsp/fixed_loop.py`)与 sliding-detector MLSD(`dsp/fixed_mlsd.py`),
+SV 逐位对照五段(`rtl/run_lockstep.sh`)。**还没有**:`rx.mlsd.kind: viterbi` 在定点下仍是浮点(跑在定点 slicer 值上)。
 
 **为什么要紧**:Viterbi 的路径度量要归一化(或模运算比较),位宽不够时比较翻转 —— 典型 RTL 坑;
-PR 是本项目 224G 结论的主力路径,没有 bit-true 版本,那部分结论就没有 RTL 黄金模型。
+PR 链路(224G 结论的主力)默认配 Viterbi。
 
-**怎么做**:Viterbi 先做 2 状态(NRZ / memory 1)的整数分支度量 + 减最小值归一化,再推广;
-PR 在 `_digital_step` 里加受控光标减法(与浮点核 pr_mode 1 对齐),SV 同步。
+**怎么做**:整数分支度量(slicer 字与期望值之差的平方,右移 + 饱和)、每步减最小度量归一化、回溯深度有限;
+先 memory 1(PAM4 4 状态),对照浮点 `viterbi_mlsd` 在精确输入上逐符号一致,再 SV。
 
-**验收**:`HALO_NO_JIT=1` 与 JIT 一致;字长 → ∞ 时与浮点收敛;lockstep 覆盖。
+**验收**:`HALO_NO_JIT=1` 与 JIT 一致;字长 → ∞ 时与浮点一致;lockstep 覆盖。
 
 ---
 

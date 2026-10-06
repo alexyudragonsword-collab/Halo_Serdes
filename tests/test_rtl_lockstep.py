@@ -48,14 +48,19 @@ def test_rtl_loop_lockstep_bit_exact(tmp_path):
     vec = tmp_path / "vectors"
     subprocess.run(["python", "rtl/gen_vectors.py", str(vec)],
                    cwd=REPO, check=True, capture_output=True, text=True)
-    sim = tmp_path / "loop.vvp"
-    subprocess.run(["iverilog", "-g2012", "-o", str(sim), "-I", str(vec),
-                    "rtl/adc_dsp_loop.sv", "rtl/tb_adc_dsp_loop.sv"],
-                   cwd=REPO, check=True, capture_output=True, text=True)
-    r = subprocess.run(["vvp", str(sim), f"+vecdir={vec}"], cwd=REPO,
-                       capture_output=True, text=True)
-    assert "LOOP LOCKSTEP PASS" in r.stdout, r.stdout + r.stderr
-    assert r.returncode == 0
+    # delta target, 1 + aD + bD^2 with a and b adapted, precoded 1 + D
+    for d in (vec / "pr", vec / "pre", vec):
+        sim = tmp_path / f"loop_{d.name}.vvp"
+        subprocess.run(["iverilog", "-g2012", "-o", str(sim), "-I", str(d),
+                        "rtl/adc_dsp_loop.sv", "rtl/tb_adc_dsp_loop.sv"],
+                       cwd=REPO, check=True, capture_output=True, text=True)
+        r = subprocess.run(["vvp", str(sim), f"+vecdir={d}"], cwd=REPO,
+                           capture_output=True, text=True)
+        assert "LOOP LOCKSTEP PASS" in r.stdout, d.name + r.stdout + r.stderr
+        assert r.returncode == 0
+    ab = [int(x) for x in (vec / "pr" / "loop_ab.txt").read_text().split()]
+    ab_end = [int(x) for x in (vec / "pr" / "loop_ab_end.txt").read_text().split()]
+    assert ab != ab_end, "the PR vectors should adapt a and b"
     pi = [int(x) for x in (vec / "loop_pi.txt").read_text().split()]
     assert max(pi) - min(pi) >= 3, "the vectors should make the loop move the PI"
 

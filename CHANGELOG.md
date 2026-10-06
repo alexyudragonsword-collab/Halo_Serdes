@@ -6,6 +6,18 @@
 
 ---
 
+## [未发布] — 定点 PR 整形(原 ROADMAP P1 #1 的 PR 部分)
+
+### 新增 / 变更
+- `dsp/fixed_loop.py`:数字后端加部分响应,与浮点核 `pr_mode` 一一对应 —— 1 + aD [+ bD²] 减受控光标
+  `(a·L[x̂ₛ₋₁] + b·L[x̂ₛ₋₂]) >>> fl` 再切、DFE 从受控光标之后在线符号估计 x̂ 上反馈、a / b 的整数 LMS(带保护位、钳位);
+  预编码 1 + D 走合成电平切片与 mod N 判决;PR 下鉴相器读减去光标后的值。
+- 定点模式不再拒绝 `pr.target`;结果里的 `pr_alpha` / `pr_target` 是定点环路最终的 a、b。
+  定点 sliding MLSD 在 PR 下取 a 为残差、从平铺切片出发(与浮点 `post_detect` 一致)。
+- `rtl/adc_dsp_loop.sv` 同步;`run_lockstep.sh` 的环路对照跑三遍(delta、自适应 1 + aD + bD²、预编码 1 + D)。
+- 测试:独立整数参考扩到 4 种目标 × 4 组随机参数;宽字长下三种 PR 与浮点 ADC 内核的判决、相位、a 一致;
+  默认字长下三种 PR 的误码与浮点同量级。
+
 ## [未发布] — 定点训练与整数 LMS(原 ROADMAP P1 #1 的自适应部分)
 
 ### 新增 / 变更
