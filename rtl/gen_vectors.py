@@ -14,6 +14,9 @@
    with a strong residual postcursor, so the detector has errors to correct
    (an MMSE FFE leaves the loop above none), with a non-zero metric shift,
    saturation and margin, dumped with mlsd_dims.svh.
+4. The Viterbi MLSD (dsp/fixed_viterbi): PAM4 through 1 + 0.6D + 0.2D^2
+   (16 states), with a metric shift and a narrow saturating metric, dumped
+   with vit_dims.svh.
 
     python rtl/gen_vectors.py [out_dir]   (default: rtl/vectors)
 """
@@ -39,6 +42,9 @@ from halo_serdes.dsp.fixed_datapath import (  # noqa: E402
 from halo_serdes.dsp.fixed_loop import dump_loop_vectors, loop_artifacts  # noqa: E402
 from halo_serdes.dsp.fixed_mlsd import (  # noqa: E402
     FixedSliding, dump_mlsd_vectors, run_fixed_sliding,
+)
+from halo_serdes.dsp.fixed_viterbi import (  # noqa: E402
+    FixedViterbi, dump_viterbi_vectors, expected_table, run_fixed_viterbi,
 )
 from halo_serdes.engine import run_time_link  # noqa: E402
 
@@ -127,3 +133,18 @@ dec_m = run_fixed_sliding(fsd, v, dec0, levels)
 dump_mlsd_vectors(out, fsd, v, dec0, levels, dec_m)
 print(f"wrote MLSD vectors to {out}  (N={v.size}, flips {int(np.sum(dec_m != dec0))}, "
       f"slicer errors {int(np.sum(dec0 != sym))} -> {int(np.sum(dec_m != sym))})")
+
+# --- 4. the Viterbi MLSD on a two-postcursor channel ---
+rng = np.random.default_rng(12)
+c_int = np.array([256, 154, 51], dtype=np.int64)               # 1 + 0.6D + 0.2D^2
+sym = rng.integers(0, 4, 3000)
+y = np.zeros(sym.size, dtype=np.int64)
+for i, c in enumerate(c_int):
+    y[i:] += (c * levels[sym[: sym.size - i]] + 128) >> 8
+y += np.round(rng.normal(scale=150.0, size=y.size)).astype(np.int64)
+fvd = FixedViterbi(cursors=c_int, c_fl=8, expected=expected_table(c_int, levels, 8),
+                   sq_shift=3, metric_max=(1 << 20) - 1)
+dec_v = run_fixed_viterbi(fvd, y, 4)
+dump_viterbi_vectors(out, fvd, y, 4, dec_v)
+print(f"wrote Viterbi vectors to {out}  (N={y.size}, {fvd.expected.shape[0]} states, "
+      f"errors {int(np.sum(dec_v != sym))})")

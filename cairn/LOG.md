@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-06 · 定点 Viterbi(feat/fixed-viterbi,ROADMAP P1 #1 收尾 → P1 清空)
+
+- `dsp/fixed_viterbi.py`:期望字表 `rnd(Σ c_i L[x_i], fl)`、分支度量 `e² >> sq_shift`、饱和、每步减最小值、全程回溯;
+  加比选顺序(前状态升序、符号升序、严格小于才换)与浮点核相同 → 精确输入上逐符号一致。
+- 独立参考按"显式符号历史 + 字典"写,覆盖 memory 1/2、非均匀电平、移位与饱和;窄度量(22 位)在 5 万符号上与宽度量同判决。
+- 引擎:定点 + viterbi 时在环路 slicer 字上跑整数版(此前浮点)。SV 第六段 16 状态通过。
+- 未建模:固定回溯深度(硬件会截断);写进 USAGE 与模块 docstring。
+- P1 清空;剩 P2 #2(流式覆盖光 / 串扰 / AMI / collect_jitter)与 P3。
+
 ## 2026-10-06 · 定点 PR(feat/fixed-pr,ROADMAP P1 #1 的 PR 部分)
 
 - `_digital_step` 加 PR(lp[11..18] + `pr_lv`、`prs`、`xl`、`r_out`),逐行对照浮点核 pr_mode 1 / 2:DFE 用 x̂、从 s − nt 起;

@@ -99,3 +99,26 @@ def test_rtl_mlsd_lockstep_bit_exact(tmp_path):
     assert "MLSD LOCKSTEP FAIL" in r2.stdout
     assert r2.returncode != 0
 
+
+def test_rtl_viterbi_lockstep_bit_exact(tmp_path):
+    """The Viterbi MLSD (rtl/viterbi_mlsd.sv) against dsp/fixed_viterbi."""
+    vec = tmp_path / "vectors"
+    subprocess.run(["python", "rtl/gen_vectors.py", str(vec)],
+                   cwd=REPO, check=True, capture_output=True, text=True)
+    sim = tmp_path / "vit.vvp"
+    subprocess.run(["iverilog", "-g2012", "-o", str(sim), "-I", str(vec),
+                    "rtl/viterbi_mlsd.sv", "rtl/tb_viterbi_mlsd.sv"],
+                   cwd=REPO, check=True, capture_output=True, text=True)
+    r = subprocess.run(["vvp", str(sim), f"+vecdir={vec}"], cwd=REPO,
+                       capture_output=True, text=True)
+    assert "VITERBI LOCKSTEP PASS" in r.stdout, r.stdout + r.stderr
+
+    f = vec / "vit_dec.txt"
+    lines = f.read_text().splitlines()
+    lines[500] = str((int(lines[500]) + 1) % 4)
+    f.write_text("\n".join(lines) + "\n")
+    r2 = subprocess.run(["vvp", str(sim), f"+vecdir={vec}"], cwd=REPO,
+                        capture_output=True, text=True)
+    assert "VITERBI LOCKSTEP FAIL" in r2.stdout
+    assert r2.returncode != 0
+

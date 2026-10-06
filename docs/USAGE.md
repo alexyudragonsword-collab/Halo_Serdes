@@ -501,6 +501,7 @@ sudo apt-get install -y iverilog
 bash rtl/run_lockstep.sh          # -> LOCKSTEP PASS  n=1985  errors=0
                                   # -> LOOP LOCKSTEP PASS  n=3000  errors=0
                                   # -> MLSD LOCKSTEP PASS  n=4000  flips=81  errors=0
+                                  # -> VITERBI LOCKSTEP PASS  n=3000  states=16  errors=0
 ```
 
 ### 带 CDR 的定点闭环(`numeric.mode: fixed`)
@@ -526,7 +527,8 @@ rx:
   `float_equivalent_gains()` 给出它**精确**对应的浮点增益,字长放宽时两者收敛(`tests/test_fixed_loop.py`);
 - `rx.mlsd.kind: sliding` 在定点下跑整数版(`dsp/fixed_mlsd.py`):逐电平反馈表、残差平方右移
   `sq_shift` 后求和并饱和到 `numeric.mlsd_metric_bits`(默认 24)、margin 换算到度量 LSB;
-  字长放宽时与浮点检测器判决一致。`viterbi` 在定点下仍是浮点(跑在定点 slicer 值上);
+  字长放宽时与浮点检测器判决一致。`viterbi` 同样有整数版(`dsp/fixed_viterbi.py`):期望值表、平方右移、
+  度量饱和、每步减最小度量归一化,回溯为全程(硬件会截到固定深度,未建模);
 - 整数 LMS:权重累加器比权重细 `numeric.lms_guard_bits`(默认 24)位,权重取其高位;步长是最接近
   `ffe.mu` / `dfe.mu` 的 2 的幂(换算到整数单位后),`float_equivalent_mu()` 给出精确对应的浮点步长。
   保护位太少时小更新被舍入成 0,环路就不再自适应;

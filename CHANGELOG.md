@@ -6,6 +6,19 @@
 
 ---
 
+## [未发布] — 定点 Viterbi MLSD(原 ROADMAP P1 #1 收尾)
+
+### 新增
+- `dsp/fixed_viterbi.py`:Viterbi 的整数版 —— 每 (状态, 新符号) 一个期望字(光标字 × 电平,带舍入)、分支度量
+  平方右移 `sq_shift`、路径度量饱和到 `numeric.mlsd_metric_bits`、每步减最小度量归一化、加比选顺序与浮点核一致、全程回溯。
+- 定点模式下 `rx.mlsd.kind: viterbi` 跑整数版(此前在定点 slicer 值上用浮点),PR 目标下的网格同浮点(头部 [1, a] + 残差)。
+- `rtl/viterbi_mlsd.sv` + `tb_viterbi_mlsd.sv`,`run_lockstep.sh` 第六段(PAM4 1 + 0.6D + 0.2D²,16 状态)。
+- 测试:精确输入上与浮点 `viterbi_mlsd` 逐符号一致(memory 1、2);字典式独立参考(移位、饱和);
+  归一化后窄度量与宽度量判决相同;JIT = Python;引擎接线(delta / PR)可重放、误码与浮点同量级。
+
+### 里程碑
+- ROADMAP P1 清空:定点 / RTL 黄金模型覆盖 ADC 接收机的全部数字后端。
+
 ## [未发布] — 定点 PR 整形(原 ROADMAP P1 #1 的 PR 部分)
 
 ### 新增 / 变更
