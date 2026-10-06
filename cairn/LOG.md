@@ -13,6 +13,7 @@
 - 默认 10 位权重下,MMSE 初值离 LMS 终点不到 1 个 LSB(向量里 FFE 权重最多动 1 LSB)—— 自适应在这个字长上几乎只是抖动。
 - SV:`ref` 是关键字(Icarus 报 "Syntax error in variable list"),改名 `ref_sym`;tb 增比最终权重。
 - 剩余:定点 Viterbi、定点 PR → ROADMAP P1 #1(已改写)。
+- PR #32;CI 全部 test job + rtl-lockstep 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):778 passed / 1 skipped(测试数不变,扩展了现有测试);定点 nojit 24 passed / 2 skipped;浮点指纹逐位同。
 
 ## 2026-10-06 · 定点 sliding MLSD + RTL 对照(feat/fixed-mlsd,ROADMAP P1 #1 的 MLSD 部分)
