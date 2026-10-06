@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-06 · 流式覆盖光 / 串扰 / AMI Init / 抖动分解(feat/stream-coverage,ROADMAP P2 #2 → P2 清空)
+
+- `engine/stream.py`:光路两段 / 三段(FIR + 逐样本光噪声 + E/O 曲线)、攻击者(保持 + 耦合 FIR)、接收节点加噪前抽头。
+- 随机数:光噪声与接收噪声都拷贝生成器读默认引擎同一批抽样,主生成器按序跳过 → 同一链路实例。
+- `analysis/jitter.py`:`CrossingCollector` 分块收过零点,与整段逐位同(含 -0.0/+0.0 的 NaN 穿越,见 engineering-pitfalls)。
+- AMI GetWave 不流式,移入 ROADMAP「边界」;Init 流程可以。
+- 实测光链路 10⁶ 符号:默认 0.77 GB / 33.7 s → 流式 0.16 GB / 4.1 s,误码 17257 vs 17262(USAGE §14)。
+- 全量(JIT + iverilog):817 passed / 1 skipped(+9);stream/jitter/crosstalk nojit 40 passed / 1 skipped;浮点指纹逐位同。
+
 ## 2026-10-06 · 定点 Viterbi(feat/fixed-viterbi,ROADMAP P1 #1 收尾 → P1 清空)
 
 - `dsp/fixed_viterbi.py`:期望字表 `rnd(Σ c_i L[x_i], fl)`、分支度量 `e² >> sq_shift`、饱和、每步减最小值、全程回溯;

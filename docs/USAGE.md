@@ -559,6 +559,8 @@ RTL 对照的是"ADC 字之后"的部分:`replay_digital()` 从记录的 ADC 字
   | `NRZ 28G analytic (COM/xtalk)` 预设 | 1.89 GB,13.6 s | 0.31 GB,4.7 s |
 
   5×10⁶ 符号 NRZ @OSR16 流式:13 s,tracemalloc 峰值 0.70 GB(一条全长波形就要 0.64 GB)。
+  光链路(PAM4 53 GBd、VCSEL + MMF 两段、ADC 架构)10⁶ 符号 @OSR16,tracemalloc 峰值:默认 0.77 GB / 33.7 s,
+  流式 0.16 GB / 4.1 s,误码 17257 vs 17262(2026-10-06 同机测)。
   (上表的默认引擎峰值高于早先记的"0.9 GB":那是另一配置下的 tracemalloc / RSS 口径,本表四行同机同口径。)
 
   流式的代价:默认引擎的接收噪声限带(整段 FFT 砖墙)与发端单极点 `tx.bw`(整段 rFFT)是循环算子,每个输出样本
