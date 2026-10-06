@@ -72,24 +72,27 @@ print(f"wrote vectors to {out}  (N={codes.size}, NF={art['w_ffe_int'].size}, "
 
 # --- 2. the back end with its CDR, closed through the sampler ---
 # a wandering Rx clock and a fast loop, with clamp and pipeline latency, so
-# every branch of the loop filter and many PI codes are exercised
+# every branch of the loop filter, many PI codes and the integer LMS are exercised
 loop_cfg = dataclasses.replace(
     cfg, numeric=NumericConfig(mode="fixed"),
     rx=dataclasses.replace(
         cfg.rx, clock=ClockConfig(sj_ui=0.12, sj_freq=cfg.symbol_rate / 1500),
         cdr=dataclasses.replace(cfg.rx.cdr, kp_shift=3, ki_shift=7, clamp=0.02,
-                                loop_latency_symbols=32)),
-    sim=dataclasses.replace(cfg.sim, n_symbols=6000))
+                                loop_latency_symbols=32),
+        # larger LMS steps and a short start-up, so the window holds CDR
+        # settling, data-aided training and decision-directed adaptation
+        ffe=dataclasses.replace(cfg.rx.ffe, mu=2e-3),
+        dfe=dataclasses.replace(cfg.rx.dfe, mu=2e-3)),
+    sim=dataclasses.replace(cfg.sim, n_symbols=6000, cdr_settle=500, train_symbols=1000))
 res = run_time_link(loop_cfg)
 fx = res.extras["fixed"]
 rec = fx["record"]
-art = loop_artifacts(fx["loop"], {k: (v[:3000] if k in ("xin", "pi") else v) for k, v in rec.items()}
-                     | {"dec": rec["dec"][:3000 - fx["loop"].n_pre],
-                        "v_out": rec["v_out"][:3000 - fx["loop"].n_pre],
-                        "n_dec": 3000 - fx["loop"].n_pre})
+art = loop_artifacts(fx["loop"], rec["xin"][:3000], rec["ref"][:3000])
 dump_loop_vectors(out, art)
+moved = int(np.abs(art["w_ffe_end"] - art["w_ffe_int"]).max())
 print(f"wrote loop vectors to {out}  (N={art['xin'].size}, PI codes "
-      f"{int(art['pi'].min())}..{int(art['pi'].max())}, SER {res.ser:.2e})")
+      f"{int(art['pi'].min())}..{int(art['pi'].max())}, FFE weights moved up to {moved} LSB, "
+      f"SER {res.ser:.2e})")
 
 # --- 3. the sliding-detector MLSD on a strong residual postcursor ---
 rng = np.random.default_rng(11)

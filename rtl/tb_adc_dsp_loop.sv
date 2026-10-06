@@ -16,6 +16,8 @@ module tb_adc_dsp_loop;
     longint pi_gold  [N];
     longint dec_gold [N_DEC];
     longint v_gold   [N_DEC];
+    longint wf_gold  [NF];
+    longint wd_gold  [ND];
 
     string dir;
     int fd, r, errors;
@@ -26,6 +28,15 @@ module tb_adc_dsp_loop;
 
         fd = $fopen({dir, "/loop_xin.txt"}, "r");
         for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); dut.xin[i] = val; end
+        $fclose(fd);
+        fd = $fopen({dir, "/loop_ref.txt"}, "r");
+        for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); dut.ref_sym[i] = val; end
+        $fclose(fd);
+        fd = $fopen({dir, "/loop_w_ffe_end.txt"}, "r");
+        for (int i = 0; i < NF; i++) begin r = $fscanf(fd, "%d", val); wf_gold[i] = val; end
+        $fclose(fd);
+        fd = $fopen({dir, "/loop_w_dfe_end.txt"}, "r");
+        for (int i = 0; i < ND; i++) begin r = $fscanf(fd, "%d", val); wd_gold[i] = val; end
         $fclose(fd);
         fd = $fopen({dir, "/loop_w_ffe_int.txt"}, "r");
         for (int i = 0; i < NF; i++) begin r = $fscanf(fd, "%d", val); dut.w_ffe[i] = val; end
@@ -64,6 +75,16 @@ module tb_adc_dsp_loop;
                 errors++;
             end
         end
+        for (int i = 0; i < NF; i++)
+            if (dut.w_ffe[i] !== wf_gold[i]) begin
+                $display("  final FFE weight[%0d]: %0d/%0d (rtl/gold)", i, dut.w_ffe[i], wf_gold[i]);
+                errors++;
+            end
+        for (int i = 0; i < ND; i++)
+            if (dut.w_dfe[i] !== wd_gold[i]) begin
+                $display("  final DFE weight[%0d]: %0d/%0d (rtl/gold)", i, dut.w_dfe[i], wd_gold[i]);
+                errors++;
+            end
         $display("LOOP LOCKSTEP %s  n=%0d  errors=%0d",
                  (errors == 0) ? "PASS" : "FAIL", N, errors);
         if (errors != 0) $fatal(1, "bit-exact mismatch");

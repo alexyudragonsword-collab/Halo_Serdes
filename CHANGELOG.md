@@ -6,6 +6,18 @@
 
 ---
 
+## [未发布] — 定点训练与整数 LMS(原 ROADMAP P1 #1 的自适应部分)
+
+### 新增 / 变更
+- `dsp/fixed_loop.py`:数字后端加数据辅助训练与 FFE / DFE 整数 LMS —— 权重累加器比权重细 `numeric.lms_guard_bits`
+  (默认 24)位,步长取最接近 `mu` 的 2 的幂,更新带舍入加法器,累加器饱和到权重范围。
+- 定点模式现在从浮点运行的**初始**权重与同一训练日程出发自己训练、自适应(此前是拿浮点训练完的权重冻结);
+  结果里的 `ffe_taps` / `dfe_taps` 是定点环路最终的权重。
+- `float_equivalent_mu()`:定点步长精确对应的浮点步长;宽字长时与浮点 ADC 内核(训练 + LMS + CDR)收敛到同一组权重
+  (差 < 2% 的权重行程)。独立整数参考覆盖训练与 LMS。
+- `rtl/adc_dsp_loop.sv` 同步加训练与 LMS(`ref` 是 SV 关键字,输入名为 `ref_sym`),testbench 另比对最终权重;
+  向量用较大步长与短启动,窗口覆盖 CDR 收敛、训练、判决导向自适应。
+
 ## [未发布] — 定点 sliding-detector MLSD 与 RTL 对照(原 ROADMAP P1 #1 的 MLSD 部分)
 
 ### 新增

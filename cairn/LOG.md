@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-06 · 定点训练 + 整数 LMS(feat/fixed-lms,ROADMAP P1 #1 的自适应部分)
+
+- `_digital_step` 加训练(s < train_len 且 ref ≥ 0 用参考判决)与 LMS(与浮点核同序:判决后、PD 前);参数打包成 `lp` 数组。
+  步长 2 的幂:`sh = round(log2(mu · lsb_e · lsb_x · 2^(fl+G)))`;默认 mu 5e-5、G 24 时 FFE sh ≈ -5,G 16 时 ≈ -13
+  会把典型更新(|e·x| ~1e3)舍成 0 —— 所以默认 G = 24。
+- 定点模式改为从初始权重 + 同一训练日程自适应(不再冻结浮点终值);`adapt: none` 时两者相同。
+- 宽字长 + 大步长(mu 1e-2):权重行程 1.5e-3,与浮点 LMS 差 3.4e-6(0.2%);slicer 值差 > 10 µV 的 < 0.5%。
+- 默认 10 位权重下,MMSE 初值离 LMS 终点不到 1 个 LSB(向量里 FFE 权重最多动 1 LSB)—— 自适应在这个字长上几乎只是抖动。
+- SV:`ref` 是关键字(Icarus 报 "Syntax error in variable list"),改名 `ref_sym`;tb 增比最终权重。
+- 剩余:定点 Viterbi、定点 PR → ROADMAP P1 #1(已改写)。
+- 全量(JIT + iverilog):778 passed / 1 skipped(测试数不变,扩展了现有测试);定点 nojit 24 passed / 2 skipped;浮点指纹逐位同。
+
 ## 2026-10-06 · 定点 sliding MLSD + RTL 对照(feat/fixed-mlsd,ROADMAP P1 #1 的 MLSD 部分)
 
 - `dsp/fixed_mlsd.py`:逐电平反馈表 `fbt[m] = (rp·L[m] + ½) >> fl`;假设翻转按定义重算 e[k]、e[k+1](浮点版减的是

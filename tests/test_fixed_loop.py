@@ -25,7 +25,8 @@ from halo_serdes.config.schema import (
     NumericConfig, QFormat, RxConfig, SimConfig, TxConfig,
 )
 from halo_serdes.dsp.fixed_loop import (
-    FixedLoop, build_fixed_loop, float_equivalent_gains, replay_digital, run_fixed_loop,
+    FixedLoop, build_fixed_loop, float_equivalent_gains, float_equivalent_mu, replay_digital,
+    run_fixed_loop,
 )
 from halo_serdes.engine import run_time_link
 
@@ -72,7 +73,8 @@ def test_replay_from_the_words_is_the_closed_loop(pd_input):
     fx = res.extras["fixed"]
     rec = fx["record"]
     assert np.ptp(rec["pi"]) >= 3                    # the loop does move
-    rp = replay_digital(fx["loop"], rec["xin"])
+    rp = replay_digital(fx["loop"], rec["xin"], rec["ref"])
+    assert np.array_equal(rp["wf"], rec["wf"]) and np.array_equal(rp["wd"], rec["wd"])
     assert np.array_equal(rp["pi"], rec["pi"])
     assert np.array_equal(rp["dec"], rec["dec"])
     assert np.array_equal(rp["v_out"], rec["v_out"])
@@ -92,16 +94,34 @@ def _reference(xin, p):
     def sh(v, s):
         return v << s if s >= 0 else v >> -s
 
+    g = p["g"]
+    wacc_f = [int(w) << g for w in p["wf"]]
+    wacc_d = [int(w) << g for w in p["wd"]]
+
+    def clip_acc(a, lo_w, hi_w):
+        return max(lo_w << g, min((hi_w << g) + (1 << g) - 1, a))
+
     dec, vout = [], []
     for s in range(n - p["n_pre"]):
         k = s + p["n_pre"]
-        acc = sum(int(w) * xin[k - i] for i, w in enumerate(p["wf"]) if k - i >= 0)
+        wf = [a >> g for a in wacc_f]
+        wd = [a >> g for a in wacc_d]
+        acc = sum(w * xin[k - i] for i, w in enumerate(wf) if k - i >= 0)
         acc = min(hi, max(lo, rnd(acc, p["ffe_shift"])))
-        fb = sum(int(w) * int(p["levels"][dec[s - 1 - d]])
-                 for d, w in enumerate(p["wd"]) if s - 1 - d >= 0)
+        fb = sum(w * int(p["levels"][dec[s - 1 - d]]) for d, w in enumerate(wd) if s - 1 - d >= 0)
         v = min(hi, max(lo, acc - rnd(fb, p["dfe_shift"])))
         vout.append(v)
-        dec.append(min(range(len(p["levels"])), key=lambda m: (abs(v - int(p["levels"][m])), m)))
+        best = min(range(len(p["levels"])), key=lambda m: (abs(v - int(p["levels"][m])), m))
+        dec.append(int(p["ref"][s]) if s < p["train"] and p["ref"][s] >= 0 else best)
+        if s >= p["adapt"]:
+            e = v - int(p["levels"][dec[s]])
+            if p["lms_f"]:
+                wacc_f = [clip_acc(a - rnd(e * xin[k - i], -p["sh_f"]), *p["lim"])
+                          if k - i >= 0 else a for i, a in enumerate(wacc_f)]
+            if p["lms_d"]:
+                wacc_d = [clip_acc(a + rnd(e * int(p["levels"][dec[s - 1 - d]]), -p["sh_d"]),
+                                   *p["lim"]) if s - 1 - d >= 0 else a
+                          for d, a in enumerate(wacc_d)]
 
     src = vout if p["pd_ffe"] else xin
     queue = [0] * (p["lat"] + 1)
@@ -125,7 +145,8 @@ def _reference(xin, p):
                 corr = queue[qi]
                 acc = cnt = 0
         ph += corr >> int(np.log2(p["lanes"]))
-    return np.array(pis), np.array(dec), np.array(vout)
+    return (np.array(pis), np.array(dec), np.array(vout),
+            np.array([a >> g for a in wacc_f]), np.array([a >> g for a in wacc_d]))
 
 
 @pytest.mark.parametrize("seed", range(4))
@@ -137,19 +158,27 @@ def test_digital_back_end_matches_an_independent_reference(seed):
          "pd_ffe": int(seed % 2), "kp_sh": int(rng.integers(-6, 6)),
          "ki_sh": int(rng.integers(-12, 0)), "clamp": int([0, 5000][seed // 2]),
          "pd_off": int(rng.integers(-50, 50)), "lanes": 8, "lat": int(seed % 3),
-         "pi_sh": 10}
+         "pi_sh": 10, "train": 400, "adapt": 150, "lms_f": seed != 1, "lms_d": seed != 2,
+         "sh_f": -int(rng.integers(3, 9)), "sh_d": -int(rng.integers(3, 9)), "g": 6,
+         "lim": (-512, 511)}
+    xin = 2 * rng.integers(-128, 128, 3_000) + 1
+    p["ref"] = rng.integers(-1, 4, xin.size)
     fl = FixedLoop(wf=p["wf"].astype(np.int64), wd=p["wd"].astype(np.int64),
                    ffe_shift=p["ffe_shift"], dfe_shift=8, levels_out=p["levels"],
                    out_bits=12, do_round=1, n_pre=3, pd_ffe=p["pd_ffe"], kp_sh=p["kp_sh"],
                    ki_sh=p["ki_sh"], clamp_int=p["clamp"], pd_off=p["pd_off"], n_lanes=8,
                    lane_shift=3, lat=p["lat"], pi_bits=6, ph_frac=16, in_lsb=1.0,
-                   out_lsb=1.0, pd_lsb=1.0)
-    xin = 2 * rng.integers(-128, 128, 3_000) + 1
-    got = replay_digital(fl, xin)
-    pi, dec, vout = _reference(xin, p)
+                   out_lsb=1.0, pd_lsb=1.0,
+                   lp=np.array([p["train"], p["adapt"], int(p["lms_f"]), p["sh_f"],
+                                int(p["lms_d"]), p["sh_d"], p["g"], -512, 511, -512, 511],
+                               dtype=np.int64))
+    got = replay_digital(fl, xin, p["ref"])
+    pi, dec, vout, wf, wd = _reference(xin, p)
     assert np.array_equal(got["dec"], dec)
     assert np.array_equal(got["v_out"], vout)
     assert np.array_equal(got["pi"], pi)
+    assert np.array_equal(got["wf"], wf) and np.array_equal(got["wd"], wd)
+    assert not np.array_equal(wf, p["wf"]) or not p["lms_f"]      # it did adapt
 
 
 @jit_only
@@ -164,32 +193,47 @@ def test_jit_and_python_loops_agree(monkeypatch):
     monkeypatch.setattr(fxl, "_digital_step", fxl._digital_step_py)
     monkeypatch.setattr(fxl, "_farrow_fx", fxl._farrow_py)
     monkeypatch.setattr(fxl, "_ashift", fxl._ashift_py)
+    monkeypatch.setattr(fxl, "_rnd_shift", fxl._rnd_shift_py)
     py = run_fixed_loop(*args)
-    for k in ("xin", "pi", "phase", "dec", "v_out"):
+    for k in ("xin", "pi", "phase", "dec", "v_out", "wf", "wd"):
         assert np.array_equal(jit[k], py[k]), k
 
 
 def test_wide_words_are_the_float_receiver(monkeypatch):
-    """Weights, slicer word, PI and phase register all wide: the loop is the
-    float ADC kernel run with the gains it implements (frozen weights)."""
+    """Weights, accumulators, slicer word, PI and phase register all wide: the
+    loop is the float ADC kernel -- training, LMS on FFE and DFE, CDR -- run
+    with the steps and gains it implements."""
     cfg = _cfg(8_000, ffe_weight=QFormat(32, 26), dfe_weight=QFormat(32, 26),
                pi_bits=16, phase_frac_bits=24)
+    # steps large enough that the weights travel well beyond the tolerance
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(
+        cfg.rx, ffe=dataclasses.replace(cfg.rx.ffe, mu=1e-2),
+        dfe=dataclasses.replace(cfg.rx.dfe, mu=1e-2)))
     res, cap = _captured(cfg, monkeypatch)
     run, adc = cap["run"], res.extras["adc"]
-    fl = build_fixed_loop(cfg, res.ffe_taps, res.dfe_taps, res.extras["levels"],
-                          adc.q_step, out_bits=44)
-    noise, rx_clk = run.params[7], run.params[22]
-    fx = run_fixed_loop(fl, cap["y"], cfg.osr, cap["pos0"], run.n_symbols, adc, noise, rx_clk)
+    train, settle = res.extras["train_end"], res.extras["settle"]
+    fl = build_fixed_loop(cfg, res.extras["w_ffe0"], res.extras["w_dfe0"], res.extras["levels"],
+                          adc.q_step, out_bits=44, train_len=train, adapt_start=settle)
+    noise, ref, rx_clk = run.params[7], run.params[19], run.params[22]
+    fx = run_fixed_loop(fl, cap["y"], cfg.osr, cap["pos0"], run.n_symbols, adc, noise, rx_clk,
+                        ref=ref)
 
     kp, ki, clamp, pd_off = float_equivalent_gains(fl, cfg.osr)
+    ffl, dfl = cfg.numeric.ffe_weight.fl, cfg.numeric.dfe_weight.fl
+    mu_f, mu_d = float_equivalent_mu(fl, ffl, dfl)
+    assert mu_f > 0 and mu_d > 0
     n = run.n_symbols
     fl_out = adc_rx(
         cap["y"], cfg.osr, cap["pos0"], n, fl.levels_out * fl.out_lsb, adc.n_lanes,
         adc.offsets, adc.gains, adc.skews, adc.q_step, adc.code_max, noise,
-        fl.wf * 2.0 ** -cfg.numeric.ffe_weight.fl, fl.n_pre, 0.0,
-        fl.wd * 2.0 ** -cfg.numeric.dfe_weight.fl, 0.0, kp, ki, clamp, pd_off, fl.pd_ffe,
-        fl.lat, np.full(n, -1, dtype=np.int64), 0, n, rx_clk, 0.0, 0, np.zeros(1), 0.0,
+        fl.wf * 2.0 ** -ffl, fl.n_pre, mu_f, fl.wd * 2.0 ** -dfl, mu_d, kp, ki, clamp, pd_off,
+        fl.pd_ffe, fl.lat, ref, train, settle, rx_clk, 0.0, 0, np.zeros(1), 0.0,
         np.zeros(2), 0.0, 1)
+    # the weights travelled, and to the same place
+    moved = np.max(np.abs(fl_out[3] - fl.wf * 2.0 ** -ffl))
+    assert moved > 1e-3
+    assert np.max(np.abs(fx["wf"] * 2.0 ** -ffl - fl_out[3])) < 0.02 * moved
+    assert np.max(np.abs(fx["wd"] * 2.0 ** -dfl - fl_out[4])) < 0.02 * moved
     dec_f, y_f, phase_f = fl_out[0], fl_out[1], fl_out[2]
     m = min(fx["phase"].size, phase_f.size)
     assert np.max(np.abs(fx["phase"][:m] - phase_f[:m])) < 1e-3 * cfg.osr
@@ -199,8 +243,9 @@ def test_wide_words_are_the_float_receiver(monkeypatch):
     # over a quantiser threshold -- and so the same slicer values
     words_f = np.round(2.0 * fl_out[6] / adc.q_step).astype(np.int64)
     assert np.mean(fx["xin"][:m] != words_f[:m]) < 1e-3
+    # (to 10 uV: the adapting weights differ in their last bits, ~1e-7 V)
     dv = np.abs(fx["v_out"] * fl.out_lsb - y_f[:nd])
-    assert np.mean(dv > 1e-6) < 5e-3, np.mean(dv > 1e-6)
+    assert np.mean(dv > 1e-5) < 5e-3, np.mean(dv > 1e-5)
 
 
 def test_default_words_track_the_float_link():

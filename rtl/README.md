@@ -11,13 +11,15 @@ spec ambiguities that bite real silicon: rounding direction, arithmetic vs
 logical shift, saturation bounds, and slicer tie-breaking.
 
 The second check covers the **whole back end with its clock recovery**: FFE +
-DFE + slicer + Mueller-Muller phase detector + loop filter + phase register
+DFE + slicer + data-aided training + integer LMS + Mueller-Muller phase
+detector + loop filter + phase register
 (`adc_dsp_loop.sv` against `halo_serdes.dsp.fixed_loop`). The golden is a
 closed-loop run (`numeric.mode: fixed`): the phase register picks the
 phase-interpolator code, the sampler reads the waveform there, the ADC
-quantises. The RTL replays the recorded ADC words, so the analog side it does
-not model is already in its input, and must reproduce every PI code, slicer
-value and decision.
+quantises. The RTL replays the recorded ADC words (and the training
+reference), so the analog side it does not model is already in its input,
+and must reproduce every PI code, slicer value and decision and the final
+weights.
 
 The third covers the **sliding-detector MLSD** (`sliding_mlsd.sv` against
 `halo_serdes.dsp.fixed_mlsd`): integer residuals with a per-level feedback
