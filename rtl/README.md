@@ -19,6 +19,12 @@ quantises. The RTL replays the recorded ADC words, so the analog side it does
 not model is already in its input, and must reproduce every PI code, slicer
 value and decision.
 
+The third covers the **sliding-detector MLSD** (`sliding_mlsd.sv` against
+`halo_serdes.dsp.fixed_mlsd`): integer residuals with a per-level feedback
+table, shifted and saturated squared-error metric, margin, two passes. Its
+vectors are a synthetic stream with a strong residual postcursor -- on the
+lockstep link the MMSE FFE leaves none and the detector has nothing to do.
+
 ## Files
 
 | file | role |
@@ -28,7 +34,8 @@ value and decision.
 | `gen_vectors.py` | runs a small ADC link, replays the bit-true datapath (the golden), and dumps `*.txt` vectors + `dims.svh`. |
 | `adc_dsp_loop.sv` | the back end with its CDR loop — mirrors `fixed_loop._digital_step_py`; a task, not `always_comb` (the loop carries state per symbol, and Icarus 12 asserts on a combinational block this size). |
 | `tb_adc_dsp_loop.sv` | loads the closed-loop record, runs the loop, asserts every PI code / slicer value / decision. |
-| `run_lockstep.sh` | generate → `iverilog` compile → `vvp` run, both checks. |
+| `sliding_mlsd.sv` / `tb_sliding_mlsd.sv` | the sliding-detector MLSD and its testbench (`fixed_mlsd._sliding_fixed_py`). |
+| `run_lockstep.sh` | generate → `iverilog` compile → `vvp` run, all three checks. |
 
 ## Run
 
@@ -37,6 +44,7 @@ sudo apt-get install -y iverilog      # Icarus Verilog
 bash rtl/run_lockstep.sh
 # -> LOCKSTEP PASS  n=1985  errors=0
 # -> LOOP LOCKSTEP PASS  n=3000  errors=0
+# -> MLSD LOCKSTEP PASS  n=4000  flips=81  errors=0
 ```
 
 `tests/test_rtl_lockstep.py` runs the same flow (skipped if `iverilog` is

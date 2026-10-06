@@ -639,7 +639,18 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     head = (eq_final[eq_pre_f: eq_pre_f + n_t] / eq_final[eq_pre_f]
             if pr.active else None)
     dec_slicer = dec
-    dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios, head)
+    if fixed is not None and cfg.rx.mlsd.kind == "sliding":
+        # the bit-true detector on the loop's slicer words (dsp/fixed_mlsd.py)
+        from ..dsp.fixed_mlsd import build_fixed_sliding, run_fixed_sliding
+
+        fl, rec = fixed["loop"], fixed["record"]
+        fsd = build_fixed_sliding(cfg, float(resid_ratios[0]), fl.levels_out,
+                                  fl.out_lsb, fl.out_bits)
+        dec = run_fixed_sliding(fsd, rec["v_out"][:n_run], dec[:n_run], fl.levels_out)
+        fixed["mlsd"] = {"detector": fsd, "dec": dec}
+    else:
+        # (in fixed mode a Viterbi still runs in float, on the loop's slicer values)
+        dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios, head)
 
     warm = warmup_symbols(cfg, train_end, n_run)
     # score() undoes the precoder first: the slicer decided line symbols

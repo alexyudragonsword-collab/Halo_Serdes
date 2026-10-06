@@ -6,6 +6,18 @@
 
 ---
 
+## [未发布] — 定点 sliding-detector MLSD 与 RTL 对照(原 ROADMAP P1 #1 的 MLSD 部分)
+
+### 新增
+- `dsp/fixed_mlsd.py`:DragonPHY 式误差事件后检测器的整数版 —— 逐电平反馈表、整数残差、平方右移 `sq_shift`
+  后求和并饱和、margin 换算到度量 LSB、两遍;假设翻转时按定义重算受影响的两个残差(不减预算签名,
+  舍入后两者不等)。`numeric.mlsd_metric_bits`(默认 24)。
+- 定点模式下 `rx.mlsd.kind: sliding` 跑整数检测器(在定点环路的 slicer 字上),`extras["fixed"]["mlsd"]` 记录;
+  `viterbi` 仍为浮点。
+- `rtl/sliding_mlsd.sv` + `tb_sliding_mlsd.sv`,`run_lockstep.sh` 第三段(向量:强残差后光标的合成流,81 次翻转)。
+- `tests/test_fixed_mlsd.py`:纠错增益;浮点运算精确时与浮点检测器逐符号一致;独立参考(非均匀电平、移位、饱和、margin);
+  JIT = Python;引擎接线可重放。
+
 ## [未发布] — 定点 CDR 闭环与 RTL 对照(原 ROADMAP P1 #1 的 CDR 部分)
 
 ### 新增

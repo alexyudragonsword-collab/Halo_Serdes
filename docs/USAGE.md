@@ -500,6 +500,7 @@ dump_sv_package("vectors/dims.svh", art)     # 维度与移位量,RTL 与 Python
 sudo apt-get install -y iverilog
 bash rtl/run_lockstep.sh          # -> LOCKSTEP PASS  n=1985  errors=0
                                   # -> LOOP LOCKSTEP PASS  n=3000  errors=0
+                                  # -> MLSD LOCKSTEP PASS  n=4000  flips=81  errors=0
 ```
 
 ### 带 CDR 的定点闭环(`numeric.mode: fixed`)
@@ -523,8 +524,11 @@ rx:
 - 输入字是 `2c + 1`(c 为 ADC 码):中点量化器的电平 (c + ½)·q_step,不丢半个 LSB;
 - 增益全是移位:`kp_tot = kp_shift + round(log2(L / x_lsb))`,与浮点环路差在 √2 以内;
   `float_equivalent_gains()` 给出它**精确**对应的浮点增益,字长放宽时两者收敛(`tests/test_fixed_loop.py`);
+- `rx.mlsd.kind: sliding` 在定点下跑整数版(`dsp/fixed_mlsd.py`):逐电平反馈表、残差平方右移
+  `sq_shift` 后求和并饱和到 `numeric.mlsd_metric_bits`(默认 24)、margin 换算到度量 LSB;
+  字长放宽时与浮点检测器判决一致。`viterbi` 在定点下仍是浮点(跑在定点 slicer 值上);
 - 不建模(直接报错):mixed-signal(DFE / CDR 是模拟的)、PR 目标、`sim.stream`、非 2 的幂 lane 数;
-  自适应(权重来自浮点训练)与 MLSD 定点化尚未做(ROADMAP P1 #1)。
+  自适应(权重来自浮点训练)尚未定点化(ROADMAP P1 #1)。
 
 RTL 对照的是"ADC 字之后"的部分:`replay_digital()` 从记录的 ADC 字流重放数字后端,与闭环逐位相同;
 `rtl/adc_dsp_loop.sv` 是它的独立 SV 实现,`run_lockstep.sh` 的第二段逐位比对 PI 码、slicer 值与判决。
