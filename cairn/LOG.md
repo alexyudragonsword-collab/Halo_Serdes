@@ -12,6 +12,7 @@
 - 观察:宽测试用的 a 步长 2e-2 下,a 在 20k 符号里随机游走 0.43 → ~0.32(定点 / 浮点都如此,等效步长比 0.90),
   误码跟着各自游到哪(117 vs 42)—— 是步长问题不是字长;默认步长 2e-4 下两者误码 5 vs 8。
 - 剩余:定点 Viterbi → ROADMAP P1 #1(已改写)。
+- PR #33;CI 全部 test job + rtl-lockstep 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):795 passed / 1 skipped(+17);定点 nojit 41 passed / 2 skipped;浮点指纹逐位同。
 
 ## 2026-10-06 · 定点训练 + 整数 LMS(feat/fixed-lms,ROADMAP P1 #1 的自适应部分)
