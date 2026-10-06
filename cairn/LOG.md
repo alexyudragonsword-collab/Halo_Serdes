@@ -15,6 +15,7 @@
 - 收敛:pi_bits 16、权重 32 位、slicer 44 位时与浮点 ADC 内核相位差 < 1e-3 采样、判决差 < 1e-3,
   ADC 字只在 PI 步把采样推过量化门限处偶有 ±1(< 0.1%)。默认字长误码与浮点同量级。
 - 剩余:定点 MLSD、整数 LMS → ROADMAP P1 #1(已改写)。
+- PR #30;CI 全部 test job + rtl-lockstep 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT,本机装了 iverilog,lockstep 两项也跑):767 passed / 1 skipped;定点相关 nojit 21 passed / 1 skipped;浮点指纹 506 + 44 值逐位同。
 - 顺带:仓库里提交的 `rtl/vectors/` 是很早(90bd81f)生成的旧向量,main 现在重生成就与之不同(已用 main 的 worktree 验证,与本分支一致),这次一并刷新。
 
