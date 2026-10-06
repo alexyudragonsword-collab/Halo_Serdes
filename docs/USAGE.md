@@ -566,7 +566,13 @@ RTL 对照的是"ADC 字之后"的部分:`replay_digital()` 从记录的 ADC 字
   单极点用统计引擎本来就用的 `TxPipeline.driver_response` —— 其余随机抽取(比较器失调、Rx 时钟、ADC 失配与噪声)
   一个不差。所以流式与默认是**同一个链路实例**,结果统计一致(SNR 差 < 0.1 dB、误码数在 Poisson 内,
   `tests/test_stream.py`),不逐位;流式内部,任意 `chunk_symbols` 逐位一致。
-  暂不支持(会直接报错,不静默退回):IBIS-AMI、光拓扑、串扰注入、`collect_jitter`;`collect_eye` 支持(取波形开头)。
+  光拓扑(两段 / 带 E/O 曲线的三段)、串扰注入、Init 流程的 AMI、`collect_jitter`、`collect_eye`(取波形开头)都能流式:
+  光路各段本来就是线性卷积(`fft_filter`),换成 FIR 只差舍入;光电二极管噪声逐样本用**默认引擎同一批抽样**、σ 按该样本
+  自己的功率;每个攻击者用自己的种子抽同样的符号、过耦合 FIR;`collect_jitter` 在波形流过时按块收集过零点
+  (`analysis.jitter.CrossingCollector`,与整段计算逐位同),Tx 与纯信道两级各自再流一遍,接收端节点在加噪前抽头。
+  不加 Tx 极点时 Tx 级的 TIE 与默认引擎逐位同,其余两级差在 FIR 舍入(1e-6 UI 量级)。
+  不支持(直接报错,不静默退回):AMI 的 GetWave 流程 —— `AmiModel.get_wave` 一次吃整段波形,没有分块协议,
+  真实模型跨调用的状态也由模型自己管;Init 流程的模型并进冲激响应,照常流式。
 - 扫描优先用 `run_statistical`,它不生成波形。
 
 ---

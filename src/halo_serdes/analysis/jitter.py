@@ -52,15 +52,80 @@ def tie_from_crossings(xings: np.ndarray, ui: float) -> tuple[np.ndarray, np.nda
     return xings - slots * ui, slots.astype(np.int64)
 
 
+def edge_crossings(y: np.ndarray, dt: float, thresh: float = 0.0
+                   ) -> tuple[np.ndarray, np.ndarray]:
+    """Crossing times [s], and whether each edge rises (from the sample after it)."""
+    xings = find_crossings(y, dt, thresh)
+    ridx = np.clip((xings / dt).astype(np.int64) + 1, 0, y.size - 1)
+    return xings, y[ridx] > thresh
+
+
+class CrossingCollector:
+    """:func:`edge_crossings` of a waveform that arrives in pieces.
+
+    Gives the whole-array result exactly, whatever the pieces: a crossing
+    between samples i and i + 1 is classified from sample i + 1 or i + 2 (the
+    float division can land either side of an integer), so the last two
+    samples wait for the next piece, and :meth:`result` settles them with the
+    whole-array clip at the end. Holds two numbers per edge, not the waveform.
+    """
+
+    def __init__(self, dt: float, thresh: float = 0.0):
+        self.dt, self.thresh = dt, thresh
+        self.tail = np.zeros(0)
+        self.off = 0                 # absolute index of tail[0]
+        self.first = None            # sample 0
+        self.xings: list[np.ndarray] = []
+        self.rising: list[np.ndarray] = []
+
+    def _take(self, buf: np.ndarray, last: int, n_total: int) -> None:
+        """The crossings that start at local indices below ``last``."""
+        s = np.signbit(buf - self.thresh)
+        idx = np.nonzero(s[:-1] != s[1:])[0]
+        idx = idx[idx < last]
+        frac = (self.thresh - buf[idx]) / (buf[idx + 1] - buf[idx])
+        xg = ((idx + self.off) + frac) * self.dt
+        ridx = np.clip((xg / self.dt).astype(np.int64) + 1, 0, n_total - 1)
+        # a -0.0 next to +0.0 is a crossing with a NaN time, whose index the
+        # whole-array clip sends to sample 0 -- long gone from the buffer
+        here = ridx >= self.off
+        val = np.full(idx.size, self.first)
+        val[here] = buf[ridx[here] - self.off]
+        self.xings.append(xg)
+        self.rising.append(val > self.thresh)
+
+    def feed(self, y: np.ndarray) -> None:
+        buf = np.concatenate([self.tail, np.asarray(y, dtype=np.float64)])
+        if self.first is None and buf.size:
+            self.first = float(buf[0])
+        if buf.size < 3:
+            self.tail = buf
+            return
+        # a crossing starting before buf.size - 2 has its i + 2 in hand
+        self._take(buf, buf.size - 2, np.iinfo(np.int64).max)
+        self.tail = buf[buf.size - 2:]
+        self.off += buf.size - 2
+
+    def result(self) -> tuple[np.ndarray, np.ndarray]:
+        if self.tail.size >= 2:
+            self._take(self.tail, self.tail.size, self.off + self.tail.size)
+            self.off += self.tail.size
+        self.tail = np.zeros(0)
+        return (np.concatenate(self.xings) if self.xings else np.zeros(0),
+                np.concatenate(self.rising) if self.rising else np.zeros(0, dtype=bool))
+
+
 def calc_jitter(y: np.ndarray, dt: float, ui: float, pattern_len: int,
                 thresh: float = 0.0, rel_thresh: float = 3.0) -> JitterResult:
     """Full decomposition of a repeating-pattern waveform's zero crossings."""
-    xings = find_crossings(y, dt, thresh)
-    tie, slots = tie_from_crossings(xings, ui)
+    xings, rising = edge_crossings(y, dt, thresh)
+    return jitter_from_crossings(xings, rising, ui, pattern_len, rel_thresh)
 
-    # rising/falling classification from post-crossing slope
-    ridx = np.clip((xings / dt).astype(np.int64) + 1, 0, y.size - 1)
-    rising = y[ridx] > thresh
+
+def jitter_from_crossings(xings: np.ndarray, rising: np.ndarray, ui: float,
+                          pattern_len: int, rel_thresh: float = 3.0) -> JitterResult:
+    """:func:`calc_jitter` from the crossings (:func:`edge_crossings`)."""
+    tie, slots = tie_from_crossings(xings, ui)
 
     # --- 1. pattern averaging, rising/falling separated (PyBERT method:
     # polarity split keeps DCD out of the ISI number) ---
@@ -200,11 +265,17 @@ def stage_jitter_budget(stages: dict[str, np.ndarray], dt: float, ui: float,
     oversampled waveform samples. Returns label -> JitterResult. This is the
     per-stage jitter budget PyBERT produces on every run; here it is an
     opt-in analysis pass over waveforms captured by the time engine.
+
+    A stage may also be a :class:`CrossingCollector` that saw the waveform
+    in pieces (the streamed engine); the result is the same.
     """
     out: dict[str, JitterResult] = {}
     for name, y in stages.items():
-        out[name] = calc_jitter(np.asarray(y, dtype=np.float64), dt, ui,
-                                 pattern_len, thresh, rel_thresh)
+        if isinstance(y, CrossingCollector):
+            out[name] = jitter_from_crossings(*y.result(), ui, pattern_len, rel_thresh)
+        else:
+            out[name] = calc_jitter(np.asarray(y, dtype=np.float64), dt, ui,
+                                     pattern_len, thresh, rel_thresh)
     return out
 
 

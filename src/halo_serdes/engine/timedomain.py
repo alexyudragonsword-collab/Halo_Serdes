@@ -53,16 +53,34 @@ def _stage_jitter(cfg: LinkConfig, stages: dict[str, np.ndarray]) -> dict | None
     are taken at the center threshold (0) — for PAM4 this measures the middle
     eye, the standard timing reference.
     """
-    from ..analysis.jitter import pattern_period, stage_jitter_budget
+    from ..analysis.jitter import stage_jitter_budget
+
+    plen, instead = _jitter_period(cfg)
+    if plen is None:
+        return instead
+    return stage_jitter_budget(stages, cfg.dt, cfg.ui, plen, thresh=0.0)
+
+
+def _jitter_period(cfg: LinkConfig):
+    """``(pattern period, None)``, or ``(None, what to return instead)``."""
+    from ..analysis.jitter import pattern_period
 
     try:
         plen = pattern_period(cfg.sim.pattern, cfg.modulation)
     except ValueError:
-        return None
+        return None, None
     if cfg.sim.n_symbols < 4 * plen:
-        return {"_note": (f"pattern period {plen} symbols needs >=4 reps for "
-                          f"decomposition; ran {cfg.sim.n_symbols}")}
-    return stage_jitter_budget(stages, cfg.dt, cfg.ui, plen, thresh=0.0)
+        return None, {"_note": (f"pattern period {plen} symbols needs >=4 reps for "
+                                f"decomposition; ran {cfg.sim.n_symbols}")}
+    return plen, None
+
+
+def _stream_jitter(cfg: LinkConfig, rx, jitter_budget):
+    """The streamed run's per-stage budget, once its receiver has run (the
+    full-waveform run's is already in ``jitter_budget``)."""
+    if isinstance(rx, np.ndarray) or rx.jitter is None:
+        return jitter_budget
+    return _stage_jitter(cfg, rx.jitter_stages())
 
 
 def _tx_symbols(cfg: LinkConfig, symbols: np.ndarray) -> np.ndarray:
@@ -132,7 +150,7 @@ def _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami):
     possibly-modified ``(h, tx_wave_y)``; the caller applies Rx GetWave after
     the channel pass.
     """
-    tx_y = tx_wave.y
+    tx_y = None if tx_wave is None else tx_wave.y
     if tx_ami is not None:
         if tx_ami.has_getwave:
             tx_y, _ = tx_ami.get_wave(tx_y, cfg.dt, cfg.ui)
@@ -204,7 +222,7 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
     if channel is None:
         channel = ChannelModel.from_config(cfg)
     if cfg.sim.stream:
-        _check_streamable(channel, tx_ami, rx_ami, xtalk, collect_jitter)
+        _check_streamable(tx_ami, rx_ami)
     ch_rs = channel.response_set(cfg.dt)
     h = ch_rs.h.y
     if cfg.rx.ctle.enable:
@@ -214,19 +232,6 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
         h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: h.size * 2]
     h = h * cfg.rx.vga_gain
 
-    if cfg.sim.stream:
-        from .stream import build_stream, skip_normals
-
-        # the noise is the default engine's white draws (a copy of the
-        # generator at that point reads them as the receiver goes), and the
-        # link's generator skips past them, so the comparator offsets, the Rx
-        # clock and the ADC draw what they draw without streaming
-        noise_rng = None
-        if cfg.rx.noise_rms > 0:
-            noise_rng = copy.deepcopy(rng)
-            skip_normals(rng, v_sym.size * osr)
-        return h, build_stream(cfg, tx_pipe, v_sym, jit, h, noise_rng), None
-
     # optical topology: the response is the two stages' convolution, so it
     # lines up with the waveform that is built in two stages below
     stages = _optical_stages(cfg, channel, tx_ami, rx_ami)
@@ -234,7 +239,32 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
         h = _chain(stages)
 
     # --- optional AMI Tx/Rx models (Init folds into h, GetWave into the wave) ---
-    h, tx_y = _apply_ami(cfg, h, tx_wave, tx_ami, rx_ami)
+    h, tx_y = _apply_ami(cfg, h, None if cfg.sim.stream else tx_wave, tx_ami, rx_ami)
+
+    if cfg.sim.stream:
+        from .stream import OpticalPath, build_stream, skip_normals
+
+        # every white draw is the default engine's: a copy of the generator
+        # where the default engine draws a waveform's worth reads them as the
+        # receiver goes, and the link's generator skips past them -- the
+        # photodiode noise, then the receiver noise -- so the comparator
+        # offsets, the Rx clock and the ADC draw what they draw without
+        # streaming
+        n_total = v_sym.size * osr
+        optical = None
+        if stages is not None:
+            optical = OpticalPath(tuple(stages), channel.optical, copy.deepcopy(rng))
+            skip_normals(rng, n_total)
+        noise_rng = None
+        if cfg.rx.noise_rms > 0:
+            noise_rng = copy.deepcopy(rng)
+            skip_normals(rng, n_total)
+        jitter_h = (ch_rs.h.y * cfg.rx.vga_gain
+                    if collect_jitter and _jitter_period(cfg)[0] is not None else None)
+        # the budget itself comes after the receiver (_stream_jitter)
+        return h, build_stream(cfg, tx_pipe, v_sym, jit, h, noise_rng, optical,
+                               xtalk or (), jitter_h), \
+            (_jitter_period(cfg)[1] if collect_jitter else None)
 
     rx_y = fft_filter(tx_y, h) if stages is None else _optical_pass(tx_y, stages, channel, rng)
     if rx_ami is not None and rx_ami.has_getwave:
@@ -258,21 +288,18 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
     return h, rx_y, jitter_budget
 
 
-def _check_streamable(channel, tx_ami, rx_ami, xtalk, collect_jitter) -> None:
+def _check_streamable(tx_ami, rx_ami) -> None:
     """What needs the whole waveform at once cannot stream; say so instead
-    of quietly falling back to the full-length engine."""
-    why = []
-    if tx_ami is not None or rx_ami is not None:
-        why.append("IBIS-AMI models")
-    if getattr(channel, "optical", None) is not None:
-        why.append("an optical topology")
-    if xtalk:
-        why.append("crosstalk aggressors")
-    if collect_jitter:
-        why.append("the per-stage jitter budget (collect_jitter)")
-    if why:
-        raise ValueError("sim.stream does not support " + ", ".join(why)
-                         + " yet: they work on the whole waveform; run with sim.stream=False")
+    of quietly falling back to the full-length engine.
+
+    An AMI GetWave call takes the whole waveform here (``AmiModel.get_wave``
+    has no block protocol and a real model's state across calls is its
+    own), so only Init-only models, which fold into the impulse, stream.
+    """
+    if any(m is not None and m.has_getwave for m in (tx_ami, rx_ami)):
+        raise ValueError("sim.stream does not support AMI models in the GetWave flow: "
+                         "GetWave takes the whole waveform; run with sim.stream=False, "
+                         "or use the model's Init flow")
 
 
 def _run_rx(run, rx, cfg: LinkConfig, progress):
@@ -433,6 +460,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         float(mu), LMS_BATCH_SYMBOLS, float(kp), float(ki), float(clamp),
         float(sum_alpha), sched.reference, int(train_end), int(settle),
         int(tap1_unrolled), branch_off, rx_clk), rx_y, cfg, progress)
+    jitter_budget = _stream_jitter(cfg, rx_y, jitter_budget)
 
     n_run = dec.size
     # --- optional MLSD over the postcursors the DFE left behind ---
@@ -620,6 +648,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         float(alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64),
         float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1)),
         rx_y, cfg, progress)
+    jitter_budget = _stream_jitter(cfg, rx_y, jitter_budget)
 
     fixed = None
     if cfg.numeric.mode == "fixed":

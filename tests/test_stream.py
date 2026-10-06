@@ -21,6 +21,7 @@ from halo_serdes.cdr.kernels import ms_rx, _ms_rx_py
 from halo_serdes.channel import ChannelModel
 from halo_serdes.engine import run_time_link
 from halo_serdes.engine.stream import Fir, Lead, NoiseSource, ZohSource, noise_fir
+from halo_serdes.io.ami import NativeFirAmi
 from halo_serdes.tx.jitter import jittered_zoh
 from test_chunked_kernels import _adc_cfg, _chunked, _ms_cfg, _same
 
@@ -131,14 +132,151 @@ def test_streamed_eye_is_the_head_of_the_waveform():
     assert np.std(st.eye_data - full.eye_data) < 0.2 * cfg.rx.noise_rms
 
 
-@pytest.mark.parametrize("what", ["jitter", "xtalk"])
-def test_what_needs_the_whole_waveform_says_so(what):
+@pytest.mark.parametrize("side", ["tx", "rx"])
+def test_what_needs_the_whole_waveform_says_so(side):
+    """An AMI GetWave call takes the whole waveform."""
     cfg = _streamed(_ms_cfg(4_000))
-    with pytest.raises(ValueError, match="sim.stream does not support"):
-        if what == "jitter":
-            run_time_link(cfg, collect_jitter=True)
-        else:
-            run_time_link(cfg, xtalk=[object()])     # refused before it is looked at
+    model = NativeFirAmi([1.0, -0.1], has_getwave=True)
+    with pytest.raises(ValueError, match="sim.stream does not support AMI models in the GetWave"):
+        run_time_link(cfg, **{f"{side}_ami": model})
+
+
+# ---------------------------------------------------------------- coverage
+# (ROADMAP P2 #2): optical topologies, crosstalk, Init-flow AMI, collect_jitter
+
+
+def _agrees(full, st, snr_db=0.1):
+    """The test_streamed_agrees_with_the_default_engine criterion."""
+    assert st.ber.n_checked == full.ber.n_checked
+    assert abs(st.slicer_snr_db - full.slicer_snr_db) < snr_db, (st.slicer_snr_db,
+                                                                 full.slicer_snr_db)
+    e1, e2 = full.ber.n_errors, st.ber.n_errors
+    assert abs(e1 - e2) <= 3 * np.sqrt(e1 + e2) + 3, (e1, e2)
+
+
+def _both_ways(cfg, n_err_min, **kw):
+    """Default vs streamed (statistically), and streamed whole vs streamed in
+    chunks of 997 and 1 symbols (bit for bit)."""
+    cm = ChannelModel.from_config(cfg)
+    full = run_time_link(cfg, channel=cm, **kw)
+    st = run_time_link(_streamed(cfg), channel=cm, **kw)
+    assert full.ber.n_errors >= n_err_min, full.ber.n_errors     # something to compare
+    _agrees(full, st)
+    for chunk in (997, 1):
+        _same(st, run_time_link(_chunked(_streamed(cfg), chunk), channel=cm, **kw))
+    return full, st
+
+
+def _optical(cfg, **opt):
+    t = cfg.topology
+    return dataclasses.replace(cfg, topology=dataclasses.replace(
+        t, optical=dataclasses.replace(t.optical, **opt)))
+
+
+@pytest.mark.parametrize("arch,curve", [("adc_dsp", False), ("adc_dsp", True),
+                                        ("mixed_signal", False)],
+                         ids=["adc", "adc_li_curve", "mixed_signal"])
+def test_optical_topology_streams(arch, curve):
+    """Two LTI stages around the level-dependent photodiode noise (three, with
+    the E/O curve between the drive and the optics). The photodiode draws are
+    the default engine's, sample for sample, and the stages are its linear
+    convolutions as FIRs: the receiver noise filter is the only other operator."""
+    from test_optical import _adc_cfg as opt_adc, _ms_cfg as opt_ms
+
+    cfg = opt_adc(4.5, -8.0, n_sym=30_000) if arch == "adc_dsp" else opt_ms(4.5, -18.0, n_sym=30_000)
+    if curve:
+        cfg = _optical(cfg, li_compression=0.4)
+    _both_ways(cfg, 100)
+
+
+def test_optical_photodiode_draws_are_the_default_engines():
+    """With the receiver noise off the streamed optical chain is the default
+    one up to the FIR's rounding: the same decisions on a noisy link."""
+    from test_optical import _adc_cfg as opt_adc
+
+    cfg = opt_adc(4.5, -8.0, n_sym=20_000)
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=0.0))
+    cm = ChannelModel.from_config(cfg)
+    full = run_time_link(cfg, channel=cm)
+    st = run_time_link(_streamed(cfg), channel=cm)
+    assert full.ber.n_errors > 50
+    assert np.array_equal(full.extras["decisions"], st.extras["decisions"])
+    assert np.allclose(full.y_slicer, st.y_slicer, atol=1e-9)
+
+
+@pytest.mark.parametrize("make", [_ms_cfg, _adc_cfg], ids=["mixed_signal", "adc_dsp"])
+def test_crosstalk_streams(make):
+    """Each aggressor's own draws, held and filtered by its coupling as an FIR."""
+    from halo_serdes.channel.crosstalk import synthetic_aggressor
+
+    cfg = make(30_000)
+    fext = synthetic_aggressor("fext", -16.0, cfg.ui, cfg.dt, seed=11)
+    nxt = synthetic_aggressor("next", -20.0, cfg.ui, cfg.dt, seed=22)
+    _both_ways(cfg, 30, xtalk=[fext, nxt])
+
+
+def test_init_flow_ami_streams():
+    """Init-only models fold into the impulse, which streams like any other."""
+    cfg = _ms_cfg(30_000)
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=10 * cfg.rx.noise_rms))
+    tx = NativeFirAmi([-0.05, 0.9, -0.05], n_pre=1, sample_spaced=False, has_getwave=False)
+    rx = NativeFirAmi([1.0, 0.1], has_getwave=False)
+    _both_ways(cfg, 30, tx_ami=tx, rx_ami=rx)
+
+
+def test_crossing_collector_is_the_whole_array_result():
+    """Whatever the pieces -- one sample, two, odd sizes -- the crossings and
+    their rising flags are the whole-array ones, bit for bit, including
+    samples exactly on the threshold (a -0.0 next to a +0.0 is a crossing
+    at a NaN time) and a crossing in the last two samples."""
+    from halo_serdes.analysis.jitter import CrossingCollector, edge_crossings
+
+    rng = np.random.default_rng(4)
+    y = np.round(np.sin(np.arange(20_000) * 0.37) * 4 + rng.normal(scale=0.5, size=20_000))
+    y[-2:] = [-1.0, 1.0]
+    want = edge_crossings(y, 1e-12)
+    assert np.sum(y == 0.0) > 100
+    for sizes in ([y.size], [1], [2], [1, 2, 3, 997], [5_000, 1, 1]):
+        col = CrossingCollector(1e-12)
+        i = k = 0
+        while i < y.size:
+            m = sizes[k % len(sizes)]
+            col.feed(y[i: i + m])
+            i += m
+            k += 1
+        got = col.result()
+        assert np.array_equal(got[0], want[0], equal_nan=True), sizes
+        assert np.array_equal(got[1], want[1]), sizes
+
+
+def test_jitter_budget_streams():
+    """The per-stage budget from crossings collected as the stream passes.
+    Without a Tx pole the Tx stage is the default engine's waveform exactly,
+    so its edges are too; the channel and receiver stages differ by the FIR
+    rounding (and the receiver one by nothing else: it is tapped before the
+    noise). Collecting changes nothing about the run."""
+    cfg = _ms_cfg(40_000)
+    cm = ChannelModel.from_config(cfg)
+    full = run_time_link(cfg, channel=cm, collect_jitter=True)
+    st = run_time_link(_streamed(cfg), channel=cm, collect_jitter=True)
+    jf, js = full.extras["jitter_budget"], st.extras["jitter_budget"]
+    assert set(jf) == set(js) == {"tx", "chnl", "ctle"}
+    assert np.array_equal(jf["tx"].tie, js["tx"].tie)
+    for k in ("chnl", "ctle"):
+        assert jf[k].tie.size == js[k].tie.size
+        assert np.allclose(jf[k].tie, js[k].tie, atol=1e-6 * cfg.ui), k
+        for q in ("isi", "dcd", "pj", "rj"):
+            assert abs(getattr(jf[k], q) - getattr(js[k], q)) < 1e-4 * cfg.ui, (k, q)
+    plain = run_time_link(_streamed(cfg), channel=cm)
+    _same(plain, st)
+    again = run_time_link(_chunked(_streamed(cfg), 997), channel=cm, collect_jitter=True)
+    for k in js:
+        assert np.array_equal(js[k].tie, again.extras["jitter_budget"][k].tie)
+    # too short a run for the decomposition: the same note as the default engine
+    short = _ms_cfg(2_000)
+    note = run_time_link(_streamed(short), collect_jitter=True).extras["jitter_budget"]
+    assert note == run_time_link(short, collect_jitter=True).extras["jitter_budget"]
+    assert "_note" in note
 
 
 @needs_jit

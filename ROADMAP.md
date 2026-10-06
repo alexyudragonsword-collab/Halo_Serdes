@@ -20,13 +20,8 @@ SV 逐位对照,见 CHANGELOG 与 `rtl/README.md`;原 #2 流式见 P2 #2;原 #3 
 
 ## P2 — 一致性与交付
 
-### 2. 流式模式(`sim.stream`)尚未覆盖的路径
-**现状**:流式(2026-10-05,原 P1 #2)只接了电链路:Tx(含 DAC、驱动曲线、`tx.bw`)→ 信道 + CTLE + VGA → 噪声 → 两种接收机。
-IBIS-AMI、光拓扑(两段/三段 + 电平相关噪声)、串扰注入、`collect_jitter` 在流式下直接报错(`engine/timedomain.py::_check_streamable`)。
-**为什么要紧**:光链路的深 BER 恰是长码流的主要用户;现在只能走默认引擎,受全量波形内存限制。
-**怎么做**:光路的 `fft_filter` 段换 `stream.Fir`;`OpticalNoise.inject` 与大信号曲线是逐样本的,先确认它们的随机抽取能按块读;
-串扰同理(每个攻击者一条 `Fir`)。AMI GetWave 是黑盒、按整段调用,可能只能保留"不支持"。`collect_jitter` 需要改成累积统计量。
-**验收**:每条新路径都有"流式 vs 默认统计一致 + 流式分块逐位一致"两条测试(`tests/test_stream.py` 的范式)。
+(2026-10-06 清空:原 #2 流式覆盖 —— 光拓扑、串扰、Init 流程 AMI、`collect_jitter` 已接入流式,见 CHANGELOG;
+AMI GetWave 记入下方「边界」。)
 
 ---
 
@@ -80,6 +75,8 @@ IBIS-AMI、光拓扑(两段/三段 + 电平相关噪声)、串扰注入、`colle
   bit-exact 的 FFE+DFE lockstep,证明范式可行,不追求全芯片。
 - FPGA AMS 混合仿真、物理实现流(综合 / PnR / DRC)、片上 BIST/DFT/JTAG。
 - 晶体管级模拟前端 —— CTLE/VGA 是传函行为模型,不是电路。
+- 流式模式下的 IBIS-AMI GetWave —— `AmiModel.get_wave` 一次处理整段波形;按块调用要模型自带跨调用状态,
+  且结果是否与块长无关由模型决定,框架无法保证"分块逐位一致"。Init 流程的模型可以流式。
 
 ---
 
