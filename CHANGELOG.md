@@ -6,6 +6,18 @@
 
 ---
 
+## [未发布] — 流式模式覆盖光链路、串扰、AMI Init、抖动分解(原 ROADMAP P2 #2)
+
+### 新增 / 变更
+- `sim.stream` 支持光拓扑:两段(相位节点前后各一条 FIR,中间按样本功率注入光电二极管噪声)与带 E/O 大信号曲线的三段;
+  光噪声逐样本用默认引擎同一批白噪抽样(拷贝生成器、主生成器跳过),两种引擎是同一个链路实例。
+- 串扰攻击者流式:同一种子抽同样的符号(`XtalkAggressor.symbol_volts`),保持后过耦合 FIR。
+- Init 流程的 AMI 模型(并进冲激响应)流式;GetWave 流程仍报错,记入 ROADMAP「边界」。
+- `collect_jitter` 流式:`analysis.jitter.CrossingCollector` 按块收集过零点,与整段 `edge_crossings` 逐位同;
+  `calc_jitter` 拆成 `edge_crossings` + `jitter_from_crossings`(默认引擎结果不变)。
+- 测试:每条新路径"流式 vs 默认统计一致 + 流式分块(997 / 1 符号)逐位一致";无接收噪声的光链路判决与默认引擎逐个相同;
+  不加 Tx 极点时 Tx 级 TIE 与默认引擎逐位同;开 `collect_jitter` 不改变任何结果。
+
 ## [未发布] — 定点 Viterbi MLSD(原 ROADMAP P1 #1 收尾)
 
 ### 新增

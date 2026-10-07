@@ -75,6 +75,16 @@ class XtalkAggressor:
         convolves with the coupling response, and returns exactly
         ``n_samples`` samples aligned to the victim time grid.
         """
+        agg_tx = hold(self.symbol_volts(n_samples, osr, modulation), osr)
+        y = np.convolve(agg_tx, self.coupling)[:n_samples]
+        if y.size < n_samples:
+            y = np.pad(y, (0, n_samples - y.size))
+        return y
+
+    def symbol_volts(self, n_samples: int, osr: int,
+                     modulation: str | None = None) -> np.ndarray:
+        """The aggressor's per-UI Tx volts behind :meth:`time_contribution`
+        (the streamed engine holds and filters them block by block)."""
         mod = modulation if modulation is not None else self.modulation
         rng = np.random.default_rng(self.seed)
         n_sym = n_samples // osr + self.coupling.size // osr + 2
@@ -84,12 +94,7 @@ class XtalkAggressor:
         else:
             lv = nrz_levels(self.swing)
             sym = rng.integers(0, 2, size=n_sym)
-        v = lv[sym]
-        agg_tx = hold(v, osr)
-        y = np.convolve(agg_tx, self.coupling)[:n_samples]
-        if y.size < n_samples:
-            y = np.pad(y, (0, n_samples - y.size))
-        return y
+        return lv[sym]
 
 
 def synthetic_aggressor(kind: str, coupling_db: float, ui: float, dt: float,

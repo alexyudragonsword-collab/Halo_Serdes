@@ -22,8 +22,11 @@ the whole waveform, where every output sample depends on every input one:
   brick wall over the whole draw.
 
 Every other random draw (comparator offsets, Rx clock, ADC mismatch and
-noise) is the default engine's too, so the two runs are the same link
-instance and differ only by those two filters.
+noise, the photodiode noise of an optical topology, the crosstalk
+aggressors' data) is the default engine's too, so the two runs are the same
+link instance and differ only by those two filters. The optical stages and
+the aggressors' couplings are linear convolutions in the default engine as
+well (``fft_filter``, ``np.convolve``); as FIRs they differ by rounding.
 
 Both are the same operators statistically, so a streamed run agrees with
 the default one within its error counts (``tests/test_stream.py`` pins it),
@@ -35,6 +38,7 @@ the kernels read absolute positions whatever window they are handed.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -182,6 +186,59 @@ class Sum:
         return self.a.read(m) + self.scale_b * self.b.read(m)
 
 
+class HoldSource:
+    """``core.sampler.hold`` of per-UI values, read in order (zeros past the end)."""
+
+    def __init__(self, v: np.ndarray, osr: int):
+        self.v = np.asarray(v, dtype=np.float64)
+        self.osr = osr
+        self.pos = 0
+
+    def read(self, m: int) -> np.ndarray:
+        k = (self.pos + np.arange(m)) // self.osr
+        self.pos += m
+        y = np.zeros(m)
+        ok = k < self.v.size
+        y[ok] = self.v[k[ok]]
+        return y
+
+
+class Map:
+    """A memoryless stage, sample by sample (the E/O curve)."""
+
+    def __init__(self, src, f):
+        self.src, self.f = src, f
+
+    def read(self, m: int) -> np.ndarray:
+        return self.f(self.src.read(m))
+
+
+class OpticalNoiseStage:
+    """``OpticalNoise.inject`` in order: sample t takes the t-th draw of
+    ``rng`` and a sigma set by its own power, however the stream is read."""
+
+    def __init__(self, src, noise, rng: np.random.Generator):
+        self.src, self.noise, self.rng = src, noise, rng
+
+    def read(self, m: int) -> np.ndarray:
+        return self.noise.inject(self.src.read(m), self.rng)
+
+
+class Tap:
+    """Passes the stream through and shows its first ``n`` samples to
+    ``sink.feed`` (the stages past the end are the FIR blocks' padding)."""
+
+    def __init__(self, src, sink, n: int):
+        self.src, self.sink, self.left = src, sink, int(n)
+
+    def read(self, m: int) -> np.ndarray:
+        y = self.src.read(m)
+        if self.left > 0:
+            self.sink.feed(y[: self.left])
+            self.left -= min(self.left, y.size)
+        return y
+
+
 def skip_normals(rng: np.random.Generator, n: int, block: int = 1 << 20) -> None:
     """Advance ``rng`` past ``rng.normal(size=n)`` without holding it
     (blockwise draws read the generator exactly as one draw does)."""
@@ -216,28 +273,104 @@ class StreamRx:
         self.n_total = int(n_total)
         self.block = block
         self.head = None        # first samples, kept for the eye diagram
+        self.jitter = None      # (collectors, the Tx and channel-only streams)
 
     def keep_head(self, n: int) -> None:
         self.head_len = min(int(n), self.n_total)
         self.head = np.zeros(0)
 
+    @property
+    def drain(self) -> bool:
+        """Whether the whole stream has to pass, even past the receiver."""
+        return self.jitter is not None
+
+    def jitter_stages(self) -> dict:
+        """The per-stage crossings ``collect_jitter`` decomposes, once the
+        receiver stream has been drained: the receiver-node tap saw it pass;
+        the Tx output and the channel-only waveform are streamed here."""
+        col, chnl = self.jitter
+        while chnl.left_to_read > 0:
+            chnl.read(min(self.block, chnl.left_to_read))
+        return col
+
+
+class _Count:
+    """Counts what is read through it (the end of a side stream)."""
+
+    def __init__(self, src, n: int):
+        self.src, self.left_to_read = src, int(n)
+
+    def read(self, m: int) -> np.ndarray:
+        self.left_to_read -= m
+        return self.src.read(m)
+
+
+@dataclass
+class OpticalPath:
+    """An optical topology as the time engine runs it (``_optical_pass``)."""
+
+    stages: tuple            # (h1, h2) or (drive, optics, receiver)
+    optical: object          # ChannelModel.optical: the curve, drive amplitude, noise
+    rng: np.random.Generator  # the photodiode noise draws
+
 
 def build_stream(cfg, tx_pipe, v_sym: np.ndarray, jitter_s: np.ndarray, h: np.ndarray,
-                 noise_rng: np.random.Generator | None) -> StreamRx:
-    """Tx -> [driver curve] -> [driver pole] -> channel (+ CTLE, VGA) [+ noise]."""
+                 noise_rng: np.random.Generator | None, optical: OpticalPath | None = None,
+                 xtalk=(), jitter_h: np.ndarray | None = None) -> StreamRx:
+    """Tx -> [driver curve] -> [driver pole] -> channel (+ CTLE, VGA), or the
+    optical stages around their noise node -> [crosstalk] [+ noise].
+
+    ``jitter_h``: the channel-only impulse for ``collect_jitter``; with it the
+    stream also collects the crossings of the Tx output, the channel-only
+    waveform and the receiver node before its noise (``jitter_stages``).
+    """
     osr = cfg.osr
+    n_total = v_sym.size * osr
     drv = tx_pipe.driver_response(osr)
     nhn = 2 * NOISE_FIR_HALF_UI * osr + 1
-    block = block_size(h.size, nhn, 0 if drv is None else drv[0].size)
-    src = ZohSource(v_sym, jitter_s, osr, cfg.ui, tx_pipe.driver_nl)
-    if drv is not None:
-        src = Lead(Fir(src, drv[0], block), drv[1])
-    rx = Fir(src, h, block)
+    lti = [h] if optical is None else list(optical.stages)
+    block = block_size(*(x.size for x in lti), nhn, 0 if drv is None else drv[0].size,
+                       *(a.coupling.size for a in xtalk))
+
+    def tx():
+        src = ZohSource(v_sym, jitter_s, osr, cfg.ui, tx_pipe.driver_nl)
+        return src if drv is None else Lead(Fir(src, drv[0], block), drv[1])
+
+    if optical is None:
+        rx = Fir(tx(), h, block)
+    else:
+        opt = optical.optical
+        if len(optical.stages) == 3:
+            hd, ho, h2 = optical.stages
+            pd = Fir(Map(Fir(tx(), hd, block),
+                         lambda y: opt.curve.apply(y, opt.drive_amplitude)), ho, block)
+        else:
+            h1, h2 = optical.stages
+            pd = Fir(tx(), h1, block)
+        rx = Fir(OpticalNoiseStage(pd, opt.noise, optical.rng), h2, block)
+    for agg in xtalk:
+        # the default engine's aggressor draws, held and filtered as they go
+        v_agg = agg.symbol_volts(n_total, osr, cfg.modulation)
+        rx = Sum(rx, Fir(HoldSource(v_agg, osr), agg.coupling, block))
+    col = None
+    if jitter_h is not None:
+        from ..analysis.jitter import CrossingCollector
+
+        col = {k: CrossingCollector(cfg.dt) for k in ("tx", "chnl", "ctle")}
+        # the receiver node before its noise, as the default engine captures it
+        rx = Tap(rx, col["ctle"], n_total)
     if cfg.rx.noise_rms > 0:
         # centred like the brick wall, so noise sample t is mostly white draw t's
         noise = Lead(Fir(NoiseSource(noise_rng), noise_fir(osr), block), NOISE_FIR_HALF_UI * osr)
         rx = Sum(rx, noise, cfg.rx.noise_rms)
-    return StreamRx(rx, v_sym.size * osr, block)
+    out = StreamRx(rx, n_total, block)
+    if col is not None:
+        # a second Tx stream (it is deterministic) feeds the channel-only FIR;
+        # with the same block its samples are the receiver chain's Tx samples
+        chnl = Tap(Fir(Tap(tx(), col["tx"], n_total), jitter_h,
+                       max(block, block_size(jitter_h.size))), col["chnl"], n_total)
+        out.jitter = (col, _Count(chnl, n_total))
+    return out
 
 
 def drive_stream(run, rx: StreamRx, chunk: int, progress):
@@ -274,7 +407,12 @@ def drive_stream(run, rx: StreamRx, chunk: int, progress):
         if progress is not None:
             progress(run.done, run.n_symbols)
         target = run.done + step
-    # the eye needs its head even when the receiver stopped early
-    while rx.head is not None and rx.head.size < rx.head_len and state["end"] < rx.n_total:
-        extend()
+    # the eye needs its head, and collect_jitter the whole stream, even when
+    # the receiver stopped early; the window is not needed any more
+    while state["end"] < rx.n_total and (
+            rx.drain or (rx.head is not None and rx.head.size < rx.head_len)):
+        nxt = rx.source.read(rx.block)[: rx.n_total - state["end"]]
+        if rx.head is not None and rx.head.size < rx.head_len:
+            rx.head = np.concatenate([rx.head, nxt[: rx.head_len - rx.head.size]])
+        state["end"] += nxt.size
     return run.result()
