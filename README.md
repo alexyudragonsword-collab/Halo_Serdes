@@ -17,8 +17,8 @@ pip install -e .[jit,test]
 
 ```bash
 # 1) 跑一条完整链路(PAM4 224G,ADC-based 接收机)
-python examples/01_nrz_link.py                      # NRZ 最小链路
-python examples/05_adc_link.py                      # ADC-DSP 架构 + 逐 lane 诊断
+python examples/01_nrz32_minimal.py                 # NRZ 最小链路
+python examples/05_adc_rx_pam4_224g.py              # ADC-DSP 架构 + 逐 lane 诊断
 
 # 2) 信道分析(Bode / 冲激 / 脉冲响应 + ISI 光标)
 python examples/00_channel.py                       # 802.3ck Whisper 背板 (DC-40 GHz)
@@ -74,7 +74,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 硬件 | `rtl/` | FFE+DFE+slicer 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**(2026-10-03):核心库 ~9.8k 行 / 应用层与 GUI ~4.2k 行 / 测试 ~7.3k 行 / 示例 ~4.4k 行;
-**817 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**819 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
 **39 个编号示例**(`examples/00`–`38`)。
 
 ## 路线图

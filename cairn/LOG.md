@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-07 · 示例冒烟运行(feat/example-smoke,ROADMAP P3 #10 的一项)
+
+- 用户选 P3 #10。`tools/run_examples.py --smoke`:子进程里包一层 `SimConfig.__init__` 把 n_symbols 压到 2 万再 runpy 跑示例 ——
+  只动测试工具,不给库加全局开关(铁律 #1)。
+- 首跑 39/39 通过,~6 分钟(最慢 34_tdecq 84 s)→ 放进每次 push 的 CI,不必按原计划做成夜间 job。
+- 顺带发现:README 快速开始的两个示例名早已失效;加了"文档提到的示例路径必须存在"的测试(改之前失败、改后通过)。
+- 局限:冒烟不验证数字;文档引用的数值仍需按原尺寸手动跑。
+- 全量(JIT + iverilog):819 passed / 1 skipped(+2);ruff 通过。
+
 ## 2026-10-06 · 流式覆盖光 / 串扰 / AMI Init / 抖动分解(feat/stream-coverage,ROADMAP P2 #2 → P2 清空)
 
 - `engine/stream.py`:光路两段 / 三段(FIR + 逐样本光噪声 + E/O 曲线)、攻击者(保持 + 耦合 FIR)、接收节点加噪前抽头。
