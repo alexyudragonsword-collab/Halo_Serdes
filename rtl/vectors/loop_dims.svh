@@ -46,4 +46,6 @@ localparam longint CAL_SH_G = 0;
 localparam longint CAL_SH_P = 0;
 localparam longint CAL_WMAX = 255;
 localparam longint CAL_PM0 = 0;
+localparam longint CAL_SKEW = 0;
+localparam longint CAL_SH_S = 0;
 localparam longint CW = 64;

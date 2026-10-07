@@ -103,11 +103,11 @@ print(f"wrote loop vectors to {out}  (N={art['xin'].size}, PI codes "
       f"{int(art['pi'].min())}..{int(art['pi'].max())}, FFE weights moved up to {moved} LSB, "
       f"SER {res.ser:.2e})")
 
-# offset / gain mismatch with the background calibration on, fast steps so
+# offset / gain / skew mismatch with the background calibration on, fast steps so
 # the window holds the registers moving (the RTL checks them at the end too)
 cal_rx = dataclasses.replace(loop_cfg.rx, adc=dataclasses.replace(
-    loop_cfg.rx.adc, offset_sigma=0.01, gain_sigma=0.03,
-    cal=AdcCalConfig("background", 2.0 ** -6, 2.0 ** -6)))
+    loop_cfg.rx.adc, offset_sigma=0.01, gain_sigma=0.03, skew_sigma_ui=0.04,
+    cal=AdcCalConfig("background", 2.0 ** -6, 2.0 ** -6, 2.0 ** -6)))
 cal_res = run_time_link(dataclasses.replace(loop_cfg, rx=cal_rx))
 cal_fx = cal_res.extras["fixed"]
 cal_art = loop_artifacts(cal_fx["loop"], cal_fx["record"]["xin"][:3000],

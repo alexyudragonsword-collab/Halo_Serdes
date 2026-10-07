@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-07 · 定点 / RTL 的 skew 修正(feat/fixed-skew-cal,ROADMAP P3 #7 阶段 4 → #7 收尾)
+
+- 每 lane 整数延时修正寄存器(相位寄存器单位),MM 鉴相器在校准后字上驱动;PI 码 = `(ph − (cts[l] − Σcts >>> lane_shift)) >>> pi_sh`,
+  生效值零均值精确到 LSB(lane 数 2 的幂,求平均是移位)。闭环 / replay / SV 同一语义;`vectors/cal` 加 0.04 UI skew,末态修正寄存器比对。
+- 定点 vs 浮点(三种失配、2×10⁵ 符号末 1/4):`mu_skew` 2⁻⁷ / 2⁻⁸ / 2⁻⁹ 差 0.40 / 0.21 / 0.15 dB;定点 skew 残差 0.019 / 0.009 / 0.005 UI。
+- 校准在浮点 / 定点 / RTL 三层全部闭环。会话中途重连杀掉过一次后台全量,重跑。
+- PR #41;CI 全部 test job + rtl-lockstep + examples 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK);Windows 三种打包成功。
+- 全量(JIT + iverilog):845 passed / 1 skipped(+2);定点 / 校准 nojit 45 passed / 9 skipped;浮点指纹逐位同;ruff 通过。
+
 ## 2026-10-07 · 定点 / RTL 的 ADC 后台校准(feat/fixed-adc-cal,ROADMAP P3 #7 阶段 3)
 
 - `_cal_word_py`:ADC 字 → 校准 → FFE,闭环与 replay 同一函数;offset 是浮点那份的整数版,gain 改成硬件形式的 LMS(功率拉向各 lane 平均,

@@ -35,6 +35,10 @@
 //         x = clip(rnd(y, F), +-CAL_WMAX); co[l] += rnd(d, SH_O);
 //         cg[l] += rnd((pm >>> F) - x*x, SH_G); pm += rnd((x*x <<< F) - pm, SH_P)
 //         (rnd: rounding add + >>>; a negative shift skips that update)
+//   SKEW  (CAL_SKEW) per-lane delay trims: PI code = (ph - trim(l)) >>> PI_SH with
+//         trim(l) = cts[l] - (sum cts >>> LANE_SHIFT); after symbol k, lane
+//         (k-1) % LANES: cts += shift(x[k-1] * (sign x[k] - sign x[k-2]), CAL_SH_S)
+//         on the corrected words (<<< for a non-negative shift, else rounding >>>)
 //
 // Python's >> on a negative int floors; SV >>> on a signed operand does too.
 // Memories are module-internal, as in ffe_dfe_datapath.sv (Icarus' unpacked
@@ -52,6 +56,8 @@ module adc_dsp_loop;
     longint co     [LANES];       // calibration: lane offsets, gains, mean power
     longint cg     [LANES];
     longint cpm;
+    longint cts    [LANES];       // skew: lane delay trims, and their sum
+    longint ctsum;
     longint w_ffe  [NF];          // initial weights in, adapted weights out
     longint w_dfe  [ND];
     longint wacc_f [NF];
@@ -109,8 +115,10 @@ module adc_dsp_loop;
         nt = (PR_MODE > 0) ? NT : 1;
         for (int l = 0; l < LANES; l++) begin co[l] = 0; cg[l] = longint'(1) <<< CAL_B; end
         cpm = CAL_PM0;
+        for (int l = 0; l < LANES; l++) cts[l] = 0;
+        ctsum = 0;
         for (int k = 0; k < N; k++) begin
-            pi_out[k] = ph >>> PI_SH;
+            pi_out[k] = (ph - (cts[k % LANES] - (ctsum >>> LANE_SHIFT))) >>> PI_SH;
             // background calibration of the raw word (inline: Icarus 12
             // crashes on a task writing an output into an array element)
             if (CAL_ON == 0) xin[k] = xraw[k];
@@ -254,6 +262,15 @@ module adc_dsp_loop;
                 end
             end
             ph += corr >>> LANE_SHIFT;
+            if (CAL_SKEW == 1 && k >= 2) begin
+                a0 = (xin[k - 2] > 0) ? 1 : -1;
+                a2 = (xin[k] > 0) ? 1 : -1;
+                cd = xin[k - 1] * (a2 - a0);
+                if (CAL_SH_S >= 0) cd = cd <<< CAL_SH_S;
+                else cd = (cd + (longint'(1) <<< (-CAL_SH_S - 1))) >>> (-CAL_SH_S);
+                cts[(k - 1) % LANES] += cd;
+                ctsum += cd;
+            end
         end
         ab[0] = acc_a >>> G;
         ab[1] = acc_b >>> G;

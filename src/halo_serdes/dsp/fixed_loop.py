@@ -299,19 +299,46 @@ def _cal_word_py(lane, xi, cp, co, cg, cpm):
     return yw
 
 
+def _trim_py(lane, cts, lane_shift):
+    """The lane's delay trim as applied: its register less the lanes' mean
+    (the common phase is the CDR's; the mean is a shift, the lanes a power of
+    two, so the applied trims are zero-mean exactly)."""
+    return cts[lane] - (cts[cts.size - 1] >> lane_shift)
+
+
+def _skew_step_py(k, xh, n_lanes, cp, cts):
+    """The float kernel's per-lane Mueller-Muller skew detector, in integers:
+    on the corrected words around lane (k - 1)'s sample, ``x[k-1] (sign x[k]
+    - sign x[k-2])``, scaled by the shift ``cp[8]`` into phase-register units
+    (left for a non-negative shift, rounded right otherwise). ``cts`` holds
+    one trim per lane and their sum last."""
+    if cp[7] == 0 or k < 2:
+        return
+    a0 = 1 if xh[k - 2] > 0 else -1
+    a2 = 1 if xh[k] > 0 else -1
+    v = xh[k - 1] * (a2 - a0)
+    sh = cp[8]
+    if sh >= 0:
+        step = v << sh
+    else:
+        step = (v + (1 << (-sh - 1))) >> (-sh)
+    cts[(k - 1) % n_lanes] += step
+    cts[cts.size - 1] += step
+
+
 def _fixed_loop_closed_py(y, osr, pos0, n_sym, pi_scale, pi_sh, offsets,
                           gains, skews, q_step, code_max, noise, rx_clk,
                           n_pre, wf, ffe_shift, wd, dfe_shift, levels_out, out_bits,
                           do_round, pd_ffe, kp_sh, ki_sh, clamp_int, pd_off, n_lanes,
                           lane_shift, lat, lp, ref, wacc_f, wacc_d, pr_lv, prs, xl,
                           r_out, xh, pi_out, phase_out, dec, v_out, queue, st,
-                          cp, co, cg, cpm, xraw):
+                          cp, co, cg, cpm, cts, xraw):
     """The closed loop on waveform ``y``. Returns the symbols run (fewer than
     ``n_sym`` when the sampler leaves the waveform, as the float kernel).
     ``xraw`` records the ADC words before calibration (the replay's input)."""
     for k in range(n_sym):
         lane = k % n_lanes
-        code_pi = st[0] >> pi_sh
+        code_pi = (st[0] - _trim(lane, cts, lane_shift)) >> pi_sh
         p_clk = pos0 + k * osr + code_pi * pi_scale + rx_clk[k]
         p = p_clk + skews[lane]
         if p + osr + 2 >= y.size or p < 1:
@@ -330,6 +357,7 @@ def _fixed_loop_closed_py(y, osr, pos0, n_sym, pi_scale, pi_sh, offsets,
                       levels_out, out_bits, do_round, pd_ffe, kp_sh, ki_sh,
                       clamp_int, pd_off, n_lanes, lane_shift, lat, lp, ref, wacc_f,
                       wacc_d, pr_lv, prs, xl, r_out, xh, dec, v_out, queue, st)
+        _skew_step(k, xh, n_lanes, cp, cts)
     return n_sym
 
 
@@ -337,15 +365,16 @@ def _fixed_loop_digital_py(xin, pi_sh, n_pre, wf, ffe_shift, wd, dfe_shift,
                            levels_out, out_bits, do_round, pd_ffe, kp_sh, ki_sh,
                            clamp_int, pd_off, n_lanes, lane_shift, lat, lp, ref,
                            wacc_f, wacc_d, pr_lv, prs, xl, r_out, xh, pi_out, dec, v_out,
-                           queue, st, cp, co, cg, cpm):
+                           queue, st, cp, co, cg, cpm, cts):
     """The digital part alone, from a recorded (raw, uncalibrated) word stream."""
     for k in range(xin.size):
-        pi_out[k] = st[0] >> pi_sh
+        pi_out[k] = (st[0] - _trim(k % n_lanes, cts, lane_shift)) >> pi_sh
         _digital_step(k, _cal_word(k % n_lanes, xin[k], cp, co, cg, cpm), n_pre, wf,
                       ffe_shift, wd, dfe_shift, levels_out,
                       out_bits, do_round, pd_ffe, kp_sh, ki_sh, clamp_int, pd_off,
                       n_lanes, lane_shift, lat, lp, ref, wacc_f, wacc_d, pr_lv, prs, xl,
                       r_out, xh, dec, v_out, queue, st)
+        _skew_step(k, xh, n_lanes, cp, cts)
     return xin.size
 
 
@@ -356,6 +385,8 @@ _rnd_shift_py = _rnd_shift
 _digital_step = _digital_step_py
 _cal_word = _cal_word_py
 _rnd = _rnd_py
+_trim = _trim_py
+_skew_step = _skew_step_py
 _farrow_fx = _farrow_py
 _fixed_loop_closed = _fixed_loop_closed_py
 _fixed_loop_digital = _fixed_loop_digital_py
@@ -369,6 +400,8 @@ if os.environ.get("HALO_NO_JIT") != "1":
         _digital_step = numba.njit(cache=True)(_digital_step_py)
         _rnd = numba.njit(cache=True, inline="always")(_rnd_py)
         _cal_word = numba.njit(cache=True, inline="always")(_cal_word_py)
+        _trim = numba.njit(cache=True, inline="always")(_trim_py)
+        _skew_step = numba.njit(cache=True, inline="always")(_skew_step_py)
         _fixed_loop_closed = numba.njit(cache=True)(_fixed_loop_closed_py)
         _fixed_loop_digital = numba.njit(cache=True)(_fixed_loop_digital_py)
     except ImportError:
@@ -405,7 +438,7 @@ class FixedLoop:
     pr_ab: np.ndarray         # initial a, b [2^-pr_fl]
     # background calibration parameters (see _cal_word_py; off by default)
     cal: np.ndarray = field(default_factory=lambda: np.array(
-        [0, 16, 14, 0, 0, 0, (1 << 20) - 1], dtype=np.int64))
+        [0, 16, 14, 0, 0, 0, (1 << 20) - 1, 0, 0], dtype=np.int64))
     cal_pm0: int = 0          # its mean-power register's start [word LSBs^2, F fraction bits]
 
     @property
@@ -483,7 +516,8 @@ def build_fixed_loop(cfg, w_ffe: np.ndarray, w_dfe: np.ndarray, levels: np.ndarr
              if pr_mode == 2 and pr_levels is not None else np.zeros(1, dtype=np.int64))
     pr_ab = np.array([int(np.round(alpha * 2.0 ** pfl)), int(np.round(beta * 2.0 ** pfl))],
                      dtype=np.int64) if pr_mode > 0 else np.zeros(2, dtype=np.int64)
-    cal, cal_pm0 = _cal_params(cfg, in_lsb, lane_shift, adc_power)
+    cal, cal_pm0 = _cal_params(cfg, in_lsb, lane_shift, adc_power, int(ph_frac),
+                               float(np.max(np.abs(lv_v))))
     return FixedLoop(
         wf=to_int(w_ffe, wq), wd=to_int(w_dfe, num.dfe_weight),
         ffe_shift=int(ffe_shift), dfe_shift=int(num.dfe_weight.fl),
@@ -500,23 +534,22 @@ def build_fixed_loop(cfg, w_ffe: np.ndarray, w_dfe: np.ndarray, levels: np.ndarr
         pr_lv=pr_lv, pr_ab=pr_ab, cal=cal, cal_pm0=cal_pm0)
 
 
-def _cal_params(cfg, in_lsb: float, lane_shift: int, adc_power: float | None):
+def _cal_params(cfg, in_lsb: float, lane_shift: int, adc_power: float | None,
+                ph_frac: int, l_outer: float):
     """``_cal_word_py``'s parameters: the float steps as power-of-two shifts.
 
     Offset: ``o += mu d``, so the shift is log2(1 / mu). Gain: the float loop
     moves a lane's gain by ~mu of its error per conversion; in the LMS form
     ``dg = (pm - y^2) >>> sh`` that is dg / g = mu (1 - y^2 / pm) / 2 with
     ``sh = log2(2 pm / (mu 2^B))``. The mean power averages every lane's
-    conversions, so its step is mu / n_lanes."""
+    conversions, so its step is mu / n_lanes. Skew (``cp[7]``, ``cp[8]``): the
+    float trim's step as a shift into phase-register units (see below)."""
     acfg = cfg.rx.adc
     num = cfg.numeric
     f, b = int(num.cal_frac_bits), int(num.cal_gain_bits)
     word_max = (1 << int(acfg.n_bits)) - 1
     if acfg.cal.mode == "off":
-        return np.array([0, f, b, 0, 0, 0, word_max], dtype=np.int64), 0
-    if acfg.cal.mu_skew > 0:
-        raise ValueError("numeric.mode='fixed' models the offset / gain calibration, not the "
-                         "skew trims (adc.cal.mu_skew); set it to 0 or use the float mode")
+        return np.array([0, f, b, 0, 0, 0, word_max, 0, 0], dtype=np.int64), 0
     if adc_power is None or adc_power <= 0:
         raise ValueError("the fixed calibration needs the ADC output power (adc_power)")
     pm = adc_power / in_lsb ** 2                     # word LSBs squared
@@ -525,17 +558,26 @@ def _cal_params(cfg, in_lsb: float, lane_shift: int, adc_power: float | None):
         return max(int(np.round(np.log2(scale / mu))), 0) if mu > 0 else -1
 
     mu_o, mu_g = acfg.cal.mu_offset, acfg.cal.mu_gain
+    # skew: the float trim moves mu x[k-1] (a2 - a0) / L_outer samples; in
+    # phase-register units (2^-ph_frac UI) with x in words of in_lsb volts
+    # that is the word product times mu in_lsb 2^ph_frac / (L_outer osr)
+    mu_s = acfg.cal.mu_skew
+    sh_s = (int(np.round(np.log2(mu_s * in_lsb * 2.0 ** ph_frac / (l_outer * cfg.osr))))
+            if mu_s > 0 else 0)
     cp = np.array([1, f, b, sh(mu_o), sh(mu_g, 2.0 * pm / 2.0 ** b),
-                   sh(mu_g) + lane_shift if mu_g > 0 else -1, word_max], dtype=np.int64)
+                   sh(mu_g) + lane_shift if mu_g > 0 else -1, word_max,
+                   int(mu_s > 0), sh_s], dtype=np.int64)
     return cp, int(np.round(pm * 2.0 ** f))
 
 
 def _cal_state(fl: FixedLoop):
-    """Fresh calibration registers: no offset, unit gain, the expected power."""
+    """Fresh calibration registers: no offset, unit gain, the expected power,
+    no delay trim (one per lane, then their sum)."""
     n = fl.n_lanes
     return (np.zeros(n, dtype=np.int64),
             np.full(n, 1 << int(fl.cal[2]), dtype=np.int64),
-            np.array([fl.cal_pm0], dtype=np.int64))
+            np.array([fl.cal_pm0], dtype=np.int64),
+            np.zeros(n + 1, dtype=np.int64))
 
 
 def float_equivalent_gains(fl: FixedLoop, osr: int) -> tuple[float, float, float, float]:
@@ -586,7 +628,7 @@ def run_fixed_loop(fl: FixedLoop, y: np.ndarray, osr: int, pos0: float, n_sym: i
     """
     xh, pi, dec, v_out, queue, st = _state(fl, n_sym)
     xraw = np.zeros(n_sym, dtype=np.int64)
-    co, cg, cpm = _cal_state(fl)
+    co, cg, cpm, cts = _cal_state(fl)
     phase = np.zeros(n_sym)
     wf, wd, wacc_f, wacc_d, prs = _weights(fl)
     xl, r_out = np.zeros(n_sym, dtype=np.int64), np.zeros(n_sym, dtype=np.int64)
@@ -598,11 +640,11 @@ def run_fixed_loop(fl: FixedLoop, y: np.ndarray, osr: int, pos0: float, n_sym: i
         np.asarray(adc.skews, dtype=np.float64), float(adc.q_step), int(adc.code_max),
         np.asarray(noise, dtype=np.float64), np.asarray(rx_clk, dtype=np.float64),
         *_with_weights(fl, wf, wd), ref, wacc_f, wacc_d, fl.pr_lv, prs, xl, r_out,
-        xh, pi, phase, dec, v_out, queue, st, fl.cal, co, cg, cpm, xraw)
+        xh, pi, phase, dec, v_out, queue, st, fl.cal, co, cg, cpm, cts, xraw)
     done = int(done)
     n_dec = max(done - fl.n_pre, 0)
     return {"xin": xraw[:done], "x_cal": xh[:done], "pi": pi[:done], "phase": phase[:done],
-            "cal": (co.copy(), cg.copy(), int(cpm[0])),
+            "cal": (co.copy(), cg.copy(), int(cpm[0]), cts[:-1].copy()),
             "dec": dec[:n_dec], "v_out": v_out[:n_dec], "n_dec": n_dec,
             "ref": ref[:done], "wf": wf, "wd": wd, "ab": prs >> int(fl.lp[6])}
 
@@ -624,13 +666,13 @@ def replay_digital(fl: FixedLoop, xin: np.ndarray, ref: np.ndarray | None = None
     wf, wd, wacc_f, wacc_d, prs = _weights(fl)
     xl, r_out = np.zeros(n, dtype=np.int64), np.zeros(n, dtype=np.int64)
     ref = np.full(n, -1, dtype=np.int64) if ref is None else np.asarray(ref, dtype=np.int64)
-    co, cg, cpm = _cal_state(fl)
+    co, cg, cpm, cts = _cal_state(fl)
     _fixed_loop_digital(xin, fl.pi_sh, *_with_weights(fl, wf, wd), ref, wacc_f, wacc_d,
                         fl.pr_lv, prs, xl, r_out, xh, pi, dec, v_out, queue, st,
-                        fl.cal, co, cg, cpm)
+                        fl.cal, co, cg, cpm, cts)
     n_dec = max(n - fl.n_pre, 0)
     return {"pi": pi, "dec": dec[:n_dec], "v_out": v_out[:n_dec], "n_dec": n_dec,
-            "cal": (co, cg, int(cpm[0])),
+            "cal": (co, cg, int(cpm[0]), cts[:-1]),
             "wf": wf, "wd": wd, "ab": prs >> int(fl.lp[6])}
 
 
@@ -646,7 +688,8 @@ def loop_artifacts(fl: FixedLoop, xin: np.ndarray, ref: np.ndarray) -> dict:
             "w_ffe_int": fl.wf, "w_dfe_int": fl.wd, "levels_out": fl.levels_out,
             "w_ffe_end": rp["wf"], "w_dfe_end": rp["wd"],
             "pr_lv": fl.pr_lv, "ab": fl.pr_ab, "ab_end": rp["ab"],
-            "cal_end": np.concatenate([rp["cal"][0], rp["cal"][1], [rp["cal"][2]]]),
+            "cal_end": np.concatenate([rp["cal"][0], rp["cal"][1], [rp["cal"][2]],
+                                       rp["cal"][3]]),
             "params": {"N": int(xin.size), "N_DEC": int(rp["n_dec"]),
                        "NF": int(fl.wf.size), "ND": int(fl.wd.size),
                        "NL": int(fl.levels_out.size), "N_PRE": fl.n_pre,
@@ -665,7 +708,8 @@ def loop_artifacts(fl: FixedLoop, xin: np.ndarray, ref: np.ndarray) -> dict:
                        "CAL_ON": int(fl.cal[0]), "CAL_F": int(fl.cal[1]),
                        "CAL_B": int(fl.cal[2]), "CAL_SH_O": int(fl.cal[3]),
                        "CAL_SH_G": int(fl.cal[4]), "CAL_SH_P": int(fl.cal[5]),
-                       "CAL_WMAX": int(fl.cal[6]), "CAL_PM0": int(fl.cal_pm0)}}
+                       "CAL_WMAX": int(fl.cal[6]), "CAL_PM0": int(fl.cal_pm0),
+                       "CAL_SKEW": int(fl.cal[7]), "CAL_SH_S": int(fl.cal[8])}}
 
 
 def dump_loop_vectors(path, art: dict, cw: int = 64):
