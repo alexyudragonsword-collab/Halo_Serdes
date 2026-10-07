@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-07 · TI-ADC 后台校准 阶段 1(feat/adc-calibration,ROADMAP P3 #7)
+
+- 用户选 P3 #7。`adc.cal.mode: background`:内核里量化后数字修正 (q − ô)·ĝ;offset = lane 滑动均值,gain = 各 lane 平均功率 / 本 lane 功率 开方。
+- 坑 1:功率估计从 1.0 起,小步长时 gain 半天不动 → 改从 0 起(比值从一开始就对),满 1/mu 次转换前 gain 保持 1。
+- 坑 2:我自己的分窗 SNR(y_slicer 对 decisions 逐窗)算错,给出"越校越差"的假象;换成引擎 SNR + `warmup_discard` 后结论正常。教训:诊断量先对照引擎自己的定义。
+- 结果(示例 39,10⁶ 符号、末 1/4):未校准 14.34 dB → 2⁻¹⁰ 26.05 / 2⁻¹² 26.80 dB,理想 26.90 dB;残差约随 √mu 缩小。表见 USAGE §19。
+- 真值冻结(mu = 0)= 理想模型,说明修正通路本身无误;关闭时浮点指纹逐位同。
+- 未做:skew 校准、定点 / RTL 校准字(定点开校准报错)→ ROADMAP #7。
+- 全量(JIT + iverilog):828 passed / 1 skipped(+9);test_adc_cal nojit 5 passed / 2 skipped;ruff 通过。
+
 ## 2026-10-07 · 示例冒烟运行(feat/example-smoke,ROADMAP P3 #10 的一项)
 
 - 用户选 P3 #10。`tools/run_examples.py --smoke`:子进程里包一层 `SimConfig.__init__` 把 n_symbols 压到 2 万再 runpy 跑示例 ——
