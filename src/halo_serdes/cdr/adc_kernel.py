@@ -35,7 +35,7 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                     pr_mode: int, pr_levels: np.ndarray,
                     mu_alpha: float, pr_nt: int,
                     cal_mode: int, mu_cal_off: float, mu_cal_gain: float,
-                    cal: np.ndarray,
+                    mu_cal_skew: float, cal: np.ndarray,
                     corr_queue: np.ndarray, fs: np.ndarray, ist: np.ndarray,
                     dec: np.ndarray, xl: np.ndarray, y_sl: np.ndarray,
                     r_sl: np.ndarray, phase: np.ndarray, lane_of: np.ndarray,
@@ -78,7 +78,8 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
     for k in range(k0, k1):
         lane = k % n_lanes
         p_clk = pos + rx_clock_offset_samples[k]
-        p = p_clk + skews[lane]
+        # cal[4]: the skew calibration's delay trim for the lane [samples]
+        p = p_clk + skews[lane] - cal[4, lane]
         st = 0
         if p + osr + 2 >= n_total or p < 1:
             st = 1
@@ -127,6 +128,19 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                 if cal[1, lane] > 0.0:
                     cal[2, lane] = np.sqrt(p_mean / cal[1, lane])
         q_hist[k] = q
+        if cal_mode == 1 and mu_cal_skew > 0.0 and k >= 2:
+            # skew: a Mueller-Muller detector per lane on the (corrected)
+            # ADC words around the lane's sample k - 1 -- positive when that
+            # lane samples late. The trims are kept zero-mean across lanes:
+            # their common part is the CDR's to move, and two integrators on
+            # one phase would wander against each other.
+            lk = (k - 1) % n_lanes
+            a0 = 1.0 if q_hist[k - 2] > 0 else -1.0
+            a2 = 1.0 if q > 0 else -1.0
+            step = mu_cal_skew * q_hist[k - 1] * (a2 - a0) / levels[nl - 1]
+            for m in range(n_lanes):
+                cal[4, m] -= step / n_lanes
+            cal[4, lk] += step
         phase[k] = p_clk
         lane_of[k] = lane
 
@@ -284,7 +298,7 @@ class AdcRxRun:
                  loop_latency_blocks, ref_idx, train_len, adapt_start,
                  rx_clock_offset_samples, pr_alpha, pr_mode, pr_levels,
                  mu_alpha, alpha_out, pr_beta, pr_nt, cal_mode=0, mu_cal_off=0.0,
-                 mu_cal_gain=0.0, core=None):
+                 mu_cal_gain=0.0, mu_cal_skew=0.0, core=None):
         self.core = core if core is not None else _adc_rx_core
         self.osr = osr
         self.set_window(y)
@@ -295,7 +309,7 @@ class AdcRxRun:
                        clamp, pd_offset, pd_use_ffe, loop_latency_blocks, ref_idx,
                        train_len, adapt_start, rx_clock_offset_samples, pr_mode,
                        pr_levels, mu_alpha, pr_nt, int(cal_mode), float(mu_cal_off),
-                       float(mu_cal_gain), self._cal_init(n_lanes),
+                       float(mu_cal_gain), float(mu_cal_skew), self._cal_init(n_lanes),
                        np.zeros(loop_latency_blocks + 1, dtype=np.float64))
         self.fs = np.array([pos0, 0.0, 0.0, 0.0, pr_alpha, pr_beta], dtype=np.float64)
         self.ist = np.zeros(2, dtype=np.int64)
@@ -322,16 +336,17 @@ class AdcRxRun:
 
     @staticmethod
     def _cal_init(n_lanes: int) -> np.ndarray:
-        """Calibration state [offset, power, gain, conversions] x lane: no
-        offset, no power yet, unit gain."""
-        cal = np.zeros((4, n_lanes), dtype=np.float64)
+        """Calibration state [offset, power, gain, conversions, delay trim]
+        x lane: no offset, no power yet, unit gain, no trim."""
+        cal = np.zeros((5, n_lanes), dtype=np.float64)
         cal[2] = 1.0
         return cal
 
     @property
     def cal(self) -> np.ndarray:
-        """The calibration state as the run left it ([offset, power, gain, conversions] x lane)."""
-        return self.params[30]
+        """The calibration state as the run left it ([offset, power, gain, conversions,
+        delay trim] x lane)."""
+        return self.params[31]
 
     def advance(self, k1: int) -> int:
         k1 = min(int(k1), self.n_symbols)

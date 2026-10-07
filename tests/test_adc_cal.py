@@ -9,6 +9,9 @@ left is a residual that depends on the step. What has to hold:
 * the estimates converge to the lanes' actual offsets and gain ratios, with a
   residual that shrinks with the step, and the link gets back most of what
   the mismatch cost -- all of it but a fraction of a dB at a small step;
+* skew (``mu_skew``): each lane's delay trim converges to the lane's
+  drawn skew less the lanes' mean, and with all three on the link is back
+  within a fraction of a dB of one without mismatch;
 * the state is carried across chunks and streamed windows bit for bit, and
   the JIT and the pure-Python kernel agree;
 * off means off: the other modes never touch the new code.
@@ -59,8 +62,8 @@ def _cfg(n_sym=20_000, warmup=None, **adc):
         sim=SimConfig(n_symbols=n_sym, seed=3, pattern="prbs13q", warmup_discard=warmup))
 
 
-def _bg(mu_off, mu_gain=None):
-    return AdcCalConfig("background", mu_off, mu_off if mu_gain is None else mu_gain)
+def _bg(mu_off, mu_gain=None, mu_skew=0.0):
+    return AdcCalConfig("background", mu_off, mu_off if mu_gain is None else mu_gain, mu_skew)
 
 
 def _residual(r):
@@ -78,8 +81,8 @@ def test_the_correction_with_the_true_values_is_the_ideal_model(monkeypatch):
 
     def seeded(self, *a, **k):
         init(self, *a, **k)
-        self.params[30][0] = self.params[2]          # offsets
-        self.params[30][2] = 1.0 / self.params[3]    # 1 / gains
+        self.cal[0] = self.params[2]                 # offsets
+        self.cal[2] = 1.0 / self.params[3]           # 1 / gains
 
     cm = ChannelModel.from_config(_cfg())
     ideal = run_time_link(_cfg(calibrated=True, **MISMATCH), channel=cm)
@@ -124,7 +127,7 @@ def test_background_calibration_recovers_the_link_and_the_step_sets_the_residual
 
 @pytest.mark.parametrize("stream", [False, True], ids=["chunked", "streamed"])
 def test_calibration_state_carries_across_chunks(stream):
-    cfg = _cfg(12_000, cal=_bg(2.0 ** -6), **MISMATCH)
+    cfg = _cfg(12_000, cal=_bg(2.0 ** -6, mu_skew=2.0 ** -6), skew_sigma_ui=0.04, **MISMATCH)
     if stream:
         cfg = dataclasses.replace(cfg, sim=dataclasses.replace(cfg.sim, stream=True))
     cm = ChannelModel.from_config(cfg)
@@ -138,7 +141,7 @@ def test_calibration_state_carries_across_chunks(stream):
 @pytest.mark.skipif(ak._adc_rx_core is ak._adc_rx_core_py,
                     reason="compares the JIT with the pure-Python kernel")
 def test_jit_and_python_agree(monkeypatch):
-    cfg = _cfg(6_000, cal=_bg(2.0 ** -6), **MISMATCH)
+    cfg = _cfg(6_000, cal=_bg(2.0 ** -6, mu_skew=2.0 ** -6), skew_sigma_ui=0.04, **MISMATCH)
     cm = ChannelModel.from_config(cfg)
     jit = run_time_link(cfg, channel=cm)
     monkeypatch.setattr(ak, "_adc_rx_core", ak._adc_rx_core_py)
@@ -154,8 +157,54 @@ def test_off_leaves_no_state_and_the_modes_exclude_each_other():
         AdcConfig(calibrated=True, cal=_bg(2.0 ** -10))
     with pytest.raises(ValueError, match="adc.cal.mu_gain"):
         AdcCalConfig("background", 0.01, 1.5)
+    with pytest.raises(ValueError, match="adc.cal.mu_skew"):
+        AdcCalConfig("background", 0.01, 0.01, -1.0)
     with pytest.raises(ValueError, match="adc.cal.mode"):
         AdcCalConfig("foreground")
     fixed = dataclasses.replace(_cfg(4_000, cal=_bg(2.0 ** -8)), numeric=NumericConfig(mode="fixed"))
     with pytest.raises(ValueError, match="does not model adc.cal"):
         run_time_link(fixed)
+
+
+def _skew_left(r):
+    """(drawn skew less its mean, trim) [samples]."""
+    a, cal = r.extras["adc"], r.extras["adc_cal"]
+    return a.skews - a.skews.mean(), cal[4]
+
+
+@needs_jit
+def test_skew_trims_converge_to_the_lane_skews():
+    """Skew alone, 0.05 UI rms: the trims track the drawn skews (their common
+    part is the CDR's phase, so only the differences are measurable) and
+    stay zero-mean; the link gets back what the skew cost."""
+    n = 200_000
+    cm = ChannelModel.from_config(_cfg())
+    none = run_time_link(_cfg(n, 3 * n // 4), channel=cm)
+    raw = run_time_link(_cfg(n, 3 * n // 4, skew_sigma_ui=0.05), channel=cm)
+    cal = run_time_link(_cfg(n, 3 * n // 4, skew_sigma_ui=0.05, cal=_bg(0.0, 0.0, 2.0 ** -8)),
+                        channel=cm)
+    true, trim = _skew_left(cal)
+    assert abs(np.mean(trim)) < 1e-9           # zero-mean up to rounding
+    assert np.corrcoef(true, trim)[0, 1] > 0.95
+    assert np.std(true - trim) < 0.35 * np.std(true)
+    assert raw.slicer_snr_db < none.slicer_snr_db - 1.0
+    assert cal.slicer_snr_db > none.slicer_snr_db - 0.4, (cal.slicer_snr_db, none.slicer_snr_db)
+    assert cal.extras["cycle_slips"] == 0
+
+
+@needs_jit
+def test_with_skew_present_the_three_loops_together_recover_the_link():
+    """Offset, gain and skew mismatch together: with all three loops the
+    link is within half a dB of one without mismatch, and clearly above
+    offset + gain alone (which leave the skew in, and here also converge
+    more slowly with it -- measured, mechanism not established: 2 dB short
+    of the ideal offset / gain model after 4e5 symbols, 0.2 dB after 1e6)."""
+    n = 400_000
+    mm = dict(skew_sigma_ui=0.04, **MISMATCH)
+    cm = ChannelModel.from_config(_cfg())
+    none = run_time_link(_cfg(n, 3 * n // 4), channel=cm)
+    og = run_time_link(_cfg(n, 3 * n // 4, cal=_bg(2.0 ** -12), **mm), channel=cm)
+    full = run_time_link(_cfg(n, 3 * n // 4, cal=_bg(2.0 ** -12, mu_skew=2.0 ** -8), **mm),
+                         channel=cm)
+    assert full.slicer_snr_db > none.slicer_snr_db - 0.5, (full.slicer_snr_db, none.slicer_snr_db)
+    assert full.slicer_snr_db > og.slicer_snr_db + 1.0, (full.slicer_snr_db, og.slicer_snr_db)

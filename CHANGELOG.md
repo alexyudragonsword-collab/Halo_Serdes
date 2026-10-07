@@ -6,6 +6,15 @@
 
 ---
 
+## [未发布] — TI-ADC 后台校准,阶段 2:skew(ROADMAP P3 #7)
+
+### 新增
+- `AdcCalConfig.mu_skew`(默认 0 = 不校):每 lane 的 Mueller-Muller 鉴相器调本 lane 采样延时,修正量保持零均值(公共相位归 CDR)。
+  `extras["adc_cal"]` 多一行 —— 延时修正(样本)。GUI / Android 表单加一个字段。
+- 示例 39 第二部分:offset + gain + skew 同时失配,对照只开 offset / gain 与三个都开。
+- 测试:修正量收敛到 lane 相对 skew(相关 > 0.95、残差 < 0.35×)、零均值、无周跳;三种失配时三个环一起开距无失配 < 0.5 dB;
+  分块 / 流式逐位一致、JIT = Python 都加了 skew。`mu_skew` = 0 时阶段 1 的结果逐位不变。
+
 ## [未发布] — TI-ADC 后台校准,阶段 1:offset / gain(ROADMAP P3 #7)
 
 ### 新增

@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-07 · TI-ADC 后台校准 阶段 2:skew(feat/adc-skew-cal,ROADMAP P3 #7)
+
+- `adc.cal.mu_skew`:每 lane 的 MM 鉴相器(修正后 ADC 字、外层电平归一)调本 lane 采样延时 `cal[4]`,修正量零均值(公共相位归 CDR)。
+- 实验先行:2⁻⁸ 时残差 0.008 UI、相关 0.98、SNR 回到无失配 0.1 dB 内;三种失配一起时 14.21 → 26.70 dB(示例 39 第二部分)。
+- **更正**:我一度断言"有 skew 时 gain 环把 skew 当增益"并写进了测试。核实:gain 残差几乎不变(0.39% vs 0.32%)、CDR 锁定点一样 →
+  这个解释不成立,已删。真实现象是有 skew 时 offset / gain 环收敛明显变慢(4×10⁵ 符号差理想 2 dB,10⁶ 时 0.2 dB),机理未确认,记入 ROADMAP #7。
+- `mu_skew` = 0(默认)时阶段 1 逐位不变;浮点指纹逐位同。
+- PR #38;CI 全部 test job + rtl-lockstep + examples 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
+- 全量(JIT + iverilog):830 passed / 1 skipped(+2);test_adc_cal nojit 5 passed / 4 skipped;ruff 通过。
+
 ## 2026-10-07 · TI-ADC 后台校准 阶段 1(feat/adc-calibration,ROADMAP P3 #7)
 
 - 用户选 P3 #7。`adc.cal.mode: background`:内核里量化后数字修正 (q − ô)·ĝ;offset = lane 滑动均值,gain = 各 lane 平均功率 / 本 lane 功率 开方。

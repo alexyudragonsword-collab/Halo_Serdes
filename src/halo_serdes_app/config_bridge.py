@@ -258,6 +258,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("rx.adc.cal.mode", "Calibration loop", "enum", options=["off", "background"]),
         _f("rx.adc.cal.mu_offset", "Cal offset step", "float"),
         _f("rx.adc.cal.mu_gain", "Cal gain step", "float"),
+        _f("rx.adc.cal.mu_skew", "Cal skew step (0 = off)", "float"),
     ]),
     ("ffe", "FFE", [
         _f("rx.ffe.n_pre", "Precursor taps", "int"),

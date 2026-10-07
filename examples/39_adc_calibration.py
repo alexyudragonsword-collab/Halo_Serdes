@@ -4,7 +4,8 @@
 not there. ``adc.cal.mode = "background"`` is an algorithm: each lane's
 offset (its running mean) and gain (its running power against the lanes'
 mean) are estimated from the data and corrected after the quantizer, every
-conversion of that lane, with a one-pole step mu. Two things follow:
+conversion of that lane, with a one-pole step mu (part 2 adds lane skew and
+the per-lane delay trims, ``adc.cal.mu_skew``). Two things follow:
 
 * settling: one time constant is 1 / mu conversions of a lane, i.e.
   n_lanes / mu symbols -- 16k symbols at 2^-10 for 16 lanes;
@@ -14,7 +15,7 @@ conversion of that lane, with a one-pole step mu. Two things follow:
 
 Steady state is read with the first three quarters of each run unscored
 (``sim.warmup_discard``). Same 112 GBd PAM4 receiver as the unit tests:
-16 lanes, offset sigma 10 mV, gain sigma 3 %, skew 0 (not calibrated here).
+16 lanes, offset sigma 10 mV, gain sigma 3 %; part 1 without skew.
 
 Pass ``--quick`` for a smoke run (fewer symbols, fewer steps).
 """
@@ -109,3 +110,27 @@ ax[1].legend()
 fig.tight_layout()
 fig.savefig(OUT / "39_adc_calibration.png", dpi=130)
 print(f"  wrote {OUT / '39_adc_calibration.png'}")
+
+# --------------------------------------------------- part 2: skew as well ---
+# Add 0.04 UI rms of lane skew. Offset + gain alone leave it in (they can
+# only get to the ideal offset / gain model); the skew trims -- each lane's
+# own Mueller-Muller detector, kept zero-mean against the CDR -- take it out.
+SKEW = 0.04
+print(f"\n== with {SKEW} UI rms lane skew as well (offset / gain step 2^-12) ==")
+part2 = {
+    "uncalibrated": make_cfg(skew_sigma_ui=SKEW),
+    "ideal offset / gain": make_cfg(skew_sigma_ui=SKEW, calibrated=True),
+    "offset + gain": make_cfg(skew_sigma_ui=SKEW,
+                              cal=AdcCalConfig("background", 2.0 ** -12, 2.0 ** -12)),
+    "offset + gain + skew 2^-8": make_cfg(
+        skew_sigma_ui=SKEW, cal=AdcCalConfig("background", 2.0 ** -12, 2.0 ** -12, 2.0 ** -8)),
+}
+for name, c in part2.items():
+    r = run_time_link(c, channel=cm)
+    s = f"  {name:27s} SNR {r.slicer_snr_db:6.2f} dB"
+    if r.extras["adc_cal"] is not None and r.extras["adc_cal"][4].any():
+        a = r.extras["adc"]
+        true = (a.skews - a.skews.mean()) / 16
+        s += (f"   skew {np.std(true):.4f} UI rms -> "
+              f"{np.std(true - r.extras['adc_cal'][4] / 16):.4f} UI left")
+    print(s)

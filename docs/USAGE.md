@@ -792,6 +792,7 @@ rx:
       mode: background     # off(默认,逐位等于不设)| background
       mu_offset: 0.0009765625   # 2^-10,按该 lane 的每次转换计
       mu_gain: 0.0009765625
+      mu_skew: 0.00390625       # 2^-8;0(默认)= 不校 skew
 ```
 
 - **算法**(`cdr/adc_kernel.py`,量化器之后、数字域):每次转换先用当前估计修正 `(q − ô_l)·ĝ_l`,再更新 ——
@@ -812,6 +813,15 @@ rx:
 
 - **打分要避开收敛段**:`sim.cdr_settle + train_symbols` 不管校准;小步长时把 `sim.warmup_discard` 设到几个时间常数以上,
   否则 BER / SNR 里混着收敛过程。
-- `res.extras["adc_cal"]`:运行结束时的状态,行 = [offset, 功率, 增益, 已转换次数],列 = lane;与 `extras["adc"]` 里抽到的真值对照即残差。
-- **不做的**:skew(时序失配)不校 —— 要逐 lane 调采样延时,由鉴相器驱动,是下一阶段;定点数据通路(`numeric.mode: fixed`)
-  还没有校准字,开了直接报错;统计引擎本来就不建 lane 失配,校准对它无影响。
+- **skew(`mu_skew` > 0)**:每个 lane 用自己的 Mueller-Muller 鉴相器(修正后的 ADC 字,围绕该 lane 的样本,按外层电平归一)
+  调本 lane 的采样延时 `cal[4]`;各 lane 的修正量保持零均值 —— 公共相位是 CDR 的,两个积分器管同一个相位会互相漂。
+  能测到的只是各 lane 相对 skew(去掉均值)。112 GBd、0.05 UI(抽到 0.041)rms skew、4×10⁵ 符号:2⁻⁸ 时残差 0.008 UI、与真值相关 0.98,
+  SNR 回到无失配的 0.1 dB 内;2⁻⁷ 起残差变大(0.014 UI),2⁻¹¹ 太慢(4×10⁵ 符号内只走了一半)。
+  鉴相器用的是符号判决(sign),offset 失配很大而又不校 offset 时它收敛得差(实测残差 0.02 UI vs 0.009),所以三个环一起开。
+- **三种失配同时**(示例 39 第二部分,skew 0.04 UI,10⁶ 符号):未校准 14.21 dB;只开 offset + gain 24.12 dB(skew 留着,
+  上限是理想 offset / gain 模型的 24.31 dB);三个都开 26.70 dB,skew 0.042 → 0.009 UI rms。
+  观察(机理未确认):有 skew 时 offset / gain 环收敛明显变慢 —— 4×10⁵ 符号时比理想 offset / gain 差 2 dB,10⁶ 时只差 0.2 dB;
+  没有 skew 时 4×10⁵ 符号已在 0.13 dB 内。
+- `res.extras["adc_cal"]`:运行结束时的状态,行 = [offset, 功率, 增益, 已转换次数, 延时修正(样本)],列 = lane;
+  与 `extras["adc"]` 里抽到的真值对照即残差。
+- **不做的**:定点数据通路(`numeric.mode: fixed`)还没有校准字,开了直接报错;统计引擎本来就不建 lane 失配,校准对它无影响。
