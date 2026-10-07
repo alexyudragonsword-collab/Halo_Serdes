@@ -1,7 +1,7 @@
 """TI-ADC background calibration: what the step buys and what it costs.
 
-``adc.calibrated = True`` is the ideal model -- the lane mismatch is simply
-not there. ``adc.cal.mode = "background"`` is an algorithm: each lane's
+``adc.calibrated = True`` is the ideal model -- the lane mismatch is drawn
+and zeroed, so it is the same link with none. ``adc.cal.mode = "background"`` is an algorithm: each lane's
 offset (its running mean) and gain (its running power against the lanes'
 mean) are estimated from the data and corrected after the quantizer, every
 conversion of that lane, with a one-pole step mu (part 2 adds lane skew and

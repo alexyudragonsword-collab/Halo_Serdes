@@ -780,7 +780,7 @@ precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 �
 
 ## 19. TI-ADC 后台校准
 
-`adc.offset_sigma` / `gain_sigma` / `skew_sigma_ui` 给每个 lane 抽失配。`adc.calibrated: true` 是**理想模型**(失配不抽,
+`adc.offset_sigma` / `gain_sigma` / `skew_sigma_ui` 给每个 lane 抽失配。`adc.calibrated: true` 是**理想模型**(失配抽了再置零,
 等于"校准完美");`adc.cal` 是**真实算法**,只对 `rx.arch: adc_dsp` 生效,两者互斥:
 
 ```yaml
@@ -819,9 +819,10 @@ rx:
   SNR 回到无失配的 0.1 dB 内;2⁻⁷ 起残差变大(0.014 UI),2⁻¹¹ 太慢(4×10⁵ 符号内只走了一半)。
   鉴相器用的是符号判决(sign),offset 失配很大而又不校 offset 时它收敛得差(实测残差 0.02 UI vs 0.009),所以三个环一起开。
 - **三种失配同时**(示例 39 第二部分,skew 0.04 UI,10⁶ 符号):未校准 14.21 dB;只开 offset + gain 24.12 dB(skew 留着,
-  上限是理想 offset / gain 模型的 24.31 dB);三个都开 26.70 dB,skew 0.042 → 0.009 UI rms。
-  观察(机理未确认):有 skew 时 offset / gain 环收敛明显变慢 —— 4×10⁵ 符号时比理想 offset / gain 差 2 dB,10⁶ 时只差 0.2 dB;
-  没有 skew 时 4×10⁵ 符号已在 0.13 dB 内。
+  上限是同一链路上理想 offset / gain 模型的 24.17 dB);三个都开 26.70 dB,skew 0.042 → 0.009 UI rms。
+- **对比要在同一链路实例上**:`calibrated: true` 抽了失配再置零,之后的 skew、ENOB 噪声、Rx 时钟与未校准完全相同。
+  (2026-10-07 前它跳过这次抽取,理想模型于是是另一组 skew —— 曾被误读成"有 skew 时 offset / gain 环收敛变慢",见 CHANGELOG。)
+  但 `offset_sigma: 0` 与 `offset_sigma: 0.01` + `calibrated` 不是同一实例(前者不抽),只能和同 sigma 的运行比。
 - `res.extras["adc_cal"]`:运行结束时的状态,行 = [offset, 功率, 增益, 已转换次数, 延时修正(样本)],列 = lane;
   与 `extras["adc"]` 里抽到的真值对照即残差。
 - **不做的**:定点数据通路(`numeric.mode: fixed`)还没有校准字,开了直接报错;统计引擎本来就不建 lane 失配,校准对它无影响。
