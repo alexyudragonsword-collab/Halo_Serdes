@@ -10,6 +10,7 @@
 - 分辨率扫描暴露 bug:定点 gain LMS 对公共增益无观测,舍入噪声随机游走,9–10 位时漂到 0.7–0.85。修:生效增益 = 寄存器 − 平均 + 1,
   Python / replay / SV 同一份,`vectors/cal` 重生成。修后单调:gain ≥ 9 位、offset 小数 ≥ 2 位饱和。坑进 engineering-pitfalls(建模约定类)。
 - 旧测试断言 "foreground 非法" 随之改为未知模式;表单(GUI / Android)加 foreground 与两个字段。
+- PR #42;CI 全部 test job + rtl-lockstep + examples 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK;编译版首跑在 sdkmanager 下载模拟器包时失败、未进构建,重跑通过)。
 - 全量(JIT + iverilog):1 failed / 850 passed / 1 skipped —— 失败的是旧断言("foreground" 非法),改后单独重跑通过;其后的表单改动跑了 bridge / form 测试 52 passed → 851 passed / 1 skipped(+6);定点校准 nojit 10 passed / 4 skipped;浮点指纹逐位同;lockstep 七段过;ruff 通过。
 
 ## 2026-10-07 · 定点 / RTL 的 skew 修正(feat/fixed-skew-cal,ROADMAP P3 #7 阶段 4 → #7 收尾)
