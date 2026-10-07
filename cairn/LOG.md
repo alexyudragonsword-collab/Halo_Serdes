@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-07 · 修正:`adc.calibrated` 改变了随机实例(fix/cal-convergence-diag,ROADMAP #7 待查项)
+
+- 用户选"查收敛变慢"。诊断三步:① 修好分窗 SNR(上次只看了 y_slicer 的截断头部;改为拦截 score() 输入)→ 后台 o/g 不是慢,是平台在 23.1 dB;
+  ② 冻结真值(mu = 0)仍 23.24 dB → 不是估计;③ 比较抽到的 skew → 理想模型与未校准是两组 skew。
+- 根因:`TiAdc` 在 `calibrated=True` 时跳过 offset / gain 抽取,之后的 skew、ENOB 噪声、Rx 时钟全变。改为抽了再置零。
+  修后同一链路上后台 o/g 距理想 0.04 dB(4×10⁵)/ 0.05 dB(10⁶)。只影响 calibrated + 非零 sigma 的配置;浮点指纹逐位同。
+- **更正**:撤回阶段 2 记下的"有 skew 时 o/g 收敛变慢"(以及更早撤回的"gain 环把 skew 当增益")。"随运行长度变化"也是假象:
+  `n_symbols` 改变抽取量,10⁶ 与 4×10⁵ 是不同实例。坑写进 engineering-pitfalls。
+- 回归测试两条(改前失败、改后通过);示例 39 第二部分理想值 24.31 → 24.17 dB。
+- 全量(JIT + iverilog):832 passed / 1 skipped(+2);ruff 通过。
+
 ## 2026-10-07 · TI-ADC 后台校准 阶段 2:skew(feat/adc-skew-cal,ROADMAP P3 #7)
 
 - `adc.cal.mu_skew`:每 lane 的 MM 鉴相器(修正后 ADC 字、外层电平归一)调本 lane 采样延时 `cal[4]`,修正量零均值(公共相位归 CDR)。
