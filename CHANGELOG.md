@@ -6,6 +6,15 @@
 
 ---
 
+## [未发布] — 定点 / RTL 的 skew 修正(ROADMAP P3 #7 阶段 4)
+
+### 新增
+- `dsp/fixed_loop._skew_step_py` / `_trim_py`:每 lane 一个整数延时修正寄存器(相位寄存器单位),由该 lane 在校准后字上的
+  MM 鉴相器驱动;PI 码 = `(ph − (cts[l] − Σcts >>> lane_shift)) >>> pi_sh`(生效值零均值精确到 LSB)。闭环与 replay 同一份。
+- 定点不再拒绝 `adc.cal.mu_skew`。`rtl/adc_dsp_loop.sv` 同步;`vectors/cal` 加 0.04 UI skew 并比对末态修正寄存器。
+- 测试:修正量零均值、确实拉开 PI 码;replay / JIT 测试含 skew;定点与浮点 SNR 差 < 0.4 dB(实测 0.15–0.40)、修正量与抽到的 skew 相关 > 0.9。
+  校准在浮点 / 定点 / RTL 三层全部闭环。
+
 ## [未发布] — 定点 / RTL 的 ADC 后台校准(offset / gain,ROADMAP P3 #7 阶段 3)
 
 ### 新增

@@ -7,6 +7,8 @@ too (``test_rtl_lockstep``). What has to hold:
 
 * it agrees with an independent reference on every shift, rounding and
   saturation choice, including a step of 0 and a disabled estimate;
+* the skew trims (``mu_skew``) move the lanes' PI codes, zero-mean exactly,
+  and converge to the drawn skews as the float trims do;
 * the digital replay from the raw words reproduces the closed loop, the
   calibration registers included, and JIT = Python;
 * the integer loop gets what the float one gets: within a few tenths of a dB
@@ -34,8 +36,8 @@ def _fixed(cfg):
     return dataclasses.replace(cfg, numeric=NumericConfig(mode="fixed"))
 
 
-def _bg(mu):
-    return AdcCalConfig("background", mu, mu)
+def _bg(mu, mu_skew=0.0):
+    return AdcCalConfig("background", mu, mu, mu_skew)
 
 
 def _reference(words, n_lanes, f, b, sh_o, sh_g, sh_p, wmax, pm0):
@@ -98,7 +100,8 @@ def test_replay_reproduces_the_closed_loop_registers_included():
     """The RTL's input is the raw ADC words: replaying them through the
     digital back end, calibration first, gives the closed loop's every
     decision, slicer value, PI code and final register."""
-    r = run_time_link(_fixed(_cfg(8_000, cal=_bg(2.0 ** -6), **MISMATCH)))
+    r = run_time_link(_fixed(_cfg(8_000, cal=_bg(2.0 ** -6, 2.0 ** -6), skew_sigma_ui=0.04,
+                                  **MISMATCH)))
     fx = r.extras["fixed"]
     rec = fx["record"]
     rp = replay_digital(fx["loop"], rec["xin"], rec["ref"])
@@ -112,7 +115,8 @@ def test_replay_reproduces_the_closed_loop_registers_included():
 @pytest.mark.skipif(fxl._fixed_loop_digital is fxl._fixed_loop_digital_py,
                     reason="compares the JIT with the pure-Python loop")
 def test_jit_and_python_agree(monkeypatch):
-    r = run_time_link(_fixed(_cfg(6_000, cal=_bg(2.0 ** -6), **MISMATCH)))
+    r = run_time_link(_fixed(_cfg(6_000, cal=_bg(2.0 ** -6, 2.0 ** -6), skew_sigma_ui=0.04,
+                                  **MISMATCH)))
     fx = r.extras["fixed"]
     rec = fx["record"]
     jit = replay_digital(fx["loop"], rec["xin"], rec["ref"])
@@ -120,6 +124,8 @@ def test_jit_and_python_agree(monkeypatch):
     monkeypatch.setattr(fxl, "_digital_step", fxl._digital_step_py)
     monkeypatch.setattr(fxl, "_cal_word", fxl._cal_word_py)
     monkeypatch.setattr(fxl, "_rnd", fxl._rnd_py)
+    monkeypatch.setattr(fxl, "_trim", fxl._trim_py)
+    monkeypatch.setattr(fxl, "_skew_step", fxl._skew_step_py)
     py = replay_digital(fx["loop"], rec["xin"], rec["ref"])
     assert np.array_equal(jit["dec"], py["dec"]) and np.array_equal(jit["v_out"], py["v_out"])
     for a, b in zip(jit["cal"], py["cal"]):
@@ -148,9 +154,45 @@ def test_the_integer_loop_gets_what_the_float_one_gets():
         fx = run_time_link(_fixed(cfg), channel=cm)
         assert abs(fx.slicer_snr_db - fl.slicer_snr_db) < 0.3, (mu, fx.slicer_snr_db,
                                                               fl.slicer_snr_db)
-    loop, (co, cg, _) = fx.extras["fixed"]["loop"], fx.extras["fixed"]["record"]["cal"]
+    loop, (co, cg, *_) = fx.extras["fixed"]["loop"], fx.extras["fixed"]["record"]["cal"]
     a = fx.extras["adc"]
     off = np.asarray(co) * 2.0 ** -int(loop.cal[1]) * loop.in_lsb
     g = a.gains * np.asarray(cg) * 2.0 ** -int(loop.cal[2])
     assert np.std(a.offsets - off) < 0.3 * np.std(a.offsets)
     assert np.std(g / g.mean()) < 0.5 * np.std(a.gains / a.gains.mean())
+
+
+def test_skew_trims_are_zero_mean_and_shift_the_pi_codes():
+    """The applied trims are the registers less their mean -- a shift, the
+    lanes a power of two -- so they sum to zero to the LSB; and they are
+    what moves one lane's PI code against the next."""
+    r = run_time_link(_fixed(_cfg(8_000, cal=_bg(2.0 ** -6, 2.0 ** -6), skew_sigma_ui=0.04,
+                                  **MISMATCH)))
+    fx = r.extras["fixed"]
+    loop, rec = fx["loop"], fx["record"]
+    cts = np.concatenate([rec["cal"][3], [np.sum(rec["cal"][3])]])
+    applied = np.array([fxl._trim_py(lane, cts, loop.lane_shift) for lane in range(loop.n_lanes)])
+    assert abs(int(applied.sum())) < loop.n_lanes          # floor of the mean only
+    assert np.ptp(applied) >> loop.pi_sh >= 1               # at least a PI code apart
+
+
+@needs_jit
+def test_skew_trims_converge_as_the_float_ones_do():
+    """Offset, gain and skew together: the bit-true loop lands within 0.4 dB
+    of the float kernel (measured 0.15-0.40 dB over 2^-7..2^-9) and its trims
+    track the drawn skews (differences only: the common part is the CDR's)."""
+    n = 200_000
+    mm = dict(skew_sigma_ui=0.04, **MISMATCH)
+    cm = ChannelModel.from_config(_cfg())
+    cfg = _cfg(n, 3 * n // 4, cal=_bg(2.0 ** -10, 2.0 ** -8), **mm)
+    fl = run_time_link(cfg, channel=cm)
+    fx = run_time_link(_fixed(cfg), channel=cm)
+    og = run_time_link(_fixed(_cfg(n, 3 * n // 4, cal=_bg(2.0 ** -10), **mm)), channel=cm)
+    assert abs(fx.slicer_snr_db - fl.slicer_snr_db) < 0.4, (fx.slicer_snr_db, fl.slicer_snr_db)
+    assert fx.slicer_snr_db > og.slicer_snr_db + 0.5, (fx.slicer_snr_db, og.slicer_snr_db)
+    loop, ts = fx.extras["fixed"]["loop"], np.asarray(fx.extras["fixed"]["record"]["cal"][3])
+    a = fx.extras["adc"]
+    true = (a.skews - a.skews.mean()) / 16                  # UI (osr 16)
+    trim = (ts - ts.mean()) * 2.0 ** -loop.ph_frac
+    assert np.corrcoef(true, trim)[0, 1] > 0.9
+    assert np.std(true - trim) < 0.5 * np.std(true)
