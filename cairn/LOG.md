@@ -10,6 +10,7 @@
 - **更正**:我一度断言"有 skew 时 gain 环把 skew 当增益"并写进了测试。核实:gain 残差几乎不变(0.39% vs 0.32%)、CDR 锁定点一样 →
   这个解释不成立,已删。真实现象是有 skew 时 offset / gain 环收敛明显变慢(4×10⁵ 符号差理想 2 dB,10⁶ 时 0.2 dB),机理未确认,记入 ROADMAP #7。
 - `mu_skew` = 0(默认)时阶段 1 逐位不变;浮点指纹逐位同。
+- PR #38;CI 全部 test job + rtl-lockstep + examples 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):830 passed / 1 skipped(+2);test_adc_cal nojit 5 passed / 4 skipped;ruff 通过。
 
 ## 2026-10-07 · TI-ADC 后台校准 阶段 1(feat/adc-calibration,ROADMAP P3 #7)
