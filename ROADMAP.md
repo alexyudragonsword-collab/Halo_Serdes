@@ -28,9 +28,11 @@ AMI GetWave 记入下方「边界」。)
 ## P3 — 能力扩展
 
 ### 7. 片上校准回路
-现在只**建模失配**:`AdcConfig.calibrated=True` 是行为级把 offset/gain 归零,
-不是真实算法。DragonPHY2 的 ADC unfolding 是可移植的参考。做了之后才能回答
-"校准残差 vs 性能"这类问题。
+(2026-10-07 阶段 1 已做:`adc.cal.mode: background` —— offset / gain 的后台数据驱动校准,量化器后数字修正,
+步长 → 稳态残差与收敛时间的取舍见 `docs/USAGE.md` §19 与示例 39。)尚未做:
+- **skew 校准**:逐 lane 采样延时微调,由每 lane 的 MM 鉴相器均值(去掉公共部分)驱动;需先做实验确认可收敛、与 CDR 不打架。
+- **定点 / RTL**:校准字的位宽与舍入、`dsp/fixed_loop.py` 与 SV 对照;现在定点模式开校准直接报错。
+- 修正系数的有限分辨率(现在是浮点)、前台校准(上电时输入短接 / 已知参考)作为对照。
 
 ### 8. Duobinary / PR 整形
 1+D 预编码已实现(`precode` 开关),但**预编码 ≠ PR 整形**:前者是符号映射,

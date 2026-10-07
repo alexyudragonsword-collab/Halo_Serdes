@@ -505,6 +505,11 @@ def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, 
     if not isinstance(rx_y, np.ndarray):
         raise ValueError("numeric.mode='fixed' runs the loop a second time over the "
                          "waveform; it cannot with sim.stream")
+    if cfg.rx.adc.cal.mode != "off":
+        # the bit-true loop has no calibration words yet: running it on the
+        # uncalibrated lanes would compare a different receiver
+        raise ValueError("numeric.mode='fixed' does not model adc.cal (background "
+                         "calibration) yet; use adc.cal.mode='off' or the float mode")
     from ..dsp.fixed_loop import build_fixed_loop, run_fixed_loop
 
     # from the float run's starting weights, training and adapting itself
@@ -635,7 +640,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     mu_a = pr.mu if (pr.active and pr.adapt == "lms") else 0.0
     alpha_out = np.array([alpha, beta], dtype=np.float64)
 
-    dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = _run_rx(AdcRxRun(
+    cal = cfg.rx.adc.cal
+    adc_run = AdcRxRun(
         rx_y if isinstance(rx_y, np.ndarray) else np.zeros(0), osr, float(peak), n_sym,
         levels.astype(np.float64),
         adc.n_lanes, adc.offsets, adc.gains, adc.skews,
@@ -646,8 +652,9 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         1 if cfg.mm_pd_input == "ffe" else 0, lat_blocks,
         sched.reference, int(train_end), int(settle), rx_clk,
         float(alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64),
-        float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1)),
-        rx_y, cfg, progress)
+        float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1),
+        1 if cal.mode == "background" else 0, cal.mu_offset, cal.mu_gain)
+    dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = _run_rx(adc_run, rx_y, cfg, progress)
     jitter_budget = _stream_jitter(cfg, rx_y, jitter_budget)
 
     fixed = None
@@ -737,6 +744,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "warmup": warm, "settle": settle, "train_end": train_end,
                 "w_ffe0": np.asarray(w_ffe0), "w_dfe0": np.asarray(w_dfe0),
                 "lane_ser": lane_ser, "adc": adc, "q_hist_head": q_hist[:8192],
+                # background calibration: [offset, power, gain, conversions] x lane at the end
+                "adc_cal": adc_run.cal.copy() if cal.mode != "off" else None,
                 "jitter_budget": jitter_budget,
                 "mlsd_resid": resid_ratios,
                 # SER of the raw slicer, before the sequence detector — the

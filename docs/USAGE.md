@@ -28,6 +28,7 @@
 16. [光互联:LPO / CPO 作为同一条链](#16-光互联lpo--cpo-作为同一条链)
 17. [DSP 发端:DAC 与驱动器压缩](#17-dsp-发端dac-与驱动器压缩)
 18. [接收端部分响应(PR)整形](#18-接收端部分响应pr整形)
+19. [TI-ADC 后台校准](#19-ti-adc-后台校准)
 
 ---
 
@@ -775,3 +776,42 @@ precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 �
 线性链路、噪声在收端时,发端整形不改变收端 FFE 要反演的东西(信道,一直到 delta),所以拿不到收端 PR 省下的噪声放大;
 峰值受限时还要再付最多 20·log10(1 + a)。示例 `examples/37_pr_tx_vs_rx.py` 三方同台(无 PR / 收端 / 发端):发端 PR 的 reach ≈ 无 PR − 20·log10(1 + a),收端 PR 多 4.7 dB。
 
+---
+
+## 19. TI-ADC 后台校准
+
+`adc.offset_sigma` / `gain_sigma` / `skew_sigma_ui` 给每个 lane 抽失配。`adc.calibrated: true` 是**理想模型**(失配不抽,
+等于"校准完美");`adc.cal` 是**真实算法**,只对 `rx.arch: adc_dsp` 生效,两者互斥:
+
+```yaml
+rx:
+  adc:
+    offset_sigma: 0.01
+    gain_sigma: 0.03
+    cal:
+      mode: background     # off(默认,逐位等于不设)| background
+      mu_offset: 0.0009765625   # 2^-10,按该 lane 的每次转换计
+      mu_gain: 0.0009765625
+```
+
+- **算法**(`cdr/adc_kernel.py`,量化器之后、数字域):每次转换先用当前估计修正 `(q − ô_l)·ĝ_l`,再更新 ——
+  offset 估计是该 lane 的滑动均值(数据零均值),功率估计是 `(q − ô_l)²` 的滑动均值,增益 `ĝ_l = sqrt(各 lane 平均功率 / 本 lane 功率)`
+  (只把 lane 拉齐,整体增益交给 FFE)。功率从 0 起、各 lane 一起涨,比值一开始就对;但前几个样本太少,
+  增益在每个 lane 满 `1/mu_gain` 次转换之前保持 1。
+- **步长的取舍**:时间常数 `n_lanes / mu` 个符号(16 lane、2⁻¹⁰ 时 1.6 万);残差是估计从数据本身方差里带走的那份,
+  offset 约 `sqrt(mu/2)` × 信号 rms。示例 `examples/39_adc_calibration.py`(112 GBd PAM4、offset 10 mV、gain 3 %、10⁶ 符号、只打分末 1/4):
+
+  | 步长 | 时间常数 [符号] | 稳态 SNR | offset 残差 | gain 残差 |
+  |---|---|---|---|---|
+  | 未校准 | — | 14.34 dB | 10.25 mV | 2.86 % |
+  | 2⁻⁸ | 4 096 | 23.58 dB | 3.98 mV | 2.08 % |
+  | 2⁻¹⁰ | 16 384 | 26.05 dB | 1.83 mV | 0.99 % |
+  | 2⁻¹² | 65 536 | 26.80 dB | 0.58 mV | 0.33 % |
+  | 2⁻¹⁴ | 262 144 | 26.78 dB | 0.25 mV | 0.08 % |
+  | 理想(`calibrated`) | — | 26.90 dB | 0 | 0 |
+
+- **打分要避开收敛段**:`sim.cdr_settle + train_symbols` 不管校准;小步长时把 `sim.warmup_discard` 设到几个时间常数以上,
+  否则 BER / SNR 里混着收敛过程。
+- `res.extras["adc_cal"]`:运行结束时的状态,行 = [offset, 功率, 增益, 已转换次数],列 = lane;与 `extras["adc"]` 里抽到的真值对照即残差。
+- **不做的**:skew(时序失配)不校 —— 要逐 lane 调采样延时,由鉴相器驱动,是下一阶段;定点数据通路(`numeric.mode: fixed`)
+  还没有校准字,开了直接报错;统计引擎本来就不建 lane 失配,校准对它无影响。
