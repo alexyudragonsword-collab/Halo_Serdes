@@ -225,18 +225,23 @@ class AdcCalConfig:
     ``"background"``: digital, after the quantizer, from the data itself --
     each lane's offset is its running mean (the data are zero-mean) and its
     gain the one that brings its running power to the lanes' mean, both
-    one-pole estimates updated every conversion of that lane. Skew is not
-    calibrated (stage 2). The steps trade settling against the residual the
+    one-pole estimates updated every conversion of that lane. With
+    ``mu_skew`` > 0 each lane's sampling delay is trimmed too, by its own
+    Mueller-Muller detector (trims kept zero-mean: the common phase is the
+    CDR's). The steps trade settling against the residual the
     estimates keep from the data's own variance: about ``mu / 2`` of it.
     ``AdcConfig.calibrated`` stays the ideal model (mismatch zeroed).
     """
     mode: Literal["off", "background"] = "off"
     mu_offset: float = 2.0 ** -10       # per conversion of the lane
     mu_gain: float = 2.0 ** -10
+    # skew: per-lane delay trim [samples per unit of the lane's MM detector,
+    # normalised to the outer level]; 0 leaves skew uncalibrated
+    mu_skew: float = 0.0
 
     def __post_init__(self):
         _require_in(self.mode, {"off", "background"}, "adc.cal.mode")
-        for nm in ("mu_offset", "mu_gain"):
+        for nm in ("mu_offset", "mu_gain", "mu_skew"):
             v = getattr(self, nm)
             _require(0.0 <= v < 1.0, f"adc.cal.{nm} must be in [0, 1), got {v}")
 

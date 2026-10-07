@@ -653,7 +653,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         sched.reference, int(train_end), int(settle), rx_clk,
         float(alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64),
         float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1),
-        1 if cal.mode == "background" else 0, cal.mu_offset, cal.mu_gain)
+        1 if cal.mode == "background" else 0, cal.mu_offset, cal.mu_gain, cal.mu_skew)
     dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = _run_rx(adc_run, rx_y, cfg, progress)
     jitter_budget = _stream_jitter(cfg, rx_y, jitter_budget)
 
@@ -744,7 +744,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "warmup": warm, "settle": settle, "train_end": train_end,
                 "w_ffe0": np.asarray(w_ffe0), "w_dfe0": np.asarray(w_dfe0),
                 "lane_ser": lane_ser, "adc": adc, "q_hist_head": q_hist[:8192],
-                # background calibration: [offset, power, gain, conversions] x lane at the end
+                # background calibration: [offset, power, gain, conversions, delay trim] x lane at the end
                 "adc_cal": adc_run.cal.copy() if cal.mode != "off" else None,
                 "jitter_budget": jitter_budget,
                 "mlsd_resid": resid_ratios,

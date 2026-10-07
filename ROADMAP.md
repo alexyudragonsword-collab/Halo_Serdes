@@ -30,7 +30,8 @@ AMI GetWave 记入下方「边界」。)
 ### 7. 片上校准回路
 (2026-10-07 阶段 1 已做:`adc.cal.mode: background` —— offset / gain 的后台数据驱动校准,量化器后数字修正,
 步长 → 稳态残差与收敛时间的取舍见 `docs/USAGE.md` §19 与示例 39。)尚未做:
-- **skew 校准**:逐 lane 采样延时微调,由每 lane 的 MM 鉴相器均值(去掉公共部分)驱动;需先做实验确认可收敛、与 CDR 不打架。
+- (2026-10-07 阶段 2 已做:skew 校准 `adc.cal.mu_skew`,见 USAGE §19。)待查:有 skew 时 offset / gain 环收敛明显变慢
+  (4×10⁵ 符号差理想 2 dB,10⁶ 时 0.2 dB),机理未确认;证据在 `tests/test_adc_cal.py` 最后一条的 docstring 与 LOG 2026-10-07。
 - **定点 / RTL**:校准字的位宽与舍入、`dsp/fixed_loop.py` 与 SV 对照;现在定点模式开校准直接报错。
 - 修正系数的有限分辨率(现在是浮点)、前台校准(上电时输入短接 / 已知参考)作为对照。
 
