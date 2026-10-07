@@ -31,7 +31,8 @@
 //         latency through a queue
 //   phase register += c >>> LANE_SHIFT every symbol; PI code = ph >>> PI_SH
 //   CAL   (CAL_ON) background ADC calibration of the raw word before the FFE,
-//         lane l = k % LANES: d = (xraw <<< F) - co[l]; y = (d * cg[l]) >>> B;
+//         lane l = k % LANES: d = (xraw <<< F) - co[l]; y = (d * g) >>> B,
+//         with g = cg[l] - (sum cg >>> LANE_SHIFT) + 2^B (the common gain pinned);
 //         x = clip(rnd(y, F), +-CAL_WMAX); co[l] += rnd(d, SH_O);
 //         cg[l] += rnd((pm >>> F) - x*x, SH_G); pm += rnd((x*x <<< F) - pm, SH_P)
 //         (rnd: rounding add + >>>; a negative shift skips that update)
@@ -56,6 +57,7 @@ module adc_dsp_loop;
     longint co     [LANES];       // calibration: lane offsets, gains, mean power
     longint cg     [LANES];
     longint cpm;
+    longint cgsum;                // sum of the gain registers (the common gain is pinned)
     longint cts    [LANES];       // skew: lane delay trims, and their sum
     longint ctsum;
     longint w_ffe  [NF];          // initial weights in, adapted weights out
@@ -115,6 +117,7 @@ module adc_dsp_loop;
         nt = (PR_MODE > 0) ? NT : 1;
         for (int l = 0; l < LANES; l++) begin co[l] = 0; cg[l] = longint'(1) <<< CAL_B; end
         cpm = CAL_PM0;
+        cgsum = longint'(LANES) <<< CAL_B;
         for (int l = 0; l < LANES; l++) cts[l] = 0;
         ctsum = 0;
         for (int k = 0; k < N; k++) begin
@@ -125,14 +128,18 @@ module adc_dsp_loop;
             else begin
                 cl = k % LANES;
                 cd = (xraw[k] <<< CAL_F) - co[cl];
-                cy = (cd * cg[cl]) >>> CAL_B;
+                cy = (cd * (cg[cl] - (cgsum >>> LANE_SHIFT) + (longint'(1) <<< CAL_B))) >>> CAL_B;
                 cx = (cy + (longint'(1) <<< (CAL_F - 1))) >>> CAL_F;
                 if (cx > CAL_WMAX) cx = CAL_WMAX;
                 else if (cx < -CAL_WMAX) cx = -CAL_WMAX;
                 xin[k] = cx;
                 if (CAL_SH_O >= 0) co[cl] += crnd(cd, CAL_SH_O);
                 cp2 = cx * cx;
-                if (CAL_SH_G >= 0) cg[cl] += crnd((cpm >>> CAL_F) - cp2, CAL_SH_G);
+                if (CAL_SH_G >= 0) begin
+                    cd = crnd((cpm >>> CAL_F) - cp2, CAL_SH_G);
+                    cg[cl] += cd;
+                    cgsum += cd;
+                end
                 if (CAL_SH_P >= 0) cpm += crnd((cp2 <<< CAL_F) - cpm, CAL_SH_P);
             end
             s = k - N_PRE;

@@ -6,6 +6,22 @@
 
 ---
 
+## [未发布] — 前台校准、校准字分辨率(ROADMAP P3 #7 余项)
+
+### 新增
+- `adc.cal.mode: foreground`(`fg_samples` 默认 4096、`fg_ref` 默认 0.8):上电时每 lane 经自己的量化器与 ENOB 噪声测短接输入(offset)
+  与 ±参考(增益),修正冻结、折进量化器前的 offset / gain(近似);单独随机流,链路实例不变;不校 skew;定点下数字校准关闭。
+  `extras["adc"]` 新增 `true_offsets` / `true_gains` / `fg`。GUI / Android 表单加该选项与两个字段。
+- 示例 39 第三部分:有 ENOB 噪声时前台 1024 次即到理想(26.90 dB);无噪声时停在量化误差 q/√12(0.70 mV,29.21 vs 理想 29.74 dB),
+  不如后台(29.55 dB)。
+- 分辨率扫描(USAGE §19):`cal_gain_bits` ≥ 9、`cal_frac_bits` ≥ 2 饱和。
+
+### 修正
+- 定点 / RTL 的 gain 校准没有钉住公共增益:LMS 只把各 lane 拉齐,各 lane 一起缩放对它不可见,寄存器舍入噪声在这个方向上随机游走 ——
+  默认 14 位看不出,9–10 位时公共增益漂到 0.7–0.85、SNR 掉几 dB(扫描曲线不单调才发现)。现在生效增益 = 寄存器 − 平均 + 1
+  (`cpm[1]` / SV `cgsum` 记和,平均是移位),`_cal_word_py`、replay、`rtl/adc_dsp_loop.sv` 同一份;`vectors/cal` 重新生成,
+  record / replay 的 `cal` 返回生效增益。默认 14 位下定点 SNR 变化 ≤ 0.03 dB;浮点黄金指纹逐位同。
+
 ## [未发布] — 定点 / RTL 的 skew 修正(ROADMAP P3 #7 阶段 4)
 
 ### 新增

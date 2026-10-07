@@ -52,7 +52,9 @@ def _reference(words, n_lanes, f, b, sh_o, sh_g, sh_p, wmax, pm0):
     for k, x in enumerate(int(w) for w in words):
         lane = k % n_lanes
         d = x * 2 ** f - off[lane]
-        y = (d * gain[lane]) >> b
+        # the applied gain: the register less the lanes' mean (floored), plus one
+        mean = sum(gain.values()) // n_lanes
+        y = (d * (gain[lane] - mean + (1 << b))) >> b
         w = max(-wmax, min(wmax, (y + 2 ** (f - 1)) >> f))
         out.append(w)
         if sh_o >= 0:
@@ -79,18 +81,20 @@ def test_cal_word_matches_an_independent_reference(seed):
     words = np.round(lane_gain[k % n_lanes] * rng.normal(scale=40, size=k.size)
                      + lane_off[k % n_lanes]).astype(np.int64)
     pm0 = int(1600 * 2 ** f)
-    cp = np.array([1, f, b, sh_o, sh_g, sh_p, wmax], dtype=np.int64)
+    cp = np.array([1, f, b, sh_o, sh_g, sh_p, wmax, 0, 0, int(np.log2(n_lanes))],
+                  dtype=np.int64)
     co = np.zeros(n_lanes, dtype=np.int64)
     cg = np.full(n_lanes, 1 << b, dtype=np.int64)
-    cpm = np.array([pm0], dtype=np.int64)
+    cpm = np.array([pm0, n_lanes << b], dtype=np.int64)
     got = [int(fxl._cal_word_py(i % n_lanes, int(w), cp, co, cg, cpm)) for i, w in enumerate(words)]
     want, off, gain, pm = _reference(words, n_lanes, f, b, sh_o, sh_g, sh_p, wmax, pm0)
     assert got == want
     assert list(co) == off and list(cg) == gain and int(cpm[0]) == pm
+    assert int(cpm[1]) == sum(gain)
 
 
 def test_off_passes_the_word_through():
-    cp = np.array([0, 16, 14, 3, 3, 3, 255], dtype=np.int64)
+    cp = np.array([0, 16, 14, 3, 3, 3, 255, 0, 0, 2], dtype=np.int64)
     co, cg, cpm = np.zeros(4, dtype=np.int64), np.ones(4, dtype=np.int64), np.zeros(1, dtype=np.int64)
     assert all(fxl._cal_word_py(i % 4, w, cp, co, cg, cpm) == w for i, w in enumerate(range(-300, 300)))
     assert not co.any() and np.all(cg == 1) and cpm[0] == 0
@@ -196,3 +200,23 @@ def test_skew_trims_converge_as_the_float_ones_do():
     trim = (ts - ts.mean()) * 2.0 ** -loop.ph_frac
     assert np.corrcoef(true, trim)[0, 1] > 0.9
     assert np.std(true - trim) < 0.5 * np.std(true)
+
+
+@needs_jit
+def test_gain_word_width_does_not_drift_the_common_gain():
+    """The gain LMS sees each lane's power only against the lanes' mean, so the
+    gains' common part is unobservable; unpinned it random-walked on the update
+    rounding to 0.7 (a 10-bit word) and the link lost 15 dB. Pinned, every
+    width from 8 bits up lands where the default 14 does, and the applied
+    gains average one."""
+    n = 60_000
+    cm = ChannelModel.from_config(_cfg())
+    base = _cfg(n, 3 * n // 4, cal=_bg(2.0 ** -10), **MISMATCH)
+    snr = {}
+    for gb in (8, 9, 10, 11, 14):
+        r = run_time_link(dataclasses.replace(base, numeric=NumericConfig(
+            mode="fixed", cal_gain_bits=gb)), channel=cm)
+        g = np.asarray(r.extras["fixed"]["record"]["cal"][1]) / 2.0 ** gb
+        assert abs(g.mean() - 1.0) < 2.0 ** -gb + 1e-12, (gb, g.mean())
+        snr[gb] = r.slicer_snr_db
+    assert all(abs(v - snr[14]) < 1.0 for v in snr.values()), snr

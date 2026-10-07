@@ -267,7 +267,8 @@ def _cal_word_py(lane, xi, cp, co, cg, cpm):
     bits B, offset step shift, gain step shift, mean-power step shift, word
     limit] (a negative step shift turns that estimate off); ``co`` / ``cg`` the lanes' offset (word LSBs, F fraction bits) and
     gain (B fraction bits) registers, ``cpm[0]`` the mean corrected power
-    (word LSBs squared, F fraction bits).
+    (word LSBs squared, F fraction bits), ``cpm[1]`` the gain registers' sum;
+    ``cp[9]`` log2 of the lane count.
 
     The float kernel's offset estimate, in integers: the lane's word less
     its offset, ``d``, is corrected with the registers as they stand and
@@ -279,7 +280,13 @@ def _cal_word_py(lane, xi, cp, co, cg, cpm):
         return xi
     f = cp[1]
     d = (xi << f) - co[lane]
-    y = (d * cg[lane]) >> cp[2]                 # corrected word, F fraction bits
+    # the gain applied: the register less the lanes' mean, plus one. The LMS
+    # only sees the lanes' powers against their own mean, so the gains'
+    # common part is unobservable -- left free it random-walks on the update
+    # rounding (to 0.7 in a 10-bit gain word, 2e5 symbols); pinned it is 1
+    # exactly, as the float loop's mean-power ratios keep it
+    g = cg[lane] - (cpm[1] >> cp[9]) + (1 << cp[2])
+    y = (d * g) >> cp[2]                        # corrected word, F fraction bits
     yw = (y + (1 << (f - 1))) >> f              # rounded to word LSBs
     if yw > cp[6]:
         yw = cp[6]
@@ -293,7 +300,9 @@ def _cal_word_py(lane, xi, cp, co, cg, cpm):
         co[lane] += _rnd(d, cp[3])
     p = yw * yw                                 # word LSBs squared
     if cp[4] >= 0:
-        cg[lane] += _rnd((cpm[0] >> f) - p, cp[4])
+        dg = _rnd((cpm[0] >> f) - p, cp[4])
+        cg[lane] += dg
+        cpm[1] += dg
     if cp[5] >= 0:
         cpm[0] += _rnd((p << f) - cpm[0], cp[5])
     return yw
@@ -438,7 +447,7 @@ class FixedLoop:
     pr_ab: np.ndarray         # initial a, b [2^-pr_fl]
     # background calibration parameters (see _cal_word_py; off by default)
     cal: np.ndarray = field(default_factory=lambda: np.array(
-        [0, 16, 14, 0, 0, 0, (1 << 20) - 1, 0, 0], dtype=np.int64))
+        [0, 16, 14, 0, 0, 0, (1 << 20) - 1, 0, 0, 0], dtype=np.int64))
     cal_pm0: int = 0          # its mean-power register's start [word LSBs^2, F fraction bits]
 
     @property
@@ -548,8 +557,9 @@ def _cal_params(cfg, in_lsb: float, lane_shift: int, adc_power: float | None,
     num = cfg.numeric
     f, b = int(num.cal_frac_bits), int(num.cal_gain_bits)
     word_max = (1 << int(acfg.n_bits)) - 1
-    if acfg.cal.mode == "off":
-        return np.array([0, f, b, 0, 0, 0, word_max, 0, 0], dtype=np.int64), 0
+    if acfg.cal.mode != "background":
+        # off, or foreground: frozen at power-up, already in the ADC's lanes
+        return np.array([0, f, b, 0, 0, 0, word_max, 0, 0, lane_shift], dtype=np.int64), 0
     if adc_power is None or adc_power <= 0:
         raise ValueError("the fixed calibration needs the ADC output power (adc_power)")
     pm = adc_power / in_lsb ** 2                     # word LSBs squared
@@ -566,7 +576,7 @@ def _cal_params(cfg, in_lsb: float, lane_shift: int, adc_power: float | None,
             if mu_s > 0 else 0)
     cp = np.array([1, f, b, sh(mu_o), sh(mu_g, 2.0 * pm / 2.0 ** b),
                    sh(mu_g) + lane_shift if mu_g > 0 else -1, word_max,
-                   int(mu_s > 0), sh_s], dtype=np.int64)
+                   int(mu_s > 0), sh_s, lane_shift], dtype=np.int64)
     return cp, int(np.round(pm * 2.0 ** f))
 
 
@@ -576,8 +586,13 @@ def _cal_state(fl: FixedLoop):
     n = fl.n_lanes
     return (np.zeros(n, dtype=np.int64),
             np.full(n, 1 << int(fl.cal[2]), dtype=np.int64),
-            np.array([fl.cal_pm0], dtype=np.int64),
+            np.array([fl.cal_pm0, n << int(fl.cal[2])], dtype=np.int64),
             np.zeros(n + 1, dtype=np.int64))
+
+
+def _applied_gains(fl: FixedLoop, cg, cpm):
+    """The lane gains the calibration applies (registers less their mean, plus one)."""
+    return cg - (int(cpm[1]) >> int(fl.cal[9])) + (1 << int(fl.cal[2]))
 
 
 def float_equivalent_gains(fl: FixedLoop, osr: int) -> tuple[float, float, float, float]:
@@ -644,7 +659,7 @@ def run_fixed_loop(fl: FixedLoop, y: np.ndarray, osr: int, pos0: float, n_sym: i
     done = int(done)
     n_dec = max(done - fl.n_pre, 0)
     return {"xin": xraw[:done], "x_cal": xh[:done], "pi": pi[:done], "phase": phase[:done],
-            "cal": (co.copy(), cg.copy(), int(cpm[0]), cts[:-1].copy()),
+            "cal": (co.copy(), _applied_gains(fl, cg, cpm), int(cpm[0]), cts[:-1].copy()),
             "dec": dec[:n_dec], "v_out": v_out[:n_dec], "n_dec": n_dec,
             "ref": ref[:done], "wf": wf, "wd": wd, "ab": prs >> int(fl.lp[6])}
 
@@ -672,7 +687,7 @@ def replay_digital(fl: FixedLoop, xin: np.ndarray, ref: np.ndarray | None = None
                         fl.cal, co, cg, cpm, cts)
     n_dec = max(n - fl.n_pre, 0)
     return {"pi": pi, "dec": dec[:n_dec], "v_out": v_out[:n_dec], "n_dec": n_dec,
-            "cal": (co, cg, int(cpm[0]), cts[:-1]),
+            "cal": (co, _applied_gains(fl, cg, cpm), int(cpm[0]), cts[:-1]),
             "wf": wf, "wd": wd, "ab": prs >> int(fl.lp[6])}
 
 

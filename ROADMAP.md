@@ -27,14 +27,6 @@ AMI GetWave 记入下方「边界」。)
 
 ## P3 — 能力扩展
 
-### 7. 片上校准回路
-(2026-10-07 阶段 1 已做:`adc.cal.mode: background` —— offset / gain 的后台数据驱动校准,量化器后数字修正,
-步长 → 稳态残差与收敛时间的取舍见 `docs/USAGE.md` §19 与示例 39。)尚未做:
-- (2026-10-07 阶段 2 已做:skew 校准 `adc.cal.mu_skew`,见 USAGE §19。原记的"有 skew 时 offset / gain 收敛变慢"已查清:
-  不是校准环,是 `calibrated` 跳过随机抽取让理想模型成了另一条链路,已修,见 CHANGELOG。)
-- (2026-10-07 阶段 3、4 已做:offset / gain 与 skew 修正的定点与 SV 实现,lockstep 校准段。)
-- 修正系数的有限分辨率(现在是浮点)、前台校准(上电时输入短接 / 已知参考)作为对照。
-
 ### 8. Duobinary / PR 整形
 1+D 预编码已实现(`precode` 开关),但**预编码 ≠ PR 整形**:前者是符号映射,
 后者要有意引入受控 ISI 并配匹配的检测器。

@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-07 · 前台校准 + 校准字分辨率(feat/adc-foreground-cal,ROADMAP P3 #7 余项 → #7 删除)
+
+- `adc.cal.mode: foreground`:上电经各 lane 自己的量化器 / 噪声测短接与 ±参考,修正冻结、折进量化器前(近似);单独随机流,实例不变。
+  有 ENOB 噪声时 1024 次即到理想 26.90 dB;无噪声停在 q/√12(29.21 vs 理想 29.74,后台 29.55)。示例 39 第三部分、USAGE §19。
+- 分辨率扫描暴露 bug:定点 gain LMS 对公共增益无观测,舍入噪声随机游走,9–10 位时漂到 0.7–0.85。修:生效增益 = 寄存器 − 平均 + 1,
+  Python / replay / SV 同一份,`vectors/cal` 重生成。修后单调:gain ≥ 9 位、offset 小数 ≥ 2 位饱和。坑进 engineering-pitfalls(建模约定类)。
+- 旧测试断言 "foreground 非法" 随之改为未知模式;表单(GUI / Android)加 foreground 与两个字段。
+- 全量(JIT + iverilog):1 failed / 850 passed / 1 skipped —— 失败的是旧断言("foreground" 非法),改后单独重跑通过;其后的表单改动跑了 bridge / form 测试 52 passed → 851 passed / 1 skipped(+6);定点校准 nojit 10 passed / 4 skipped;浮点指纹逐位同;lockstep 七段过;ruff 通过。
+
 ## 2026-10-07 · 定点 / RTL 的 skew 修正(feat/fixed-skew-cal,ROADMAP P3 #7 阶段 4 → #7 收尾)
 
 - 每 lane 整数延时修正寄存器(相位寄存器单位),MM 鉴相器在校准后字上驱动;PI 码 = `(ph − (cts[l] − Σcts >>> lane_shift)) >>> pi_sh`,

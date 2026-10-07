@@ -231,16 +231,29 @@ class AdcCalConfig:
     CDR's). The steps trade settling against the residual the
     estimates keep from the data's own variance: about ``mu / 2`` of it.
     ``AdcConfig.calibrated`` stays the ideal model (mismatch zeroed).
+
+    ``"foreground"``: at power-up, before the link runs -- the input shorted
+    for ``fg_samples`` conversions per lane (offset: the lane's mean code),
+    then held at +-``fg_ref`` of half full scale (gain: the lane's code
+    difference over the known step), through the lane's own quantiser and
+    ENOB noise. The estimates are then frozen; what is left is the
+    estimation error. Skew is not foreground-calibrated. The draws come from
+    their own generator (seeded from ``sim.seed``), so the link instance is
+    the uncalibrated one's.
     """
-    mode: Literal["off", "background"] = "off"
+    mode: Literal["off", "background", "foreground"] = "off"
     mu_offset: float = 2.0 ** -10       # per conversion of the lane
     mu_gain: float = 2.0 ** -10
     # skew: per-lane delay trim [samples per unit of the lane's MM detector,
     # normalised to the outer level]; 0 leaves skew uncalibrated
     mu_skew: float = 0.0
+    fg_samples: int = 4096              # foreground: conversions per lane per measurement
+    fg_ref: float = 0.8                 # foreground: reference, fraction of half full scale
 
     def __post_init__(self):
-        _require_in(self.mode, {"off", "background"}, "adc.cal.mode")
+        _require_in(self.mode, {"off", "background", "foreground"}, "adc.cal.mode")
+        _require(self.fg_samples >= 1, f"adc.cal.fg_samples must be >= 1, got {self.fg_samples}")
+        _require(0.0 < self.fg_ref < 1.0, f"adc.cal.fg_ref must be in (0, 1), got {self.fg_ref}")
         for nm in ("mu_offset", "mu_gain", "mu_skew"):
             v = getattr(self, nm)
             _require(0.0 <= v < 1.0, f"adc.cal.{nm} must be in [0, 1), got {v}")
