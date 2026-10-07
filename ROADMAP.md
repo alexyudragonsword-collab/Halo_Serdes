@@ -60,8 +60,9 @@ AMI GetWave 记入下方「边界」。)
 
 ### 10. 测试与文档的长尾
 - GUI docstring 28%(核心库 66%);GUI 行覆盖 60%(核心库 89%)。
-- 39 个示例只做 **import 守卫**(`tests/test_examples_api.py`),不执行。
-  全量执行太慢(多个用 10⁶ 符号),可考虑加一个"小符号数档"的夜间 CI job。
+- (2026-10-07 已做:CI `examples` job 用 `tools/run_examples.py --smoke` 把 39 个示例全部真跑一遍,
+  `n_symbols` 压到 2 万,~6 分钟。)剩余:冒烟只证明代码路径能跑,示例打印的数字(文档引用的那些)只有按原尺寸跑才有意义,
+  仍是手动步骤(`python tools/run_examples.py`,不加 `--smoke`)。
 - `LICENSE` 与 `CONTRIBUTING.md` 尚缺(许可证类型需要由项目所有者决定)。
 
 ---

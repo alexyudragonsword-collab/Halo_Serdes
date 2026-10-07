@@ -6,6 +6,19 @@
 
 ---
 
+## [未发布] — 示例冒烟运行(ROADMAP P3 #10 的一项)
+
+### 新增
+- `tools/run_examples.py`:逐个在独立解释器里跑 `examples/NN_*.py`(Agg 后端);`--smoke` 只在子进程里把每个
+  `SimConfig.n_symbols` 压到 `--cap`(默认 2 万),库与示例本身不动;缺可选后端(pyibisami / pllsim / galois)记为跳过。
+- CI `examples` job:每次 push 跑全部 39 个示例(~6 分钟)。
+- 测试:运行器的上限覆盖每个 `SimConfig`(含 `dataclasses.replace`)、坏示例让运行失败、缺可选后端是跳过;
+  文档里提到的 `examples/NN_*.py` 必须存在。
+
+### 修正
+- README 快速开始里的两个示例文件名早已改名(`01_nrz_link.py` → `01_nrz32_minimal.py`,
+  `05_adc_link.py` → `05_adc_rx_pam4_224g.py`),照抄会报文件不存在。
+
 ## [未发布] — 流式模式覆盖光链路、串扰、AMI Init、抖动分解(原 ROADMAP P2 #2)
 
 ### 新增 / 变更
