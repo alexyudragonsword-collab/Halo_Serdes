@@ -1,6 +1,6 @@
 """Background calibration of the TI-ADC lanes (``adc.cal``, ROADMAP P3 #7).
 
-``adc.calibrated`` is the ideal model: the mismatch is simply not drawn.
+``adc.calibrated`` is the ideal model: the mismatch is drawn, then zeroed.
 ``adc.cal.mode = "background"`` is an algorithm: each lane's offset and gain
 are estimated from the data and corrected after the quantizer, so what is
 left is a residual that depends on the step. What has to hold:
@@ -196,9 +196,9 @@ def test_skew_trims_converge_to_the_lane_skews():
 def test_with_skew_present_the_three_loops_together_recover_the_link():
     """Offset, gain and skew mismatch together: with all three loops the
     link is within half a dB of one without mismatch, and clearly above
-    offset + gain alone (which leave the skew in, and here also converge
-    more slowly with it -- measured, mechanism not established: 2 dB short
-    of the ideal offset / gain model after 4e5 symbols, 0.2 dB after 1e6)."""
+    offset + gain alone, which leave the skew in -- and get to the ideal
+    offset / gain model on the same link (it was once read as 'slow
+    convergence': the ideal model drew another link, see the next test)."""
     n = 400_000
     mm = dict(skew_sigma_ui=0.04, **MISMATCH)
     cm = ChannelModel.from_config(_cfg())
@@ -208,3 +208,28 @@ def test_with_skew_present_the_three_loops_together_recover_the_link():
                          channel=cm)
     assert full.slicer_snr_db > none.slicer_snr_db - 0.5, (full.slicer_snr_db, none.slicer_snr_db)
     assert full.slicer_snr_db > og.slicer_snr_db + 1.0, (full.slicer_snr_db, og.slicer_snr_db)
+
+
+def test_ideal_calibration_is_the_same_link_instance():
+    """``calibrated=True`` zeroes the drawn offsets and gains instead of not
+    drawing them: everything drawn after (the skews, the ENOB noise, the Rx
+    clock) is the uncalibrated run's. Skipping the draws once made the ideal
+    model a different skew instance -- 2 dB apart on the same config, read
+    as a calibration loop converging slowly."""
+    mm = dict(skew_sigma_ui=0.04, **MISMATCH)
+    cm = ChannelModel.from_config(_cfg())
+    raw = run_time_link(_cfg(4_000, **mm), channel=cm).extras["adc"]
+    ideal = run_time_link(_cfg(4_000, calibrated=True, **mm), channel=cm).extras["adc"]
+    assert np.array_equal(raw.skews, ideal.skews)
+    assert not ideal.offsets.any() and np.all(ideal.gains == 1.0)
+
+
+@needs_jit
+def test_background_offset_gain_reaches_the_ideal_model_with_skew_present():
+    n = 400_000
+    mm = dict(skew_sigma_ui=0.04, **MISMATCH)
+    cm = ChannelModel.from_config(_cfg())
+    ideal = run_time_link(_cfg(n, 3 * n // 4, calibrated=True, **mm), channel=cm)
+    og = run_time_link(_cfg(n, 3 * n // 4, cal=_bg(2.0 ** -12), **mm), channel=cm)
+    assert abs(og.slicer_snr_db - ideal.slicer_snr_db) < 0.3, (og.slicer_snr_db,
+                                                              ideal.slicer_snr_db)

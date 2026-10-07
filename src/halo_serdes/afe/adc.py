@@ -27,12 +27,13 @@ class TiAdc:
         self.n_lanes = n
         self.q_step = cfg.fullscale / (2 ** cfg.n_bits)
         self.code_max = 2 ** (cfg.n_bits - 1) - 1
-        if cfg.calibrated:
-            self.offsets = np.zeros(n)
-            self.gains = np.ones(n)
-        else:
-            self.offsets = rng.normal(scale=cfg.offset_sigma, size=n) if cfg.offset_sigma else np.zeros(n)
-            self.gains = 1.0 + (rng.normal(scale=cfg.gain_sigma, size=n) if cfg.gain_sigma else np.zeros(n))
+        # drawn whether or not ``calibrated`` zeroes them: skipping the draws
+        # would hand the skews, the ENOB noise and the Rx clock other values,
+        # and the ideal-calibration run would compare a different link
+        offsets = rng.normal(scale=cfg.offset_sigma, size=n) if cfg.offset_sigma else np.zeros(n)
+        gains = 1.0 + (rng.normal(scale=cfg.gain_sigma, size=n) if cfg.gain_sigma else np.zeros(n))
+        self.offsets = np.zeros(n) if cfg.calibrated else offsets
+        self.gains = np.ones(n) if cfg.calibrated else gains
         self.skews = (rng.normal(scale=cfg.skew_sigma_ui, size=n) * osr
                       if cfg.skew_sigma_ui else np.zeros(n))
 
