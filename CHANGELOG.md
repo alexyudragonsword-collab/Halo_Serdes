@@ -6,6 +6,16 @@
 
 ---
 
+## [未发布] — TI-ADC 后台校准,阶段 1:offset / gain(ROADMAP P3 #7)
+
+### 新增
+- `AdcConfig.cal`(`AdcCalConfig`:`mode` off | background、`mu_offset`、`mu_gain`):ADC 内核里逐 lane 的后台校准 ——
+  量化器后数字修正 `(q − ô)·ĝ`,offset 取 lane 滑动均值,增益按 lane 功率对齐到各 lane 平均;增益在每 lane 满 1/mu 次转换前保持 1。
+  `extras["adc_cal"]` 给出末态估计。`calibrated`(理想模型)与之互斥;定点模式开校准报错。GUI / Android 表单加三个字段。
+- 示例 `39_adc_calibration.py`:步长 2⁻⁸…2⁻¹⁴ 的稳态 SNR、残差、时间常数,对照未校准与理想。
+- 测试 `tests/test_adc_cal.py`:真值冻结 = 理想模型;offset 收敛到 lane 均值;稳态 SNR 在小步长下距理想 < 0.8 dB、
+  残差随步长缩小;分块 / 流式逐位一致;JIT = Python;关闭时不留状态、互斥与校验。
+
 ## [未发布] — 示例冒烟运行(ROADMAP P3 #10 的一项)
 
 ### 新增

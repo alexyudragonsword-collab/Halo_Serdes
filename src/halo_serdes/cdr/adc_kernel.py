@@ -34,6 +34,8 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                     rx_clock_offset_samples: np.ndarray,
                     pr_mode: int, pr_levels: np.ndarray,
                     mu_alpha: float, pr_nt: int,
+                    cal_mode: int, mu_cal_off: float, mu_cal_gain: float,
+                    cal: np.ndarray,
                     corr_queue: np.ndarray, fs: np.ndarray, ist: np.ndarray,
                     dec: np.ndarray, xl: np.ndarray, y_sl: np.ndarray,
                     r_sl: np.ndarray, phase: np.ndarray, lane_of: np.ndarray,
@@ -102,6 +104,28 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
         elif code < -code_max - 1:
             code = -code_max - 1
         q = (code + 0.5) * q_step
+        if cal_mode == 1:
+            # background calibration, digital, after the quantizer: the lane's
+            # word is corrected with the estimates as they stand, then they
+            # learn from it. cal[0] offset (the lane's mean: the data are
+            # zero-mean), cal[1] the lane's power about it, cal[2] the gain
+            # that brings it to the lanes' mean power, cal[3] the lane's
+            # conversions so far. The powers start at zero and rise together,
+            # so their ratios are right from the start, but they are a few
+            # samples' worth: the gain holds at 1 until every lane has had
+            # 1 / mu_cal_gain conversions (one time constant).
+            d = q - cal[0, lane]
+            q = d * cal[2, lane]
+            cal[0, lane] += mu_cal_off * d
+            cal[1, lane] += mu_cal_gain * (d * d - cal[1, lane])
+            cal[3, lane] += 1.0
+            if mu_cal_gain > 0.0 and cal[3, lane] * mu_cal_gain >= 1.0:
+                p_mean = 0.0
+                for m in range(n_lanes):
+                    p_mean += cal[1, m]
+                p_mean = p_mean / n_lanes
+                if cal[1, lane] > 0.0:
+                    cal[2, lane] = np.sqrt(p_mean / cal[1, lane])
         q_hist[k] = q
         phase[k] = p_clk
         lane_of[k] = lane
@@ -259,7 +283,8 @@ class AdcRxRun:
                  w_dfe, mu_dfe, kp, ki, clamp, pd_offset, pd_use_ffe,
                  loop_latency_blocks, ref_idx, train_len, adapt_start,
                  rx_clock_offset_samples, pr_alpha, pr_mode, pr_levels,
-                 mu_alpha, alpha_out, pr_beta, pr_nt, core=None):
+                 mu_alpha, alpha_out, pr_beta, pr_nt, cal_mode=0, mu_cal_off=0.0,
+                 mu_cal_gain=0.0, core=None):
         self.core = core if core is not None else _adc_rx_core
         self.osr = osr
         self.set_window(y)
@@ -269,7 +294,8 @@ class AdcRxRun:
                        noise, self.wf, n_pre_ffe, mu_ffe, self.wd, mu_dfe, kp, ki,
                        clamp, pd_offset, pd_use_ffe, loop_latency_blocks, ref_idx,
                        train_len, adapt_start, rx_clock_offset_samples, pr_mode,
-                       pr_levels, mu_alpha, pr_nt,
+                       pr_levels, mu_alpha, pr_nt, int(cal_mode), float(mu_cal_off),
+                       float(mu_cal_gain), self._cal_init(n_lanes),
                        np.zeros(loop_latency_blocks + 1, dtype=np.float64))
         self.fs = np.array([pos0, 0.0, 0.0, 0.0, pr_alpha, pr_beta], dtype=np.float64)
         self.ist = np.zeros(2, dtype=np.int64)
@@ -293,6 +319,19 @@ class AdcRxRun:
         self.need_more = False
 
     set_window = MsRxRun.set_window
+
+    @staticmethod
+    def _cal_init(n_lanes: int) -> np.ndarray:
+        """Calibration state [offset, power, gain, conversions] x lane: no
+        offset, no power yet, unit gain."""
+        cal = np.zeros((4, n_lanes), dtype=np.float64)
+        cal[2] = 1.0
+        return cal
+
+    @property
+    def cal(self) -> np.ndarray:
+        """The calibration state as the run left it ([offset, power, gain, conversions] x lane)."""
+        return self.params[30]
 
     def advance(self, k1: int) -> int:
         k1 = min(int(k1), self.n_symbols)

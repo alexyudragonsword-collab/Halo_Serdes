@@ -254,7 +254,10 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("rx.adc.offset_sigma", "Offset mismatch sigma [V]", "float"),
         _f("rx.adc.gain_sigma", "Gain mismatch sigma", "float"),
         _f("rx.adc.skew_sigma_ui", "Skew sigma [UI]", "float"),
-        _f("rx.adc.calibrated", "Calibrated", "bool"),
+        _f("rx.adc.calibrated", "Calibrated (ideal)", "bool"),
+        _f("rx.adc.cal.mode", "Calibration loop", "enum", options=["off", "background"]),
+        _f("rx.adc.cal.mu_offset", "Cal offset step", "float"),
+        _f("rx.adc.cal.mu_gain", "Cal gain step", "float"),
     ]),
     ("ffe", "FFE", [
         _f("rx.ffe.n_pre", "Precursor taps", "int"),

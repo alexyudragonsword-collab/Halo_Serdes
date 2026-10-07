@@ -42,7 +42,7 @@ print(run_time_link(cfg).summary())     # BER / SER / slicer SNR
 
 ## 图形界面 GUI
 
-一个专业的 Plotly Dash 工作台,把 39 个示例脚本的全部分析能力变成交互式操作
+一个专业的 Plotly Dash 工作台,把 40 个示例脚本的全部分析能力变成交互式操作
 (单次链路、双引擎交叉校验、眼图/浴盆、CTLE、自适应/CDR 动态、ADC 逐 lane、抖动预算、
 reach 扫描、FEC、串扰、AMI/COM、定点),共 17 个能力标签页。界面不新增任何仿真逻辑,
 只驱动现有引擎并渲染结果。详见 [`docs/GUI.md`](docs/GUI.md);
