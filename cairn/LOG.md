@@ -11,6 +11,7 @@
 - 结果(示例 39,10⁶ 符号、末 1/4):未校准 14.34 dB → 2⁻¹⁰ 26.05 / 2⁻¹² 26.80 dB,理想 26.90 dB;残差约随 √mu 缩小。表见 USAGE §19。
 - 真值冻结(mu = 0)= 理想模型,说明修正通路本身无误;关闭时浮点指纹逐位同。
 - 未做:skew 校准、定点 / RTL 校准字(定点开校准报错)→ ROADMAP #7。
+- PR #37;CI 全部 test job + rtl-lockstep + examples 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):828 passed / 1 skipped(+9);test_adc_cal nojit 5 passed / 2 skipped;ruff 通过。
 
 ## 2026-10-07 · 示例冒烟运行(feat/example-smoke,ROADMAP P3 #10 的一项)
