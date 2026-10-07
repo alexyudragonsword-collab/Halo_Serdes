@@ -12,6 +12,7 @@
 - **更正**:撤回阶段 2 记下的"有 skew 时 o/g 收敛变慢"(以及更早撤回的"gain 环把 skew 当增益")。"随运行长度变化"也是假象:
   `n_symbols` 改变抽取量,10⁶ 与 4×10⁵ 是不同实例。坑写进 engineering-pitfalls。
 - 回归测试两条(改前失败、改后通过);示例 39 第二部分理想值 24.31 → 24.17 dB。
+- PR #39;CI 全部 test job + rtl-lockstep + examples 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):832 passed / 1 skipped(+2);ruff 通过。
 
 ## 2026-10-07 · TI-ADC 后台校准 阶段 2:skew(feat/adc-skew-cal,ROADMAP P3 #7)
