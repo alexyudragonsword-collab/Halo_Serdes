@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-07 · 定点 / RTL 的 ADC 后台校准(feat/fixed-adc-cal,ROADMAP P3 #7 阶段 3)
+
+- `_cal_word_py`:ADC 字 → 校准 → FFE,闭环与 replay 同一函数;offset 是浮点那份的整数版,gain 改成硬件形式的 LMS(功率拉向各 lane 平均,
+  无开方 / 除法),平衡点同浮点、动态不逐位同。记录里 `xin` 改为原始 ADC 字(RTL 输入),`x_cal` 为校准后。
+- 坑:第一版用"右移 62"表示步长 0 —— 负数算术右移 62 得 −1,寄存器每次往下漂;真值冻结只有 21.6 dB。改为负移位 = 关闭 + 舍入移位后 26.65 dB。
+  (先冻结真值再看学习,一步就定位到了修正通路。)
+- 定点 vs 浮点(2×10⁵ 符号末 1/4):2⁻⁸ / 2⁻¹⁰ / 2⁻¹² 下差 0.13 / 0.18 / 0.19 dB。
+- SV:Icarus 12 在 automatic task 把 output 写进数组元素时段错误、task 里不许 return → 校准内联进 run()。lockstep 七段全过,末态寄存器逐位同;
+  原有向量只多了 CAL 参数(golden 不变)。
+- 全量(JIT + iverilog):843 passed / 1 skipped(+11);定点 / 校准 nojit 44 passed / 8 skipped;浮点指纹逐位同;ruff 通过。
+
 ## 2026-10-07 · 修正:`adc.calibrated` 改变了随机实例(fix/cal-convergence-diag,ROADMAP #7 待查项)
 
 - 用户选"查收敛变慢"。诊断三步:① 修好分窗 SNR(上次只看了 y_slicer 的截断头部;改为拦截 score() 输入)→ 后台 o/g 不是慢,是平台在 23.1 dB;
