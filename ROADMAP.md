@@ -32,7 +32,8 @@ AMI GetWave 记入下方「边界」。)
 步长 → 稳态残差与收敛时间的取舍见 `docs/USAGE.md` §19 与示例 39。)尚未做:
 - (2026-10-07 阶段 2 已做:skew 校准 `adc.cal.mu_skew`,见 USAGE §19。原记的"有 skew 时 offset / gain 收敛变慢"已查清:
   不是校准环,是 `calibrated` 跳过随机抽取让理想模型成了另一条链路,已修,见 CHANGELOG。)
-- **定点 / RTL**:校准字的位宽与舍入、`dsp/fixed_loop.py` 与 SV 对照;现在定点模式开校准直接报错。
+- (2026-10-07 阶段 3 已做:offset / gain 校准的定点与 SV 实现,lockstep 第四段。)尚未做:skew 修正的定点 / RTL 版
+  (要逐 lane 改 PI 码,目前定点下开 `mu_skew` 报错)。
 - 修正系数的有限分辨率(现在是浮点)、前台校准(上电时输入短接 / 已知参考)作为对照。
 
 ### 8. Duobinary / PR 整形

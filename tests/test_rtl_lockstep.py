@@ -48,8 +48,9 @@ def test_rtl_loop_lockstep_bit_exact(tmp_path):
     vec = tmp_path / "vectors"
     subprocess.run(["python", "rtl/gen_vectors.py", str(vec)],
                    cwd=REPO, check=True, capture_output=True, text=True)
-    # delta target, 1 + aD + bD^2 with a and b adapted, precoded 1 + D
-    for d in (vec / "pr", vec / "pre", vec):
+    # delta target, 1 + aD + bD^2 with a and b adapted, precoded 1 + D, and
+    # offset / gain mismatch with the background calibration on
+    for d in (vec / "pr", vec / "pre", vec / "cal", vec):
         sim = tmp_path / f"loop_{d.name}.vvp"
         subprocess.run(["iverilog", "-g2012", "-o", str(sim), "-I", str(d),
                         "rtl/adc_dsp_loop.sv", "rtl/tb_adc_dsp_loop.sv"],
@@ -63,6 +64,10 @@ def test_rtl_loop_lockstep_bit_exact(tmp_path):
     assert ab != ab_end, "the PR vectors should adapt a and b"
     pi = [int(x) for x in (vec / "loop_pi.txt").read_text().split()]
     assert max(pi) - min(pi) >= 3, "the vectors should make the loop move the PI"
+    cal_end = [int(x) for x in (vec / "cal" / "loop_cal_end.txt").read_text().split()]
+    gains = cal_end[len(cal_end) // 2: -1]
+    assert max(gains) - min(gains) > 1000, "the calibration vectors should move the lane gains"
+    assert "CAL_ON = 1" in (vec / "cal" / "loop_dims.svh").read_text()
 
     # non-vacuous: one PI code off -> the check must FAIL
     f = vec / "loop_pi.txt"
