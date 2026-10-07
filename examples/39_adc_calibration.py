@@ -5,7 +5,8 @@ and zeroed, so it is the same link with none. ``adc.cal.mode = "background"`` is
 offset (its running mean) and gain (its running power against the lanes'
 mean) are estimated from the data and corrected after the quantizer, every
 conversion of that lane, with a one-pole step mu (part 2 adds lane skew and
-the per-lane delay trims, ``adc.cal.mu_skew``). Two things follow:
+the per-lane delay trims, ``adc.cal.mu_skew``; part 3 the power-up
+foreground mode). Two things follow:
 
 * settling: one time constant is 1 / mu conversions of a lane, i.e.
   n_lanes / mu symbols -- 16k symbols at 2^-10 for 16 lanes;
@@ -63,8 +64,8 @@ def make_cfg(**adc) -> LinkConfig:
                               loss_tangent=0.012, n_freq=4096),
         tx=TxConfig(swing=1.0, fir_taps=(-0.05, 1.0, -0.1), fir_n_pre=1),
         rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=4.0),
-                    adc=AdcConfig(n_bits=8, n_lanes=LANES, enob=6.5, fullscale=0.6,
-                                  **MISMATCH, **adc),
+                    adc=AdcConfig(n_bits=8, n_lanes=LANES, fullscale=0.6,
+                                  **{"enob": 6.5, **MISMATCH, **adc}),
                     ffe=FfeConfig(n_pre=4, n_post=10, adapt="lms", mu=5e-5),
                     dfe=DfeConfig(n_taps=1, adapt="lms", mu=5e-5),
                     cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
@@ -134,3 +135,25 @@ for name, c in part2.items():
         s += (f"   skew {np.std(true):.4f} UI rms -> "
               f"{np.std(true - r.extras['adc_cal'][4] / 16):.4f} UI left")
     print(s)
+
+# ------------------------------------------- part 3: foreground instead ---
+# ``adc.cal.mode = "foreground"`` measures each lane once at power-up -- a
+# shorted input for the offset, +/- fg_ref of half full scale for the gain --
+# through the lane's own quantizer and noise, then freezes the correction.
+# The ENOB noise dithers the quantizer, so averaging fg_samples conversions
+# keeps paying; with no noise every conversion of a constant gives the same
+# code and the estimate stops at the quantizer's own error (about q / sqrt 12).
+FG = (64, 1024) if QUICK else (64, 1024, 16384)
+for enob in (6.5, None):
+    print(f"\n== foreground calibration, ENOB {enob or 'off (quantizer only)'} ==")
+    for name, extra in (("ideal offset / gain", dict(calibrated=True)),
+                        ("background 2^-12", dict(cal=AdcCalConfig("background", 2.0 ** -12,
+                                                                    2.0 ** -12)))):
+        r = run_time_link(make_cfg(enob=enob, **extra), channel=cm)
+        print(f"  {name:27s} SNR {r.slicer_snr_db:6.2f} dB")
+    for m in FG:
+        r = run_time_link(make_cfg(enob=enob, cal=AdcCalConfig("foreground", fg_samples=m)),
+                          channel=cm)
+        a = r.extras["adc"]
+        print(f"  foreground {m:6d} samples    SNR {r.slicer_snr_db:6.2f} dB   offset left "
+              f"{np.std(a.offsets) * 1e3:5.2f} mV, gain left {np.std(a.gains / a.gains.mean()) * 100:.3f} %")

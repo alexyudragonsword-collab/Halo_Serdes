@@ -21,7 +21,8 @@ from ..config.schema import AdcConfig
 
 
 class TiAdc:
-    def __init__(self, cfg: AdcConfig, osr: int, rng: np.random.Generator) -> None:
+    def __init__(self, cfg: AdcConfig, osr: int, rng: np.random.Generator,
+                 fg_seed: int = 0) -> None:
         self.cfg = cfg
         n = cfg.n_lanes
         self.n_lanes = n
@@ -36,6 +37,36 @@ class TiAdc:
         self.gains = np.ones(n) if cfg.calibrated else gains
         self.skews = (rng.normal(scale=cfg.skew_sigma_ui, size=n) * osr
                       if cfg.skew_sigma_ui else np.zeros(n))
+        # what the link was built with, before any foreground correction
+        self.true_offsets, self.true_gains = self.offsets.copy(), self.gains.copy()
+        self.fg = None
+        if cfg.cal.mode == "foreground":
+            self._foreground(np.random.default_rng([int(fg_seed), 0xCA1]))
+
+    def _foreground(self, rng: np.random.Generator) -> None:
+        """Power-up calibration: measure each lane through its own quantiser
+        and noise, then fold the frozen correction (q - o_est) / g_est into
+        the lane's offset and gain. Folding it before the quantiser instead
+        of after is the approximation: it leaves the quantiser step as it is.
+        """
+        cal, n = self.cfg.cal, self.n_lanes
+        sig = self.noise_sigma
+        m = int(cal.fg_samples)
+        vref = cal.fg_ref * self.cfg.fullscale / 2.0
+
+        def convert(v):                  # (lanes, m) analog values -> dequantised
+            x = self.true_gains[:, None] * v + self.true_offsets[:, None]
+            if sig > 0:
+                x = x + rng.normal(scale=sig, size=x.shape)
+            code = np.clip(np.floor(x / self.q_step), -self.code_max - 1, self.code_max)
+            return (code + 0.5) * self.q_step
+
+        o_est = convert(np.zeros((n, m))).mean(axis=1)
+        g_est = (convert(np.full((n, m), vref)).mean(axis=1)
+                 - convert(np.full((n, m), -vref)).mean(axis=1)) / (2.0 * vref)
+        self.fg = {"offsets": o_est, "gains": g_est}
+        self.offsets = (self.true_offsets - o_est) / g_est
+        self.gains = self.true_gains / g_est
 
     @property
     def noise_sigma(self) -> float:

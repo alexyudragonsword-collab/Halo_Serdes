@@ -612,7 +612,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                                   for q in range(2 * n_lv - 1)])
 
     # --- TI-ADC ---
-    adc = TiAdc(cfg.rx.adc, osr, rng)
+    adc = TiAdc(cfg.rx.adc, osr, rng, fg_seed=cfg.sim.seed)
     delay = peak // osr
     n_sym_max = (n_wave - peak - (fcfg.n_pre + 6) * osr) // osr - 2
     n_sym = min(symbols.size - delay - fcfg.n_pre - 2, n_sym_max)
@@ -743,7 +743,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "w_ffe0": np.asarray(w_ffe0), "w_dfe0": np.asarray(w_dfe0),
                 "lane_ser": lane_ser, "adc": adc, "q_hist_head": q_hist[:8192],
                 # background calibration: [offset, power, gain, conversions, delay trim] x lane at the end
-                "adc_cal": adc_run.cal.copy() if cal.mode != "off" else None,
+                "adc_cal": adc_run.cal.copy() if cal.mode == "background" else None,
                 "jitter_budget": jitter_budget,
                 "mlsd_resid": resid_ratios,
                 # SER of the raw slicer, before the sequence detector — the

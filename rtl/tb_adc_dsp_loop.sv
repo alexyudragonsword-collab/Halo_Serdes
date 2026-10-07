@@ -106,9 +106,13 @@ module tb_adc_dsp_loop;
                 errors++;
             end
         for (int l = 0; l < LANES; l++)
-            if (dut.co[l] !== cal_gold[l] || dut.cg[l] !== cal_gold[LANES + l]) begin
+            // the golden holds the applied gains (registers less their mean, plus one)
+            if (dut.co[l] !== cal_gold[l] ||
+                dut.cg[l] - (dut.cgsum >>> LANE_SHIFT) + (longint'(1) <<< CAL_B) !== cal_gold[LANES + l]) begin
                 $display("  final calibration, lane %0d: offset %0d/%0d gain %0d/%0d (rtl/gold)",
-                         l, dut.co[l], cal_gold[l], dut.cg[l], cal_gold[LANES + l]);
+                         l, dut.co[l], cal_gold[l],
+                         dut.cg[l] - (dut.cgsum >>> LANE_SHIFT) + (longint'(1) <<< CAL_B),
+                         cal_gold[LANES + l]);
                 errors++;
             end
         for (int l = 0; l < LANES; l++)

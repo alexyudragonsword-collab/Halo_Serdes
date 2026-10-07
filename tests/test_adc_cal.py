@@ -23,6 +23,7 @@ import numpy as np
 import pytest
 
 import halo_serdes.cdr.adc_kernel as ak
+from halo_serdes.afe.adc import TiAdc
 from halo_serdes.channel import ChannelModel
 from halo_serdes.config.schema import (
     AdcCalConfig,
@@ -33,6 +34,7 @@ from halo_serdes.config.schema import (
     DfeConfig,
     FfeConfig,
     LinkConfig,
+    NumericConfig,
     RxConfig,
     SimConfig,
     TxConfig,
@@ -159,7 +161,7 @@ def test_off_leaves_no_state_and_the_modes_exclude_each_other():
     with pytest.raises(ValueError, match="adc.cal.mu_skew"):
         AdcCalConfig("background", 0.01, 0.01, -1.0)
     with pytest.raises(ValueError, match="adc.cal.mode"):
-        AdcCalConfig("foreground")
+        AdcCalConfig("periodic")
 
 
 def _skew_left(r):
@@ -229,3 +231,65 @@ def test_background_offset_gain_reaches_the_ideal_model_with_skew_present():
     og = run_time_link(_cfg(n, 3 * n // 4, cal=_bg(2.0 ** -12), **mm), channel=cm)
     assert abs(og.slicer_snr_db - ideal.slicer_snr_db) < 0.3, (og.slicer_snr_db,
                                                               ideal.slicer_snr_db)
+
+
+# ---------------------------------------------------------- foreground mode
+
+def _fg(m):
+    return AdcCalConfig("foreground", fg_samples=m)
+
+
+def test_foreground_does_not_change_the_link_instance():
+    """Its measurements draw from their own generator: the skews, the ENOB
+    noise and the Rx clock are the uncalibrated run's, and so is the drawn
+    mismatch it corrects."""
+    mm = dict(skew_sigma_ui=0.04, **MISMATCH)
+    raw = run_time_link(_cfg(4_000, **mm)).extras["adc"]
+    fg = run_time_link(_cfg(4_000, cal=_fg(1024), **mm)).extras["adc"]
+    assert np.array_equal(raw.skews, fg.skews)
+    assert np.array_equal(raw.offsets, fg.true_offsets) and np.array_equal(raw.gains, fg.true_gains)
+    assert fg.fg is not None and run_time_link(_cfg(4_000, cal=_fg(1024), **mm)).extras["adc_cal"] is None
+
+
+def test_foreground_residual_shrinks_with_samples_when_noise_dithers():
+    """With ENOB noise the quantiser is dithered and the lane means converge
+    as 1 / sqrt(samples); a few thousand conversions reach the ideal model."""
+    left = {}
+    for m in (64, 4096):
+        a = TiAdc(dataclasses.replace(_cfg().rx.adc, cal=_fg(m), **MISMATCH), 16,
+                  np.random.default_rng(1), fg_seed=7)
+        left[m] = (np.std(a.offsets), np.std(a.gains / a.gains.mean()))
+    assert left[4096][0] < 0.25 * left[64][0] and left[4096][1] < 0.25 * left[64][1], left
+    assert left[4096][0] < 0.05 * MISMATCH["offset_sigma"]
+
+
+def test_foreground_without_noise_stops_at_the_quantiser():
+    """No ENOB noise: a shorted input reads the same code every time, so more
+    samples buy nothing -- the offset left is about the LSB / sqrt(12) a
+    random offset has against its code."""
+    cfg = dataclasses.replace(_cfg().rx.adc, enob=None, **MISMATCH)
+    lefts = [np.std(TiAdc(dataclasses.replace(cfg, cal=_fg(m)), 16, np.random.default_rng(1),
+                          fg_seed=7).offsets) for m in (64, 16384)]
+    q = cfg.fullscale / 2 ** cfg.n_bits
+    assert abs(lefts[0] - lefts[1]) < 1e-12
+    assert 0.5 * q / np.sqrt(12) < lefts[0] < 2.0 * q / np.sqrt(12), (lefts, q)
+
+
+@needs_jit
+def test_foreground_reaches_the_ideal_model_float_and_fixed():
+    n = 200_000
+    cm = ChannelModel.from_config(_cfg())
+    ideal = run_time_link(_cfg(n, 3 * n // 4, calibrated=True, **MISMATCH), channel=cm)
+    fg = run_time_link(_cfg(n, 3 * n // 4, cal=_fg(4096), **MISMATCH), channel=cm)
+    assert abs(fg.slicer_snr_db - ideal.slicer_snr_db) < 0.2, (fg.slicer_snr_db, ideal.slicer_snr_db)
+    fixed = run_time_link(dataclasses.replace(_cfg(n, 3 * n // 4, cal=_fg(4096), **MISMATCH),
+                                              numeric=NumericConfig(mode="fixed")), channel=cm)
+    assert fixed.extras["fixed"]["loop"].cal[0] == 0          # nothing left to do digitally
+    assert fixed.slicer_snr_db > ideal.slicer_snr_db - 0.5
+
+
+def test_foreground_config_is_validated():
+    with pytest.raises(ValueError, match="fg_samples"):
+        AdcCalConfig("foreground", fg_samples=0)
+    with pytest.raises(ValueError, match="fg_ref"):
+        AdcCalConfig("foreground", fg_ref=1.0)
