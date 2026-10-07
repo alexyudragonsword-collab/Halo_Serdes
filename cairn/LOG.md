@@ -10,6 +10,7 @@
 - 首跑 39/39 通过,~6 分钟(最慢 34_tdecq 84 s)→ 放进每次 push 的 CI,不必按原计划做成夜间 job。
 - 顺带发现:README 快速开始的两个示例名早已失效;加了"文档提到的示例路径必须存在"的测试(改之前失败、改后通过)。
 - 局限:冒烟不验证数字;文档引用的数值仍需按原尺寸手动跑。
+- PR #36;CI 全部 test job + rtl-lockstep + 新 `examples` job(CI 上 5 分钟)绿。没改共用库层,Android / Windows 工作流按路径过滤未触发(铁律 #6 不涉及)。
 - 全量(JIT + iverilog):819 passed / 1 skipped(+2);ruff 通过。
 
 ## 2026-10-06 · 流式覆盖光 / 串扰 / AMI Init / 抖动分解(feat/stream-coverage,ROADMAP P2 #2 → P2 清空)
