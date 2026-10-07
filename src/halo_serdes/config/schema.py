@@ -451,6 +451,10 @@ class NumericConfig:
     # integer LMS: the weight accumulators' bits below the weight LSB (too few
     # and the small updates round to nothing -- the loop stops adapting)
     lms_guard_bits: int = 24
+    # background ADC calibration (adc.cal) in the fixed loop: fraction bits
+    # of the offset / power registers, and of the lane gains
+    cal_frac_bits: int = 16
+    cal_gain_bits: int = 14
 
     def __post_init__(self):
         _require_in(self.mode, {"float", "fixed"}, "numeric.mode")
@@ -459,6 +463,10 @@ class NumericConfig:
                  f"numeric.phase_frac_bits must be in [0, 32], got {self.phase_frac_bits}")
         _require(0 <= self.lms_guard_bits <= 40,
                  f"numeric.lms_guard_bits must be in [0, 40], got {self.lms_guard_bits}")
+        _require(1 <= self.cal_frac_bits <= 24,
+                 f"numeric.cal_frac_bits must be in [1, 24], got {self.cal_frac_bits}")
+        _require(4 <= self.cal_gain_bits <= 24,
+                 f"numeric.cal_gain_bits must be in [4, 24], got {self.cal_gain_bits}")
         _require(4 <= self.mlsd_metric_bits <= 62,
                  f"numeric.mlsd_metric_bits must be in [4, 62], got {self.mlsd_metric_bits}")
 

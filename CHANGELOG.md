@@ -6,6 +6,22 @@
 
 ---
 
+## [未发布] — 定点 / RTL 的 ADC 后台校准(offset / gain,ROADMAP P3 #7 阶段 3)
+
+### 新增
+- `dsp/fixed_loop._cal_word_py`:ADC 字与 FFE 之间的整数校准 —— offset 寄存器(F 位小数)按 `rnd(d, sh_o)` 更新;
+  gain 用硬件形式的 LMS 把本 lane 修正后的功率拉向各 lane 的滑动平均功率(不开方、不除法);移位为负表示该项关闭,
+  移位前加半 LSB 舍入。闭环与 replay 都调用它;记录里 `xin` 改为原始 ADC 字(replay 与 RTL 的输入)、`x_cal` 为校准后。
+- `NumericConfig.cal_frac_bits` / `cal_gain_bits`;`build_fixed_loop(adc_power=...)` 由浮点跑出的 ADC 输出功率定 gain 步长。
+- 定点模式不再拒绝 `adc.cal`(skew 修正除外)。
+- `rtl/adc_dsp_loop.sv` 加同一份校准,`run_lockstep.sh` 的环路对照第四段(`vectors/cal`),末态寄存器也比对。
+- 测试 `tests/test_fixed_cal.py`:独立参考(含步长 0、关闭、饱和);replay 复现闭环含寄存器;JIT = Python;
+  关闭时原始字即校准后字;2⁻⁸ / 2⁻¹⁰ 下定点与浮点 SNR 差 < 0.3 dB(实测 0.13–0.19)。
+
+### 过程中修掉的
+- 第一版用"右移 62 位"表示步长 0:负数算术右移 62 位得 −1,寄存器每次转换往下漂,真值冻结也只有 21.6 dB(应为 26.7)。
+  改为负移位表示关闭,并统一做舍入移位。
+
 ## [未发布] — 修正:`adc.calibrated` 改变了链路的随机实例
 
 ### 修正

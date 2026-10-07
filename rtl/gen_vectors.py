@@ -33,7 +33,7 @@ from halo_serdes.config import LinkConfig  # noqa: E402
 import dataclasses  # noqa: E402
 
 from halo_serdes.config.schema import (  # noqa: E402
-    AdcConfig, CdrConfig, ChannelConfig, ClockConfig, CtleConfig, DfeConfig,
+    AdcCalConfig, AdcConfig, CdrConfig, ChannelConfig, ClockConfig, CtleConfig, DfeConfig,
     FfeConfig, MlsdConfig, NumericConfig, PrConfig, RxConfig, SimConfig, TxConfig,
 )
 from halo_serdes.dsp.fixed_datapath import (  # noqa: E402
@@ -102,6 +102,20 @@ moved = int(np.abs(art["w_ffe_end"] - art["w_ffe_int"]).max())
 print(f"wrote loop vectors to {out}  (N={art['xin'].size}, PI codes "
       f"{int(art['pi'].min())}..{int(art['pi'].max())}, FFE weights moved up to {moved} LSB, "
       f"SER {res.ser:.2e})")
+
+# offset / gain mismatch with the background calibration on, fast steps so
+# the window holds the registers moving (the RTL checks them at the end too)
+cal_rx = dataclasses.replace(loop_cfg.rx, adc=dataclasses.replace(
+    loop_cfg.rx.adc, offset_sigma=0.01, gain_sigma=0.03,
+    cal=AdcCalConfig("background", 2.0 ** -6, 2.0 ** -6)))
+cal_res = run_time_link(dataclasses.replace(loop_cfg, rx=cal_rx))
+cal_fx = cal_res.extras["fixed"]
+cal_art = loop_artifacts(cal_fx["loop"], cal_fx["record"]["xin"][:3000],
+                         cal_fx["record"]["ref"][:3000])
+dump_loop_vectors(out / "cal", cal_art)
+print(f"wrote calibrated loop vectors to {out / 'cal'}  (gains "
+      f"{int(cal_art['cal_end'][16:32].min())}..{int(cal_art['cal_end'][16:32].max())} "
+      f"/ 2^{int(cal_fx['loop'].cal[2])}, SER {cal_res.ser:.2e})")
 
 for sub, extra in (("pr", dict(pr=PrConfig(target=(1.0, 0.6, 0.2), adapt="lms", mu=1e-2))),
                    ("pre", dict(pr=PrConfig(target=(1.0, 1.0)), precode=True))):

@@ -495,28 +495,24 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 
 
 def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, w_dfe0,
-                    sched, pr_args):
+                    sched, pr_args, adc_power=None):
     """``numeric.mode == 'fixed'``: the ADC receiver's digital back end --
     FFE, DFE, slicer, LMS and the CDR loop -- in int64 (``dsp/fixed_loop.py``).
 
     Returns what the float kernel's result unpacks to (decisions, slicer
     values in volts, sample positions, lanes, sampled values) plus the run's
-    record for the RTL lockstep."""
+    record for the RTL lockstep. ``adc_power``: the float run's mean-square
+    ADC output, which scales the background calibration's gain step."""
     if not isinstance(rx_y, np.ndarray):
         raise ValueError("numeric.mode='fixed' runs the loop a second time over the "
                          "waveform; it cannot with sim.stream")
-    if cfg.rx.adc.cal.mode != "off":
-        # the bit-true loop has no calibration words yet: running it on the
-        # uncalibrated lanes would compare a different receiver
-        raise ValueError("numeric.mode='fixed' does not model adc.cal (background "
-                         "calibration) yet; use adc.cal.mode='off' or the float mode")
     from ..dsp.fixed_loop import build_fixed_loop, run_fixed_loop
 
     # from the float run's starting weights, training and adapting itself
     # (integer LMS) on the float run's schedule
     fl = build_fixed_loop(cfg, w_ffe0, w_dfe0, levels, adc.q_step,
                           train_len=int(sched.train_end), adapt_start=int(sched.settle),
-                          **pr_args)
+                          adc_power=adc_power, **pr_args)
     rec = run_fixed_loop(fl, rx_y, cfg.osr, pos0, n_sym, adc, noise, rx_clk,
                          ref=sched.reference)
     n = rec["xin"].size
@@ -527,7 +523,8 @@ def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, 
     y_sl = np.zeros(n)
     y_sl[: rec["n_dec"]] = rec["v_out"] * fl.out_lsb
     lane_of = np.arange(n, dtype=np.int64) % adc.n_lanes
-    return (dec, y_sl, rec["phase"], lane_of, rec["xin"] * fl.in_lsb,
+    # the sampled values after calibration, as the float kernel's q_hist
+    return (dec, y_sl, rec["phase"], lane_of, rec["x_cal"] * fl.in_lsb,
             {"loop": fl, "record": rec})
 
 
@@ -665,7 +662,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
             cfg, rx_y, float(peak), n_sym, levels, adc, enob_noise, rx_clk, w_ffe0, w_dfe0,
             sched, {"pr_mode": int(pr_mode), "pr_nt": int(n_t if pr.active else 1),
                     "alpha": float(alpha), "beta": float(beta), "pr_levels": pr_levels,
-                    "mu_alpha": float(mu_a)})
+                    "mu_alpha": float(mu_a)},
+            adc_power=float(np.mean(q_hist ** 2)) if q_hist.size else None)
         if pr.active:
             # the controlled cursor the bit-true loop ended on
             ab = fixed["record"]["ab"] * 2.0 ** -cfg.numeric.dfe_weight.fl

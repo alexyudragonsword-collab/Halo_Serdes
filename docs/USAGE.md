@@ -825,4 +825,11 @@ rx:
   但 `offset_sigma: 0` 与 `offset_sigma: 0.01` + `calibrated` 不是同一实例(前者不抽),只能和同 sigma 的运行比。
 - `res.extras["adc_cal"]`:运行结束时的状态,行 = [offset, 功率, 增益, 已转换次数, 延时修正(样本)],列 = lane;
   与 `extras["adc"]` 里抽到的真值对照即残差。
-- **不做的**:定点数据通路(`numeric.mode: fixed`)还没有校准字,开了直接报错;统计引擎本来就不建 lane 失配,校准对它无影响。
+- **定点 / RTL**(`numeric.mode: fixed`):offset / gain 校准在 ADC 字与 FFE 之间做成整数(`dsp/fixed_loop._cal_word_py`,
+  `rtl/adc_dsp_loop.sv` 同一份语义,lockstep 第四段)。offset 是浮点那份的整数版(`o += rnd(d, sh_o)`);gain 是**硬件形式** ——
+  不开方、不除法,LMS 把本 lane 修正后的功率拉向各 lane 的滑动平均功率(`g += rnd(pm − y², sh_g)`),平衡点与浮点相同,
+  动态不逐位等同。寄存器:`numeric.cal_frac_bits`(offset 与平均功率的小数位,默认 16)、`cal_gain_bits`(增益小数位,默认 14);
+  步长取最近的 2 的幂;gain 步长按浮点跑出的 ADC 输出功率换算(LMS 的步长要有功率的尺度)。
+  实测(112 GBd、offset 10 mV + gain 3%、2×10⁵ 符号、末 1/4):2⁻⁸ / 2⁻¹⁰ / 2⁻¹² 下浮点 23.61 / 26.06 / 26.29 dB,
+  定点 23.48 / 25.88 / 26.10 dB。skew 修正(`mu_skew`)在定点下仍不支持,开了报错。
+- 统计引擎本来就不建 lane 失配,校准对它无影响。

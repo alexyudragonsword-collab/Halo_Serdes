@@ -30,6 +30,11 @@
 //         (a negative shift is >>> by its magnitude); clamp; LAT blocks of
 //         latency through a queue
 //   phase register += c >>> LANE_SHIFT every symbol; PI code = ph >>> PI_SH
+//   CAL   (CAL_ON) background ADC calibration of the raw word before the FFE,
+//         lane l = k % LANES: d = (xraw <<< F) - co[l]; y = (d * cg[l]) >>> B;
+//         x = clip(rnd(y, F), +-CAL_WMAX); co[l] += rnd(d, SH_O);
+//         cg[l] += rnd((pm >>> F) - x*x, SH_G); pm += rnd((x*x <<< F) - pm, SH_P)
+//         (rnd: rounding add + >>>; a negative shift skips that update)
 //
 // Python's >> on a negative int floors; SV >>> on a signed operand does too.
 // Memories are module-internal, as in ffe_dfe_datapath.sv (Icarus' unpacked
@@ -41,8 +46,12 @@
 module adc_dsp_loop;
     `include "loop_dims.svh"
 
-    longint xin    [N];
+    longint xraw   [N];           // ADC words as recorded
+    longint xin    [N];           // after calibration (= xraw with CAL_ON 0)
     longint ref_sym [N];
+    longint co     [LANES];       // calibration: lane offsets, gains, mean power
+    longint cg     [LANES];
+    longint cpm;
     longint w_ffe  [NF];          // initial weights in, adapted weights out
     longint w_dfe  [ND];
     longint wacc_f [NF];
@@ -76,12 +85,19 @@ module adc_dsp_loop;
         return a;
     endfunction
 
+    function automatic longint crnd(input longint v, input longint sh);
+        if (sh == 0) return v;
+        return (v + (longint'(1) <<< (sh - 1))) >>> sh;
+    endfunction
+
     task automatic run();
         longint acc, fb, v, dd, bd, x0, x1, x2, a0, a2, pd, c, e;
         longint prev, prev2, ctl, u, xc, acc_a, acc_b;
         int q, nt;
         bit training;
         longint ph, integ, corr, pd_acc, pd_n, qi;
+        longint cd, cy, cx, cp2;
+        int cl;
         longint queue [LAT + 1];
         int s, j, jj, best;
         ph = 0; integ = 0; corr = 0; pd_acc = 0; pd_n = 0; qi = 0;
@@ -91,8 +107,26 @@ module adc_dsp_loop;
         acc_a = ab[0] <<< G;
         acc_b = ab[1] <<< G;
         nt = (PR_MODE > 0) ? NT : 1;
+        for (int l = 0; l < LANES; l++) begin co[l] = 0; cg[l] = longint'(1) <<< CAL_B; end
+        cpm = CAL_PM0;
         for (int k = 0; k < N; k++) begin
             pi_out[k] = ph >>> PI_SH;
+            // background calibration of the raw word (inline: Icarus 12
+            // crashes on a task writing an output into an array element)
+            if (CAL_ON == 0) xin[k] = xraw[k];
+            else begin
+                cl = k % LANES;
+                cd = (xraw[k] <<< CAL_F) - co[cl];
+                cy = (cd * cg[cl]) >>> CAL_B;
+                cx = (cy + (longint'(1) <<< (CAL_F - 1))) >>> CAL_F;
+                if (cx > CAL_WMAX) cx = CAL_WMAX;
+                else if (cx < -CAL_WMAX) cx = -CAL_WMAX;
+                xin[k] = cx;
+                if (CAL_SH_O >= 0) co[cl] += crnd(cd, CAL_SH_O);
+                cp2 = cx * cx;
+                if (CAL_SH_G >= 0) cg[cl] += crnd((cpm >>> CAL_F) - cp2, CAL_SH_G);
+                if (CAL_SH_P >= 0) cpm += crnd((cp2 <<< CAL_F) - cpm, CAL_SH_P);
+            end
             s = k - N_PRE;
             if (s >= 0) begin
                 acc = 0;

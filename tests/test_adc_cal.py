@@ -161,8 +161,10 @@ def test_off_leaves_no_state_and_the_modes_exclude_each_other():
         AdcCalConfig("background", 0.01, 0.01, -1.0)
     with pytest.raises(ValueError, match="adc.cal.mode"):
         AdcCalConfig("foreground")
-    fixed = dataclasses.replace(_cfg(4_000, cal=_bg(2.0 ** -8)), numeric=NumericConfig(mode="fixed"))
-    with pytest.raises(ValueError, match="does not model adc.cal"):
+    # the fixed loop models offset / gain, not the skew trims
+    fixed = dataclasses.replace(_cfg(4_000, cal=_bg(2.0 ** -8, mu_skew=2.0 ** -8)),
+                                numeric=NumericConfig(mode="fixed"))
+    with pytest.raises(ValueError, match="not the skew trims"):
         run_time_link(fixed)
 
 

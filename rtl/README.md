@@ -19,9 +19,11 @@ phase-interpolator code, the sampler reads the waveform there, the ADC
 quantises. The RTL replays the recorded ADC words (and the training
 reference), so the analog side it does not model is already in its input,
 and must reproduce every PI code, slicer value and decision and the final
-weights. It runs three times: delta target, 1 + aD + bD^2 with a and b
-adapted (`vectors/pr`), and precoded 1 + D on the composite slicer
-(`vectors/pre`).
+weights. It runs four times: delta target, 1 + aD + bD^2 with a and b
+adapted (`vectors/pr`), precoded 1 + D on the composite slicer
+(`vectors/pre`), and offset / gain lane mismatch with the background ADC
+calibration between the ADC word and the FFE (`vectors/cal`; the final
+offset, gain and mean-power registers are checked too).
 
 The third covers the **sliding-detector MLSD** (`sliding_mlsd.sv` against
 `halo_serdes.dsp.fixed_mlsd`): integer residuals with a per-level feedback
