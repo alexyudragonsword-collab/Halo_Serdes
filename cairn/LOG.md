@@ -12,6 +12,7 @@
 - 定点 vs 浮点(2×10⁵ 符号末 1/4):2⁻⁸ / 2⁻¹⁰ / 2⁻¹² 下差 0.13 / 0.18 / 0.19 dB。
 - SV:Icarus 12 在 automatic task 把 output 写进数组元素时段错误、task 里不许 return → 校准内联进 run()。lockstep 七段全过,末态寄存器逐位同;
   原有向量只多了 CAL 参数(golden 不变)。
+- PR #40;CI 全部 test job + rtl-lockstep + examples 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):843 passed / 1 skipped(+11);定点 / 校准 nojit 44 passed / 8 skipped;浮点指纹逐位同;ruff 通过。
 
 ## 2026-10-07 · 修正:`adc.calibrated` 改变了随机实例(fix/cal-convergence-diag,ROADMAP #7 待查项)
