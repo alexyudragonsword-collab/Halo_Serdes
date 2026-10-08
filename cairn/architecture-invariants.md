@@ -148,9 +148,10 @@ CDR 高通残余 σ)与阶段 3(RX 时钟)都在这条接缝之内扩展,不新�
 
 - **桌面**:`pytest -q` 全绿 + `ruff check src tests` 干净。动了 `halo_serdes_gui/`
   或它 re-export 的东西,还要确认 GUI 能起来。
-- **Android**:CI 三个 job 全绿 —— `assemble`(能不能打包)、`wheel-versions`
-  (**在手机的 wheel 版本上跑一遍手机的计算路径**)、`emulator`(仪器化套件,
-  脚本在零测试或任一失败时退出非零)。
+- **Android**:CI 的 job 全绿 —— `assemble`(能不能打包)、`wheel-versions`
+  (**在手机的 wheel 版本上跑一遍手机的计算路径**)、`emulator`(仪器化套件,API 34 / 35,
+  脚本在零测试或任一失败时退出非零);Cython 编译版另有 `compiled-apk` 与 `compiled-emulator`
+  (2026-10-08 更正:原写"三个 job",编译版两个 job 是后加的)。
 - **判据不是"我跑过了",是"日志里那行数字"**:`instrumented totals: N tests, 0 failures`。
   绿勾本身不够 —— `connectedDebugAndroidTest` 跑零个测试也算成功。
 
@@ -168,22 +169,25 @@ numpy/scipy 版本跑同一条计算路径,把"版本"这一维从"平台差异"
 - 新算法模块配闭式解单测(AWGN 解析 BER、退化情形、恒等式),不要只测 smoke。
 - 新增示例脚本按编号排(`examples/NN_name.py`),它同时是文档;
   `tests/test_examples_api.py` 检查它能编译且 import 的符号都存在。
-- 文档里引用的数字(测试数、示例数、标签页数)由 `tests/test_docs_fresh.py` 守着。
+- README 里的示例数、标签页数由 `tests/test_docs_fresh.py` 守着;测试数没有自动检查,要手动同步(2026-10-08 更正:原写测试数也守着)。
 
 ### 常用命令
 
+面向人类贡献者的版本(含 CI 各 job 守什么、按改动类型的额外检查)在根目录 [`CONTRIBUTING.md`](../CONTRIBUTING.md);这里是协作者速查。
+
 ```bash
 pip install -e ".[gui,fec,jit,test]"    # 完整开发环境
-pytest -q                               # 全套(约 2 分钟)
+pytest -q                               # 全套(JIT + iverilog 约 12 分钟,2026-10-08;原记 2 分钟已过时)
 HALO_NO_JIT=1 pytest -q                 # 纯 Python 内核路径(CI 两条都跑)
-ruff check src/ tests/ examples/        # lint 门禁(CI 会跑)
+ruff check src/ tests/ examples/ tools/ android/tools/ android/app/src/main/python/   # 与 CI 同
 bash rtl/run_lockstep.sh                # SV vs Python 黄金模型逐位比对(需 iverilog)
+python tools/fingerprint.py record A.json   # 数值指纹;改动前后各录一份,再 compare A.json B.json
 python -m halo_serdes_gui               # 启动 GUI
 ```
 
 Android 那一半(铁律 #6)**没有本地等价物** —— 这个沙箱没有 Android SDK,
 `dl.google.com` 也不通,所以 Kotlin 能不能编译、仪器化测试过不过,**只有 CI 能回答**。
-推送后去看 `android` workflow 的三个 job,判据是最后一步打印的那行:
+推送后去看 `android` workflow 的各 job,判据是 emulator 最后一步打印的那行:
 
 ```
 instrumented totals: N tests, 0 failures, 0 errors, 0 skipped
