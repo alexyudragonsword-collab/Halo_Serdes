@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-08 · 四光标 PR 目标:≈ +0.5 dB,暂不做(study/pr-four-cursor)
+
+- ROADMAP #8 余项"更长的目标":先估增益,事先定门槛 < 0.5 dB 不做。`tools/pr_target_length.py`:示例 38 光标上的基带 MC
+  (联合 MMSE FFE + 首一目标,库 Viterbi 跑 FFE 实际光标),一个噪声比例(×1.75)拟合 delta 的实测 31.6 dB。
+- MC 高估前两档(+5.58 / +8.45 对实测 +4.7 / +7.0,比 0.84 / 0.80);第四光标原值 +0.65 dB,折算 ≈ +0.52,三种子 0.47–0.55;
+  第五个再 +0.4–0.6(原值)。残余 memory 1 ≈ memory 2,同 256 状态也有这些:代价在每层多带一个光标,不在网格。
+- 判断:恰在门槛上,门槛分不出,按成本暂不做;ROADMAP 移入"边界"并写重开条件。`cairn/DSP发端与PR.md` §12;
+  坑两条进 engineering-pitfalls(MLSD 类:一个噪声比例校准不了 PR 增益;Viterbi 回溯表的内存)。库代码未动。
+- 全量(JIT + iverilog):876 passed / 1 skipped(+3);ruff 通过;新测试在 HALO_NO_JIT 下 6 s。
+
 ## 2026-10-08 · 系统框图由示例 03 的运行生成(docs/system-diagram)
 
 - `tools/draw_system_diagram.py` 跑示例 03,图上每个数取自那次运行;同时写 `.mmd` 并刷新 summary.html 的 base64 副本。

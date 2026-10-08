@@ -6,6 +6,18 @@
 
 ---
 
+## [未发布] — 四光标 PR 目标的评估(不实现)
+
+### 新增
+- `tools/pr_target_length.py`:在示例 38 的 224G LR 链路上估 PR 目标每多一个光标换多少 reach。基带 Monte Carlo:联合 MMSE 的
+  (FFE, 首一目标),库里的 Viterbi 跑 FFE 实际输出的目标 + 残余光标;一个噪声比例拟合到实测的 delta reach,前两档对照实测。
+  测试 `tests/test_pr_target_length.py`(目标解与 `mmse_pr_target` 一致、分块 Viterbi 与整段一致、三光标胜 delta)。
+
+### 变更
+- ROADMAP #8 余项"更长的目标"移入"边界":第四个光标约 +0.5 dB(MC 原值 +0.65,按它对前两档的高估比例折算),恰在事先定的
+  0.5 dB 门槛上;按成本(内核判决、定点数据通路、统计引擎判决模型各多带一个受控光标)暂不做,写了重开条件。
+  `cairn/DSP发端与PR.md` §12。库代码未动。
+
 ## [未发布] — 系统框图由示例 03 的运行生成
 
 ### 新增
