@@ -171,7 +171,7 @@ def mlse_gain_over_dfe_db(cursors: np.ndarray, max_event_len: int = 8) -> float:
 
 def post_detect(y_eq: np.ndarray, cursors: np.ndarray, levels: np.ndarray,
                 method: str = "viterbi", *, seq_len: int = 4,
-                margin: float = 0.0):
+                margin: float = 0.0, dec0: np.ndarray | None = None):
     """Run an MLSD post-detector over slicer-input samples of a *real* link.
 
     Turns the standalone kernels into a drop-in post-detector: ``y_eq`` are the
@@ -179,20 +179,47 @@ def post_detect(y_eq: np.ndarray, cursors: np.ndarray, levels: np.ndarray,
     uncancelled postcursors, ``cursors[0]`` = main), ``levels`` the constellation.
     ``method`` is ``'viterbi'`` (full MLSE) or ``'sliding'`` (DragonPHY error-event
     detector, refined over the dominant postcursor). Returns decided level indices.
+
+    The sliding detector corrects decisions, it does not make them: it starts
+    from ``dec0`` -- the receiver's own decisions, which a caller that has
+    them should pass -- or, without them, from decisions that feed back the
+    postcursor it models (``cursors[1]``), as a DFE would. It used to start
+    from a slice that ignores that postcursor; a single-flip detector cannot
+    repair the adjacent-pair errors that leaves, so on a 1 + 0.5D target it
+    made SER 1500x worse than the decisions it was handed.
     """
     cur = np.asarray(cursors, dtype=float)
     lv = np.asarray(levels, dtype=float)
     if method == "viterbi":
         return viterbi_mlsd(np.asarray(y_eq, dtype=float), lv, cur)
     if method == "sliding":
-        dec0 = slice_nearest_local(y_eq, lv * cur[0])
         resid_post = float(cur[1] / cur[0]) if cur.size > 1 else 0.0
-        out = dec0
+        if dec0 is None:
+            dec0 = feedback_slice(np.asarray(y_eq, dtype=float), lv * cur[0], resid_post)
+        out = np.asarray(dec0, dtype=np.int64)
         for _ in range(2):                     # two refinement passes
             out = sliding_detector(np.asarray(y_eq, dtype=float), out,
                                    lv * cur[0], resid_post, seq_len, margin)
         return out
     raise ValueError(f"method must be 'viterbi' or 'sliding', got {method!r}")
+
+
+def _feedback_slice_py(y: np.ndarray, scaled_levels: np.ndarray, resid_post: float) -> np.ndarray:
+    """Nearest-level decisions after subtracting ``resid_post`` times the
+    previous decision's level: a one-tap DFE on the residual."""
+    n = y.size
+    out = np.zeros(n, dtype=np.int64)
+    prev = 0.0
+    for k in range(n):
+        x = y[k] - resid_post * prev
+        best, bd = 0, abs(x - scaled_levels[0])
+        for m in range(1, scaled_levels.size):
+            d = abs(x - scaled_levels[m])
+            if d < bd:
+                bd, best = d, m
+        out[k] = best
+        prev = scaled_levels[best]
+    return out
 
 
 def slice_nearest_local(y: np.ndarray, scaled_levels: np.ndarray) -> np.ndarray:
@@ -203,11 +230,13 @@ def slice_nearest_local(y: np.ndarray, scaled_levels: np.ndarray) -> np.ndarray:
 
 viterbi_mlsd = _viterbi_py
 sliding_detector = _sliding_detector_py
+feedback_slice = _feedback_slice_py
 if os.environ.get("HALO_NO_JIT") != "1":
     try:
         import numba
 
         viterbi_mlsd = numba.njit(cache=True)(_viterbi_py)
         sliding_detector = numba.njit(cache=True)(_sliding_detector_py)
+        feedback_slice = numba.njit(cache=True)(_feedback_slice_py)
     except ImportError:
         pass

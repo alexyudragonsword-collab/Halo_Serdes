@@ -675,3 +675,34 @@ def test_engines_agree_on_per_symbol_pr_decisions(alpha, precode):
     st_v = run_statistical(cfg_v, channel=cm, ffe_taps=mc_v.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
     assert 0.5 < st_v.extras["ser_slicer"] / mc_v.extras["ser_slicer"] < 2.0
     assert st_v.ser < st_v.extras["ser_slicer"]
+
+
+# ------------------------------------------- the sliding detector under PR ---
+
+@pytest.mark.parametrize("mode", ["float", "fixed"])
+def test_sliding_detector_corrects_the_pr_receivers_decisions_not_a_plain_slice(mode):
+    """Under a 1 + 0.5D target the receiver's per-symbol decision subtracts
+    the controlled cursor. The sliding detector used to throw those
+    decisions away and start from a slice of the shaped signal, which reads
+    the cursor as noise: SER 2e-5 -> 3e-2 on this link. It must never make
+    the decisions it is handed worse."""
+    from halo_serdes.config.schema import NumericConfig
+
+    cfg = _link(0.18, 0.5, n_sym=40_000, mlsd="sliding")
+    if mode == "fixed":
+        cfg = dataclasses.replace(cfg, numeric=NumericConfig(mode="fixed"))
+    r = run_time_link(cfg)
+    assert r.ser <= r.extras["ser_slicer"] + 5e-5, (r.ser, r.extras["ser_slicer"])
+    assert r.ser < 1e-3
+
+
+def test_sliding_detector_is_refused_under_a_three_cursor_target():
+    """It models one postcursor; the second controlled cursor would read as
+    error and flip correct decisions."""
+    with pytest.raises(ValueError, match="sliding"):
+        dataclasses.replace(_link(0.18, 0.0, n_sym=1000), pr=PrConfig(target=(1.0, 0.75, 0.25)),
+                            rx=dataclasses.replace(_link(0.18, 0.0).rx,
+                                                   mlsd=MlsdConfig(kind="sliding")))
+    # viterbi is the detector for it, and a two-cursor target stays allowed
+    dataclasses.replace(_link(0.18, 0.0, n_sym=1000), pr=PrConfig(target=(1.0, 0.75, 0.25)))
+    _link(0.18, 0.5, n_sym=1000, mlsd="sliding")

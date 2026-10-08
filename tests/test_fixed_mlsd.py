@@ -134,7 +134,9 @@ def test_the_engine_runs_it_on_the_loops_words():
     rec, fsd = fx["record"], fx["mlsd"]["detector"]
     n = fx["mlsd"]["dec"].size
     lv = fx["loop"].levels_out
-    dec0 = np.argmin(np.abs(rec["v_out"][:n, None] - lv[None, :]), axis=1)   # a plain slice
+    # it corrects the loop's own decisions (data-aided in training), as the
+    # float detector corrects the float receiver's -- not a plain slice
+    dec0 = rec["dec"][:n]
     again = run_fixed_sliding(fsd, rec["v_out"][:n], dec0, lv)
     assert np.array_equal(again, fx["mlsd"]["dec"])
     assert np.array_equal(r.extras["decisions"], fx["mlsd"]["dec"][r.extras["warmup"]:])

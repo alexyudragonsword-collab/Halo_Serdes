@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-08 · 修正:sliding 检测器不修正接收机的判决(fix/sliding-detector)
+
+- 复核时记下的观察(示例 27 里 sliding 不如 DFE)查清是 bug:`post_detect` 丢掉传入的判决,从忽略后光标的切片起步,单翻转修不了成对错误。
+- 更严重的在引擎:PR 1 + 0.5D + sliding 让 SER 2.1e-5 → 3.3e-2(浮点 / 定点,定点注释写着"与浮点一样从切片起步")。无 PR 时看不出
+  (y 已减过 DFE,切片 ≈ 判决),所以指纹与示例 30 都没照到。修:`post_detect(dec0=...)`,引擎 / 定点传自己的判决;RTL 向量生成器早就用反馈判决。
+- 三光标 PR + sliding 修前修后都坏(单后光标模型),改为配置报错 → viterbi。修后示例 27:DFE > sliding > Viterbi 每个 σ 成立。
+- 回归测试 4 条(旧代码全挂、新代码全过);坑进 engineering-pitfalls(API 类)。指纹逐位同,lockstep 七段过,nojit 过。
+- 全量(JIT + iverilog):871 passed / 1 skipped(+4);ruff 通过。
+
 ## 2026-10-08 · 示例全尺寸复核(fix/example-numbers,ROADMAP P3 #10 一项)
 
 - 40 个示例按原尺寸全跑(3 路并行),全部 rc=0;5 个子代理分批把输出与现行文档(README / USAGE / SUMMARY / COMPARISON /

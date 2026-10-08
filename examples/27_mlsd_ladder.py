@@ -3,8 +3,9 @@
 On a residual channel (main cursor + one dominant postcursor, the shape left
 after a finite FFE), three detectors are compared over a noise sweep:
 
-* ideal DFE (decision feedback of the postcursor) — the baseline;
-* sliding detector (DragonPHY error-event post-corrector, low cost);
+* DFE (feeds back its own decision of the postcursor) — the baseline;
+* sliding detector (DragonPHY error-event post-corrector, low cost) on top
+  of those DFE decisions -- it corrects decisions, it does not make them;
 * Viterbi MLSE (full sequence detector, the high-end option).
 
 The measured Viterbi gain is checked against the analytic asymptotic MLSE
@@ -51,7 +52,8 @@ sigmas = np.linspace(0.20, 0.48, 9)
 ber_dfe, ber_sld, ber_vit = [], [], []
 for sigma in sigmas:
     y = y_clean + rng.normal(scale=sigma, size=n)
-    # ideal DFE: subtract the postcursor of the *decided* previous symbol
+    # DFE: subtract the postcursor of the *decided* previous symbol (errors
+    # propagate; the analytic gain below is over an error-free one)
     dec_dfe = np.zeros(n, dtype=np.int64)
     prev = 0.0
     for k in range(n):
@@ -67,7 +69,7 @@ for sigma in sigmas:
 snr_db = 20 * np.log10(main / sigmas)
 
 fig, ax = plt.subplots(figsize=(8.2, 5.2))
-ax.semilogy(snr_db, ber_dfe, "o-", label="ideal DFE", color="C7")
+ax.semilogy(snr_db, ber_dfe, "o-", label="DFE", color="C7")
 ax.semilogy(snr_db, ber_sld, "s-", label="sliding detector", color="C1")
 ax.semilogy(snr_db, ber_vit, "^-", label="Viterbi MLSE", color="C0")
 # analytic MLSE curve: DFE curve shifted left by the coding gain

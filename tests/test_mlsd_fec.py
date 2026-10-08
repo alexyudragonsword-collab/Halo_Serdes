@@ -166,6 +166,33 @@ def test_post_detect_beats_slicer_on_real_residual():
     assert ber_vit <= ber_sld + 1e-3
 
 
+def test_sliding_detector_sits_between_the_dfe_and_viterbi():
+    """Example 27's ladder. The detector corrects decisions that already
+    feed the postcursor back (a DFE's); it used to start from a slice that
+    ignores it, left adjacent-pair errors no single flip repairs, and came
+    out worse than the DFE at every noise level (1.5e-4 vs 0 at sigma 0.2)."""
+    rng = np.random.default_rng(2)
+    n = 200_000
+    levels = np.array([-1.0, 1.0])
+    cur = np.array([1.0, 0.55])
+    sym = rng.integers(0, 2, size=n)
+    y_clean = np.convolve(levels[sym], cur)[:n]
+    for sigma in (0.27, 0.34):
+        y = y_clean + rng.normal(scale=sigma, size=n)
+        dfe = np.zeros(n, dtype=np.int64)
+        prev = 0.0
+        for k in range(n):
+            dfe[k] = 1 if y[k] - cur[1] * prev > 0 else 0
+            prev = levels[dfe[k]]
+        b_dfe = np.mean(dfe != sym)
+        b_sld = np.mean(post_detect(y, cur, levels, "sliding") != sym)
+        b_vit = np.mean(post_detect(y, cur, levels, "viterbi") != sym)
+        assert b_vit < b_sld < b_dfe, (sigma, b_dfe, b_sld, b_vit)
+        # handing it the DFE's decisions is the same thing
+        assert np.array_equal(post_detect(y, cur, levels, "sliding", dec0=dfe),
+                              post_detect(y, cur, levels, "sliding"))
+
+
 # -------------------------------------------------------------------- FEC ---
 
 
