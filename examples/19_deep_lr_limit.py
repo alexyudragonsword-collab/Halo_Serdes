@@ -1,6 +1,6 @@
 """Deep 224G long-reach: how far can FFE + DFE + deeper MLSD + KP4 reach?
 
-Pushing past the ~28 dB limit of example 18 by adding DFE (cancels far
+Pushing past the ~31.6 dB reach of example 18's receiver by adding DFE (cancels far
 postcursors without FFE's noise enhancement) and deeper MLSD memory. The
 honest finding: at deep LR the link is SNR-limited, not ISI/DSP-depth-limited.
 
@@ -8,9 +8,9 @@ honest finding: at deep LR the link is SNR-limited, not ISI/DSP-depth-limited.
   ISI is already small; the wall is noise, and FFE-inverting a 30 dB channel
   enhances it);
 - the big lever is ADC sampling quality — better ENOB / lower noise floor
-  buys ~6 dB of reach with the SAME DSP (31.8 -> 32.4 dB from DSP depth, but
-  32.4 -> 38.7 dB from the ADC). Rerun 2026-10-03 after the receiver fixes;
-  the earlier 28 -> 29 -> 35.5 dB ladder was taken with MM-CDR off the peak.
+  buys ~5 dB of reach with the SAME DSP (31.6 -> 32.4 dB from DSP depth, but
+  32.4 -> 37.7 dB from the ADC; full-size rerun 2026-10-08). The earlier
+  28 -> 29 -> 35.5 dB ladder was taken with MM-CDR off the peak.
 
 Two panels: (1) DSP-depth comparison at a fixed ADC; (2) ADC-quality
 comparison at the best DSP. Reach = where post-KP4 crosses the 1e-15 target.
@@ -140,7 +140,7 @@ for label in ("FFE + DFE8 + MLSD mem3", "same + better ADC (ENOB7.5)"):
                 if reach(r) is not None and np.isfinite(reach(r)) else label)
 ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
-       title="Better ADC (ENOB 6.5->7.5, half the noise): ~6 dB more at same DSP\n(the real lever for deep LR is sampling quality)")
+       title="Better ADC (ENOB 6.5->7.5, half the noise): ~5 dB more at same DSP\n(the real lever for deep LR is sampling quality)")
 ax.yaxis.set_major_formatter(_fmt); ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=7.5); ax.grid(True, which="both", alpha=0.3)
 

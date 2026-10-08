@@ -107,6 +107,23 @@ def test_runner_caps_every_simconfig_and_reports_failures(tmp_path, capsys):
     assert ex.run([capped], 0, 120) == 1
 
 
+def test_runner_saves_each_examples_output_in_order_with_jobs(tmp_path, capsys):
+    """--save keeps what each example printed (what the docs quote and the
+    next full-size run is diffed against); --jobs runs them at once but
+    reports them in the examples' order."""
+    ex = _runner()
+    slow = tmp_path / "93_slow.py"
+    slow.write_text("import time\ntime.sleep(1.0)\nprint('slow: 1.25 dB')\n")
+    fast = tmp_path / "94_fast.py"
+    fast.write_text("print('fast: 3.5e-04')\n")
+    out_dir = tmp_path / "out"
+    assert ex.run([slow, fast], 0, 120, jobs=2, save=out_dir) == 0
+    assert (out_dir / "93_slow.txt").read_text() == "slow: 1.25 dB\n"
+    assert (out_dir / "94_fast.txt").read_text() == "fast: 3.5e-04\n"
+    out = capsys.readouterr().out
+    assert out.index("93_slow.py") < out.index("94_fast.py")
+
+
 def test_example_paths_in_the_docs_exist():
     """The README's quick start once named two scripts that had been renamed."""
     import re

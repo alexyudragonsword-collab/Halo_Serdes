@@ -3,7 +3,7 @@
 Example 19 showed the DSP (FFE+DFE+MLSD) is SNR-limited near ~32 dB with KP4
 alone. Concatenated FEC attacks the OTHER lever: an inner hard-decision block
 code corrects most raw errors, presenting a far lower BER to the RS-KP4 outer
-and raising the tolerable pre-FEC BER by ~2 orders of magnitude — the deep-LR
+and raising the tolerable pre-FEC BER ~31x (2.2e-4 -> 6.9e-3 for BCH(255,215)) — the deep-LR
 / 800G-1.6T approach.
 
 Fixed DSP (FFE + DFE8 + MLSD mem3) and fixed ADC (ENOB 6.5): sweep channel

@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-08 · 示例全尺寸复核(fix/example-numbers,ROADMAP P3 #10 一项)
+
+- 40 个示例按原尺寸全跑(3 路并行),全部 rc=0;5 个子代理分批把输出与现行文档(README / USAGE / SUMMARY / COMPARISON /
+  summary.html / clock_profile / cairn 专题,不含 CHANGELOG / LOG 等历史记录)逐条对照,我逐条核对后修改,约 40 处。
+- 最大的一处是结论性的:级联 FEC "300 倍" 实为 31 倍(KP4 门限 2.2e-4 不是 2.2e-5;用示例 20 自己的公式复算)。
+  其余多是重跑后没同步的 docstring / 表体 / summary.html,以及两条已失效的能力描述(PR 整形 "未建模"、发端 "[PR 占位]")。
+- 示例 39 与昨天的运行逐字节相同。未改:时间类数字(非种子化,且并行运行有争用);示例 27 里 sliding 检测器在所有 σ 下都不如
+  理想 DFE —— 文档没有声称相反的排序,记为观察,未深究。
+- `tools/run_examples.py` 加 `--save` / `--jobs`(带测试)。PNG 系统框图不是由 .mmd 生成,未重画,图下注明新值。
+- 全量(JIT + iverilog):867 passed / 1 skipped(+1);ruff 通过;库代码未动(只改 tools、示例 docstring 与文档)。
+
 ## 2026-10-08 · GUI 文档与覆盖 + ADC 统计结果没套 FFE(feat/gui-docs-coverage,ROADMAP P3 #10 一项)
 
 - 基线复现:GUI 行覆盖 61%(ROADMAP 记 60%);docstring 按函数 / 类 / 模块含私有计 37%(ROADMAP 的 28% 口径不明,同口径核心库 65%)。

@@ -61,7 +61,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 配置 | `config/` | YAML → frozen dataclass 参数单源;严格键校验、dotted-path 覆盖、字段级合法性校验 |
 | 信号 | `core/` | `Waveform`/`SymbolStream`/`ResponseSet`(h/s/p/H 四响应);PRBS7-31、PRBS13Q/31Q、PRQS10 + 自同步检错;定点 QFormat |
 | 信道 | `channel/` | Touchstone(1/2/4/8/12 端口)导入、混模转换、保守外推、广义端接、解析 RLGC;FEXT/NEXT 串扰与多 lane 侵略者组 + ICN |
-| 发端 | `tx/` | 一条 `TxPipeline`(电平 → [PR 占位] → FFE → DAC → ZOH + 时钟边沿 → 驱动器压缩 → 驱动器带宽,七个引擎/分析入口共用);**DSP TX**:N bit DAC(温度计 + 二进制分段、单元失配 INL、削峰计数)、驱动器压缩(与 E/O 同一个压缩系数 c,另有 tanh / 三次)、TX SNDR 与 R_LM(`analysis/tx_metrics.py`,`examples/35`);FIR 预加重、RJ/SJ/DCD 抖动注入(Farrow 边沿);**PLL 相噪剖面时钟**(`tx.clock.kind: profile`,从 pll_simulator 导出的 L(f)+杂散合成有色逐沿抖动;接收端采样时钟同样可挂剖面 `rx.clock`,CDR 追踪两者之差,统计引擎用 `cdr/linear.py` 的环路模型给出残余;见 [`docs/clock_profile.md`](docs/clock_profile.md)) |
+| 发端 | `tx/` | 一条 `TxPipeline`(电平 → [PR 整形] → FFE → DAC → ZOH + 时钟边沿 → 驱动器压缩 → 驱动器带宽,七个引擎/分析入口共用);**DSP TX**:N bit DAC(温度计 + 二进制分段、单元失配 INL、削峰计数)、驱动器压缩(与 E/O 同一个压缩系数 c,另有 tanh / 三次)、TX SNDR 与 R_LM(`analysis/tx_metrics.py`,`examples/35`);FIR 预加重、RJ/SJ/DCD 抖动注入(Farrow 边沿);**PLL 相噪剖面时钟**(`tx.clock.kind: profile`,从 pll_simulator 导出的 L(f)+杂散合成有色逐沿抖动;接收端采样时钟同样可挂剖面 `rx.clock`,CDR 追踪两者之差,统计引擎用 `cdr/linear.py` 的环路模型给出残余;见 [`docs/clock_profile.md`](docs/clock_profile.md)) |
 | 前端 | `afe/` | CTLE、VGA、求和节点有限带宽;时间交织 ADC(offset/gain/skew 失配、ENOB) |
 | 均衡 | `dsp/` | ZF/MMSE FFE、自适应 DFE(LMS/sign-sign)、Viterbi MLSE 与 sliding-detector MLSD、定点数据通路 |
 | 时钟 | `cdr/` | bang-bang 与 Mueller-Müller CDR(二阶环、环路延迟、相位钳位) |
@@ -74,8 +74,8 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 硬件 | `rtl/` | FFE+DFE+slicer 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**(2026-10-03):核心库 ~9.8k 行 / 应用层与 GUI ~4.2k 行 / 测试 ~7.3k 行 / 示例 ~4.4k 行;
-**866 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
-**39 个编号示例**(`examples/00`–`38`)。
+**867 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**40 个编号示例**(`examples/00`–`39`)。
 
 ## 路线图
 
@@ -100,9 +100,9 @@ JTOL、RTL lockstep、Windows 打包。
 - 统计引擎 vs 蒙特卡洛交叉校验比值 **1.03×**(要求 <2×);
 - 10⁶ 符号 @106.25 GBd 时域全链路 **OSR16 8.1 s / OSR32 11.6 s**(要求 ≤2 min;
   本机实测,峰值内存约 0.9 GB;长跑开 `sim.stream`,10⁶ 符号 OSR32 峰值 0.33 GB、5×10⁶ 符号可跑);
-- 双架构对比复现业界结论:mixed-signal 在 ~-15 dB Nyquist 损耗后崩溃,
-  ADC/DSP 架构到 -25 dB 仍保持 ~1e-5 SER;
-- 定点数据通路 ≥7 bit 权重与浮点 bit-true 一致,DragonPHY2 流片位宽(10b)
+- 双架构对比复现业界结论:mixed-signal 在 Nyquist 损耗 −10 到 −15 dB 之间崩溃(−14.8 dB 时 SER 2.6e-2),
+  ADC/DSP 架构到 −25 dB 仍 0 误码(3×10⁵ 符号);
+- 定点数据通路 ≥5 bit 权重与浮点判决一致(4 bit 时失配 6.7e-2),DragonPHY2 流片位宽(10b)
   为默认 Q 格式;`rtl/` 的 SystemVerilog 实现与黄金模型逐位一致(`bash rtl/run_lockstep.sh`)。
 
 信道数据:`data/channels/` 内含 TEC Whisper 42.8"(802.3ck COM 参考,DC-40 GHz)与

@@ -177,11 +177,13 @@ measurements of the recovered clock minus the Tx clock, mean removed):
 |---|---|---|
 | 16 GBd NRZ, lossy + AWGN, 5 MHz-corner 1/f² at 0.11 UI | 4 / 6 / 8 | 0.97 / 0.99 / 1.00 |
 | same, clean channel, no noise | 4 / 6 / 8 | 0.82 / 0.95 / 1.08 |
-| 112 GBd PAM4 ADC, SSPLL scaled to 200 fs | 5 / 7 / 9 | 0.96 / 0.96 / 0.73 |
+| 112 GBd PAM4 ADC, SSPLL scaled to 200 fs | 5 / 7 / 9 | 0.95 / 1.22 / 0.92 |
 
-The MM figure degrades with the resonance Q of that preset's loop
-(`ki_shift 15` with a tiny detector gain makes it integrator-dominated and
-underdamped); the bang-bang figure on a quiet clock is limited by the limit
+(The ADC row is example 31's printout, 2026-10-08 full-size rerun; it read
+0.96 / 0.96 / 0.73 before.) The MM figure scatters ±20 % around the model on
+that preset's loop (`ki_shift 15` with a tiny detector gain makes it
+integrator-dominated and underdamped), over-reading at mid gain and
+under-reading at low; the bang-bang figure on a quiet clock is limited by the limit
 cycle not being white noise. On the cross-check link the two engines' BER
 agree to 1.3–1.5× with the profile clock (invariant #3 asks for 2×).
 

@@ -2,10 +2,11 @@
 
 MLSD (Viterbi MLSE) works on the ISI the linear equaliser leaves behind. An
 LMS-adapted FFE converges to the MMSE solution, which leaves almost none: on
-this channel a 21-tap FFE has residual cursors under 0.002 and MLSD memory-2
-adds nothing at any loss. Cut the FFE to 3 taps and it leaves a real residual
-(second postcursor ~-0.05 to -0.11); MLSD then recovers 3-5x in BER -- but the
-3-tap FFE + MLSD still does not beat the 21-tap FFE alone.
+this channel a 21-tap FFE leaves residual cursors of 0.002 or less and MLSD
+memory-2 adds nothing at any loss. Cut the FFE to 3 taps and it leaves a real
+residual (second postcursor -0.06 to -0.11 from -28.8 dB of loss on); MLSD
+then recovers 1.9-4.4x in BER there -- but the 3-tap FFE + MLSD still does
+not beat the 21-tap FFE alone.
 
 So in this model MLSD substitutes for FFE taps rather than adding reach. Where
 MLSD really adds reach is an FFE that equalises to a partial-response target

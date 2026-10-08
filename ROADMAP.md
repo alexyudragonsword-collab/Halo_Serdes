@@ -58,9 +58,10 @@ AMI GetWave 记入下方「边界」。)
 - (2026-10-08 已做:GUI docstring 37% → 100%、app 层 57% → 88%(按函数 / 类 / 模块计,含私有;原记的 28% 口径不明,
   同口径核心库 65%);GUI 行覆盖 61% → 89%(只算 `tests/test_gui*.py`),`tests/test_gui_panels.py` 在真实运行记录上渲染每个标签页。
   剩下没覆盖的是 `desktop.main` / `__main__` 的起服务路径(CI 的打包 selfcheck 在跑)。)
-- (2026-10-07 已做:CI `examples` job 用 `tools/run_examples.py --smoke` 把 39 个示例全部真跑一遍,
-  `n_symbols` 压到 2 万,~6 分钟。)剩余:冒烟只证明代码路径能跑,示例打印的数字(文档引用的那些)只有按原尺寸跑才有意义,
-  仍是手动步骤(`python tools/run_examples.py`,不加 `--smoke`)。
+- (2026-10-07 已做:CI `examples` job 用 `tools/run_examples.py --smoke` 把示例全部真跑一遍,`n_symbols` 压到 2 万。
+  2026-10-08 已做:40 个示例按原尺寸全跑(3 路并行),输出逐条对照现行文档,修了约 40 处漂移;`run_examples.py` 加了
+  `--save DIR`(存每个示例的输出)与 `--jobs N`。)剩余:全尺寸运行仍是手动步骤,数字会随模型改动再漂 —— 大改前后各
+  `--save` 一份,`diff` 即知哪些文档数字要动。
 - `LICENSE` 与 `CONTRIBUTING.md` 尚缺(许可证类型需要由项目所有者决定)。
 
 ---

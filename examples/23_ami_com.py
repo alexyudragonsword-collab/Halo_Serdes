@@ -4,8 +4,9 @@ Two things this shows:
 
 1. **COM sweep** — the native behavioral Channel Operating Margin (a
    transparent stand-in for the IEEE 802.3 tool, plugged in through the same
-   ComAdapter.compute seam) vs channel loss, at two Tx-FIR strengths. COM
-   crosses the ~3 dB pass line where the margin runs out.
+   ComAdapter.compute seam) vs channel loss, at two Tx-FIR strengths. On
+   this sweep COM stays above the ~3 dB pass line (lowest 6.8 dB at 24 dB);
+   the margin it has left is what the plot shows.
 
 2. **AMI Rx model in the loop** — a native FIR AMI model (the dependency-free
    reference for the AmiModel interface a real pyibisami `.so` binds to) is
