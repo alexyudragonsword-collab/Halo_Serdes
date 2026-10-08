@@ -26,8 +26,10 @@ def _ensure_stat(rec: RunRecord):
     try:
         from halo_serdes.channel import ChannelModel
         from halo_serdes.engine.statistical import run_statistical
-        rec.stat = run_statistical(rec.cfg,
-                                   channel=ChannelModel.from_config(rec.cfg))
+        from halo_serdes_app.runner import stat_equaliser
+        cm = ChannelModel.from_config(rec.cfg)
+        taps, pre = stat_equaliser(rec.cfg, cm, rec.sim)
+        rec.stat = run_statistical(rec.cfg, channel=cm, ffe_taps=taps, ffe_pre=pre)
     except Exception as exc:
         rec.stat = None
         rec.stat_error = f"{type(exc).__name__}: {exc}"
@@ -35,6 +37,8 @@ def _ensure_stat(rec: RunRecord):
 
 
 def render(rec: RunRecord):
+    """Statistical eye, phase bathtub with the time-domain point, and the
+    slicer PDF of both engines (invariant #3)."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:

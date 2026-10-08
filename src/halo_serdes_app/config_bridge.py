@@ -32,6 +32,7 @@ DATA_DIR_ENV = "HALO_SERDES_DATA_DIR"
 
 
 def _env_data_dir() -> Path | None:
+    """The data directory named by the environment, if any (frozen builds)."""
     import os
 
     raw = os.environ.get(DATA_DIR_ENV)
@@ -78,6 +79,9 @@ CONFIGS_DIR = _find_configs_dir()
 
 
 def _data_roots() -> list[Path]:
+    """Every directory a relative data path may be resolved against, in the
+    order tried: working dir, env override, PyInstaller/Nuitka bundle
+    dirs, the configs' parent, then the source tree."""
     import sys
 
     roots = [Path.cwd()]
@@ -172,6 +176,7 @@ def resolve_data_file(rel: str) -> str:
 
 
 def _f(path, label, kind, **kw):
+    """One form field spec: dotted path, label, kind, plus scale/options."""
     d = {"path": path, "label": label, "kind": kind}
     d.update(kw)
     return d
@@ -386,6 +391,7 @@ ALL_PATHS: list[str] = list(FIELD_BY_PATH)
 # --- coercion --------------------------------------------------------------
 
 def _empty(v: Any) -> bool:
+    """A blank form value (None or whitespace)."""
     return v is None or (isinstance(v, str) and v.strip() == "")
 
 
@@ -439,6 +445,7 @@ def coerce_out(field: dict, value: Any) -> Any:
 
 
 def _fmt_num(x: float) -> str:
+    """A number as the form shows it: integers without a decimal point."""
     if x == int(x):
         return str(int(x))
     return f"{x:g}"
@@ -453,6 +460,8 @@ def _blank_topology() -> TopologyConfig:
 
 
 def get_by_path(cfg: LinkConfig, path: str) -> Any:
+    """The config value at a dotted form path; an electrical link's absent
+    topology reads as the blank one the form displays."""
     obj: Any = cfg
     for part in path.split("."):
         obj = getattr(obj, part)
@@ -518,6 +527,7 @@ def config_to_values(cfg: LinkConfig) -> dict[str, Any]:
 # --- YAML ------------------------------------------------------------------
 
 def config_to_yaml(cfg: LinkConfig) -> str:
+    """The config as YAML, tagged with the schema version."""
     data = _tuples_to_lists(dataclasses.asdict(cfg))
     data["schema_version"] = SCHEMA_VERSION
     import yaml  # local: the Android build imports this module without PyYAML
@@ -526,6 +536,7 @@ def config_to_yaml(cfg: LinkConfig) -> str:
 
 
 def yaml_to_config(text: str) -> LinkConfig:
+    """A config from YAML through the strict builder; refuses a newer schema."""
     import yaml  # local: see config_to_yaml
 
     data = yaml.safe_load(io.StringIO(text)) or {}
@@ -538,6 +549,7 @@ def yaml_to_config(text: str) -> LinkConfig:
 
 
 def _tuples_to_lists(obj: Any) -> Any:
+    """Tuples as lists, recursively, so the YAML stays plain."""
     if isinstance(obj, dict):
         return {k: _tuples_to_lists(v) for k, v in obj.items()}
     if isinstance(obj, (tuple, list)):
@@ -548,6 +560,7 @@ def _tuples_to_lists(obj: Any) -> Any:
 # --- presets ---------------------------------------------------------------
 
 def _preset_paths() -> dict[str, Path]:
+    """Preset name -> bundled YAML file."""
     return {
         "NRZ 16G mixed-signal": CONFIGS_DIR / "nrz_16g_ms.yaml",
         "NRZ 32G static": CONFIGS_DIR / "nrz_32g.yaml",
@@ -565,6 +578,7 @@ def _preset_paths() -> dict[str, Path]:
 
 
 def preset_names() -> list[str]:
+    """"Library defaults" plus every bundled preset whose file is present."""
     names = ["Library defaults"]
     names += [n for n, p in _preset_paths().items() if p.exists()]
     return names
@@ -597,6 +611,8 @@ def load_preset(name: str) -> LinkConfig:
 # --- derived read-only quantities ------------------------------------------
 
 def derived(cfg: LinkConfig) -> dict[str, str]:
+    """Read-only quantities the form shows beside the inputs (UI, dt, Nyquist,
+    data rate, bits per symbol)."""
     return {
         "UI": f"{cfg.ui * 1e12:.3f} ps",
         "dt": f"{cfg.dt * 1e12:.4f} ps",

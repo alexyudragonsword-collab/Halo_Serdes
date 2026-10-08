@@ -17,6 +17,8 @@ TAB_ID = "crosstalk"
 
 
 def render(rec: RunRecord):
+    """Statistical BER against FEXT + NEXT coupling, and ICN / COM against
+    the number of aggressor lanes."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:

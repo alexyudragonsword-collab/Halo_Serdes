@@ -6,6 +6,22 @@
 
 ---
 
+## [未发布] — GUI 文档与覆盖(ROADMAP P3 #10);ADC 统计结果在 GUI 里没套 FFE
+
+### 修正
+- app 层(桌面 GUI 与手机 API 共用)调统计引擎时不传 FFE,ADC 收端的 StatEye 是未均衡信道:106 GBd 预置 BER 0.16 /
+  SER 0.32,与时域 2.3e-4 并排显示(Single Run、双引擎页、串扰基线、reach 扫描)。新增 `runner.stat_equaliser`:
+  有时域结果用它收敛的 FFE,只跑统计用 MMSE 起始 FFE(与 `engine/cascade.py` 一致)。修后同预置 2×10⁵ 符号:时域 2.29e-4、
+  统计 2.40e-4。混合信号收端不变;库层与黄金指纹不变(逐位同)。
+- ADC 页"Per-lane mismatch"图:offset 是伏特、skew 是过采样样本,却按 "code" / "UI" 标注直接画 —— 10 mV 读成 0.01、
+  0.05 UI 在 osr 16 时读成 0.8。改为 mV 与 UI(`lane_mismatch_fig(adc, osr)`)。
+
+### 新增
+- `tests/test_gui_panels.py`:每个标签页在"未运行 / 运行失败 / mixed-signal / ADC / 时钟剖面"记录上渲染,并断言用户该读到的文字
+  (门控说明或数据卡片);侧栏回调经 Dash 的 `__wrapped__` 直接调用(预置载入、YAML 导入导出、实时派生值、运行、切页);
+  桌面启动器的端口与就绪探测。GUI 行覆盖 61% → 89%。
+- GUI 函数 docstring 37% → 100%,app 层 57% → 88%。
+
 ## [未发布] — TDECQ 的 802.3dj 参考 DFE(ROADMAP P3 #11)
 
 ### 新增

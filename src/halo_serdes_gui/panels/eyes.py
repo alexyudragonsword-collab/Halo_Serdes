@@ -29,7 +29,8 @@ TAB_ID = "eyes"
 
 
 def _small(cfg, cap=4000):
-    # cap symbols for a responsive reconstruction
+    """``cfg`` with at most ``cap`` symbols, for a reconstruction quick enough to
+    run on every tab switch."""
     return dataclasses.replace(cfg, sim=dataclasses.replace(
         cfg.sim, n_symbols=min(cfg.sim.n_symbols, cap)))
 
@@ -63,11 +64,15 @@ def _post_ffe_eye_fig(rec):
 
 
 def _note(text: str):
+    """A small explanatory caption under the plots."""
     return html.Div(text, style={"fontSize": "0.75rem", "color": "#5b6472",
                                  "marginTop": "0.3rem"})
 
 
 def render(rec: RunRecord):
+    """Analog front-end eye and the post-EQ view: the captured fold for a
+    mixed-signal receiver; the reconstructed post-FFE eye and the slicer
+    cloud for an ADC receiver."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:

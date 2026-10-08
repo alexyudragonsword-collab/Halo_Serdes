@@ -14,6 +14,7 @@ TAB_ID = "adapt"
 
 
 def render(rec: RunRecord):
+    """DFE tap trajectories and their convergence; needs a time run."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:

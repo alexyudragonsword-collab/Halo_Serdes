@@ -107,7 +107,11 @@ def test_g2_dynamics_figures():
     ae = arec.sim.extras
     assert figures.lane_ser_fig(ae["lane_ser"]).data[0].type == "bar"
     assert isinstance(figures.adc_codes_fig(ae["q_hist_head"]), go.Figure)
-    assert isinstance(figures.lane_mismatch_fig(ae["adc"]), go.Figure)
+    mm = figures.lane_mismatch_fig(ae["adc"], adccfg.osr)
+    # plotted in the units the titles name: mV of offset, UI of skew
+    assert [a.text for a in mm.layout.annotations] == ["offset [mV]", "skew [UI]"]
+    assert list(mm.data[0].y) == pytest.approx(list(ae["adc"].offsets * 1e3))
+    assert list(mm.data[1].y) == pytest.approx(list(ae["adc"].skews / adccfg.osr))
 
 
 def test_runner_end_to_end_and_error_capture():

@@ -18,6 +18,8 @@ from . import theme
 
 
 def placeholder(text: str = "no data", height: int = 320) -> go.Figure:
+    """An empty figure carrying ``text``: what every builder returns when its
+    data is missing, so a panel shows why instead of an empty frame."""
     fig = go.Figure()
     fig.update_layout(**theme.layout(height=height))
     fig.add_annotation(text=text, x=0.5, y=0.5, xref="paper", yref="paper",
@@ -31,6 +33,8 @@ def placeholder(text: str = "no data", height: int = 320) -> go.Figure:
 
 def eye_fig(eye_traces, title: str = "Eye", height: int = 340,
             mode: str = "density") -> go.Figure:
+    """Eye from folded traces (rows = one span each): a log-density heatmap, or
+    up to 300 overlaid traces with ``mode="lines"``."""
     if eye_traces is None or getattr(eye_traces, "size", 0) == 0:
         return placeholder("no eye (run the time engine with eye capture)", height)
     traces = np.asarray(eye_traces)
@@ -58,6 +62,8 @@ def eye_fig(eye_traces, title: str = "Eye", height: int = 340,
 # --- statistical engine ----------------------------------------------------
 
 def stat_eye_fig(stat, title="Statistical eye (log PDF)", height=340) -> go.Figure:
+    """The statistical engine's eye PDF over phase and amplitude, log scale
+    floored at 1e-12."""
     if stat is None:
         return placeholder("run the statistical engine (engine = stat or both)",
                            height)
@@ -74,6 +80,8 @@ def stat_eye_fig(stat, title="Statistical eye (log PDF)", height=340) -> go.Figu
 
 
 def bathtub_fig(stat, mc_ber=None, title="Phase bathtub", height=340) -> go.Figure:
+    """StatEye BER against sampling phase, with the time-domain BER as a
+    dashed line when there is one -- the dual-engine comparison at a glance."""
     if stat is None:
         return placeholder("run the statistical engine", height)
     fig = lines_fig([{"x": stat.phi_ui, "y": np.maximum(stat.ber_phi, 1e-30),
@@ -89,6 +97,8 @@ def bathtub_fig(stat, mc_ber=None, title="Phase bathtub", height=340) -> go.Figu
 
 def slicer_pdf_compare_fig(stat, y_slicer, title="Slicer PDF: stat vs MC",
                            height=340) -> go.Figure:
+    """The statistical PDF at the chosen phase beside the time engine's
+    slicer histogram, both as densities on a log axis."""
     if stat is None:
         return placeholder("run the statistical engine", height)
     col = stat.eye_pdf[:, int(stat.best_phi)].astype(float)
@@ -109,6 +119,7 @@ def slicer_pdf_compare_fig(stat, y_slicer, title="Slicer PDF: stat vs MC",
 # --- channel ---------------------------------------------------------------
 
 def channel_loss_fig(cm, f_nyquist, title="Insertion loss", height=320):
+    """Insertion loss of the channel model with the Nyquist frequency marked."""
     f = cm.f / 1e9
     fig = lines_fig([{"x": f, "y": cm.insertion_loss_db(), "name": "|H| [dB]",
                       "mode": "lines", "color": theme.PRIMARY}],
@@ -120,6 +131,7 @@ def channel_loss_fig(cm, f_nyquist, title="Insertion loss", height=320):
 
 
 def impulse_fig(cm, dt, title="Impulse response", height=300):
+    """The channel's impulse response on the simulation grid."""
     h = cm.impulse(dt)
     t = np.arange(h.y.size) * dt * 1e9
     return lines_fig([{"x": t, "y": h.y, "name": "h(t)", "mode": "lines",
@@ -128,6 +140,8 @@ def impulse_fig(cm, dt, title="Impulse response", height=300):
 
 
 def pulse_cursors_fig(cm, dt, osr, title="Pulse response + ISI cursors", height=300):
+    """Single-bit pulse response with the UI-spaced cursors marked
+    (4 pre, 20 post), relative to its peak."""
     from halo_serdes.dsp.ffe import channel_cursors
 
     pulse = cm.pulse(dt, osr)
@@ -148,6 +162,7 @@ def pulse_cursors_fig(cm, dt, osr, title="Pulse response + ISI cursors", height=
 
 
 def com_breakdown_fig(com, title="COM noise breakdown", height=300):
+    """The behavioral COM's noise terms (ISI, crosstalk, noise, jitter) as bars."""
     labels = ["ISI", "Crosstalk", "Noise", "Jitter"]
     vals = [com.fom_isi, com.fom_xtalk, com.fom_noise, com.fom_jitter]
     fig = go.Figure(go.Bar(x=labels, y=vals, marker_color=theme.COLORWAY[:4]))
@@ -160,6 +175,8 @@ def com_breakdown_fig(com, title="COM noise breakdown", height=300):
 # --- CTLE ------------------------------------------------------------------
 
 def ctle_bode_fig(cfg, title="CTLE frequency response", height=320):
+    """|H| of the configured CTLE up to 2.5x Nyquist; a placeholder with the
+    reason when it is disabled or cannot be built."""
     from halo_serdes.afe import Ctle
 
     if not cfg.rx.ctle.enable:
@@ -186,6 +203,8 @@ def ctle_bode_fig(cfg, title="CTLE frequency response", height=320):
 # --- jitter ----------------------------------------------------------------
 
 def jitter_bar_fig(budget, ui, title="Per-stage jitter budget", height=340):
+    """Stacked per-stage jitter components [%UI] with TJ@1e-12 marked; Rj is
+    shown at its 1e-12 extent (14.07 sigma) so the stack adds up to TJ."""
     if not isinstance(budget, dict) or "_note" in budget or not budget:
         return placeholder("no jitter budget — needs a repeating pattern "
                            "(≥4 periods, e.g. prbs7)", height)
@@ -215,6 +234,7 @@ def jitter_bar_fig(budget, ui, title="Per-stage jitter budget", height=340):
 # --- adaptation / CDR ------------------------------------------------------
 
 def _stage_shading(fig, settle, train_end):
+    """Shade the CDR-settle and training windows on a per-symbol axis."""
     fig.add_vrect(x0=0, x1=settle, fillcolor=theme.MUTED, opacity=0.08,
                   line_width=0, annotation_text="CDR settle",
                   annotation_position="top left")
@@ -224,6 +244,8 @@ def _stage_shading(fig, settle, train_end):
 
 def dfe_traj_fig(w_hist, w_final, settle, train_end, n_ave,
                  title="DFE tap trajectories", height=340) -> go.Figure:
+    """DFE tap trajectories over the run, converged values dotted, the settle
+    and training windows shaded."""
     if w_hist is None or np.size(w_hist) == 0:
         return placeholder("no adaptation history (set dfe.adapt to lms/sign_sign)",
                            height)
@@ -245,6 +267,8 @@ def dfe_traj_fig(w_hist, w_final, settle, train_end, n_ave,
 
 
 def convergence_fig(w_hist, w_final, n_ave, title="Convergence", height=340):
+    """Distance of the tap vector from its final value, log scale: the
+    adaptation's learning curve."""
     if w_hist is None or np.size(w_hist) == 0 or w_final is None:
         return placeholder("no convergence history", height)
     w = np.asarray(w_hist)
@@ -258,6 +282,7 @@ def convergence_fig(w_hist, w_final, n_ave, title="Convergence", height=340):
 
 def cdr_phase_fig(phase_track, osr, settle, train_end,
                   title="CDR recovered phase", height=340) -> go.Figure:
+    """The CDR's recovered phase [UI] per symbol; a slope is a frequency offset."""
     if phase_track is None or np.size(phase_track) == 0:
         return placeholder("no CDR phase track", height)
     ph = np.asarray(phase_track) / osr  # oversample units -> UI
@@ -273,6 +298,7 @@ def cdr_phase_fig(phase_track, osr, settle, train_end,
 
 
 def pd_activity_fig(pd_hist, win=200, title="Phase-detector activity", height=300):
+    """Moving mean of the phase detector's early/late output; zero when locked."""
     if pd_hist is None or np.size(pd_hist) == 0:
         return placeholder("no PD history", height)
     pd = np.asarray(pd_hist, dtype=float)
@@ -289,6 +315,7 @@ def pd_activity_fig(pd_hist, win=200, title="Phase-detector activity", height=30
 # --- ADC -------------------------------------------------------------------
 
 def lane_ser_fig(lane_ser, title="Per-lane SER (TI mismatch)", height=320):
+    """Symbol error ratio per TI-ADC lane (log); a lane standing out is mismatch."""
     if lane_ser is None or np.size(lane_ser) == 0:
         return placeholder("no per-lane SER (ADC arch only)", height)
     ls = np.asarray(lane_ser, dtype=float)
@@ -301,6 +328,7 @@ def lane_ser_fig(lane_ser, title="Per-lane SER (TI mismatch)", height=320):
 
 
 def adc_codes_fig(q_hist, title="ADC code histogram", height=300):
+    """Histogram of the ADC output codes (the head of the run the engine keeps)."""
     if q_hist is None or np.size(q_hist) == 0:
         return placeholder("no ADC codes (ADC arch only)", height)
     fig = go.Figure(go.Histogram(x=np.asarray(q_hist), nbinsx=80,
@@ -311,14 +339,20 @@ def adc_codes_fig(q_hist, title="ADC code histogram", height=300):
     return fig
 
 
-def lane_mismatch_fig(adc, title="Per-lane mismatch", height=300):
+def lane_mismatch_fig(adc, osr: int, title="Per-lane mismatch", height=300):
+    """Each lane's offset [mV] and sampling skew [UI] as the run used them.
+
+    ``TiAdc`` holds offsets in volts and skews in oversampled samples; the
+    bars used to be drawn raw under "code" and "UI" labels, so a 10 mV offset
+    read as 0.01 codes and a 0.05 UI skew as 0.8 UI at osr 16. With a
+    foreground calibration these are the residuals it left."""
     if adc is None:
         return placeholder("no ADC model", height)
     lanes = np.arange(adc.n_lanes)
-    fig = make_subplots(rows=1, cols=2, subplot_titles=["offset [code]", "skew [UI]"])
-    fig.add_bar(x=lanes, y=np.asarray(adc.offsets), marker_color=theme.COLORWAY[1],
+    fig = make_subplots(rows=1, cols=2, subplot_titles=["offset [mV]", "skew [UI]"])
+    fig.add_bar(x=lanes, y=np.asarray(adc.offsets) * 1e3, marker_color=theme.COLORWAY[1],
                 row=1, col=1)
-    fig.add_bar(x=lanes, y=np.asarray(adc.skews), marker_color=theme.COLORWAY[2],
+    fig.add_bar(x=lanes, y=np.asarray(adc.skews) / osr, marker_color=theme.COLORWAY[2],
                 row=1, col=2)
     fig.update_layout(**theme.layout(title, height=height), showlegend=False)
     for c in (1, 2):
@@ -329,6 +363,7 @@ def lane_mismatch_fig(adc, title="Per-lane mismatch", height=300):
 # --- backchannel -----------------------------------------------------------
 
 def backchannel_fig(res, title="Tx FIR training", height=340):
+    """Tx FIR training per round: the cursors it measured and the taps it set."""
     if res is None:
         return placeholder("no training result", height)
     ch = np.asarray(res.cursor_history)
@@ -354,6 +389,7 @@ def backchannel_fig(res, title="Tx FIR training", height=340):
 
 def slicer_hist_fig(y_slicer, levels=None, title="Slicer input",
                     height: int = 340) -> go.Figure:
+    """Histogram of the slicer input with the decision levels dashed."""
     if y_slicer is None or getattr(y_slicer, "size", 0) == 0:
         return placeholder("no slicer samples", height)
     y = np.asarray(y_slicer)
@@ -402,6 +438,8 @@ def slicer_cloud_fig(y_slicer, levels=None, title="Slicer sample cloud",
 
 def taps_fig(ffe_taps=None, dfe_taps=None, ffe_pre: int = 0,
              title="Equalizer taps", height: int = 320) -> go.Figure:
+    """FFE taps (indexed from the main tap) and DFE taps side by side; either
+    may be absent."""
     have_ffe = ffe_taps is not None and len(np.asarray(ffe_taps)) > 0
     have_dfe = dfe_taps is not None and len(np.asarray(dfe_taps)) > 0
     if not have_ffe and not have_dfe:

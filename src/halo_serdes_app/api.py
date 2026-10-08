@@ -186,6 +186,7 @@ def _m_schema(_payload: dict) -> dict:
 
 
 def _m_preset(payload: dict) -> dict:
+    """A preset's form values (the first preset when no name is given)."""
     name = payload.get("name") or preset_names()[0]
     return {"name": name, "values": _jsonable(config_to_values(load_preset(name)))}
 
@@ -232,10 +233,12 @@ def _channel_status(cfg) -> dict:
 
 
 def _m_to_yaml(payload: dict) -> dict:
+    """The form values as YAML; raises like ``derive`` on an invalid form."""
     return {"text": config_to_yaml(build_config(payload.get("values") or {}))}
 
 
 def _m_from_yaml(payload: dict) -> dict:
+    """Form values from YAML text, through the strict config builder."""
     return {"values": _jsonable(config_to_values(yaml_to_config(payload["text"])))}
 
 
@@ -256,6 +259,7 @@ def _m_run_stat(payload: dict) -> dict:
 
 
 def _m_run_com(payload: dict) -> dict:
+    """802.3 COM of the form's channel and receiver (no simulation)."""
     from halo_serdes.analysis.com import compute_com
     from halo_serdes.channel import ChannelModel
 
@@ -430,6 +434,7 @@ def _m_result(payload: dict) -> dict:
 
 
 def _m_release(payload: dict) -> dict:
+    """Forget a stored result so its arrays can be freed."""
     rid = payload.get("handle")
     runner._RESULTS.pop(rid, None)
     if rid in runner._ORDER:
@@ -441,6 +446,7 @@ def _m_release(payload: dict) -> dict:
 
 @dataclasses.dataclass
 class _Job:
+    """A background time-domain run as ``poll`` reports it."""
     id: str
     state: str = "queued"           # queued | running | done | error | cancelled
     stage: str = ""
@@ -488,7 +494,10 @@ def _m_start_time_run(payload: dict) -> dict:
 
 
 def _run_job(job: _Job, values: dict) -> None:
+    """Body of the worker thread: run, record the handle or the error, honour
+    cancellation at the progress callbacks."""
     def progress(stage: str, fraction: float | None = None) -> None:
+        """Runner progress hook: publish the stage, or unwind if cancelled."""
         if job.cancel.is_set():
             raise runner.Cancelled()
         job.stage = stage
@@ -515,6 +524,7 @@ def _run_job(job: _Job, values: dict) -> None:
 
 
 def _m_poll(payload: dict) -> dict:
+    """State of a background run: stage, fraction, handle when done, error."""
     job = _JOBS.get(payload.get("job"))
     if job is None:
         raise KeyError(f"unknown job {payload.get('job')!r}")

@@ -16,6 +16,8 @@ TAB_ID = "sweeps"
 
 
 def render(rec: RunRecord):
+    """Pre- and post-FEC BER over a channel-loss sweep (statistical) with
+    the KP4 reach; analytic channels only."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:

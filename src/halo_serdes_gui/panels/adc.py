@@ -15,6 +15,8 @@ TAB_ID = "adc"
 
 
 def render(rec: RunRecord):
+    """Per-lane SER, code histogram, lane mismatch and converged taps of an
+    ADC-receiver run; points a mixed-signal run at the ADC presets."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:
@@ -42,7 +44,7 @@ def render(rec: RunRecord):
             dbc.Col(common.graph(figures.adc_codes_fig(e.get("q_hist_head"))), lg=6),
         ], className="g-2"),
         dbc.Row([
-            dbc.Col(common.graph(figures.lane_mismatch_fig(adc)), lg=6),
+            dbc.Col(common.graph(figures.lane_mismatch_fig(adc, rec.cfg.osr)), lg=6),
             dbc.Col(common.graph(figures.taps_fig(
                 rec.sim.ffe_taps, rec.sim.dfe_taps, ffe_pre=rec.cfg.rx.ffe.n_pre,
                 title="Converged FFE / DFE taps")), lg=6),

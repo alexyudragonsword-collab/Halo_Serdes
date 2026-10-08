@@ -14,6 +14,7 @@ TAB_ID = "single"
 
 
 def _metric_cards(rec: RunRecord):
+    """BER / SER / SNR / TJ of the time run, StatEye BER, engines and run time."""
     cards = []
     sim, stat = rec.sim, rec.stat
     if sim is not None:
@@ -41,6 +42,7 @@ def _metric_cards(rec: RunRecord):
 
 
 def _stat_bathtub(stat, cfg):
+    """Phase bathtub for a statistical-only run (no time-domain plots to show)."""
     return figures.lines_fig(
         [{"x": stat.phi_ui, "y": stat.ber_phi, "name": "BER(φ)", "mode": "lines"}],
         title="Phase bathtub (statistical)", xtitle="sampling phase [UI]",
@@ -48,6 +50,7 @@ def _stat_bathtub(stat, cfg):
 
 
 def render(rec: RunRecord):
+    """Headline cards, eye, slicer histogram, taps and the result summary."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:

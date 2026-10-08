@@ -15,6 +15,8 @@ TAB_ID = "amicom"
 
 
 def _ami_status():
+    """What can execute an IBIS-AMI model in this environment: a C compiler
+    (the compiled reference model) and pyibisami (vendor models)."""
     import shutil
 
     banners = []
@@ -42,6 +44,8 @@ def _ami_status():
 
 
 def render(rec: RunRecord):
+    """AMI availability, then 802.3 COM and the behavioral FoM over a channel-loss
+    sweep (analytic channels only; the study says so otherwise)."""
     if rec is None:
         return common.need_run_message()
     body = [_ami_status()]

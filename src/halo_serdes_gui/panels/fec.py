@@ -15,6 +15,8 @@ TAB_ID = "fec"
 
 
 def render(rec: RunRecord):
+    """Pre- to post-FEC BER for KP4, KR4 and a concatenated code; marks this
+    run's pre-FEC BER when there is one. Needs no run."""
     p = studies.fec_projection()
     traces = [
         {"x": p["pre"], "y": np.maximum(p["kp4"], 1e-30), "name": "KP4 (544,514)",

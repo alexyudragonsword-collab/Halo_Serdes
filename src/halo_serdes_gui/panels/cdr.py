@@ -14,6 +14,7 @@ TAB_ID = "cdr"
 
 
 def render(rec: RunRecord):
+    """Recovered phase and phase-detector activity of a time run."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok or rec.sim is None:
