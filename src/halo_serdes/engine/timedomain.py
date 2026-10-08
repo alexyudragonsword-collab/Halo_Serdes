@@ -135,9 +135,12 @@ def _mlsd_post_detect(cfg: LinkConfig, y_slicer: np.ndarray, dec: np.ndarray,
     if np.all(np.abs(cursors[1:]) < 1e-9):    # nothing left to detect over
         return dec
     method = "viterbi" if mcfg.kind == "viterbi" else "sliding"
+    # the sliding detector corrects the receiver's decisions -- under a PR
+    # target those subtract the controlled cursor, a plain slice would not
     out = post_detect(np.asarray(y_slicer, dtype=float), cursors,
                       np.asarray(levels, dtype=float), method,
-                      seq_len=mcfg.seq_len, margin=mcfg.margin)
+                      seq_len=mcfg.seq_len, margin=mcfg.margin,
+                      dec0=None if method == "viterbi" else np.asarray(dec, dtype=np.int64))
     return np.asarray(out, dtype=np.int64)
 
 
@@ -693,12 +696,13 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 
         fl, rec = fixed["loop"], fixed["record"]
         # the float detector's residual is the first cursor after the main
-        # one -- the target's own under PR -- and it starts from a plain slice
+        # one -- the target's own under PR -- and, like it, it corrects the
+        # loop's own decisions rather than a plain slice of the words
         rp = float(head[1]) if head is not None and len(head) > 1 else float(resid_ratios[0])
         fsd = build_fixed_sliding(cfg, rp, fl.levels_out, fl.out_lsb, fl.out_bits)
         v_fx = rec["v_out"][:n_run]
-        dec0 = np.argmin(np.abs(v_fx[:, None] - fl.levels_out[None, :]), axis=1)
-        dec = run_fixed_sliding(fsd, v_fx, dec0, fl.levels_out)
+        dec = run_fixed_sliding(fsd, v_fx, np.asarray(dec[:n_run], dtype=np.int64),
+                                fl.levels_out)
         fixed["mlsd"] = {"detector": fsd, "dec": dec}
     elif fixed is not None and cfg.rx.mlsd.kind == "viterbi":
         # the bit-true Viterbi on the loop's slicer words (dsp/fixed_viterbi.py),

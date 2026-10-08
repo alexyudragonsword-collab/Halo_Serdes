@@ -396,6 +396,11 @@ rx:
 precode: true          # 1/(1+D) mod-N 预编码
 ```
 
+sliding 检测器**修正接收机自己的判决**(DFE / PR 逐符号判决),只建模一个后光标(残余的第一光标,PR 下是目标的 a);
+三光标 PR 目标(1 + aD + bD²)配 sliding 会被拒,用 viterbi。独立调用 `post_detect(..., "sliding")` 时不给 `dec0`
+就从"把该后光标反馈掉"的判决起步。(2026-10-08 前它丢掉传入的判决、从忽略该光标的切片起步:1 + 0.5D 目标下
+SER 从 2e-5 变 3e-2,示例 27 里不如 DFE;见 CHANGELOG。)
+
 ```python
 res = run_time_link(cfg, channel=ch)
 print(res.ser, res.extras["ser_slicer"])      # MLSD 后 vs 原始判决器基线
@@ -534,7 +539,7 @@ rx:
   `ffe.mu` / `dfe.mu` 的 2 的幂(换算到整数单位后),`float_equivalent_mu()` 给出精确对应的浮点步长。
   保护位太少时小更新被舍入成 0,环路就不再自适应;
 - PR 目标(`pr.target`)在定点下同样是整数:1 + aD [+ bD²] 减受控光标再切(a、b 是 `dfe_weight.fl` 小数位的字,
-  `pr.adapt: lms` 时整数 LMS 跟踪),预编码 1 + D 走合成电平切片;sliding MLSD 的残差此时取目标的第一光标 a;
+  `pr.adapt: lms` 时整数 LMS 跟踪),预编码 1 + D 走合成电平切片;sliding MLSD 的残差此时取目标的第一光标 a,起步判决是环路自己的;
 - 不建模(直接报错):mixed-signal(DFE / CDR 是模拟的)、`sim.stream`、非 2 的幂 lane 数。
 
 RTL 对照的是"ADC 字之后"的部分:`replay_digital()` 从记录的 ADC 字流重放数字后端,与闭环逐位相同;

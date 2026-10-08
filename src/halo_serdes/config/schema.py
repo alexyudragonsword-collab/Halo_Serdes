@@ -725,6 +725,13 @@ class LinkConfig:
         _require(not (self.pr.active and self.rx.arch == "mixed_signal"),
                  "pr.target with rx.arch='mixed_signal': partial-response "
                  "equalisation needs the ADC receiver's digital FFE")
+        # the sliding detector (and its bit-true / RTL twins) models one
+        # postcursor; under a three-cursor target it reads the second
+        # controlled cursor as error and flips correct decisions (SER 0 ->
+        # 2e-2 on the 106 GBd preset)
+        _require(not (self.rx.mlsd.kind == "sliding" and len(self.pr.target) > 2),
+                 "rx.mlsd.kind='sliding' with a three-cursor pr.target: the sliding "
+                 "detector models one postcursor; use rx.mlsd.kind='viterbi'")
         # NOTE: a touchstone channel with no file is intentionally allowed here
         # — LinkConfig() defaults to it, and ChannelModel.from_config raises a
         # precise error at load time if it is actually used.
