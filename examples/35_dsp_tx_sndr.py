@@ -9,8 +9,9 @@ the same parameter as an E/O's ``li_compression`` (``core.static_curve``).
    the symbol centres against the same Tx with an ideal DAC and a linear
    driver (``analysis.tx_metrics``), next to the sine closed form
    6.02 N + 1.76 dB. A PAM4 + FFE waveform does not fill the DAC the way a
-   full-scale sine does, so its SNDR sits below the sine line by a fixed
-   amount; the slope (6 dB per bit) is the check.
+   full-scale sine does, so its SNDR does not sit on the sine line: the
+   steps between word lengths are uneven (a segment boundary can land on a
+   level), and the overall slope (about 6 dB per bit) is the check.
 2. Reach on example 18's channel sweep (FFE + memory-2 MLSD + KP4) for
    DAC 6 / 7 / 8 bits and ideal, and for the 7-bit DAC with a compressing
    driver: the longest channel whose post-KP4 BER stays at 1e-15.

@@ -8,7 +8,7 @@ AMI_Close ABI by AmiCModel — no pyibisami, no vendor binary.
 
 Panel 1: the model's AMI_Init transform of the channel impulse response,
 run inside the .so, overlaid on the dependency-free native reference (they
-match bit-for-bit — the seam is faithful).
+agree to machine precision, ~1e-18 -- the seam is faithful).
 Panel 2: the Tx-EQ effect on the link — slicer-input SNR with the AMI model in
 the Tx slot vs no equalization, for both the Init (LTI) and GetWave (time-domain)
 flows.

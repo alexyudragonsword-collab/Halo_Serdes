@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**866 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **866 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**867 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **867 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -72,8 +72,10 @@ The traditional mixed-signal RX must open the eye in the analog domain before th
 
 ![32G NRZ 系统框图 / system diagram](figures/nrz32_system_diagram.png)
 
-**均衡后眼图 / Post-EQ eyes**：-32 dB 信道下均衡前眼完全闭合,FFE 后张开,FFE+DFE 后采样时刻内眼 6.5 mV。DFE 眼在 ±0.5 UI 的阶梯不连续是 UI 边界反馈切换的标志。
-Under −32 dB the pre-EQ eye is fully closed; after FFE+DFE the inner eye is 6.5 mV. The ±0.5 UI staircase is the signature of UI-boundary feedback.
+(图中 "slicer SNR 14 dB"、"±17.3 mV" 是 2026-08 的值;2026-10-08 全尺寸重跑为 15.1 dB、±17.4 mV,源文件 `docs/nrz32_system_diagram.mmd` 已更新,PNG 未重画。/ The PNG still shows slicer SNR 14 dB and ±17.3 mV from 2026-08; the 2026-10-08 full-size rerun gives 15.1 dB and ±17.4 mV, as the `.mmd` source now says.)
+
+**均衡后眼图 / Post-EQ eyes**：-32 dB 信道下均衡前眼完全闭合,FFE 后张开,FFE+DFE 后采样时刻内眼 6.8 mV。DFE 眼在 ±0.5 UI 的阶梯不连续是 UI 边界反馈切换的标志。
+Under −32 dB the pre-EQ eye is fully closed; after FFE+DFE the inner eye is 6.8 mV. The ±0.5 UI staircase is the signature of UI-boundary feedback.
 
 ![均衡后眼图 / post-EQ eyes](../examples/output/03_eq_eye_nrz32.png)
 
@@ -138,7 +140,7 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 | **收端 PR 整形**(FFE 均衡到 1+0.75D,Viterbi 解受控光标)/ RX partial response | **+4.7 dB** | Viterbi 网格(N² 状态)/ trellis |
 | **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.0 dB** | 网格 ×4(256 状态)/ trellis ×4 |
 
-- **MLSD 只拿回短 FFE 留下的 ISI**(示例 18):21 抽头 LMS FFE 收敛到 MMSE,残余光标 < 0.002,MLSD memory-2 在每个损耗都是 1.0×;
+- **MLSD 只拿回短 FFE 留下的 ISI**(示例 18):21 抽头 LMS FFE 收敛到 MMSE,残余光标 ≤ 0.002,MLSD memory-2 在每个损耗都是 1.0×;
   3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 从 −28.8 dB 起拿回 1.9×、−33.3 dB 处 4.4× —— 但 3 抽头 + MLSD 仍不如 21 抽头 FFE 单独用。
   要 MLSD 真加 reach,FFE 得均衡到部分响应目标(1+αD)而不是 delta —— 见下一条。 / MLSD only recovers what a
   short FFE leaves: 1.0× behind a 21-tap MMSE FFE, 1.9–4.4× behind a 3-tap one, which still loses to the 21-tap FFE alone.
@@ -153,7 +155,7 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
   error-free to −28.8 dB and memory-2 MLSD matches it at −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
 - **深 LR 是 SNR 受限,不是 ISI/DSP 深度受限**——加 DFE + 更深 MLSD 只多 0.8 dB(31.6 → 32.4 dB),ADC 采样质量多 5.3 dB(→ 37.7 dB)。 / Deep LR is SNR-limited; DSP depth buys 0.8 dB, ADC quality 5.3 dB.
-- **级联内码**把可容忍 pre-FEC BER 从 2.2e-5 抬到 ~7e-3(300 倍),reach 从 32.4 到 36.2 dB(BCH(255,215);此前 29 → 35.5 dB)。 / Concat inner code raises tolerable pre-FEC 300×; reach 32.4 → 36.2 dB.
+- **级联内码**把可容忍 pre-FEC BER 从 2.2e-4 抬到 ~7e-3(31 倍;2026-10-08 复核更正:原记 2.2e-5 / 300 倍),reach 从 32.4 到 36.2 dB(BCH(255,215);此前 29 → 35.5 dB)。 / Concat inner code raises tolerable pre-FEC 300×; reach 32.4 → 36.2 dB.
 
 **全栈组合:进入 802.3dj LR / Full stack: into the 802.3dj LR band**
 
@@ -216,9 +218,9 @@ a DSP-retimed module decides and re-transmits at ingress and egress, so the link
 > past 300 m the OM4 modal bandwidth (15.7 GHz) is the wall.
 
 读数约定 / reading conventions:横轴是光纤长度与 OMA,不是"损耗 dB"(光路损耗不是 ISI 的代理量);每条阶梯的
-pre-FEC 地板 ~1e-5 来自时域引擎尾部 2–3 个无效判决(ROADMAP P1-1b),与 KP4 的 2.4e-4 阈值无关。
-Fibre length and OMA on the x axis, never "loss in dB"; the ~1e-5 pre-FEC floor of every ladder is the engine's 2-3 invalid
-tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
+pre-FEC 地板 1.3e-6 是 0 误码时半个计数的置信上限(2×10⁵ 符号;2026-10-03 前的 ~1e-5 来自时域引擎尾部 2–3 个无效判决,已修),与 KP4 的 2.4e-4 阈值无关。
+Fibre length and OMA on the x axis, never "loss in dB"; the 1.3e-6 pre-FEC floor of every ladder is the half-count bound of a zero-error run (2e5 symbols; the ~1e-5 before 2026-10-03 was
+the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 threshold.
 
 **发射机这一侧:TDECQ / The transmitter side: TDECQ**(示例 34,802.3 121.8.5 的 BT4 参考接收机 + 参考 FFE,200G/λ 另加 802.3dj 的 1 抽头 DFE,
 过各自光纤后测 / example 34, measured after each transmitter's own fibre):
@@ -273,4 +275,4 @@ tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 866 项测试 · 双引擎 · 40 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 867 项测试 · 双引擎 · 40 个实验脚本*

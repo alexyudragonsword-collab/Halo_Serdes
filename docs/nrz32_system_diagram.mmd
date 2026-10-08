@@ -13,7 +13,7 @@ flowchart LR
         N --> SAMP["采样器<br/>Farrow 三次插值<br/>OSR 32 → 波特率"]
         SAMP --> FFE["FFE 17 taps<br/>(4 pre + 1 + 12 post)<br/>MMSE 解"]
         FFE --> SUM(("Σ"))
-        SUM --> SLC["判决器<br/>±17.3 mV"]
+        SUM --> SLC["判决器<br/>±17.4 mV"]
         SLC --> DFE["DFE 3 taps<br/>(sign-sign LMS 自适应)"]
         DFE -->|"反馈 −Σwᵢ·v̂ₖ₋ᵢ"| SUM
         SLC -.->|"数据/边沿采样"| CDR["Bang-Bang CDR<br/>Alexander PD<br/>Kp=2⁻⁵ Ki=2⁻¹²"]
@@ -22,8 +22,8 @@ flowchart LR
 
     subgraph MEAS["验证 & 观测"]
         CHK["PRBS 自同步检错<br/><b>BER = 0 / 2×10⁵</b>"]
-        EYE["眼图: 均衡前闭合 →<br/>均衡后内眼 6.5 mV"]
-        SNR["slicer SNR 14 dB<br/>统计引擎浴盆可外推 1e-15"]
+        EYE["眼图: 均衡前闭合 →<br/>均衡后内眼 6.8 mV"]
+        SNR["slicer SNR 15.1 dB<br/>统计引擎浴盆可外推 1e-15"]
     end
 
     TX --> CH --> RX

@@ -7,7 +7,7 @@ target (``pr.target = (1.0, a)``) asks the FFE for less -- the first
 postcursor stays at ``a`` -- so it enhances less noise, and the Viterbi
 detector resolves the controlled cursor it left.
 
-Three parts, all on example 18's receiver (21-tap LMS FFE, MM-CDR, memory-2
+Four parts, all on example 18's receiver (21-tap LMS FFE, MM-CDR, memory-2
 Viterbi, ENOB 6.5, 1.5 mV receiver noise):
 
 1. BER vs a at three losses. The control is a = 0: the same Viterbi

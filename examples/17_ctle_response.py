@@ -8,9 +8,10 @@ Two comparisons:
    2x in frequency — and a note that the *realized* peaking is below the
    nominal peak_db because the 2x-Nyquist second pole rolls the zero boost
    back down;
-2. ADC-arch light CTLE (~1.5 dB, only pre-conditions the ADC input) vs
-   mixed-signal aggressive CTLE (9-12 dB, must open the eye before the
-   slicer) — the analog-EQ burden that distinguishes the architectures.
+2. ADC-arch light CTLE (~1.5 dB realized, only pre-conditions the ADC input)
+   vs mixed-signal aggressive CTLE (peak_db 9-12, ~6-8.6 dB realized, must open
+   the eye before the slicer) — the analog-EQ burden that distinguishes the
+   architectures.
 """
 
 import sys

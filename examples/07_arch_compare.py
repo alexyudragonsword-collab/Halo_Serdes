@@ -8,8 +8,8 @@ architectures on identical Tx/channel/noise conditions:
   (802.3dj reference receiver configuration).
 
 Reports slicer SNR, SER, pre/post-FEC BER, and the power/complexity proxy
-(taps x bit width). The expected physics: mixed-signal collapses beyond
-~15 dB Nyquist loss while ADC/DSP keeps working — the reason the industry
+(taps x bit width). The expected physics: mixed-signal collapses between
+10 and 15 dB of Nyquist loss while ADC/DSP keeps working — the reason the industry
 moved to ADC-based architectures at 224G.
 """
 
