@@ -19,10 +19,13 @@ _NUMERIC = {"float", "int", "opt_float", "opt_int"}
 
 
 def _cid(path: str) -> dict:
+    """The pattern-matching id every form input carries."""
     return {"type": "cfg", "path": path}
 
 
 def _control(field: dict, value: Any):
+    """The input widget for one field, by its kind: switch, select, optional
+    select (blank = None), number, or free text for the tuple/str kinds."""
     kind = field["kind"]
     cid = _cid(field["path"])
     if kind == "bool":
@@ -51,6 +54,7 @@ def _control(field: dict, value: Any):
 
 
 def _field_row(field: dict, value: Any):
+    """Label and control on one row."""
     return dbc.Row([
         dbc.Col(html.Label(field["label"],
                            style={"fontSize": "0.78rem", "color": theme.INK}),

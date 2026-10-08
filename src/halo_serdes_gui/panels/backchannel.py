@@ -22,6 +22,8 @@ _MAX = 16
 
 
 def _train(rec: RunRecord):
+    """Train the Tx FIR for this record once, keep the result (or the exception)
+    in a bounded cache."""
     if rec.id in _CACHE:
         return _CACHE[rec.id]
     try:
@@ -42,6 +44,7 @@ def _train(rec: RunRecord):
 
 
 def render(rec: RunRecord):
+    """Converged taps and the per-round training trace, or why training failed."""
     if rec is None:
         return common.need_run_message()
     res = _train(rec)

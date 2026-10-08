@@ -14,6 +14,8 @@ TAB_ID = "channel"
 
 
 def render(rec: RunRecord):
+    """Loss at Nyquist, behavioral COM and the channel's loss / impulse /
+    pulse views, built from the record's config."""
     if rec is None:
         return common.need_run_message()
     cfg = rec.cfg

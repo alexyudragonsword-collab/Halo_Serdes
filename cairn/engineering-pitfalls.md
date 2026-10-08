@@ -105,6 +105,13 @@ ROADMAP 里挂了一个多月被当成"尾部判决无效"。**规则:内核返�
 
 ### API 类
 
+**统计引擎不自己选均衡器,调用方不给就是"没有 FFE"。** `run_statistical(cfg)` 对 ADC 收端不套任何 FFE —— 时域引擎自适应出来的
+FFE 要由调用方经 `ffe_taps=` 交给它。GUI / 手机 API 的 runner 一直裸调,106 GBd ADC 预置的 StatEye 于是是未均衡 27 dB 信道
+(SER 0.32、BER 0.16),与时域 2.3e-4 并排显示在 Single Run 卡片、双引擎页和串扰基线上 —— 双引擎页本身就是铁律 3 的界面,
+它在 ADC 上比的是两条不同的链路。`engine/cascade.py` 早就传了时域的 FFE,app 层没有跟上;黄金指纹直接调库,也照不到这一层。
+修法:`runner.stat_equaliser`(有时域结果用它的 FFE,只跑统计用 `initial_ffe_taps` 的 MMSE 起点),runner / 双引擎页 / 研究页共用。
+**规则:同一个"取等价配置"的决定只写一处,所有调统计引擎的地方经它;新增调用点时先 grep `run_statistical(`。**
+
 **`SimResult.ber` 是 `BerResult` 不是 float。** 要数值用 `res.ber.ber`;`res.ser` 才是
 float。统计引擎的 `stat.ber` 是 float。格式化时直接 `f"{res.ber:.2e}"` 会抛
 `TypeError: unsupported format string passed to BerResult.__format__`。

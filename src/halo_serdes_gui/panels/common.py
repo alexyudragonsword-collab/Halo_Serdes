@@ -18,6 +18,7 @@ def ber_text(ber: float, n: int) -> tuple[str, str]:
 
 
 def error_block(rec: RunRecord):
+    """The run's error with its traceback (collapsed)."""
     return html.Div([
         dbc.Alert(rec.error, color="danger", className="mb-2"),
         dbc.Collapse(html.Pre(rec.tb or "", style={"fontSize": "0.72rem",
@@ -27,18 +28,21 @@ def error_block(rec: RunRecord):
 
 
 def warnings_block(rec: RunRecord):
+    """One banner per distinct warning the run raised, or None."""
     if not rec.warnings:
         return None
     return html.Div([theme.banner("warn", w) for w in dict.fromkeys(rec.warnings)])
 
 
 def need_run_message():
+    """The empty state: what to do before this tab has anything to show."""
     return dbc.Alert("Load a preset (or edit the config) and press "
                      "▶ Run to populate this tab.", color="light",
                      className="border")
 
 
 def graph(fig, **kw):
+    """A ``dcc.Graph`` with its container pinned to the figure's height."""
     # Pin the graph's container to the figure's own height. Without a fixed
     # container height, Plotly's responsive resize and the auto-height parent
     # feed back on each other inside a webview and the chart grows without
@@ -58,4 +62,5 @@ def graph(fig, **kw):
 
 
 def cards_row(cards):
+    """Metric cards on one row, skipping any that are None."""
     return dbc.Row([c for c in cards if c is not None], className="g-0 mb-1")

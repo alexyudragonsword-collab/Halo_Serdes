@@ -15,6 +15,8 @@ TAB_ID = "jtol"
 
 
 def render(rec: RunRecord):
+    """Tolerated sinusoidal jitter against frequency with a generic mask
+    (reduced-fidelity sweep)."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:

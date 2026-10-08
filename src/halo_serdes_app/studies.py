@@ -21,6 +21,8 @@ _MAX = 64
 
 
 def _cached(key, fn):
+    """``fn()`` memoised under ``key`` in a bounded cache (studies are seconds
+    of work and every tab switch asks again)."""
     if key in _CACHE:
         return _CACHE[key]
     val = fn()
@@ -32,10 +34,17 @@ def _cached(key, fn):
 
 
 def _stat_ber(cfg: LinkConfig, channel=None, xtalk_pulses=None) -> float:
+    """Statistical BER of ``cfg``; an ADC receiver gets the MMSE FFE for
+    this channel (a sweep changes the channel, so a time run's taps would
+    be the wrong ones) -- see ``runner.stat_equaliser``."""
     from halo_serdes.engine.statistical import run_statistical
+
+    from .runner import stat_equaliser
     if channel is None:
         channel = ChannelModel.from_config(cfg)
-    return run_statistical(cfg, channel=channel, xtalk_pulses=xtalk_pulses).ber
+    taps, pre = stat_equaliser(cfg, channel)
+    return run_statistical(cfg, channel=channel, xtalk_pulses=xtalk_pulses,
+                           ffe_taps=taps, ffe_pre=pre).ber
 
 
 def _reach(loss, post):
@@ -339,6 +348,7 @@ def tdecq_study(rec) -> dict:
         opt = cfg.topology.optical
 
         def at(**kw):
+            """TDECQ with the configured optics changed by ``kw``."""
             c = dc.replace(cfg, topology=dc.replace(cfg.topology, optical=dc.replace(opt, **kw)))
             return tdecq_value(c).tdecq_db
 

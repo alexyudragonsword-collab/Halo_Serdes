@@ -36,6 +36,8 @@ INITIAL = cb.config_to_values(cb.load_preset(DEFAULT_PRESET))
 
 
 def _sidebar():
+    """Left column: preset picker, Run, live derived values, the mixed-signal
+    envelope banner, YAML import/export and the generated config form."""
     return html.Div([
         html.Div([
             html.Img(src="/assets/icon.png", height="30px",
@@ -86,6 +88,8 @@ def _sidebar():
 
 
 def _main():
+    """Right column: one tab per registered panel, rendered into a single
+    content area (only the active tab is built)."""
     tabs = [dbc.Tab(label=p.TITLE, tab_id=p.TAB_ID) for p in PANELS]
     return html.Div([
         dbc.Tabs(tabs, id="tabs", active_tab=PANELS[0].TAB_ID, className="mb-2"),
@@ -95,6 +99,8 @@ def _main():
 
 
 def build_app() -> Dash:
+    """The Dash app with its layout and callbacks; what ``main`` and the
+    desktop launcher serve."""
     # Bootstrap (Flatly) is vendored in assets/00_bootstrap.min.css and loaded
     # automatically, so the app is fully self-contained (no CDN needed). Pass an
     # absolute assets path so a frozen build (PyInstaller/Nuitka) still finds it.
@@ -115,15 +121,22 @@ def build_app() -> Dash:
 
 
 def _aligned(target: dict, ids: list[dict]) -> list:
+    """Values for the form's ALL-pattern ids, in their order; fields the
+    source does not set stay as they are (``no_update``)."""
     return [target.get(i["path"], no_update) for i in ids]
 
 
 def _register_callbacks(app: Dash) -> None:
+    """Wire the sidebar and the tabs. Every callback that can fail on user
+    input reports the reason on screen rather than raising into Dash,
+    where it would only reach the browser console."""
 
     @app.callback(Output("derived", "children"), Output("envelope", "children"),
                   Input({"type": "cfg", "path": ALL}, "value"),
                   State({"type": "cfg", "path": ALL}, "id"))
     def _live(vals, ids):
+        """Derived values and the envelope banner as the form changes; a form that
+        does not build yet (mid-edit) leaves the previous ones up."""
         try:
             cfg = cb.build_config(values_from_states(ids, vals))
         except Exception:
@@ -141,6 +154,7 @@ def _register_callbacks(app: Dash) -> None:
                   State({"type": "cfg", "path": ALL}, "id"),
                   prevent_initial_call=True)
     def _load_preset(_n, name, ids):
+        """Fill the form from the chosen preset."""
         return _aligned(cb.config_to_values(cb.load_preset(name)), ids)
 
     @app.callback(Output({"type": "cfg", "path": ALL}, "value",
@@ -151,6 +165,8 @@ def _register_callbacks(app: Dash) -> None:
                   State({"type": "cfg", "path": ALL}, "id"),
                   prevent_initial_call=True)
     def _import_yaml(_n, text, ids):
+        """Fill the form from pasted YAML; an empty or invalid paste leaves every
+        field unchanged and says why."""
         if not (text or "").strip():
             return [no_update] * len(ids), theme.banner(
                 "warn", "Nothing to import — paste a config into the box first.")
@@ -170,6 +186,7 @@ def _register_callbacks(app: Dash) -> None:
                   State({"type": "cfg", "path": ALL}, "id"),
                   prevent_initial_call=True)
     def _export_yaml(_n, vals, ids):
+        """The form as YAML, or the reason it does not build."""
         try:
             return cb.config_to_yaml(cb.build_config(values_from_states(ids, vals)))
         except Exception as exc:
@@ -179,6 +196,7 @@ def _register_callbacks(app: Dash) -> None:
                   Input("yaml-toggle", "n_clicks"),
                   State("yaml-collapse", "is_open"), prevent_initial_call=True)
     def _toggle_yaml(_n, is_open):
+        """Open / close the YAML card."""
         return not is_open
 
     @app.callback(Output("run-store", "data"), Output("tab-content", "children"),
@@ -187,6 +205,8 @@ def _register_callbacks(app: Dash) -> None:
                   State({"type": "cfg", "path": ALL}, "id"),
                   State("tabs", "active_tab"), prevent_initial_call=True)
     def _run(_n, vals, ids, active):
+        """Run the form's config (eye and jitter capture on, so those tabs have
+        data) and render the active tab from the new record."""
         values = values_from_states(ids, vals)
         # capture jitter opportunistically so the Jitter tab has data when the
         # pattern repeats enough; harmless (returns a note otherwise)
@@ -198,11 +218,13 @@ def _register_callbacks(app: Dash) -> None:
                   Input("tabs", "active_tab"), State("run-store", "data"),
                   prevent_initial_call=True)
     def _switch_tab(active, rid):
+        """Render the newly selected tab from the stored run (or its empty state)."""
         panel = _PANEL_BY_ID.get(active, single_run)
         return panel.render(get_result(rid))
 
 
 def main() -> None:
+    """``halo-serdes-gui``: serve the app on ``--host`` / ``--port``."""
     import argparse
 
     ap = argparse.ArgumentParser(description="Halo_Serdes behavioral SerDes GUI")

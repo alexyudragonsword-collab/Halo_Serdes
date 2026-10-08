@@ -16,6 +16,7 @@ TAB_ID = "jitter"
 
 
 def _budget_table(budget, ui):
+    """ISI / DCD / Pj / Rj / TJ per stage as %UI."""
     from halo_serdes.analysis.jitter import total_jitter
     u = 100.0 / ui
     head = html.Thead(html.Tr([html.Th(c) for c in
@@ -34,6 +35,7 @@ def _budget_table(budget, ui):
 
 
 def _fs(x_s: float) -> str:
+    """Seconds as femtoseconds, for the clock-profile table."""
     return f"{x_s * 1e15:.0f} fs"
 
 
@@ -108,6 +110,8 @@ def _profile_section(rec: RunRecord):
 
 
 def render(rec: RunRecord):
+    """Per-stage jitter budget, stacked bars and bathtub when the pattern
+    repeats enough to decompose; the clock-profile section for a profile clock."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:

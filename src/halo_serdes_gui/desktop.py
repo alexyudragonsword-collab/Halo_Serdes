@@ -30,6 +30,7 @@ TITLE = "Halo_Serdes — behavioral SerDes studio"
 
 
 def _free_port() -> int:
+    """A localhost port free at the time of asking (the OS picks it)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
@@ -38,6 +39,7 @@ def _free_port() -> int:
 
 
 def _wait_up(url: str, timeout: float = 40.0) -> bool:
+    """Poll ``url`` until it answers or ``timeout`` seconds pass; True if it answered."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -57,6 +59,7 @@ def start_server() -> str:
     url = f"http://127.0.0.1:{port}/"
 
     def _serve():
+        """Dash's blocking server loop, run on the daemon thread."""
         app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
 
     threading.Thread(target=_serve, daemon=True).start()
@@ -66,6 +69,8 @@ def start_server() -> str:
 
 
 def main() -> None:
+    """Start the server, then open it in a pywebview window (or the browser);
+    ``--selfcheck`` verifies the frozen bundle instead and exits."""
     argv = sys.argv[1:]
     try:
         url = start_server()

@@ -13,6 +13,8 @@ TAB_ID = "ctle"
 
 
 def render(rec: RunRecord):
+    """Realized peaking and DC gain of the configured CTLE with its Bode plot;
+    a CTLE that cannot be built says why."""
     if rec is None:
         return common.need_run_message()
     cfg = rec.cfg

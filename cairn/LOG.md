@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-08 · GUI 文档与覆盖 + ADC 统计结果没套 FFE(feat/gui-docs-coverage,ROADMAP P3 #10 一项)
+
+- 基线复现:GUI 行覆盖 61%(ROADMAP 记 60%);docstring 按函数 / 类 / 模块含私有计 37%(ROADMAP 的 28% 口径不明,同口径核心库 65%)。
+- 新 `tests/test_gui_panels.py` 在真实记录上渲染每个标签页并断言用户该读到的文字;回调经 `__wrapped__` 直接调。覆盖 61% → 89%。
+- 顺带发现并修了两个 bug:① app 层裸调统计引擎,ADC 收端无 FFE —— 106 GBd 预置 StatEye 0.16 与时域 2.3e-4 并排(双引擎页即铁律 3 的界面)。
+  `runner.stat_equaliser` 统一处理,修后 2.40e-4 vs 2.29e-4;坑进 engineering-pitfalls(API 类)。② ADC 页 mismatch 图单位标错(V 标成 code、样本标成 UI)。
+- docstring:GUI 100%、app 层 88%(剩 studies 的 9 个 `compute` 闭包)。浮点 / TX 指纹逐位同(库层未动)。
+- PR #44;CI 全部 test job + rtl-lockstep + examples + pyinstaller 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
+- 全量(JIT + iverilog):866 passed / 1 skipped(+10);ruff 通过。
+
 ## 2026-10-08 · TDECQ 的 802.3dj 参考 DFE(feat/tdecq-dfe,ROADMAP P3 #11 一项)
 
 - `tdecq(dfe=True)`:FFE15 + DFE1,0 ≤ b ≤ 0.3、FFE 和 = 1 + b、OMA / 阈值在 FFE 输入、判决用发送符号、C_eq 只算 FFE。

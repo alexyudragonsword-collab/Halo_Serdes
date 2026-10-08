@@ -36,11 +36,15 @@ _WARN_DENY = ("Frequency unit not passed", "does not correspond to a valid",
 
 
 def _keep_warning(msg: str) -> bool:
+    """Whether a captured warning reaches the user (``_WARN_DENY`` lists the
+    messages that are dropped)."""
     return not any(s in msg for s in _WARN_DENY)
 
 
 @dataclass
 class RunRecord:
+    """One run as the GUI and the phone API keep it: config, engines, results,
+    and the error or warnings, under an id."""
     id: str
     cfg: LinkConfig
     engines: tuple[str, ...]
@@ -60,6 +64,7 @@ class RunRecord:
 
     @property
     def ok(self) -> bool:
+        """True unless the run (or its config) failed."""
         return self.error is None
 
 
@@ -115,6 +120,7 @@ def run_link(cfg: LinkConfig, engines: tuple[str, ...] | None = None,
                 kernel_progress = None
                 if progress:
                     def kernel_progress(done, total):
+                        """Receiver-loop progress, as a fraction of the time engine stage."""
                         progress("time-domain engine", done / max(total, 1))
                 rec.sim = run_time_link(cfg, channel=channel,
                                         collect_eye=collect_eye,
@@ -129,7 +135,8 @@ def run_link(cfg: LinkConfig, engines: tuple[str, ...] | None = None,
             if "stat" in engines:
                 if progress:
                     progress("statistical engine")
-                rec.stat = run_statistical(cfg, channel=channel)
+                taps, pre = stat_equaliser(cfg, channel, rec.sim)
+                rec.stat = run_statistical(cfg, channel=channel, ffe_taps=taps, ffe_pre=pre)
             if progress:
                 progress("done")
             rec.warnings = [str(w.message) for w in caught
@@ -144,6 +151,27 @@ def run_link(cfg: LinkConfig, engines: tuple[str, ...] | None = None,
     rec.elapsed_s = time.perf_counter() - t0
     _register(rec)
     return rec
+
+
+def stat_equaliser(cfg: LinkConfig, channel, sim=None):
+    """(FFE taps, precursors) the statistical engine should assume.
+
+    The statistical engine takes the equaliser as given and applies none of
+    its own. On an ADC receiver, calling it bare scored the unequalised
+    channel: the 106 GBd preset read StatEye SER 0.32 beside a time-domain
+    3e-4, and the Dual-Engine view, the Single Run card and the crosstalk
+    baseline all showed that number. The time run's converged FFE is the one
+    to cross-check against; without a time run, the MMSE FFE the time engine
+    would start from (``engine.cascade.initial_ffe_taps``). Mixed-signal
+    receivers have no FFE: (None, 0).
+    """
+    if cfg.rx.arch != "adc_dsp":
+        return None, 0
+    taps = getattr(sim, "ffe_taps", None)
+    if taps is None or len(taps) < 2:
+        from halo_serdes.engine.cascade import initial_ffe_taps
+        taps = initial_ffe_taps(cfg, channel)
+    return taps, cfg.rx.ffe.n_pre
 
 
 def run_from_values(values: dict, **kw) -> RunRecord:
@@ -162,10 +190,12 @@ def run_from_values(values: dict, **kw) -> RunRecord:
 
 
 def get(rid: str | None) -> RunRecord | None:
+    """The stored record for ``rid``, or None (unknown or evicted)."""
     return _RESULTS.get(rid) if rid else None
 
 
 def _register(rec: RunRecord) -> None:
+    """Store a record, evicting the oldest past the cap."""
     _RESULTS[rec.id] = rec
     _ORDER.append(rec.id)
     while len(_ORDER) > _MAX_KEEP:

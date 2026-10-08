@@ -18,6 +18,8 @@ TAB_ID = "optical"
 
 
 def _loss_fig(cm, f_nyq):
+    """Insertion loss of the whole chain, of the part up to the photodiode, and
+    of the O/E plus segment B."""
     f = cm.f / 1e9
     opt = cm.optical
     traces = [
@@ -37,6 +39,7 @@ def _loss_fig(cm, f_nyq):
 
 
 def _sigma_fig(noise):
+    """Noise sigma at the photodiode node against each level's optical power."""
     sig = noise.sigma_per_level() * 1e3
     p_dbm = 10 * np.log10(noise.level_powers_w * 1e3)
     traces = [{"x": p_dbm, "y": sig, "name": "per-sample sigma at the PD node",
@@ -79,6 +82,8 @@ def _tdecq_section(rec: RunRecord):
 
 
 def render(rec: RunRecord):
+    """The optical topology: chain loss, optical power, level-dependent noise,
+    TDECQ (PAM4) and reach over fibre length with and without a retimer."""
     if rec is None:
         return common.need_run_message()
     cfg = rec.cfg

@@ -15,6 +15,8 @@ TAB_ID = "fixed"
 
 
 def render(rec: RunRecord):
+    """Decision mismatch of the bit-true datapath against word length
+    (the BER wall); needs an ADC run."""
     if rec is None:
         return common.need_run_message()
     if not rec.ok:
