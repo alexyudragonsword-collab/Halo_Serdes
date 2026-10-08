@@ -11,7 +11,10 @@
   噪声之前,各自收回大部分(16 dB 段 + FFE 3.92 → 驱动器 6 / 9 dB 7.44 / 9.31)。原"CPO 多 3.1 dB"只在两边都不做发端均衡时成立。
 - 自己挑出的一处不公平:先只比驱动器 CTLE 时它看起来能补回 LPO 全部差距;加上 host Tx FFE(模型里本来就有)对照后,结论改成"位置在
   噪声之前",而不是"模块 EQ"。预加重过冲按 TP2 峰峰值 / OMA 给了无余量口径(CPO + FFE 1.80 倍,扣 2.5 dB)。
-- 全量(JIT + iverilog):890 passed / 1 skipped(+6);ruff 通过;示例 32 全尺寸与 smoke(168 s)都过。Android:待 CI。
+- 全量(JIT + iverilog):890 passed / 1 skipped(+6);ruff 通过;示例 32 全尺寸与 smoke(168 s)都过。
+- PR #51(5bf64cd):test 矩阵、examples、rtl-lockstep、lint、import-clean、vendor-drift 全绿;桌面 pyinstaller / nuitka / nuitka-onefile 全绿。
+  Android(run 37806779777)`instrumented totals: 34 tests, 0 failures, 0 errors, 0 skipped`(API 34、编译版 APK;API 35 第一次 34/0 但测试后
+  模拟器掉线,卸载 APK 报 `device 'emulator-5554' not found`,Gradle 判失败 —— 基础设施,PR 上留言后重跑一次,34/0 绿)。
 
 ## 2026-10-08 · 统计引擎建模大信号曲线对 ISI 的弯折(study/stat-large-signal,ROADMAP P3 #11 一项)
 
