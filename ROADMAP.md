@@ -63,7 +63,8 @@ AMI GetWave 记入下方「边界」。)
   2026-10-08 已做:40 个示例按原尺寸全跑(3 路并行),输出逐条对照现行文档,修了约 40 处漂移;`run_examples.py` 加了
   `--save DIR`(存每个示例的输出)与 `--jobs N`。)剩余:全尺寸运行仍是手动步骤,数字会随模型改动再漂 —— 大改前后各
   `--save` 一份,`diff` 即知哪些文档数字要动。
-- `LICENSE` 与 `CONTRIBUTING.md` 尚缺(许可证类型需要由项目所有者决定)。
+- (2026-10-08 已做:`CONTRIBUTING.md`,附 `tools/fingerprint.py`("重构用数值指纹证明"这条规则此前没有入库工具)。
+  更正:原记 "`LICENSE` 尚缺" 不实 —— MIT 的 `LICENSE` 自 2026-09-12(b6e15ca)就在根目录,`pyproject.toml` 也写着 MIT。)
 
 ---
 
@@ -91,4 +92,5 @@ AMI GetWave 记入下方「边界」。)
 - 完成一项就从这里删掉,并在 [`CHANGELOG.md`](CHANGELOG.md) 里记一笔。
 - 新发现的问题请连同**证据**(复现方式、测到的数字、涉及文件)一起写进来 ——
   没有证据的条目会在下一次审计里被当作猜测处理。
-- 架构不变量与易踩的坑写在 [`CLAUDE.md`](CLAUDE.md),不要写进这里。
+- 架构不变量与易踩的坑写在 [`cairn/architecture-invariants.md`](cairn/architecture-invariants.md) 与
+  [`cairn/engineering-pitfalls.md`](cairn/engineering-pitfalls.md),不要写进这里(`CLAUDE.md` 只是指向 `AGENTS.md` 的一行)。

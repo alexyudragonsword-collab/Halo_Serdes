@@ -6,6 +6,20 @@
 
 ---
 
+## [未发布] — 贡献指南与数值指纹工具
+
+### 新增
+- `CONTRIBUTING.md`:先读什么、环境、推送前检查(与 CI 相同)、CI 各 job 守什么及何时触发、按改动类型的额外检查、
+  两端验证的判据、约定、记录与 PR、许可。README 文档索引改指向它与 `AGENTS.md`(原指 `CLAUDE.md`,它只是一行存根),并加"许可"一节。
+- `tools/fingerprint.py`:`record` 把每个预设跑过静态 / 时域 / 统计引擎与 COM,外加预设到不了的合成链路(两种时钟 + Tx FIR + Tx 带宽、
+  前端重建、Tx 沿偏移、光链路与 E/O 功率曲线、重定时级联),标量按 `repr`、数组按 SHA-256 记;`compare` 逐值比对,有差异退出 1。
+  两条命令都单独列出记成报错的条目。约 1 分钟、804 个值。测试 `tests/test_fingerprint.py`。
+
+### 修正
+- ROADMAP #10 原记"`LICENSE` 尚缺"不实:MIT 的 `LICENSE` 自 2026-09-12 就在根目录。
+- `cairn/architecture-invariants.md` 实践指南:全套测试"约 2 分钟"→ 约 12 分钟;ruff 路径与 CI 对齐;Android 不止三个 job
+  (编译版两个);测试数并不由 `test_docs_fresh.py` 守着。
+
 ## [未发布] — 四光标 PR 目标的评估(不实现)
 
 ### 新增

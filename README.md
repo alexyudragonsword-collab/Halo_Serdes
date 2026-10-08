@@ -74,7 +74,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 硬件 | `rtl/` | FFE+DFE+slicer 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**(2026-10-03):核心库 ~9.8k 行 / 应用层与 GUI ~4.2k 行 / 测试 ~7.3k 行 / 示例 ~4.4k 行;
-**876 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**880 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
 **40 个编号示例**(`examples/00`–`39`)。
 
 ## 路线图
@@ -114,7 +114,8 @@ IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
 |---|---|
 | [`ROADMAP.md`](ROADMAP.md) | **待办**:尚未做的事,按可信度影响排序,每条附证据 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 更新日志:按里程碑组织的完整演进 |
-| [`CLAUDE.md`](CLAUDE.md) | 贡献者须知:架构不变量、易踩的坑、代码与文档约定 |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | **贡献指南**:环境、推送前检查、CI 守什么、按改动类型的额外要求、记录与 PR 约定 |
+| [`AGENTS.md`](AGENTS.md) | 协作规则与导航:六条铁律、阅读顺序(`CLAUDE.md` 是指向它的一行) |
 | [`docs/USAGE.md`](docs/USAGE.md) | **使用指南**:按任务组织(跑链路、扫参数、串扰、COM、AMI、定点、导出) |
 | [`docs/clock_profile.md`](docs/clock_profile.md) | 时钟相噪剖面文件格式:pll_simulator 与本库之间唯一的接缝(f0、L(f)、杂散、单位约定、读取算法) |
 | [`docs/GUI.md`](docs/GUI.md) | GUI 安装/启动/各标签页用法、桌面版打包 |
@@ -143,3 +144,7 @@ PAM4 的 9.5 dB 电平代价):
 超过绝对极限或硬顶 → `exceeds` 告警并建议 `rx.arch: adc_dsp`
 (TI-ADC + 数字 FFE/DFE/MLSD + MM-CDR);纯信道可行性评估用
 `run_static_link`(其 FFE 为链路总线性均衡预算,非 RX 电路)。
+
+## 许可
+
+MIT,见 [`LICENSE`](LICENSE)。参与贡献见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。

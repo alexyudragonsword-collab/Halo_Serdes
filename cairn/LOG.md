@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-08 · CONTRIBUTING.md 与数值指纹工具(docs/contributing,ROADMAP P3 #10 一项)
+
+- `CONTRIBUTING.md`:只放命令与指针(铁律、坑、证据要求都指回 `AGENTS.md` / `cairn/`),CI 表按 workflow 文件逐项核对过触发路径。
+- "重构用数值指纹证明"此前没有入库工具,一直靠会话草稿里的脚本 → 入库为 `tools/fingerprint.py`(record / compare,804 值,约 1 分钟)。
+- **更正**:入库时发现草稿脚本调 `compute_com` 参数顺序错,基线与改后都记成同一个 `TypeError` —— 此前各 PR 写的"指纹逐位同"**不含 COM**。
+  工具现在单独列出报错条目;坑进 engineering-pitfalls(API 类,挨着"吞掉异常"那条)。两次独立 record 逐位相同(工具本身确定)。
+- 顺带更正:ROADMAP 记"LICENSE 尚缺"不实(MIT,2026-09-12 起就在);invariants 实践指南的耗时 / ruff 路径 / Android job 数 / 测试数守护四处过时。
+- 全量(JIT + iverilog):880 passed / 1 skipped(+4);ruff 通过;库代码未动。
+
 ## 2026-10-08 · 四光标 PR 目标:≈ +0.5 dB,暂不做(study/pr-four-cursor)
 
 - ROADMAP #8 余项"更长的目标":先估增益,事先定门槛 < 0.5 dB 不做。`tools/pr_target_length.py`:示例 38 光标上的基带 MC
