@@ -10,6 +10,7 @@
   (y 已减过 DFE,切片 ≈ 判决),所以指纹与示例 30 都没照到。修:`post_detect(dec0=...)`,引擎 / 定点传自己的判决;RTL 向量生成器早就用反馈判决。
 - 三光标 PR + sliding 修前修后都坏(单后光标模型),改为配置报错 → viterbi。修后示例 27:DFE > sliding > Viterbi 每个 σ 成立。
 - 回归测试 4 条(旧代码全挂、新代码全过);坑进 engineering-pitfalls(API 类)。指纹逐位同,lockstep 七段过,nojit 过。
+- PR #46;CI 全部 test job + rtl-lockstep + examples + pyinstaller 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):871 passed / 1 skipped(+4);ruff 通过。
 
 ## 2026-10-08 · 示例全尺寸复核(fix/example-numbers,ROADMAP P3 #10 一项)
