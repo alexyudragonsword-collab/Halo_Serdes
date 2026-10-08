@@ -680,8 +680,10 @@ run_time_link(cfg, symbols=my_symbols)   # 任何引擎都能接外部符号流(
 **大信号曲线与 TDECQ(阶段 3)**:`topology.optical.li_compression`(0 = 线性)给 E/O 一条静态大信号曲线 ——
 VCSEL 是二阶 L-I 带热翻转(压缩顶电平),EML 是指数型 EAM 吸收曲线(压缩底电平);两端外电平钉住,OMA / ER 不变,
 内电平移动,`tx.rlm` 成为"驱动器设定",光域 R_LM 由曲线导出。曲线作用在 E/O 小信号输出上(Wiener 顺序),
-时域引擎按样本过曲线;接收机按曲线后的电平切片(ADC DSP 自适应参考电平的行为),统计引擎用同样的电平但链路
-仍线性,并发 warning —— 曲线开启时不在铁律 3 的 2× 保证内。
+时域引擎按样本过曲线;接收机按曲线后的电平切片(ADC DSP 自适应参考电平的行为)。统计引擎用同样的电平,再按
+"当前符号 + 两个最近邻"的图样加上曲线对 ISI 的弯折(逐相位平移,`optical_stage.curve_pattern_offsets`);四条链路
+c = 0…0.5 统计 / 时域 0.86–1.28×,在铁律 3 的 2× 内(只用稳态电平时 EML / NRZ 在 c = 0.5 读 0.30 / 0.40×)。
+显式传 `level_sigma` 会绕过图样分箱,只剩稳态电平,发 warning。
 
 ```python
 from halo_serdes.optical import optical_rlm, static_curve

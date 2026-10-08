@@ -383,21 +383,99 @@ def test_identity_curve_on_the_three_stage_path_matches_two_stages():
     assert three.slicer_snr_db == pytest.approx(two.slicer_snr_db, abs=0.3)
 
 
-def test_compression_costs_ber_and_the_statistical_engine_says_it_is_outside_invariant3():
-    cfg = _adc_cfg(4.5, -6.0, n_sym=80_000)
+def _eml_cfg(oma_dbm, n_sym):
+    """A 1310 nm EML over 500 m of SMF on the ADC receiver of ``_adc_cfg``."""
+    cfg = _adc_cfg(4.5, oma_dbm, n_sym=n_sym)
+    o = dataclasses.replace(cfg.topology.optical, kind="eml_smf", f_r_hz=30e9,
+                            modal_bw_mhz_km=None, dispersion_ps_nm_km=-1.0,
+                            length_m=500.0, rin_db_hz=-145.0)
+    return dataclasses.replace(cfg, topology=dataclasses.replace(cfg.topology, optical=o))
 
-    def run(c):
-        cc = dataclasses.replace(cfg, topology=dataclasses.replace(
-            cfg.topology, optical=dataclasses.replace(cfg.topology.optical, li_compression=c)))
-        cm = ChannelModel.from_config(cc)
-        return cc, cm, run_time_link(cc, channel=cm)
 
-    _, _, lin = run(0.0)
-    cc, cm, nl = run(0.4)
+def _compressed(cfg, c):
+    return dataclasses.replace(cfg, topology=dataclasses.replace(
+        cfg.topology, optical=dataclasses.replace(cfg.topology.optical, li_compression=c)))
+
+
+@pytest.mark.parametrize("link", ["eml_adc", "vcsel_ms_nrz"])
+def test_invariant3_holds_under_a_large_signal_curve(link):
+    """The curve bends ISI as well as moving the levels: it sits after the
+    E/O dynamics, so its input already carries the neighbours. Modelling
+    only the curve's steady-state levels, the statistical engine read 0.42x
+    (EML, ADC) and 0.57x (VCSEL, mixed-signal NRZ, whose two levels the
+    curve does not move at all) of the time engine at c = 0.4, falling to
+    0.30 / 0.40 at c = 0.5. The pattern-binned shift
+    (``optical_stage.curve_pattern_offsets``) brings 24 points over four
+    links and c = 0..0.5 to 0.86-1.28x."""
+    base = _eml_cfg(-8.0, 400_000) if link == "eml_adc" else _ms_cfg(4.5, -16.0, n_sym=400_000)
+    cfg = _compressed(base, 0.4)
+    cm = ChannelModel.from_config(cfg)
     assert cm.optical.curve is not None
-    assert nl.ber.ber > lin.ber.ber
-    with pytest.warns(UserWarning, match="E/O curve"):
-        run_statistical(cc, channel=cm, ffe_taps=nl.ffe_taps, ffe_pre=cc.rx.ffe.n_pre)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 200, mc.ber.n_errors
+    lin = run_time_link(dataclasses.replace(base, sim=dataclasses.replace(base.sim, n_symbols=80_000)))
+    assert mc.ber.ber > 1.5 * lin.ber.ber                      # the compression costs BER
+    taps = mc.ffe_taps if cfg.rx.arch == "adc_dsp" else None
+    st = run_statistical(cfg, channel=cm, ffe_taps=taps, ffe_pre=cfg.rx.ffe.n_pre)
+    ratio = st.ber / mc.ber.ber
+    assert 1 / 1.5 < ratio < 1.5, (link, st.ber, mc.ber.ber, ratio)
+
+
+def test_curve_pattern_offsets_vanish_for_an_identity_curve():
+    """The correction is the curve chain minus the linear model; through an
+    identity curve the two are the same waveform."""
+    from halo_serdes.engine.optical_stage import curve_pattern_offsets
+    from halo_serdes.optical import StaticCurve
+
+    cfg = _adc_cfg(4.5, -6.0, n_sym=2_000)
+    cm = ChannelModel.from_config(cfg)
+    seg_a = ChannelModel.from_channel_config(cfg.topology.seg_a, cfg.symbol_rate)
+    eo_m = ChannelModel.from_optical(cfg.topology.optical, seg_a.f, "eo")
+    fib = ChannelModel.from_optical(cfg.topology.optical, seg_a.f, "fiber")
+    o = cm.optical
+    cm.optical = dataclasses.replace(
+        o, curve=StaticCurve("rollover", 0.0, -10.0),
+        drive=ChannelModel.cascade(seg_a, eo_m).band_limited(), optics=fib.band_limited(),
+        drive_amplitude=o.noise.signal_swing_v / 2)
+    mu, var = curve_pattern_offsets(cfg, cm)
+    assert mu.shape == var.shape == (cfg.osr, 4, 4, 4)
+    assert np.abs(mu).max() < 1e-12 and var.max() < 1e-20
+
+
+def test_curve_pattern_offsets_follow_the_neighbours():
+    """Under compression the shift depends on the neighbours, not just the
+    level (that part a level change could carry), and is largest where the
+    curve bends hardest."""
+    from halo_serdes.engine.optical_stage import curve_pattern_offsets
+
+    cfg = _compressed(_eml_cfg(-8.0, 2_000), 0.4)
+    cm = ChannelModel.from_config(cfg)
+    mu, var = curve_pattern_offsets(cfg, cm)
+    centre = mu[cfg.osr // 2]
+    half_gap = 0.5 * float(np.min(np.diff(_levels_of(cfg)))) * _main_cursor(cfg, cm)
+    spread = centre - centre.mean(axis=(1, 2), keepdims=True)  # neighbour part per level
+    assert np.abs(spread).max() > 0.05 * half_gap
+    # the remainder after the bins is small next to what the bins carry
+    assert np.sqrt(var[cfg.osr // 2].mean()) < 0.5 * np.abs(spread).max()
+
+
+def _levels_of(cfg):
+    from halo_serdes.engine.static_link import _levels
+
+    return _levels(cfg)
+
+
+def _main_cursor(cfg, cm):
+    h1, h2 = split_impulses(cfg, cm)
+    p = np.convolve(np.convolve(h1, h2), np.ones(cfg.osr))
+    return float(np.abs(p).max())
+
+
+def test_explicit_level_sigma_with_a_curve_warns():
+    cfg = _compressed(_adc_cfg(4.5, -6.0, n_sym=2_000), 0.3)
+    cm = ChannelModel.from_config(cfg)
+    with pytest.warns(UserWarning, match="explicit level_sigma"):
+        run_statistical(cfg, channel=cm, level_sigma=np.full(4, 1e-3))
 
 
 def test_optical_package_imports_only_numpy():

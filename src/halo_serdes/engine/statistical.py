@@ -60,8 +60,13 @@ Non-LTI approximations (each cross-checked against the time engine):
   interference;
 - optical topology with a large-signal E/O curve (``li_compression`` > 0):
   the curve's steady-state levels stand in for the transmitted ones and the
-  chain stays linear; the curve's bending of ISI is the time engine's alone
-  and a warning says so;
+  chain stays linear, plus a per-phase, per-bin shift for how the curve
+  bends ISI (``optical_stage.curve_pattern_offsets``: the curve sits after
+  the E/O dynamics, so it bends a waveform that already carries the
+  neighbours). The bins are the optical noise's (the symbol and its two
+  nearest neighbours), which carry 92-96 % of that bending; the rest enters
+  as variance. Levels alone read 0.30-0.40x of the time engine at c = 0.5
+  on EML and NRZ links; with the shift, 0.86-1.28x over c = 0..0.5;
 - Tx DAC (``tx.dac_bits``): quantisation and static INL become white noise
   per UI at the DAC output, sigma_q^2 = LSB^2 / 12 + E[INL^2] LSB^2, carried
   to the slicer through the Tx-to-slicer symbol response (every cursor's
@@ -418,19 +423,11 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         f = np.fft.rfftfreq(nfft, d=cfg.dt)
         h = np.fft.irfft(np.fft.rfft(h, nfft) * ctle.transfer(f), nfft)[: 2 * h.size]
     h = h * cfg.rx.vga_gain
+    curve_mu = curve_var = None
     if getattr(channel, "optical", None) is not None:
-        if channel.optical.curve is not None:
-            import warnings
-
-            warnings.warn(
-                "optical topology with a large-signal E/O curve (li_compression > 0): "
-                "the statistical engine takes the curve's steady-state levels through a "
-                "linear chain and does not see how the curve bends ISI; it is not "
-                "covered by the 2x cross-check (invariant #3) -- use the time engine",
-                stacklevel=2)
         # same two-stage split as the time engine (engine/optical_stage.py)
         from .optical_stage import (
-            slicer_sigma_binned, slicer_sigma_per_level, split_impulses,
+            curve_pattern_offsets, slicer_sigma_binned, slicer_sigma_per_level, split_impulses,
         )
 
         h1, h2 = split_impulses(cfg, channel)
@@ -439,6 +436,18 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             level_sigma = slicer_sigma_per_level(cfg, channel, h1, h2, ffe_taps)
             pattern_sigma = slicer_sigma_binned(cfg, channel, h1, h2, ffe_taps,
                                                 neighbours=_BINNED_NEIGHBOURS)
+            if channel.optical.curve is not None:
+                # the curve's bending of ISI, per phase and per the same bins
+                curve_mu, curve_var = curve_pattern_offsets(cfg, channel, ffe_taps,
+                                                            neighbours=_BINNED_NEIGHBOURS)
+        elif channel.optical.curve is not None:
+            import warnings
+
+            warnings.warn(
+                "optical topology with a large-signal E/O curve (li_compression > 0) and an "
+                "explicit level_sigma: the curve's bending of ISI is carried by the "
+                "pattern-binned kernels, which level_sigma bypasses -- only its "
+                "steady-state levels are modelled", stacklevel=2)
     tx_pipe = TxPipeline.from_config(cfg)
     if cfg.tx.drv_nl != "none":
         import warnings
@@ -492,6 +501,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     span = float(np.abs(pulse.y).max()) * swing * 2.5 + 8 * noise_sigma + 1e-6
     if level_sigma is not None:
         span += 8 * float(level_sigma.max())
+    if curve_mu is not None:
+        span += float(np.abs(curve_mu).max()) + 8 * float(np.sqrt(curve_var.max()))
     v_centers = np.linspace(-span, span, v_bins)
     dv = v_centers[1] - v_centers[0]
     noise_k = gaussian_kernel(noise_sigma, dv)
@@ -606,10 +617,14 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 for k in range(n_levels):
                     acc = np.zeros(v_bins)
                     for combo in np.ndindex(*pattern_sigma.shape[1:]):
+                        shift = float(np.dot(c_bin, levels_norm[list(combo)]))
+                        var = noise_sigma ** 2 + pattern_sigma[(k,) + combo] ** 2
+                        if curve_mu is not None:
+                            shift += float(curve_mu[(pi, k) + combo])
+                            var += float(curve_var[(pi, k) + combo])
                         shifted = np.zeros(v_bins)
-                        _shift_add(shifted, pdf, float(np.dot(c_bin, levels_norm[list(combo)])) / dv, 1.0)
-                        nk = gaussian_kernel(
-                            np.sqrt(noise_sigma ** 2 + pattern_sigma[(k,) + combo] ** 2) / g_ev, dv)
+                        _shift_add(shifted, pdf, shift / dv, 1.0)
+                        nk = gaussian_kernel(np.sqrt(var) / g_ev, dv)
                         acc += (np.convolve(shifted, nk, mode="same") if nk.size > 1 else shifted) / n_pat
                     pdf_lv.append(acc / max(acc.sum(), 1e-300))
             elif level_sigma is None:

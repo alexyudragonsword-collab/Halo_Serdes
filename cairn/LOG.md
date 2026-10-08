@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-08 · 统计引擎建模大信号曲线对 ISI 的弯折(study/stat-large-signal,ROADMAP P3 #11 一项)
+
+- 先量:四条链路 c = 0…0.5(80 万符号),只用稳态电平时 VCSEL 0.64–1.16 尚在 2× 内,EML 与 MS NRZ 随 c 单调变乐观,
+  c = 0.5 读 0.30 / 0.40;NRZ 的统计 BER 对 c 完全不动(两个外电平被钉住)。
+- 拆解:曲线在 E/O 动态之后,弯的是已带邻符号 ISI 的波形;无噪声残差按"当前符号 + 两个最近邻"分组解释 92–96 % 方差 ——
+  正是光噪声已有的分箱。中途一次对错齐(`pre_pd` 与 `drive * optics` 延迟不同)读出 3.7× 半间距的假残差,改用时域引擎自己的链(坑进 pitfalls 测量类)。
+- 建:`optical_stage.curve_pattern_offsets`(码型上的精确条件均值 / 方差,逐相位)进分箱平移与箱内方差;24 点 0.86–1.28。
+  `cairn/光互联建模.md` §8「统计引擎里的曲线」。曲线关闭时 804 值指纹与 main 逐位相同。
+- 第一版手写了 `x[::osr]` 上采样,铁律 5 的 `test_domain_boundary` 抓到;改走 `sampler.hold` / `baud_samples`,两个抽查点结果不变。
+- 全量(JIT + iverilog):884 passed / 1 skipped(+4);ruff 通过;新测试 HALO_NO_JIT 下 40 s。Android:待 CI。
+
 ## 2026-10-08 · CONTRIBUTING.md 与数值指纹工具(docs/contributing,ROADMAP P3 #10 一项)
 
 - `CONTRIBUTING.md`:只放命令与指针(铁律、坑、证据要求都指回 `AGENTS.md` / `cairn/`),CI 表按 workflow 文件逐项核对过触发路径。
