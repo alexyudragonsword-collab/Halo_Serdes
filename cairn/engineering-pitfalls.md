@@ -5,7 +5,7 @@ summary: "开发中真实踩过、并付出返工代价的坑 —— 每条都�
 tags: [pitfalls, measurement, mlsd, benchmarking, packaging, android, serdes]
 contains: [pitfall, measurement-trap, api-trap, packaging-trap, statistical-significance]
 created: "2026-08-18"
-updated: "2026-10-01"
+updated: "2026-10-08"
 related: [architecture-invariants.md]
 authoring_mode: ai_generated
 ---
@@ -466,6 +466,13 @@ BER ≤ 5e-4 时与时域 1.0–1.5×。**规则:有色噪声 + 序列检测,双
 
 **合成电平要进 ADC 满量程。** 1 + D 的合成电平是单电平的 2 倍;测预编码不传播的内核单测第一版 ADC 满量程按单电平设,
 合成值被削,无噪声也 37% 误码 —— 看着像预编码逻辑错。
+
+**一个噪声比例校准不了 PR 增益。** 基带 MC(无 CDR / TI lane / LMS)把 delta 目标拟合到示例 38 的实测 reach 后,两 / 三光标的增益
+仍高估 1.2–1.25×(+5.58 / +8.45 对实测 +4.7 / +7.0),解析 d_min 模型高估 1.6–1.7×;缺的损伤不随目标长度均匀作用。**规则:用简化模型
+外推下一档前,先拿已实测的档对它、按偏差折算,并把折算写成判断而不是测量**(`cairn/DSP发端与PR.md` §12)。
+
+**`viterbi_mlsd` 的回溯表是 n × 状态数 int64。** 256 状态 × 40 万符号就是 0.8 GB,1024 状态 3.3 GB。长网格的离线研究要分块
+(`tools/pr_target_length.py::viterbi_chunked`,窗口前后各重叠 150 符号;单测里与整段逐位相同)。
 
 ### 其他
 

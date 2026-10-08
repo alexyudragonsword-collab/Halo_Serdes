@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**873 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **873 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**876 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **876 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -153,6 +153,9 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 - **同样的 1+aD 放到发端反而亏**(示例 37):峰值不变时 reach ≈ 无 PR − 20·log10(1 + a)(a = 0.25 / 0.5 / 0.75:29.7 / 28.1 / 26.9 dB)。
   线性链路、噪声在收端,收端 FFE 照样要把信道均衡到 delta,发端整形只交出峰值。PR 的位置在收端。 / The same 1+aD in the Tx
   loses: peak-limited, reach ≈ no-PR − 20 log10(1 + a); the receive FFE still inverts the channel to a delta.
+- **第三个受控光标不再划算**(`tools/pr_target_length.py`,2026-10-08):四光标目标估 ≈ +0.5 dB(基带 MC 校准到示例 38 的
+  delta reach、按它对前两档的高估比例折算);同 256 状态(四光标 + memory 1)也只这些,故未实现。 / A third controlled cursor
+  is worth ≈ 0.5 dB on this link (baseband MC calibrated to example 38), even at equal trellis size; not built.
 - 21 抽头 FFE:到 −28.8 dB 零误码,−30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
   error-free to −28.8 dB and memory-2 MLSD matches it at −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
@@ -277,4 +280,4 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 873 项测试 · 双引擎 · 40 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 876 项测试 · 双引擎 · 40 个实验脚本*
