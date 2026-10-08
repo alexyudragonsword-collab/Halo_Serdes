@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**871 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **871 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**873 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **873 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -72,7 +72,9 @@ The traditional mixed-signal RX must open the eye in the analog domain before th
 
 ![32G NRZ 系统框图 / system diagram](figures/nrz32_system_diagram.png)
 
-(图中 "slicer SNR 14 dB"、"±17.3 mV" 是 2026-08 的值;2026-10-08 全尺寸重跑为 15.1 dB、±17.4 mV,源文件 `docs/nrz32_system_diagram.mmd` 已更新,PNG 未重画。/ The PNG still shows slicer SNR 14 dB and ±17.3 mV from 2026-08; the 2026-10-08 full-size rerun gives 15.1 dB and ±17.4 mV, as the `.mmd` source now says.)
+(图由 `tools/draw_system_diagram.py` 从示例 03 的运行生成,数随代码走;`.mmd` 源与 summary.html 里的副本同时刷新。2026-10-08 前它是手画的,
+停在 2026-08 的 slicer SNR 14 dB、±17.3 mV、Kp = 1/32、CTLE "6–9 dB";现为 15.1 dB、±17.4 mV、Kp = 1/64、CTLE 峰值 6 dB(实际 3.1 dB)。/
+Drawn by `tools/draw_system_diagram.py` from a run of example 03, so its numbers follow the code; until 2026-10-08 it was hand-drawn and showed 2026-08 values.)
 
 **均衡后眼图 / Post-EQ eyes**：-32 dB 信道下均衡前眼完全闭合,FFE 后张开,FFE+DFE 后采样时刻内眼 6.8 mV。DFE 眼在 ±0.5 UI 的阶梯不连续是 UI 边界反馈切换的标志。
 Under −32 dB the pre-EQ eye is fully closed; after FFE+DFE the inner eye is 6.8 mV. The ±0.5 UI staircase is the signature of UI-boundary feedback.
@@ -275,4 +277,4 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 871 项测试 · 双引擎 · 40 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 873 项测试 · 双引擎 · 40 个实验脚本*
