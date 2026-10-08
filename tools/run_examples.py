@@ -19,6 +19,12 @@ installed (``pyibisami`` and the like) is reported as skipped, not failed.
 
     python tools/run_examples.py --smoke                  # all of them
     python tools/run_examples.py --smoke 05 22            # by number prefix
+    python tools/run_examples.py --jobs 3 --save out/     # full size, outputs kept
+
+``--save DIR`` keeps each example's stdout as ``DIR/<name>.txt``: the numbers
+the docs quote come from these, so a full-size run is only useful if what it
+printed can be compared with the docs (and with the previous full-size run,
+by ``diff``) afterwards. ``--jobs N`` runs N examples at once.
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ import os
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -69,35 +76,52 @@ def _missing_optional(stderr: str) -> str | None:
     return None
 
 
-def run(paths: list[Path], cap: int, timeout: float) -> int:
+def _one(p: Path, cap: int, timeout: float, env: dict, save: Path | None):
+    """Run one example in its own interpreter: (exit code, stderr, seconds)."""
+    t0 = time.time()
+    try:
+        r = subprocess.run([sys.executable, "-c", _CHILD, str(p), str(cap)],
+                           cwd=EXAMPLES, env=env, capture_output=True, text=True,
+                           timeout=timeout)
+        code, out, err = r.returncode, r.stdout, r.stderr
+    except subprocess.TimeoutExpired as exc:
+        code, out, err = -1, exc.stdout or "", f"timed out after {timeout:.0f} s\n{exc.stderr or ''}"
+    if save is not None:
+        (save / f"{p.stem}.txt").write_text(out if isinstance(out, str) else out.decode())
+    return code, err, time.time() - t0
+
+
+def run(paths: list[Path], cap: int, timeout: float, jobs: int = 1,
+        save: Path | None = None) -> int:
     env = dict(os.environ, MPLBACKEND="Agg",
                PYTHONPATH=os.pathsep.join(filter(None, [str(REPO / "src"),
                                                         os.environ.get("PYTHONPATH")])))
+    if save is not None:
+        save.mkdir(parents=True, exist_ok=True)
     failed = []
-    for p in paths:
-        t0 = time.time()
-        try:
-            r = subprocess.run([sys.executable, "-c", _CHILD, str(p), str(cap)],
-                               cwd=EXAMPLES, env=env, capture_output=True, text=True,
-                               timeout=timeout)
-            code, err = r.returncode, r.stderr
-        except subprocess.TimeoutExpired as exc:
-            code, err = -1, f"timed out after {timeout:.0f} s\n{exc.stderr or ''}"
-        dt = time.time() - t0
-        if code == 0:
-            print(f"ok    {p.name:<32} {dt:6.1f} s", flush=True)
-            continue
-        opt = _missing_optional(err)
-        if opt is not None:
-            print(f"skip  {p.name:<32} {dt:6.1f} s  (optional backend '{opt}' not installed)",
-                  flush=True)
-            continue
-        failed.append(p.name)
-        print(f"FAIL  {p.name:<32} {dt:6.1f} s", flush=True)
-        print("\n".join("      " + ln for ln in err.strip().splitlines()[-25:]), flush=True)
+    with ThreadPoolExecutor(max_workers=max(jobs, 1)) as pool:
+        # results come back in the examples' order whatever finishes first
+        results = pool.map(lambda p: _one(p, cap, timeout, env, save), paths)
+        for p, (code, err, dt) in zip(paths, results):
+            _report(p, code, err, dt, failed)
     print(f"\n{len(paths) - len(failed)} of {len(paths)} examples ran"
           + (f"; failed: {', '.join(failed)}" if failed else ""))
     return 1 if failed else 0
+
+
+def _report(p: Path, code: int, err: str, dt: float, failed: list) -> None:
+    """One line per example; the tail of stderr for a failure."""
+    if code == 0:
+        print(f"ok    {p.name:<32} {dt:6.1f} s", flush=True)
+        return
+    opt = _missing_optional(err)
+    if opt is not None:
+        print(f"skip  {p.name:<32} {dt:6.1f} s  (optional backend '{opt}' not installed)",
+              flush=True)
+        return
+    failed.append(p.name)
+    print(f"FAIL  {p.name:<32} {dt:6.1f} s", flush=True)
+    print("\n".join("      " + ln for ln in err.strip().splitlines()[-25:]), flush=True)
 
 
 def main(argv=None) -> int:
@@ -106,11 +130,14 @@ def main(argv=None) -> int:
     ap.add_argument("--smoke", action="store_true", help="cap n_symbols (see --cap)")
     ap.add_argument("--cap", type=int, default=20_000, help="n_symbols cap with --smoke")
     ap.add_argument("--timeout", type=float, default=900.0, help="seconds per example")
+    ap.add_argument("--jobs", type=int, default=1, help="examples run at once")
+    ap.add_argument("--save", type=Path, default=None,
+                    help="directory to keep each example's stdout in (<name>.txt)")
     a = ap.parse_args(argv)
     paths = sorted(EXAMPLES.glob("[0-9][0-9]_*.py"))
     if a.only:
         paths = [p for p in paths if any(p.name.startswith(o) for o in a.only)]
-    return run(paths, a.cap if a.smoke else 0, a.timeout)
+    return run(paths, a.cap if a.smoke else 0, a.timeout, a.jobs, a.save)
 
 
 if __name__ == "__main__":
