@@ -13,8 +13,9 @@ Two transmitters, each measured after its own fibre (the "D" in TDECQ):
 - 100G/lambda VCSEL: 53.125 GBd, 100 m OM4, 5-tap FFE; 802.3db
   100GBASE-SR1 TDECQ max 4.4 dB (task-force baseline, Table 167-7/8).
 - 200G/lambda EML: 113.4375 GBd, 500 m SMF at -1.9 ps/(nm km), 53.125 GHz
-  reference receiver, 15-tap FFE with up to 3 precursors (802.3dj also adds
-  a 1-tap DFE, not modelled); 200GBASE-DR1 TDECQ max 3.4 dB.
+  reference receiver, 15-tap FFE with up to 3 precursors followed by the
+  802.3dj 1-tap DFE (0 <= b <= 0.3); 200GBASE-DR1 TDECQ max 3.4 dB. The
+  baseline line also prints the FFE-only figure, what the DFE is worth.
 
 Three sweeps per transmitter: extinction ratio (more ER, less RIN per unit
 OMA), laser bandwidth (VCSEL relaxation frequency / EML 3 dB bandwidth),
@@ -73,8 +74,8 @@ TRANSMITTERS = {
         cfg=link(113.4375e9, OpticalConfig(kind="eml_smf", f_r_hz=55e9, er_db=4.5, oma_dbm=2.0,
                                            rin_db_hz=-145.0, length_m=500.0,
                                            dispersion_ps_nm_km=-1.9)),
-        measure=dict(n_taps=15, pre_options=(1, 2, 3), f_ref_hz=53.125e9), limit=3.4,
-        bw_field="f_r_hz", bw_sweep=np.array([30, 35, 40, 45, 55, 65, 80]) * 1e9,
+        measure=dict(n_taps=15, pre_options=(1, 2, 3), f_ref_hz=53.125e9, dfe=True), limit=3.4,
+        bw_field="f_r_hz", bw_sweep=np.array([25, 30, 35, 40, 45, 55, 65, 80]) * 1e9,
         bw_label="EML 3 dB bandwidth [GHz]"),
 }
 ER_SWEEP = np.array([2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 6.0])
@@ -113,6 +114,12 @@ for name, t in TRANSMITTERS.items():
     print(f"{name}: TDECQ {base.tdecq_db:.2f} dB (limit {t['limit']} dB), OMA "
           f"{10 * np.log10(base.oma_outer_w * 1e3):+.2f} dBm, ER {base.er_db:.2f} dB, "
           f"R_LM {base.rlm:.3f}, C_eq {base.ceq:.2f}  [{time.time() - t0:.1f}s]")
+    if kw.get("dfe"):
+        ffe = measure(cfg, dict(kw, dfe=False))
+        print(f"  DFE b(1) {base.dfe_b:.3f}; FFE only {ffe.tdecq_db:.2f} dB "
+              f"(the DFE is worth {ffe.tdecq_db - base.tdecq_db:.2f} dB here)")
+        bw_ffe = [measure(with_optical(cfg, **{t["bw_field"]: b}), dict(kw, dfe=False)).tdecq_db
+                  for b in t["bw_sweep"]]
     er = [measure(with_optical(cfg, er_db=e), kw).tdecq_db for e in ER_SWEEP]
     bw = [measure(with_optical(cfg, **{t["bw_field"]: b}), kw).tdecq_db for b in t["bw_sweep"]]
     li_meas = [measure(with_optical(cfg, li_compression=c), kw) for c in LI_SWEEP]
@@ -123,6 +130,13 @@ for name, t in TRANSMITTERS.items():
                           ("li_compression", LI_SWEEP, li)):
         row = "  ".join(f"{x:g}:{y:.2f}" for x, y in zip(xs, ys))
         print(f"  {label:<26} {row}")
+    if kw.get("dfe"):
+        print(f"  {'(FFE only) bandwidth':<26} "
+              + "  ".join(f"{x:g}:{y:.2f}" for x, y in zip(t["bw_sweep"] / 1e9, bw_ffe)))
+        results[name]["bw_ffe"] = bw_ffe
+        x = crossing(t["bw_sweep"] / 1e9, bw_ffe, t["limit"])
+        print(f"  FFE only, min bandwidth: {x:.2f} GHz" if isinstance(x, float)
+              else f"  FFE only, bandwidth: {x}")
     print("  measured R_LM vs compression: "
           + "  ".join(f"{c:g}:{r:.3f}" for c, r in zip(LI_SWEEP, results[name]["rlm"])))
 
@@ -146,6 +160,9 @@ for name, t in TRANSMITTERS.items():
     r, col = results[name], colors[name]
     axes[0].plot(ER_SWEEP, r["er"], "o-", color=col, label=name)
     axes[1].plot(t["bw_sweep"] / 1e9, r["bw"], "o-", color=col, label=name)
+    if "bw_ffe" in r:
+        axes[1].plot(t["bw_sweep"] / 1e9, r["bw_ffe"], "x--", color=col, lw=1,
+                     label=f"{name}, FFE only")
     axes[2].plot(LI_SWEEP, r["li"], "o-", color=col, label=f"{name} TDECQ")
     for ax in axes:
         ax.axhline(t["limit"], color=col, ls=":", lw=1)

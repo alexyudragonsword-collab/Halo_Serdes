@@ -19,12 +19,21 @@ simplification are marked:
   802.3dj states 53.125 GHz for 200G/lambda).
 - Reference equaliser: T-spaced FFE with tap coefficients summing to 1;
   5 taps with the largest at tap 1 or 2 for 100G/lambda (121.8.5.4,
-  138.8.5), 15 taps with up to 3 precursors for 200G/lambda (802.3dj, which
-  adds a 1-tap DFE -- not modelled here). 802.3 optimises the taps for
-  minimum TDECQ; here the taps start from a constrained least-squares fit at
-  the eye centre (main-tap position chosen there) and are refined by a
-  coordinate search on TDECQ itself, which moves the result by 0.06 dB on a
-  good eye and over 1 dB on a slow one.
+  138.8.5), 15 taps with up to 3 precursors for 200G/lambda (802.3dj).
+  802.3 optimises the taps for minimum TDECQ; here the taps start from a
+  constrained least-squares fit at the eye centre (main-tap position chosen
+  there) and are refined by a coordinate search on TDECQ itself, which moves
+  the result by 0.06 dB on a good eye and over 1 dB on a slow one.
+- ``dfe=True``: the 1-tap DFE 802.3dj added to the 200G/lambda reference
+  equaliser in draft 2.0, as reported by task-force comment-resolution
+  material (second-hand; the drafts were not reachable): coefficient b(1)
+  bounded 0 <= b <= 0.3 on its unnormalised value, the FFE taps then sum to
+  1 + b so that FFE minus DFE keeps unit gain, and OMA and the thresholds are
+  referred to the FFE input (where they are measured here anyway). The DFE
+  subtracts b times the previous symbol's nominal level at that scale; its
+  decisions are the transmitted symbols (no error propagation -- a pattern-
+  locked measurement), and the noise sees only the FFE, so C_eq is the FFE's.
+  Not modelled: the later FFE tap limits on w(i)/w(0) and |w(1) - w(-1)|.
 - Thresholds: P_th1 = P_ave - OMA_outer / 3, P_th2 = P_ave,
   P_th3 = P_ave + OMA_outer / 3, with P_ave the waveform's mean power.
 - OMA_outer = P3 - P0, P3 averaged over the central 2 UI of a run of seven
@@ -81,6 +90,8 @@ _WINDOW_POINTS = 5
 _BINS = 4096
 #: C_eq noise filter bandwidth over signalling rate (19.34 GHz at 26.5625 GBd).
 NOISE_BW_RATIO = 19.34 / 26.5625
+#: Upper bound on the 802.3dj reference DFE coefficient b(1) (lower bound 0).
+DFE_MAX = 0.3
 
 
 def bt4_response(f: np.ndarray, f3db_hz: float) -> np.ndarray:
@@ -119,6 +130,7 @@ class TdecqResult:
     rlm: float                     # 802.3 R_LM of those levels
     er_db: float                   # 10 log10(P3 / P0)
     oma_runs: tuple = (7, 6)       # run lengths the OMA came from
+    dfe_b: float = 0.0             # reference DFE coefficient (0 without the DFE)
     extras: dict = field(default_factory=dict)
 
 
@@ -244,11 +256,33 @@ def _sigma_eq(hists, oma, target, guess=None):
     return lo
 
 
+def _dfe_start(X, A, target_lv, prev_lv, dfe_max, evaluate, n_pre):
+    """Least-squares FFE + DFE at the eye centre: min |X w - b prev - t| with
+    sum w - b = 1; a b outside [0, dfe_max] is clipped and the FFE refitted
+    with b held there (``A`` is the FFE-only system, reused for that)."""
+    n = X.shape[1]
+    Xd = np.column_stack([X, -prev_lv])
+    g = np.concatenate([np.ones(n), [-1.0]])
+    Ad = np.zeros((n + 2, n + 2))
+    Ad[:n + 1, :n + 1] = 2.0 * Xd.T @ Xd
+    Ad[:n + 1, n + 1] = g
+    Ad[n + 1, :n + 1] = g
+    theta = np.linalg.solve(Ad, np.concatenate([2.0 * Xd.T @ target_lv, [1.0]]))[:n + 1]
+    b = float(min(max(theta[n], 0.0), dfe_max))
+    if b == theta[n]:
+        taps = theta[:n]
+    else:
+        rhs = np.concatenate([2.0 * X.T @ (target_lv + b * prev_lv), [1.0 + b]])
+        taps = np.linalg.solve(A, rhs)[:n]
+    return evaluate(taps, n_pre, b=b)[0], taps, n_pre, b
+
+
 def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray, *,
           f_ref_hz: float | None = None, n_taps: int = 5, pre_options=(1, 2),
           target_ser: float = TARGET_SER, sigma_scope_w: float = 0.0,
           reference_filter: bool = True, optimise: bool = True,
-          noise_bw_hz: float | None = None, skip_ui: int = 64) -> TdecqResult:
+          noise_bw_hz: float | None = None, skip_ui: int = 64,
+          dfe: bool = False, dfe_max: float = DFE_MAX) -> TdecqResult:
     """TDECQ of a PAM4 optical power waveform.
 
     ``power`` [W] sampled every ``dt``, an integer number of samples per UI,
@@ -258,11 +292,14 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
     already band-limited, and for the closed-form tests). ``noise_bw_hz``
     is the bandwidth of the noise C_eq weighs the equaliser with (default
     0.728 x the signalling rate). ``skip_ui`` UI at each end are left out of
-    every statistic (filter and equaliser edges).
+    every statistic (filter and equaliser edges). ``dfe`` adds the 802.3dj
+    1-tap reference DFE, its coefficient optimised in [0, ``dfe_max``].
     """
     symbols = np.asarray(symbols, dtype=np.int64)
     if symbols.max() > 3 or symbols.min() < 0:
         raise ValueError("TDECQ is defined for PAM4: symbols must be level indices 0..3")
+    if dfe and skip_ui < 1:
+        raise ValueError("the DFE needs the symbol before the first scored one: skip_ui >= 1")
     osr = int(round(1.0 / (symbol_rate * dt)))
     if abs(osr * symbol_rate * dt - 1.0) > 1e-6:
         raise ValueError("dt must be an integer fraction of the UI")
@@ -299,6 +336,9 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
         seqs[r, ok] = s[idx[ok]]
     sym = symbols[k0:k1]
     target_lv = p_ave + nominal[sym] * oma / 2.0
+    # what the DFE feeds back: the previous symbol's nominal level, on the
+    # FFE input's scale (802.3dj refers the coefficient to OMA there)
+    prev_lv = p_ave + nominal[symbols[k0 - 1: k1 - 1]] * oma / 2.0 if dfe else None
 
     # noise autocorrelation at the equaliser input, at multiples of T
     if reference_filter:
@@ -311,10 +351,12 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
         rho = np.eye(1, n_taps).ravel()
     R = rho[np.abs(np.subtract.outer(np.arange(n_taps), np.arange(n_taps)))]
 
-    def evaluate(taps, n_pre, guess=None):
+    def evaluate(taps, n_pre, guess=None, b=0.0):
         eq = _equalise(seqs, taps, n_pre)
         off = pad - (n_taps - 1 - n_pre)
         eq = eq[:, off: off + span]
+        if b:
+            eq = eq - b * prev_lv
         hists = [_Histogram(eq[1: 1 + _WINDOW_POINTS].ravel(), thr),
                  _Histogram(eq[1 + _WINDOW_POINTS:].ravel(), thr)]
         s_eq = _sigma_eq(hists, oma, target_ser, guess)
@@ -341,10 +383,12 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
         A[n_taps, :n_taps] = 1.0
         b = np.concatenate([2.0 * X.T @ target_lv, [1.0]])
         taps = np.linalg.solve(A, b)[:n_taps]
-        starts.append((evaluate(taps, n_pre)[0], taps, n_pre))
-    val, taps, n_pre = min(starts, key=lambda t: t[0])
+        starts.append((evaluate(taps, n_pre)[0], taps, n_pre, 0.0))
+        if dfe:
+            starts.append(_dfe_start(X, A, target_lv, prev_lv, dfe_max, evaluate, n_pre))
+    val, taps, n_pre, b_dfe = min(starts, key=lambda t: t[0])
     if optimise and np.isfinite(val):
-        sig = evaluate(taps, n_pre)[1] * float(np.sqrt(taps @ R @ taps))
+        sig = evaluate(taps, n_pre, b=b_dfe)[1] * float(np.sqrt(taps @ R @ taps))
         step = 0.02
         while step > 2e-3:
             improved = False
@@ -354,16 +398,26 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
                 for sgn in (1.0, -1.0):
                     trial = taps.copy()
                     trial[i] += sgn * step
-                    trial[n_pre] -= sgn * step      # keep sum = 1
-                    v, s_g, c_eq = evaluate(trial, n_pre, sig)[:3]
+                    trial[n_pre] -= sgn * step      # keep sum = 1 (+ b)
+                    v, s_g, c_eq = evaluate(trial, n_pre, sig, b_dfe)[:3]
                     if v < val - 1e-6:
                         taps, val, improved, sig = trial, v, True, s_g * c_eq
+            if dfe:
+                for sgn in (1.0, -1.0):
+                    bt = min(max(b_dfe + sgn * step, 0.0), dfe_max)
+                    if bt == b_dfe:
+                        continue
+                    trial = taps.copy()
+                    trial[n_pre] += bt - b_dfe      # keep sum - b = 1
+                    v, s_g, c_eq = evaluate(trial, n_pre, sig, bt)[:3]
+                    if v < val - 1e-6:
+                        taps, b_dfe, val, improved, sig = trial, bt, v, True, s_g * c_eq
             if not improved:
                 step /= 2.0
     best = (val, taps, n_pre)
 
     val, taps, n_pre = best
-    val, s_g, ceq, eq, hists = evaluate(taps, n_pre)
+    val, s_g, ceq, eq, hists = evaluate(taps, n_pre, b=b_dfe)
     s_eq = s_g * ceq
     ser_l = hists[0].ser(s_eq) if s_eq > 0 else 1.0
     ser_r = hists[1].ser(s_eq) if s_eq > 0 else 1.0
@@ -377,4 +431,4 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
         ceq=ceq, taps=np.asarray(taps), n_pre=int(n_pre), ser_left=ser_l, ser_right=ser_r,
         thresholds_w=thr, levels_w=levels, rlm=float(_rlm(levels)),
         er_db=float(10.0 * np.log10(p3 / p0)) if p0 > 0 else float("inf"),
-        oma_runs=runs_used, extras={"delay_samples": delay, "osr": osr, "f_ref_hz": f_ref})
+        oma_runs=runs_used, dfe_b=float(b_dfe), extras={"delay_samples": delay, "osr": osr, "f_ref_hz": f_ref})

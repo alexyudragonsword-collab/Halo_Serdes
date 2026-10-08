@@ -155,3 +155,70 @@ def test_dispersion_eye_closure_grows_with_fibre():
     near = _tp2(_opt(cfg, length_m=500.0), through_fibre=True).tdecq_db
     far = _tp2(_opt(cfg, length_m=20_000.0), through_fibre=True).tdecq_db
     assert far > near + 0.5
+
+
+# ---------------------------------------------- 802.3dj reference DFE ---
+
+def _postcursor(h):
+    """An eye with one post-cursor h, scaled so the long-run (OMA) levels
+    are the ideal ones: x = (a[k] + h a[k-1]) / (1 + h)."""
+    a = np.array([-1.0, -1.0 / 3.0, 1.0 / 3.0, 1.0])[SYM]
+    x = (a + h * np.roll(a, 1)) / (1 + h)
+    return hold(PAVE + x * OMA / 2.0, OSR)
+
+
+@pytest.mark.parametrize("h", [0.1, 0.2, 0.3])
+def test_dfe_cancels_a_postcursor_at_the_closed_form(h):
+    """The DFE removes h a[k-1] without noise; what is left is the cursor's
+    1 / (1 + h) share of the OMA, so the FFE must gain 1 + h and TDECQ =
+    10 log10(1 + h) with b = h. The FFE alone has to invert the post-cursor
+    and pays more."""
+    w = _postcursor(h)
+    with_dfe = tdecq(w, DT, BAUD, SYM, reference_filter=False, dfe=True)
+    ffe = tdecq(w, DT, BAUD, SYM, reference_filter=False)
+    assert with_dfe.tdecq_db == pytest.approx(10 * np.log10(1 + h), abs=0.01)
+    assert with_dfe.dfe_b == pytest.approx(h, abs=0.02)
+    assert with_dfe.taps.sum() - with_dfe.dfe_b == pytest.approx(1.0, abs=1e-9)
+    assert ffe.dfe_b == 0.0 and ffe.tdecq_db > with_dfe.tdecq_db + 0.015
+
+
+def test_dfe_coefficient_is_bounded():
+    """0 <= b <= 0.3 (802.3dj): a post-cursor of 0.5 gets 0.3 and the FFE
+    the rest; a negative one gets none, and then the DFE changes nothing."""
+    big = tdecq(_postcursor(0.5), DT, BAUD, SYM, reference_filter=False, dfe=True)
+    assert big.dfe_b == pytest.approx(0.3)
+    assert 10 * np.log10(1.5) < big.tdecq_db < tdecq(_postcursor(0.5), DT, BAUD, SYM,
+                                                     reference_filter=False).tdecq_db
+    neg = _postcursor(-0.1)
+    a = tdecq(neg, DT, BAUD, SYM, reference_filter=False, dfe=True)
+    b = tdecq(neg, DT, BAUD, SYM, reference_filter=False)
+    assert a.dfe_b == 0.0 and a.tdecq_db == b.tdecq_db
+    with pytest.raises(ValueError, match="skip_ui"):
+        tdecq(IDEAL, DT, BAUD, SYM, dfe=True, skip_ui=0)
+
+
+def test_dfe_helps_a_slow_200g_transmitter_more():
+    """The 200G/lambda measurement the app uses carries the DFE. On an EML
+    after 500 m of SMF it never scores worse than the FFE alone, and it is
+    worth more on a slow laser, whose post-cursor is larger."""
+    from halo_serdes_app.studies import _tdecq_settings, tdecq_value
+
+    cfg = _opt(_lpo(), kind="eml_smf", modal_bw_mhz_km=None, dispersion_ps_nm_km=-1.9,
+               er_db=4.5, rin_db_hz=-145.0, length_m=500.0, f_r_hz=55e9)
+    cfg = dataclasses.replace(cfg, symbol_rate=113.4375e9)
+    assert _tdecq_settings(cfg)["dfe"] is True
+
+    def gain(bw):
+        from halo_serdes.engine.optical_stage import transmitter_power
+
+        c = _opt(cfg, f_r_hz=bw)
+        power, line = transmitter_power(c, include_seg_a=False, through_fibre=True)
+        kw = dict(n_taps=15, pre_options=(1, 2, 3), f_ref_hz=53.125e9)
+        ffe = tdecq(power, c.dt, c.symbol_rate, line, **kw)
+        dfe = tdecq(power, c.dt, c.symbol_rate, line, dfe=True, **kw)
+        assert dfe.tdecq_db <= ffe.tdecq_db + 1e-9
+        assert 0.0 <= dfe.dfe_b <= 0.3
+        return ffe.tdecq_db - dfe.tdecq_db
+
+    assert gain(35e9) > gain(80e9) + 0.1
+    assert tdecq_value(cfg).dfe_b > 0.0
