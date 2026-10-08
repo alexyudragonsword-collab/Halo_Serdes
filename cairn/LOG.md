@@ -10,6 +10,7 @@
 - 顺带发现并修了两个 bug:① app 层裸调统计引擎,ADC 收端无 FFE —— 106 GBd 预置 StatEye 0.16 与时域 2.3e-4 并排(双引擎页即铁律 3 的界面)。
   `runner.stat_equaliser` 统一处理,修后 2.40e-4 vs 2.29e-4;坑进 engineering-pitfalls(API 类)。② ADC 页 mismatch 图单位标错(V 标成 code、样本标成 UI)。
 - docstring:GUI 100%、app 层 88%(剩 studies 的 9 个 `compute` 闭包)。浮点 / TX 指纹逐位同(库层未动)。
+- PR #44;CI 全部 test job + rtl-lockstep + examples + pyinstaller 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):866 passed / 1 skipped(+10);ruff 通过。
 
 ## 2026-10-08 · TDECQ 的 802.3dj 参考 DFE(feat/tdecq-dfe,ROADMAP P3 #11 一项)
