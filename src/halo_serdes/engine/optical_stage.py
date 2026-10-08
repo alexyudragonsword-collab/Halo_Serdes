@@ -21,7 +21,7 @@ import numpy as np
 from ..afe import Ctle
 from ..channel import ChannelModel
 from ..config.schema import LinkConfig
-from ..core.sampler import baud_samples, upsampled_taps
+from ..core.sampler import baud_samples, hold, upsampled_taps
 from .static_link import _levels
 
 
@@ -234,3 +234,104 @@ def slicer_sigma_binned(cfg: LinkConfig, channel: ChannelModel, h1: np.ndarray,
         p_mean = noise.p_mid_w + lin / scale
         out[combo] = np.sqrt(np.sum(g2 * noise.sample_var_v2(np.maximum(p_mean, 0.0), p_var)))
     return out
+
+
+#: symbols the curve's pattern average runs over: three periods of PRBS13(Q)
+#: (2^13 - 1), so every three-symbol pattern appears 128+ times for PAM4
+_CURVE_PATTERN_SYMBOLS = 3 * 8192
+
+
+def curve_pattern_offsets(cfg: LinkConfig, channel: ChannelModel,
+                          ffe_taps: np.ndarray | None = None,
+                          neighbours: tuple[int, ...] = (-1, 1)
+                          ) -> tuple[np.ndarray, np.ndarray]:
+    """What the large-signal E/O curve does at the slicer beyond moving the
+    levels: per sampling phase, transmitted level and pattern of the binned
+    neighbours, the mean and the variance of (sample through the curve) -
+    (the statistical engine's linear sample).
+
+    The linear model sends the curve's image of each level through the
+    small-signal chain, so it has the curve's steady-state levels but not how
+    the curve bends the waveform between them. The curve sits after the E/O
+    dynamics (Wiener order), so its input already carries the neighbours'
+    ISI and the bend depends on them. Measured at c = 0.4 on VCSEL / EML ADC
+    and VCSEL mixed-signal links, the symbol and its two nearest neighbours
+    -- the bins the optical noise already uses (``slicer_sigma_binned``) --
+    explain 92-96 % of the difference's variance. A per-bin shift plus the
+    remainder as variance is therefore enough; without it the statistical
+    engine read 0.30-0.40x of the time engine at c = 0.5 on the EML and NRZ
+    links.
+
+    The average runs noiselessly over the configured pattern, the symbols the
+    time engine sends. It uses the same drive, optics and receiver impulses and
+    the same curve call, so it is an exact average over that pattern, not a
+    Monte-Carlo BER. The Tx's LTI part
+    (``TxPipeline.equivalent_symbol_response``) shapes the drive as it shapes
+    the statistical engine's pulse.
+
+    Returns ``(mu, var)`` [V, V^2], each of shape ``(osr, M) + (M,) *
+    len(neighbours)``: phase index as the statistical engine's (``i - osr //
+    2`` samples from the pulse peak), then the level and each neighbour's
+    level, ascending.
+    """
+    import dataclasses
+
+    from ..core.mapping import nrz_levels, pam4_levels
+    from ..tx.pipeline import TxPipeline
+    from .lti import fft_filter
+    from .static_link import make_pattern
+    from .timedomain import _tx_symbols
+
+    osr = cfg.osr
+    opt = channel.optical
+    hd, ho, h2 = split_impulses_nonlinear(cfg, channel)
+    g = h2
+    if ffe_taps is not None and len(ffe_taps) > 1:
+        g = np.convolve(g, upsampled_taps(ffe_taps, osr))
+    tx_resp = TxPipeline.from_config(cfg).equivalent_symbol_response(osr)
+
+    n = _CURVE_PATTERN_SYMBOLS
+    short = dataclasses.replace(cfg, sim=dataclasses.replace(cfg.sim, n_symbols=n))
+    sym = np.asarray(_tx_symbols(cfg, make_pattern(short)), dtype=np.int64)
+    n = sym.size
+    lv_drive = (pam4_levels(cfg.tx.swing, cfg.tx.rlm) if cfg.modulation == "pam4"
+                else nrz_levels(cfg.tx.swing))
+    lv_model = _levels(cfg)                  # the curve's image: the engine's levels
+
+    def drive(levels):
+        x = hold(levels[sym], osr)
+        if tx_resp is not None:
+            x = fft_filter(x, tx_resp)
+        return fft_filter(x, hd)
+
+    y_curve = fft_filter(fft_filter(opt.curve.apply(drive(lv_drive), opt.drive_amplitude), ho), g)
+    err = y_curve - fft_filter(fft_filter(drive(lv_model), ho), g)
+    one = np.ones(osr) if tx_resp is None else np.convolve(np.ones(osr), tx_resp)
+    pulse = np.convolve(np.convolve(np.convolve(one, hd), ho), g)
+    peak = int(np.argmax(np.abs(pulse)))
+
+    m_lv = lv_drive.size
+    # skip the start-up (zero history) and the end; neighbour -j is the symbol
+    # sent j later, +j the one sent j earlier (statistical._BINNED_NEIGHBOURS)
+    edge = pulse.size // osr + 2 + max(abs(j) for j in neighbours)
+    idx = np.arange(edge, n - edge)
+    key = sym[idx]
+    for j in neighbours:
+        key = key * m_lv + sym[idx - j]
+    n_bins = m_lv ** (1 + len(neighbours))
+    mu = np.zeros((osr, n_bins))
+    var = np.zeros((osr, n_bins))
+    for i in range(osr):
+        # symbol m's sample at this phase is UI m + base, offset ph within it
+        base, ph = divmod(peak + i - osr // 2, osr)
+        per_ui = baud_samples(err, osr, ph)
+        ok = idx + base < per_ui.size
+        e = per_ui[idx[ok] + base]
+        k = key[ok]
+        count = np.maximum(np.bincount(k, minlength=n_bins), 1)
+        s1 = np.bincount(k, weights=e, minlength=n_bins)
+        s2 = np.bincount(k, weights=e * e, minlength=n_bins)
+        mu[i] = s1 / count
+        var[i] = np.maximum(s2 / count - mu[i] ** 2, 0.0)
+    shape = (osr,) + (m_lv,) * (1 + len(neighbours))
+    return mu.reshape(shape), var.reshape(shape)
