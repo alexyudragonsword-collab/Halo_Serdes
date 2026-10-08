@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**851 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **851 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**856 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **856 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -220,7 +220,7 @@ pre-FEC 地板 ~1e-5 来自时域引擎尾部 2–3 个无效判决(ROADMAP P1-1
 Fibre length and OMA on the x axis, never "loss in dB"; the ~1e-5 pre-FEC floor of every ladder is the engine's 2-3 invalid
 tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
 
-**发射机这一侧:TDECQ / The transmitter side: TDECQ**(示例 34,802.3 121.8.5 的 BT4 参考接收机 + 参考 FFE,
+**发射机这一侧:TDECQ / The transmitter side: TDECQ**(示例 34,802.3 121.8.5 的 BT4 参考接收机 + 参考 FFE,200G/λ 另加 802.3dj 的 1 抽头 DFE,
 过各自光纤后测 / example 34, measured after each transmitter's own fibre):
 
 ![TDECQ](../examples/output/34_tdecq.png)
@@ -228,16 +228,16 @@ tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
 | 发射机 / Transmitter | TDECQ | 上限 / limit | 最小 ER / min ER | 最小带宽 / min bandwidth |
 |---|---|---|---|---|
 | VCSEL 100G/λ,f_r 22 GHz,ER 4 dB,100 m OM4 | 4.59 dB | SR1 4.4 dB | 4.20 dB | f_r 22.3 GHz |
-| EML 200G/λ,55 GHz,ER 4.5 dB,500 m SMF | 2.08 dB | DR1 3.4 dB | ≤ 2.5 dB | 34.6 GHz |
+| EML 200G/λ,55 GHz,ER 4.5 dB,500 m SMF | 1.88 dB(只 FFE 2.08) | DR1 3.4 dB | ≤ 2.5 dB | 29.8 GHz(只 FFE 34.6) |
 
 > 与上面三拓扑同一颗 VCSEL(f_r 22 GHz、ER 4 dB;RIN 取 −140 dB/Hz)按 SR1 的 TDECQ 刚好不过,ER 升到 4.2 dB 或
 > f_r 升到 22.3 GHz 就过;它对带宽最敏感:f_r 每降 2 GHz 涨 3–8 dB。L-I 压缩 0.5(曲线 R_LM
-> 0.52–0.56)时,VCSEL 的 TDECQ +5.1 dB、EML 只 +0.85 dB;VCSEL 的代价随带宽收缩(f_r 60 GHz 时 +1.9 dB),
+> 0.52–0.56)时,VCSEL 的 TDECQ +5.1 dB、EML 只 +0.87 dB;VCSEL 的代价随带宽收缩(f_r 60 GHz 时 +1.9 dB),
 > 部分原因是 ISI 限的眼对内电平移动更敏感,其余未拆。
 >
 > The same VCSEL as the three-topology ladders (f_r 22 GHz, ER 4 dB; RIN taken at -140 dB/Hz) just fails SR1 on TDECQ and
 > passes at ER 4.2 dB or f_r 22.3 GHz; bandwidth is what it is most sensitive to, every 2 GHz of f_r lost costing 3-8 dB.
-> An L-I compression of 0.5 (curve R_LM 0.52-0.56) costs the VCSEL +5.1 dB of TDECQ and the EML only +0.85 dB; the VCSEL's
+> An L-I compression of 0.5 (curve R_LM 0.52-0.56) costs the VCSEL +5.1 dB of TDECQ and the EML only +0.87 dB; the VCSEL's
 > penalty shrinks with bandwidth (+1.9 dB at f_r 60 GHz), so part of it is an ISI-limited eye reacting more to inner levels
 > moving; the rest is not yet split out.
 
@@ -273,4 +273,4 @@ tail decisions (ROADMAP P1-1b), far below KP4's 2.4e-4 threshold.
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 851 项测试 · 双引擎 · 40 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 856 项测试 · 双引擎 · 40 个实验脚本*

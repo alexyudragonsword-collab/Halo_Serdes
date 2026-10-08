@@ -6,6 +6,17 @@
 
 ---
 
+## [未发布] — TDECQ 的 802.3dj 参考 DFE(ROADMAP P3 #11)
+
+### 新增
+- `analysis/tdecq.tdecq(..., dfe=True, dfe_max=0.3)`:15 抽头 FFE 之后的 1 抽头参考 DFE —— 0 ≤ b ≤ 0.3,FFE 抽头和 = 1 + b,
+  OMA / 阈值在 FFE 输入,判决用发送符号,C_eq 只算 FFE;最小二乘起步(b 越界则钳住后重解 FFE),b 参与坐标搜索。
+  `TdecqResult.dfe_b`。条文按 dj 意见处理材料的检索摘要转述(原文被代理拦截)。
+- GUI / Android 的 TDECQ study 在 ≥ 80 GBd 时带 DFE;示例 34 的 EML 带 DFE 并打印只 FFE 的对照,带宽扫描下延到 25 GHz:
+  基线 2.08 → 1.88 dB,最小带宽 34.59 → 29.83 GHz。
+- 测试:单后标闭式 10·log10(1 + h)(差 < 0.01 dB)、b 的上下界、200G EML 上 DFE 不劣于只 FFE 且慢激光省得更多。
+  `dfe=False` 与改前逐位同(main 对照);浮点黄金指纹逐位同。
+
 ## [未发布] — 前台校准、校准字分辨率(ROADMAP P3 #7 余项)
 
 ### 新增

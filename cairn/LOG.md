@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-08 · TDECQ 的 802.3dj 参考 DFE(feat/tdecq-dfe,ROADMAP P3 #11 一项)
+
+- `tdecq(dfe=True)`:FFE15 + DFE1,0 ≤ b ≤ 0.3、FFE 和 = 1 + b、OMA / 阈值在 FFE 输入、判决用发送符号、C_eq 只算 FFE。
+  条文:IEEE / Keysight 原文被出口代理拦截(403,未重试),按 dj 意见处理材料的检索摘要转述,cairn/光互联建模.md §8 标"二手"。
+- 闭式:单后标 h → 10·log10(1 + h)、b = h(差 ≤ 0.002 dB);h = 0.5 钳到 0.3;负后标 b = 0 与只 FFE 逐位同。
+- EML 200G/λ(示例 34):基线 2.08 → 1.88 dB,DFE 省 0.09(80 GHz)… 0.93 dB(25 GHz),最小带宽 34.59 → 29.83 GHz。
+  与材料里"约 0.5–1 dB"同量级。研究页 ≥ 80 GBd 自动带 DFE。
+- `dfe=False` 与 main 逐位同(worktree 对照三个场景);浮点指纹逐位同;test_tdecq nojit 18 passed。
+- PR #43;CI 全部 test job + rtl-lockstep + examples + pyinstaller 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
+- 全量(JIT + iverilog):856 passed / 1 skipped(+5);ruff 通过。
+
 ## 2026-10-07 · 前台校准 + 校准字分辨率(feat/adc-foreground-cal,ROADMAP P3 #7 余项 → #7 删除)
 
 - `adc.cal.mode: foreground`:上电经各 lane 自己的量化器 / 噪声测短接与 ±参考,修正冻结、折进量化器前(近似);单独随机流,实例不变。

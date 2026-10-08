@@ -47,7 +47,8 @@ AMI GetWave 记入下方「边界」。)
 
 ### 11. 光互联的余项
 阶段 1–3(`cairn/光互联建模.md`)有级联 H(f) + 电平相关噪声 + 重定时串联 + 大信号曲线与 TDECQ。**未做**:
-- 802.3dj 200G/λ TDECQ 的 1 抽头 DFE(现在只有 15 抽头 FFE;DFE 版的上限 dB 不同);MMF PMD 的参考接收机带宽
+- (2026-10-08 已做:802.3dj 200G/λ TDECQ 的 1 抽头 DFE,`tdecq(dfe=True)`。)剩余:dj 后加的 FFE 抽头约束
+  (w(i)/w(0)、|w(1) − w(−1)|)与上限是否下调到 3.0 dB 未核实(条文被代理拦截);MMF PMD 的参考接收机带宽
   可能低于 0.5×baud(802.3cd SR 用过 11.2 GHz @ 26.5625 GBd),未核实前按 0.5×baud;
 - 统计引擎对大信号曲线只用稳态电平,不建 ISI 被曲线弯折的部分(已发 warning);
 - LPO 模块内的"线性"EQ:OIF CEI-112G-LINEAR 允许驱动器 / TIA 各带简单 CTLE,现在按零 EQ 做;

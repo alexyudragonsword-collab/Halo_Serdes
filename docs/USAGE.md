@@ -687,16 +687,22 @@ from halo_serdes.analysis.tdecq import tdecq
 P, line = transmitter_power(cfg, include_seg_a=False, through_fibre=True)   # TP2 光功率 [W],含激光 RIN
 r = tdecq(P, cfg.dt, cfg.symbol_rate, line)                                 # 100G/λ:5 抽头
 r = tdecq(P, cfg.dt, cfg.symbol_rate, line, n_taps=15, pre_options=(1, 2, 3),
-          f_ref_hz=53.125e9)                                                # 200G/λ(802.3dj,DFE 未建)
-r.tdecq_db, r.oma_outer_w, r.er_db, r.rlm, r.ceq, r.taps
+          f_ref_hz=53.125e9, dfe=True)                                      # 200G/λ(802.3dj:FFE15 + DFE1)
+r.tdecq_db, r.oma_outer_w, r.er_db, r.rlm, r.ceq, r.taps, r.dfe_b
 ```
 
 TDECQ 按 802.3 121.8.5:0.5×baud 四阶 Bessel-Thomson 参考接收机、抽头和为 1 的 T 间隔 FFE、0.45 / 0.55 UI
 两个 0.04 UI 宽直方图、阈值 P_ave 与 ±OMA/3、OMA 取 7 个 3 / 6 个 0 连续游程中心 2 UI、目标 SER 4.8e-4
 (Q_t = 3.414)、C_eq 噪声增益。理想眼 0 dB;理想发射机过参考接收机约 0.3 dB。GUI「Optical」页与 Android 的
-「TDECQ」study 给出配置点与 ER / 激光带宽两条扫描。
+「TDECQ」study 给出配置点与 ER / 激光带宽两条扫描(≥ 80 GBd 时自动带 DFE)。
 
-**不做的**:功耗、重定时器内的 FEC 终结、802.3dj TDECQ 的 1 抽头 DFE;AMI 模型与 `topology` 互斥。
+`dfe=True` 是 802.3dj 在 D2.0 给 200G/λ 加的 1 抽头参考 DFE(条文被出口代理拦截,按任务组意见处理材料转述):
+系数 0 ≤ b ≤ 0.3(未归一化),FFE 抽头和改为 1 + b(FFE 减 DFE 的低频增益仍为 1),OMA 与阈值取 FFE 输入处;
+DFE 的判决用发送符号(无误码传播),噪声只经过 FFE,所以 C_eq 只算 FFE。闭式:只有一个后标 h 的眼,DFE 版 TDECQ =
+10·log10(1 + h)、b = h(测试钉到 0.01 dB)。示例 34 的 EML(500 m SMF)上 DFE 省 0.09–0.93 dB,激光越慢省得越多,
+最小带宽 34.6 → 29.8 GHz;后来加的 FFE 抽头约束(w(i)/w(0)、|w(1) − w(−1)|)未建,dj 后续草案的上限是否从 3.4 dB 下调未核实。
+
+**不做的**:功耗、重定时器内的 FEC 终结;AMI 模型与 `topology` 互斥。
 示例 `examples/32_lpo_vs_cpo.py`(同一光路,电段 4/8/12/16 dB,光纤长度扫到 reach,100 m 上比
 CPO 与 LPO 的 OMA 裕度)、`examples/33_three_topologies.py`(LPO / retimed / CPO 同台 + 三杠杆表);
 `examples/34_tdecq.py`(VCSEL 100G/λ 与 EML 200G/λ 的 TDECQ 对 ER / 激光带宽 / L-I 压缩,对着 802.3 上限);

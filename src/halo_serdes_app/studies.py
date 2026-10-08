@@ -303,10 +303,10 @@ def optical_study(rec) -> dict:
 
 def _tdecq_settings(cfg) -> dict:
     """Reference equaliser by lane rate: 5 taps at 100G/lambda, 15 taps with
-    up to 3 precursors at 200G/lambda (802.3dj; its 1-tap DFE not modelled)."""
+    up to 3 precursors and the 1-tap DFE at 200G/lambda (802.3dj)."""
     if cfg.symbol_rate < 80e9:
         return dict(n_taps=5, pre_options=(1, 2))
-    return dict(n_taps=15, pre_options=(1, 2, 3))
+    return dict(n_taps=15, pre_options=(1, 2, 3), dfe=True)
 
 
 def tdecq_value(cfg, n_symbols: int = 8191):
