@@ -12,7 +12,10 @@
 - 建:`optical_stage.curve_pattern_offsets`(码型上的精确条件均值 / 方差,逐相位)进分箱平移与箱内方差;24 点 0.86–1.28。
   `cairn/光互联建模.md` §8「统计引擎里的曲线」。曲线关闭时 804 值指纹与 main 逐位相同。
 - 第一版手写了 `x[::osr]` 上采样,铁律 5 的 `test_domain_boundary` 抓到;改走 `sampler.hold` / `baud_samples`,两个抽查点结果不变。
-- 全量(JIT + iverilog):884 passed / 1 skipped(+4);ruff 通过;新测试 HALO_NO_JIT 下 40 s。Android:待 CI。
+- 全量(JIT + iverilog):884 passed / 1 skipped(+4);ruff 通过;新测试 HALO_NO_JIT 下 40 s。
+- PR #50(d1ee95d):test 矩阵、examples、rtl-lockstep、lint、import-clean、vendor-drift 全绿;Android(run 37785538977)
+  `instrumented totals: 34 tests, 0 failures, 0 errors, 0 skipped`(API 34、API 35、编译版 APK 三处);桌面 pyinstaller / nuitka /
+  nuitka-onefile 全绿(run 37785538929)。
 
 ## 2026-10-08 · CONTRIBUTING.md 与数值指纹工具(docs/contributing,ROADMAP P3 #10 一项)
 
