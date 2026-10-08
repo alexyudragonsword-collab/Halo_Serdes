@@ -6,6 +6,17 @@
 
 ---
 
+## [未发布] — 系统框图由示例 03 的运行生成
+
+### 新增
+- `tools/draw_system_diagram.py`:跑示例 03(框图描述的那条 32G NRZ 链路),从它的配置与结果取图上每个数,
+  写 `docs/figures/nrz32_system_diagram.png`、`docs/nrz32_system_diagram.mmd`,并刷新 `docs/summary.html` 里内嵌的副本。
+  测试 `tests/test_system_diagram.py`(桩结果,不跑仿真)。
+
+### 修正
+- 框图原是手画的("参数为实际仿真值"),停在 2026-08:slicer SNR 14 dB、判决 ±17.3 mV、CDR Kp = 1/32、CTLE "6–9 dB";
+  现为 15.1 dB、±17.4 mV、Kp = 1/64(配置里的 kp_shift 6)、CTLE 峰值 6 dB(实际 3.1 dB)。summary.html 的内嵌副本同样过时,一并换掉。
+
 ## [未发布] — 修正:sliding 检测器不修正接收机的判决
 
 ### 修正

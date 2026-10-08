@@ -3,6 +3,13 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-08 · 系统框图由示例 03 的运行生成(docs/system-diagram)
+
+- `tools/draw_system_diagram.py` 跑示例 03,图上每个数取自那次运行;同时写 `.mmd` 并刷新 summary.html 的 base64 副本。
+- 重画时又发现两处手抄错:CDR Kp 写成 1/32(配置是 kp_shift 6 → 1/64)、CTLE 写 "6–9 dB"(配置峰值 6 dB,实际 3.1 dB)。
+- 写测试时抓到工具自己的一个 bug:按"后面 2000 字符里有图注"找内嵌图,会选中图注前面那一张;改为图注须在下一个 `<img>` 之前。
+- 全量(JIT + iverilog):873 passed / 1 skipped(+2);ruff 通过;库代码未动。
+
 ## 2026-10-08 · 修正:sliding 检测器不修正接收机的判决(fix/sliding-detector)
 
 - 复核时记下的观察(示例 27 里 sliding 不如 DFE)查清是 bug:`post_detect` 丢掉传入的判决,从忽略后光标的切片起步,单翻转修不了成对错误。
