@@ -11,6 +11,7 @@
 - EML 200G/λ(示例 34):基线 2.08 → 1.88 dB,DFE 省 0.09(80 GHz)… 0.93 dB(25 GHz),最小带宽 34.59 → 29.83 GHz。
   与材料里"约 0.5–1 dB"同量级。研究页 ≥ 80 GBd 自动带 DFE。
 - `dfe=False` 与 main 逐位同(worktree 对照三个场景);浮点指纹逐位同;test_tdecq nojit 18 passed。
+- PR #43;CI 全部 test job + rtl-lockstep + examples + pyinstaller 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 - 全量(JIT + iverilog):856 passed / 1 skipped(+5);ruff 通过。
 
 ## 2026-10-07 · 前台校准 + 校准字分辨率(feat/adc-foreground-cal,ROADMAP P3 #7 余项 → #7 删除)
