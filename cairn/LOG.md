@@ -12,6 +12,7 @@
 - 判断:恰在门槛上,门槛分不出,按成本暂不做;ROADMAP 移入"边界"并写重开条件。`cairn/DSP发端与PR.md` §12;
   坑两条进 engineering-pitfalls(MLSD 类:一个噪声比例校准不了 PR 增益;Viterbi 回溯表的内存)。库代码未动。
 - 全量(JIT + iverilog):876 passed / 1 skipped(+3);ruff 通过;新测试在 HALO_NO_JIT 下 6 s。
+- PR #48;CI test(jit / nojit × 3.10 / 3.11)+ rtl-lockstep + examples 全绿;Android 与打包 workflow 按路径过滤未触发(未动共用层,铁律 6 不涉及)。
 
 ## 2026-10-08 · 系统框图由示例 03 的运行生成(docs/system-diagram)
 
