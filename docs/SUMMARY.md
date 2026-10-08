@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**884 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **884 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**890 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **890 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -222,6 +222,14 @@ a DSP-retimed module decides and re-transmits at ingress and egress, so the link
 > changes how clean the signal is and the other how dirty it may be), all three here move the SNR of the same segment;
 > past 300 m the OM4 modal bandwidth (15.7 GHz) is the wall.
 
+**均衡放在哪里比放多少重要 / Where the equaliser sits matters more than how much**(示例 32 第 3 问,100 m 处 OMA 裕度):
+光电二极管噪声是分界线。噪声之前的 host Tx FFE 与 LPO 模块驱动器 CTLE 都在加噪声前抵消段 A,16 dB 段从关不上到 3.92(FFE)/ 7.44 dB
+(FFE + 驱动器 6 dB);噪声之后的 TIA CTLE 把噪声一起抬,一律小亏(3.92 → 3.29 dB)。示例 32 原来"CPO 多 3.1 dB"是两边都不做发端
+均衡时的比较;都开 FFE 后 CPO 12.6 dB、LPO 12 dB 段 + 驱动器 10.6 dB(激光器无过冲余量时 10.1 / 9.0 dB)。
+/ The photodiode noise is the dividing line: EQ ahead of it (host Tx FFE, the module's driver CTLE) undoes segment A before the
+noise is added, EQ behind it (TIA CTLE) lifts the noise too and loses a little. Example 32's "CPO keeps 3.1 dB more" held with
+no transmit EQ on either side; with it, CPO 12.6 dB vs LPO (12 dB traces + driver CTLE) 10.6 dB.
+
 读数约定 / reading conventions:横轴是光纤长度与 OMA,不是"损耗 dB"(光路损耗不是 ISI 的代理量);每条阶梯的
 pre-FEC 地板 1.3e-6 是 0 误码时半个计数的置信上限(2×10⁵ 符号;2026-10-03 前的 ~1e-5 来自时域引擎尾部 2–3 个无效判决,已修),与 KP4 的 2.4e-4 阈值无关。
 Fibre length and OMA on the x axis, never "loss in dB"; the 1.3e-6 pre-FEC floor of every ladder is the half-count bound of a zero-error run (2e5 symbols; the ~1e-5 before 2026-10-03 was
@@ -280,4 +288,4 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 884 项测试 · 双引擎 · 40 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 890 项测试 · 双引擎 · 40 个实验脚本*

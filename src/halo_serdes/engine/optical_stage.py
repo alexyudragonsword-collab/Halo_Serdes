@@ -149,6 +149,8 @@ def transmitter_power(cfg: LinkConfig, *, through_fibre: bool = False, include_s
     seg_a = ChannelModel.from_channel_config(top.seg_a, cfg.symbol_rate, "topology.seg_a")
     eo = ChannelModel.from_optical(opt, seg_a.f, "eo")
     fib = ChannelModel.from_optical(opt, seg_a.f, "fiber")
+    # the module's driver CTLE shapes the light it launches
+    drv = ChannelModel.module_ctle(opt.drv_ctle_db, cfg.symbol_rate, seg_a.f, "driver")
     # without segment A the drive is the Tx waveform through the matched
     # divider alone: a scale, not a filter (an ideal flat segment on this
     # grid would be a brick wall with a wrapping sinc impulse)
@@ -158,8 +160,8 @@ def transmitter_power(cfg: LinkConfig, *, through_fibre: bool = False, include_s
     def impulse(*models):
         return ChannelModel.cascade(*models).band_limited().response_set(cfg.dt).h.y
 
-    y = (fft_filter(tx_wave.y, impulse(seg_a, eo)) if include_seg_a
-         else fft_filter(0.5 * tx_wave.y, impulse(eo)))
+    y = (fft_filter(tx_wave.y, impulse(seg_a, *drv, eo)) if include_seg_a
+         else fft_filter(0.5 * tx_wave.y, impulse(*drv, eo)))
     curve = static_curve(opt)
     if curve is not None:
         y = curve.apply(y, amp)

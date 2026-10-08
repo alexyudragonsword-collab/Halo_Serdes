@@ -478,6 +478,61 @@ def test_explicit_level_sigma_with_a_curve_warns():
         run_statistical(cfg, channel=cm, level_sigma=np.full(4, 1e-3))
 
 
+def _with_module_ctle(cfg, drv_db, tia_db):
+    return dataclasses.replace(cfg, topology=dataclasses.replace(
+        cfg.topology, optical=dataclasses.replace(cfg.topology.optical, drv_ctle_db=drv_db,
+                                                  tia_ctle_db=tia_db)))
+
+
+def test_module_ctle_sits_where_the_module_has_it():
+    """An LPO module's driver CTLE is part of the drive, ahead of the
+    photodiode; its TIA CTLE is behind it. Both at unity DC gain, so the
+    OMA, the level powers and the noise scale are what the config says."""
+    from halo_serdes.afe import Ctle
+
+    cfg = _adc_cfg(4.5, -6.0, n_sym=2_000)
+    a = ChannelModel.from_config(cfg)
+    b = ChannelModel.from_config(_with_module_ctle(cfg, 6.0, 3.0))
+    drv = Ctle(peak_db=6.0, fp1=cfg.symbol_rate / 2).transfer(a.f)
+    tia = Ctle(peak_db=3.0, fp1=cfg.symbol_rate / 2).transfer(a.f)
+    np.testing.assert_allclose(b.optical.pre_pd.H, a.optical.pre_pd.H * drv, atol=1e-12)
+    np.testing.assert_allclose(b.optical.post_pd.H, a.optical.post_pd.H * tia, atol=1e-12)
+    np.testing.assert_allclose(b.optical.noise.level_powers_w, a.optical.noise.level_powers_w)
+    assert b.optical.noise.signal_swing_v == a.optical.noise.signal_swing_v
+    # zero peaking is no block at all, not an all-pass with a second pole
+    c = ChannelModel.from_config(_with_module_ctle(cfg, 0.0, 0.0))
+    assert np.array_equal(c.H, a.H)
+
+
+def test_the_tia_ctle_lifts_the_photodiode_noise_the_driver_ctle_does_not():
+    """Where the CTLE sits is the whole point: behind the photodiode it
+    boosts that node's noise with the signal, ahead of it it cannot."""
+    cfg = _adc_cfg(4.5, -6.0, n_sym=2_000)
+
+    def sigma(c):
+        cm = ChannelModel.from_config(c)
+        h1, h2 = split_impulses(c, cm)
+        return slicer_sigma_per_level(c, cm, h1, h2)
+
+    base = sigma(cfg)
+    assert np.all(sigma(_with_module_ctle(cfg, 0.0, 6.0)) > 1.15 * base)
+    np.testing.assert_allclose(sigma(_with_module_ctle(cfg, 6.0, 0.0)), base, rtol=0.05)
+
+
+@pytest.mark.parametrize("drv_db,tia_db,oma_dbm", [(6.0, 0.0, -7.0), (3.0, 3.0, -4.0)])
+def test_invariant3_holds_with_module_equalisation(drv_db, tia_db, oma_dbm):
+    """The module CTLEs are LTI, so they ride in both engines' impulses; the
+    cross-check holds as it does without them. (The driver CTLE buys enough
+    that its point needs less light to make errors to count.)"""
+    cfg = _with_module_ctle(_adc_cfg(4.5, oma_dbm, n_sym=400_000), drv_db, tia_db)
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 100, mc.ber.n_errors
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    ratio = st.ber / mc.ber.ber
+    assert 1 / 1.5 < ratio < 1.5, (drv_db, tia_db, st.ber, mc.ber.ber, ratio)
+
+
 def test_optical_package_imports_only_numpy():
     # optical/ is the device-physics layer; keeping it numpy-only keeps it
     # importable on the phone and free of engine dependencies.

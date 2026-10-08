@@ -529,6 +529,17 @@ class OpticalConfig:
     # OMA and ER stay what the fields above say and the inner PAM4 levels move
     # (optical/eo.py, StaticCurve).
     li_compression: float = 0.0
+    # Module equalisation: OIF CEI-112G-LINEAR lets an LPO module's driver and
+    # TIA each carry a simple CTLE. Peaking [dB] of the one-zero, two-pole
+    # ``afe.Ctle`` (poles at Nyquist and 2x Nyquist, unity DC gain, so OMA is
+    # unchanged); 0 leaves the block out entirely rather than inserting an
+    # all-pass. The driver's sits between segment A and the E/O -- ahead of
+    # the photodiode noise and of a large-signal curve, which sees its
+    # overshoot; the TIA's after the photodiode, so it lifts that noise along
+    # with the signal. The 12 dB ceiling bounds a "simple" CTLE; it is not a
+    # number from the OIF text, which is not reachable from here.
+    drv_ctle_db: float = 0.0
+    tia_ctle_db: float = 0.0
     # opto-electric (O/E): photodiode + TIA
     responsivity_a_w: float = 0.7
     tia_bw_hz: float = 40.0e9           # second-order (Butterworth) 3 dB bandwidth [Hz]
@@ -551,6 +562,9 @@ class OpticalConfig:
                  f"optical.rin_db_hz must be < 0 dB/Hz, got {self.rin_db_hz}")
         _require(0.0 <= self.li_compression < 1.0,
                  f"optical.li_compression must be in [0, 1), got {self.li_compression}")
+        for nm in ("drv_ctle_db", "tia_ctle_db"):
+            _require(0.0 <= getattr(self, nm) <= 12.0,
+                     f"optical.{nm} must be in [0, 12] dB, got {getattr(self, nm)}")
         if self.kind == "vcsel_mmf":
             _require(self.modal_bw_mhz_km is not None and self.modal_bw_mhz_km > 0,
                      "optical.modal_bw_mhz_km must be set (> 0) for kind 'vcsel_mmf'")
