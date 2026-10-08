@@ -212,9 +212,13 @@ for d in losses[1:]:
 # the noise is added; EQ behind it (the TIA CTLE) lifts noise and signal
 # together, which the host receiver's FFE already does. Pre-emphasis also
 # overshoots the steady levels, and a laser has finite room for that, so each
-# margin is given twice: with the overshoot free, and with no headroom at all
-# -- the OMA cut until the TP2 waveform fits between the outer levels,
-# 10 log10(peak-to-peak / OMA) when that exceeds 1.
+# margin is given three ways: linear (the overshoot free); through a laser
+# with an L-I curve (li_compression 0.2) and its zero-power floor, which is
+# what actually limits the overshoot in this model; and with no headroom at
+# all -- the OMA cut until the TP2 waveform fits between the outer levels,
+# 10 log10(peak-to-peak / OMA) when that exceeds 1, a bound the curve and
+# floor turn out to be far from.
+LASER_C = 0.2
 FIR9 = (-0.06, 0.68, -0.26)       # 3-tap host Tx FFE, ~9 dB more at Nyquist than at DC
 EQ_CASES = [(4.0, None, 0.0, 0.0), (4.0, FIR9, 0.0, 0.0),
             (12.0, None, 0.0, 0.0), (12.0, None, 0.0, 6.0), (12.0, None, 6.0, 0.0),
@@ -226,8 +230,9 @@ if QUICK:
                 (16.0, FIR9, 6.0, 0.0)]
 
 
-def with_eq(cfg: LinkConfig, fir, drv_db: float, tia_db: float) -> LinkConfig:
-    o = dataclasses.replace(cfg.topology.optical, drv_ctle_db=drv_db, tia_ctle_db=tia_db)
+def with_eq(cfg: LinkConfig, fir, drv_db: float, tia_db: float, c: float = 0.0) -> LinkConfig:
+    o = dataclasses.replace(cfg.topology.optical, drv_ctle_db=drv_db, tia_ctle_db=tia_db,
+                            li_compression=c)
     cfg = dataclasses.replace(cfg, topology=dataclasses.replace(cfg.topology, optical=o))
     if fir is not None:
         cfg = dataclasses.replace(cfg, tx=dataclasses.replace(cfg.tx, fir_taps=fir, fir_n_pre=1))
@@ -249,31 +254,39 @@ print()
 print("Equalisation at 100 m fibre (OMA margin, statistical engine; host FFE "
       f"{FIR9} where set):")
 print(f"{'segments':>8} {'host FFE':>8} {'driver':>6} {'TIA':>5} {'SNR':>6} {'margin':>7} "
-      f"{'p-p/OMA':>7} {'no headroom':>11}")
+      f"{'laser c=' + str(LASER_C):>11} {'p-p/OMA':>7} {'no headroom':>11}")
 eq_rows = {}
 for loss_db, fir, drv_db, tia_db in EQ_CASES:
     seg = segment_for_loss(loss_db)
 
-    def cfg_at(oma, n=n_sym):
-        return with_eq(make_cfg(seg, 100.0, oma, n), fir, drv_db, tia_db)
+    def cfg_at(oma, n=n_sym, c=0.0):
+        return with_eq(make_cfg(seg, 100.0, oma, n), fir, drv_db, tia_db, c)
+
+    def curved_at(oma, n=n_sym):
+        return cfg_at(oma, n, LASER_C)
 
     base = time_point(cfg_at(OMA_NOMINAL_DBM))
     margin = oma_margin(cfg_at, base["ffe"])
+    curved = oma_margin(curved_at, time_point(curved_at(OMA_NOMINAL_DBM))["ffe"])
     power, _ = transmitter_power(cfg_at(OMA_NOMINAL_DBM, 20_000), include_rin=False)
     power = power[2000:-2000]
     pp = float(power.max() - power.min()) / cfg_at(OMA_NOMINAL_DBM).topology.optical.oma_w
     strict = margin - 10.0 * np.log10(max(pp, 1.0))
-    eq_rows[(loss_db, fir is not None, drv_db, tia_db)] = (margin, strict)
-    shown = (f"{margin:6.2f}dB {pp:7.2f} {strict:10.2f}dB" if np.isfinite(margin)
-             else f"{'fails':>8} {pp:7.2f} {'fails':>12}")      # not even at the SR1 maximum OMA
+    eq_rows[(loss_db, fir is not None, drv_db, tia_db)] = (margin, strict, curved)
+
+    def fmt(x, w):
+        return f"{x:{w - 2}.2f}dB" if np.isfinite(x) else f"{'fails':>{w}}"   # not even at SR1 max OMA
+
     print(f"{loss_db:7.0f}dB {'on' if fir else '-':>8} {drv_db:5.0f}dB {tia_db:4.0f}dB "
-          f"{base['snr']:5.1f}dB {shown}")
+          f"{base['snr']:5.1f}dB {fmt(margin, 8)} {fmt(curved, 11)} {pp:7.2f} {fmt(strict, 12)}")
 
 # direction, as measured (cairn/光互联建模.md §6): EQ ahead of the photodiode
 # buys margin, the TIA's costs a little
 base16 = eq_rows[(16.0, True, 0.0, 0.0)][0]
 assert eq_rows[(16.0, True, 6.0, 0.0)][0] > base16 + 1.0, eq_rows
 assert eq_rows[(16.0, True, 0.0, 6.0)][0] < base16 + 0.1, eq_rows
+# and through a compressing laser the driver CTLE still pays
+assert eq_rows[(16.0, True, 6.0, 0.0)][2] > eq_rows[(16.0, True, 0.0, 0.0)][2] + 1.0, eq_rows
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6))
