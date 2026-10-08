@@ -15,12 +15,17 @@ Two questions, both on the ADC receiver with KP4 FEC:
    how far does the fibre go before post-KP4 BER crosses 1e-15?
 2. Optical margin at 100 m: how far can the launched OMA drop before the
    same crossing -- and how many dB more of that does CPO keep than LPO?
+3. Equalisation at 100 m: OIF CEI-112G-LINEAR lets the LPO module's driver
+   and TIA each carry a CTLE (``OpticalConfig.drv_ctle_db`` /
+   ``tia_ctle_db``), and the host Tx has its own FFE. Which of them buys
+   margin back, given that the photodiode noise sits between them?
 
 The reach ladder is the time engine (pre-FEC BER measured, KP4 projected);
 the OMA margin is the statistical engine, which stage 1 cross-checked
 against the time engine within 2x on this receiver (tests/test_optical.py).
 """
 
+import dataclasses
 import sys
 import time
 from pathlib import Path
@@ -44,6 +49,7 @@ from halo_serdes.config.schema import (  # noqa: E402
     OpticalConfig, RxConfig, SimConfig, TopologyConfig, TxConfig,
 )
 from halo_serdes.engine import run_time_link  # noqa: E402
+from halo_serdes.engine.optical_stage import transmitter_power  # noqa: E402
 from halo_serdes.engine.statistical import run_statistical  # noqa: E402
 from halo_serdes.fec import pre_to_post_fec_ber  # noqa: E402
 
@@ -199,6 +205,75 @@ for d in losses[1:]:
     if not np.isfinite(margins[d]):
         print(f"LPO at {d:.0f} dB segments has no optical margin at 100 m: no OMA in the SR1 "
               f"window closes it with this receiver (CTLE + FFE, no DFE/MLSD)")
+
+# --------------------------------------------- module and host equalisation ---
+# The photodiode noise is the dividing line. EQ ahead of it (the host Tx FFE,
+# the module's driver CTLE) undoes segment A and the laser's roll-off before
+# the noise is added; EQ behind it (the TIA CTLE) lifts noise and signal
+# together, which the host receiver's FFE already does. Pre-emphasis also
+# overshoots the steady levels, and a laser has finite room for that, so each
+# margin is given twice: with the overshoot free, and with no headroom at all
+# -- the OMA cut until the TP2 waveform fits between the outer levels,
+# 10 log10(peak-to-peak / OMA) when that exceeds 1.
+FIR9 = (-0.06, 0.68, -0.26)       # 3-tap host Tx FFE, ~9 dB more at Nyquist than at DC
+EQ_CASES = [(4.0, None, 0.0, 0.0), (4.0, FIR9, 0.0, 0.0),
+            (12.0, None, 0.0, 0.0), (12.0, None, 0.0, 6.0), (12.0, None, 6.0, 0.0),
+            (12.0, FIR9, 0.0, 0.0), (12.0, FIR9, 6.0, 0.0),
+            (16.0, FIR9, 0.0, 0.0), (16.0, FIR9, 0.0, 6.0), (16.0, FIR9, 6.0, 0.0),
+            (16.0, FIR9, 9.0, 0.0)]
+if QUICK:
+    EQ_CASES = [(4.0, None, 0.0, 0.0), (16.0, FIR9, 0.0, 0.0), (16.0, FIR9, 0.0, 6.0),
+                (16.0, FIR9, 6.0, 0.0)]
+
+
+def with_eq(cfg: LinkConfig, fir, drv_db: float, tia_db: float) -> LinkConfig:
+    o = dataclasses.replace(cfg.topology.optical, drv_ctle_db=drv_db, tia_ctle_db=tia_db)
+    cfg = dataclasses.replace(cfg, topology=dataclasses.replace(cfg.topology, optical=o))
+    if fir is not None:
+        cfg = dataclasses.replace(cfg, tx=dataclasses.replace(cfg.tx, fir_taps=fir, fir_n_pre=1))
+    return cfg
+
+
+def oma_margin(cfg_at, ffe) -> float:
+    """Nominal minus the lowest OMA meeting the target (bisection, statistical engine)."""
+    if stat_post_fec(cfg_at(OMA_MAX_DBM), ffe) > POST_FEC_TARGET:
+        return float("nan")
+    lo, hi = OMA_NOMINAL_DBM - 20.0, OMA_MAX_DBM
+    for _ in range(10 if QUICK else 16):
+        mid = 0.5 * (lo + hi)
+        lo, hi = (lo, mid) if stat_post_fec(cfg_at(mid), ffe) < POST_FEC_TARGET else (mid, hi)
+    return OMA_NOMINAL_DBM - hi
+
+
+print()
+print("Equalisation at 100 m fibre (OMA margin, statistical engine; host FFE "
+      f"{FIR9} where set):")
+print(f"{'segments':>8} {'host FFE':>8} {'driver':>6} {'TIA':>5} {'SNR':>6} {'margin':>7} "
+      f"{'p-p/OMA':>7} {'no headroom':>11}")
+eq_rows = {}
+for loss_db, fir, drv_db, tia_db in EQ_CASES:
+    seg = segment_for_loss(loss_db)
+
+    def cfg_at(oma, n=n_sym):
+        return with_eq(make_cfg(seg, 100.0, oma, n), fir, drv_db, tia_db)
+
+    base = time_point(cfg_at(OMA_NOMINAL_DBM))
+    margin = oma_margin(cfg_at, base["ffe"])
+    power, _ = transmitter_power(cfg_at(OMA_NOMINAL_DBM, 20_000), include_rin=False)
+    power = power[2000:-2000]
+    pp = float(power.max() - power.min()) / cfg_at(OMA_NOMINAL_DBM).topology.optical.oma_w
+    strict = margin - 10.0 * np.log10(max(pp, 1.0))
+    eq_rows[(loss_db, fir is not None, drv_db, tia_db)] = (margin, strict)
+    shown = (f"{margin:6.2f}dB {pp:7.2f} {strict:10.2f}dB" if np.isfinite(margin)
+             else f"{'fails':>8} {pp:7.2f} {'fails':>12}")      # not even at the SR1 maximum OMA
+    print(f"{loss_db:7.0f}dB {'on' if fir else '-':>8} {drv_db:5.0f}dB {tia_db:4.0f}dB "
+          f"{base['snr']:5.1f}dB {shown}")
+
+# direction, as measured (cairn/光互联建模.md §6): EQ ahead of the photodiode
+# buys margin, the TIA's costs a little
+base16 = eq_rows[(16.0, True, 0.0, 0.0)][0]
+assert eq_rows[(16.0, True, 6.0, 0.0)][0] > base16 + 1.0, eq_rows
+assert eq_rows[(16.0, True, 0.0, 6.0)][0] < base16 + 0.1, eq_rows
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6))

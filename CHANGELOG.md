@@ -6,6 +6,19 @@
 
 ---
 
+## [未发布] — LPO 模块的驱动器 / TIA CTLE
+
+### 新增
+- `OpticalConfig.drv_ctle_db` / `tia_ctle_db`:OIF CEI-112G-LINEAR 允许 LPO 模块驱动器与 TIA 各带的 CTLE(`afe.Ctle`,极点在 Nyquist 与
+  2×Nyquist,直流增益 1;0 = 不插入,804 值指纹逐位同前)。驱动器的进 `pre_pd` / 曲线前的 drive / `transmitter_power`(TP2 的光),
+  TIA 的进 `post_pd`(在 PD 噪声之后)。`ChannelModel.module_ctle`;GUI / 手机表单两项;校验 [0, 12] dB。
+- 示例 32 第 3 问:100 m 处 OMA 裕度对 host Tx FFE、驱动器 CTLE、TIA CTLE 的各种组合,每行给有 / 无激光器过冲余量两个口径。
+  结论:PD 噪声之前的均衡(host FFE、驱动器 CTLE)收回裕度,之后的(TIA CTLE)小亏;原"CPO 多 3.1 dB"是两边都不做发端均衡时的比较。
+
+### 测试
+- `tests/test_optical.py`:CTLE 的位置(`pre_pd` / `post_pd` 恰好乘上各自的传函,电平功率与噪声尺度不变,0 dB 与不设逐位同)、
+  TIA CTLE 抬 PD 噪声而驱动器的不抬、带模块 EQ 的铁律 3(0.98–1.01);`test_config_validation.py` 两个越界值。
+
 ## [未发布] — 统计引擎建模大信号 E/O 曲线对 ISI 的弯折
 
 ### 变更

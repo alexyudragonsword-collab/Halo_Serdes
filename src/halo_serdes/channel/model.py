@@ -108,6 +108,21 @@ class ChannelModel:
         return cls(mod.response(opt, f), f, name=f"{opt.kind}:{block}", ref_gain=1.0)
 
     @classmethod
+    def module_ctle(cls, peak_db: float, symbol_rate: float, f: np.ndarray,
+                    which: str) -> tuple["ChannelModel", ...]:
+        """An LPO module's driver or TIA CTLE (``OpticalConfig.drv_ctle_db`` /
+        ``tia_ctle_db``) as a model on ``f``: ``afe.Ctle`` with its poles at
+        the link's Nyquist and twice it, unity DC gain. Returned as a 0- or
+        1-tuple to splat into ``cascade``: zero peaking is no block at all,
+        since the same CTLE at 0 dB still has its second pole."""
+        if peak_db <= 0.0:
+            return ()
+        from ..afe import Ctle
+
+        ctle = Ctle(gdc_db=0.0, peak_db=peak_db, fp1=symbol_rate / 2.0)
+        return (cls(ctle.transfer(f), f, name=f"module:{which}_ctle", ref_gain=1.0),)
+
+    @classmethod
     def from_config(cls, link: LinkConfig) -> "ChannelModel":
         if link.topology is None:
             return cls.from_channel_config(link.channel, link.symbol_rate)
@@ -130,8 +145,12 @@ class ChannelModel:
         eo = cls.from_optical(top.optical, f, "eo")
         fib = cls.from_optical(top.optical, f, "fiber")
         oe = cls.from_optical(top.optical, f, "oe")
-        pre_pd = cls.cascade(seg_a, eo, fib)
-        post_pd = cls.cascade(oe, seg_b)
+        # the module's driver CTLE belongs to the drive (ahead of the E/O),
+        # its TIA CTLE to the receive side (after the photodiode noise node)
+        drv = cls.module_ctle(top.optical.drv_ctle_db, link.symbol_rate, f, "driver")
+        tia = cls.module_ctle(top.optical.tia_ctle_db, link.symbol_rate, f, "tia")
+        pre_pd = cls.cascade(seg_a, *drv, eo, fib)
+        post_pd = cls.cascade(oe, *tia, seg_b)
         full = cls.cascade(pre_pd, post_pd)
         swing_pd = link.tx.swing * abs(seg_a.H[0]) * float(np.sum(link.tx.fir_taps))
         curve = static_curve(top.optical)
@@ -148,7 +167,7 @@ class ChannelModel:
         # and a short or ideal trace on this grid is a brick wall whose
         # zero-phase impulse wraps half its main lobe to the far end of the
         # record -- the curve would mix in symbols thousands of UI old.
-        drive, optics = cls.cascade(seg_a, eo).band_limited(), fib.band_limited()
+        drive, optics = cls.cascade(seg_a, *drv, eo).band_limited(), fib.band_limited()
         a = link.tx.swing / 2.0
         noise = OpticalNoise.from_config(top.optical, link.modulation, swing_pd, link.dt,
                                          drive_levels=_tx_levels(link) / a)

@@ -633,6 +633,8 @@ topology:
     tia_bw_hz: 40.0e9        # PD+TIA 二阶 Butterworth
     tia_noise_pa_sqrthz: 12.0
     tz_ohm: 2000.0           # 只用于报告物理输出摆幅,仿真保持电尺度
+    drv_ctle_db: 0.0         # LPO 模块驱动器 CTLE 峰化,dB;0 = 不插入;在 PD 噪声之前
+    tia_ctle_db: 0.0         # TIA CTLE 峰化,dB;在 PD 噪声之后,与信号一起抬噪声
   seg_b: {kind: analytic, length_m: 0.08, rdc: 5.0, r_skin: 2.0e-3, loss_tangent: 0.012}
 ```
 
@@ -708,6 +710,11 @@ TDECQ 按 802.3 121.8.5:0.5×baud 四阶 Bessel-Thomson 参考接收机、抽头
 DFE 的判决用发送符号(无误码传播),噪声只经过 FFE,所以 C_eq 只算 FFE。闭式:只有一个后标 h 的眼,DFE 版 TDECQ =
 10·log10(1 + h)、b = h(测试钉到 0.01 dB)。示例 34 的 EML(500 m SMF)上 DFE 省 0.09–0.93 dB,激光越慢省得越多,
 最小带宽 34.6 → 29.8 GHz;后来加的 FFE 抽头约束(w(i)/w(0)、|w(1) − w(−1)|)未建,dj 后续草案的上限是否从 3.4 dB 下调未核实。
+
+**模块均衡**:`drv_ctle_db` / `tia_ctle_db` 是 OIF CEI-112G-LINEAR 允许 LPO 模块驱动器与 TIA 各带的 CTLE(`afe.Ctle`,极点在 Nyquist
+与 2×Nyquist,直流增益 1,OMA 不变;0 = 不插入)。位置决定一切:驱动器的在 PD 噪声之前,示例 32 上 100 m 处 16 dB 段 + host FFE 时
+OMA 裕度 3.92 → 7.44 dB(6 dB 峰化);TIA 的在噪声之后,把噪声和信号一起抬,一律小亏(3.92 → 3.29 dB)。host 的 `tx.fir_taps` 同样在
+噪声之前,作用相同。预加重会让 TP2 波形越过稳态外电平,示例 32 给出有 / 无激光器余量两个口径(`cairn/光互联建模.md` §6)。
 
 **不做的**:功耗、重定时器内的 FEC 终结;AMI 模型与 `topology` 互斥。
 示例 `examples/32_lpo_vs_cpo.py`(同一光路,电段 4/8/12/16 dB,光纤长度扫到 reach,100 m 上比

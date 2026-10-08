@@ -74,6 +74,10 @@ from halo_serdes.config.schema import (
      "li_compression"),
     (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, li_compression=-0.1),
      "li_compression"),
+    (lambda: OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, drv_ctle_db=-1.0),
+     "drv_ctle_db"),
+    (lambda: OpticalConfig(kind="eml_smf", dispersion_ps_nm_km=-1.5, tia_ctle_db=13.0),
+     "tia_ctle_db"),
     # DSP Tx: every new field has an illegal value, and the ones that only
     # mean something together fail when one is set without the other
     (lambda: TxConfig(dac_bits=0), "dac_bits"),

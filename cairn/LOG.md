@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-08 · LPO 模块驱动器 / TIA CTLE(feat/lpo-linear-eq,ROADMAP P3 #11 一项)
+
+- `OpticalConfig.drv_ctle_db` / `tia_ctle_db`(`afe.Ctle`,直流增益 1,0 = 不插入);驱动器的在 PD 噪声与大信号曲线之前,TIA 的在其后。
+  默认值下 804 值指纹与 main 逐位相同;带 EQ 双引擎 0.98–1.01。
+- 示例 32 第 3 问(100 m OMA 裕度):TIA CTLE 一律小亏(8 dB 段 5.47 → 5.18、16 dB + FFE 3.92 → 3.29);驱动器 CTLE 与 host Tx FFE 都在
+  噪声之前,各自收回大部分(16 dB 段 + FFE 3.92 → 驱动器 6 / 9 dB 7.44 / 9.31)。原"CPO 多 3.1 dB"只在两边都不做发端均衡时成立。
+- 自己挑出的一处不公平:先只比驱动器 CTLE 时它看起来能补回 LPO 全部差距;加上 host Tx FFE(模型里本来就有)对照后,结论改成"位置在
+  噪声之前",而不是"模块 EQ"。预加重过冲按 TP2 峰峰值 / OMA 给了无余量口径(CPO + FFE 1.80 倍,扣 2.5 dB)。
+- 全量(JIT + iverilog):890 passed / 1 skipped(+6);ruff 通过;示例 32 全尺寸与 smoke(168 s)都过。Android:待 CI。
+
 ## 2026-10-08 · 统计引擎建模大信号曲线对 ISI 的弯折(study/stat-large-signal,ROADMAP P3 #11 一项)
 
 - 先量:四条链路 c = 0…0.5(80 万符号),只用稳态电平时 VCSEL 0.64–1.16 尚在 2× 内,EML 与 MS NRZ 随 c 单调变乐观,

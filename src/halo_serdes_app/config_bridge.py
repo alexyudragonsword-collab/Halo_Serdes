@@ -345,6 +345,8 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("topology.optical.tia_noise_pa_sqrthz", "TIA noise [pA/√Hz]", "float"),
         _f("topology.optical.tz_ohm", "Transimpedance [ohm]", "float"),
         _f("topology.optical.li_compression", "L-I compression (0 = linear)", "float"),
+        _f("topology.optical.drv_ctle_db", "Module driver CTLE peaking [dB]", "float"),
+        _f("topology.optical.tia_ctle_db", "Module TIA CTLE peaking [dB]", "float"),
         _f("topology.seg_a.kind", "Seg A kind", "enum", options=["touchstone", "analytic"]),
         _f("topology.seg_a.file", "Seg A Touchstone file", "opt_str"),
         _f("topology.seg_a.length_m", "Seg A length [m]", "float"),
