@@ -64,9 +64,13 @@ def test_changes_pair_numbers_on_a_line_of_the_same_shape(drift):
     moved, added = drift.changes("32_x", old, new)
     assert moved.pairs == [("7.73e-06", "7.80e-06"), ("20.2", "20.1")]
     assert added.old_line is None and added.new_line == "extra 5"
-    # a line that changed shape cannot be paired: every old number is suspect
+    # a line that gained or lost numbers cannot be paired: every old one is suspect
     (ch,) = drift.changes("32_x", "margin 3.92 dB\n", "margin fails\n")
     assert ch.pairs == [("3.92", None)]
+    # one whose words changed but not its numbers moved nothing
+    (ch,) = drift.changes("04_x", "BER 6.08e-04 at best phase (1.03x)\n",
+                          "BER 6.08e-04 at the receiver's phase (1.03x)\n")
+    assert ch.pairs == []
 
 
 def test_prose_of_an_example_is_its_docstrings_and_comments(drift):

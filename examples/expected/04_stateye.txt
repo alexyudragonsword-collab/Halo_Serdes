@@ -1,5 +1,5 @@
 == dual-engine comparison (32G NRZ, lossy analytic channel) ==
   Monte-Carlo : BER = 5.926e-04 (237 errors / 399951)
-  statistical : BER = 6.082e-04 at best phase (ratio 1.03x)
+  statistical : BER = 6.082e-04 at the receiver's phase (ratio 1.03x)
   statistical @ sigma=20mV: BER = 1.748e-16 (below any MC reach)
   wrote examples/output/04_stateye.png

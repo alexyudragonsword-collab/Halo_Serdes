@@ -124,7 +124,7 @@ def rounds_to(tok: str, value: float) -> bool:
 @dataclass
 class Change:
     """One output line that moved, and its numbers as (old, new) pairs; new is
-    None when the line changed shape and the numbers cannot be paired. A line
+    None when the line gained or lost numbers and they cannot be paired. A line
     only added has no old side, one only removed no new side."""
     example: str
     old_line: str | None
@@ -148,7 +148,9 @@ def changes(example: str, old: str, new: str) -> list[Change]:
             nl = news[k] if k < len(news) else None
             ot = NUM.findall(line)
             nt = NUM.findall(nl) if nl is not None else []
-            if nl is not None and NUM.sub("#", line) == NUM.sub("#", nl):
+            if nl is not None and len(ot) == len(nt):
+                # same numbers in the same order, whatever the words around
+                # them did (a relabelled line moved none of its numbers)
                 pairs = [(o, n) for o, n in zip(ot, nt) if o != n]
             else:
                 pairs = [(o, None) for o in ot]

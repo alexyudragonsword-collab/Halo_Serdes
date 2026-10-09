@@ -9,13 +9,13 @@ SSPLL 200 fs   kp_shift=5: BER 2.06e-05 (8)  eye 7.7 mV  CDR error 210 fs (model
 SSPLL 200 fs   kp_shift=6: BER 2.58e-05 (10)  eye 7.6 mV  CDR error 316 fs (model 280)  bw 0.67 MHz  stat BER 1.4e-05  [~s]
 SSPLL 200 fs   kp_shift=7: BER 5.93e-05 (23)  eye 7.6 mV  CDR error 454 fs (model 371)  bw 0.65 MHz  stat BER 2.5e-05  [~s]
 SSPLL 200 fs   kp_shift=8: BER 1.50e-04 (58)  eye 7.4 mV  CDR error 571 fs (model 505)  bw 0.64 MHz  stat BER 7.4e-05  [~s]
-SSPLL 200 fs   kp_shift=9: BER 2.27e-04 (88)  eye 7.4 mV  CDR error 651 fs (model 704)  bw 0.64 MHz  stat BER 3.1e-04  [~s]
+SSPLL 200 fs   kp_shift=9: BER 2.27e-04 (88)  eye 7.4 mV  CDR error 651 fs (model 704)  bw 0.64 MHz  stat BER 4.2e-04  [~s]
 CPPLL 200 fs   kp_shift=4: BER 1.03e-05 (4)  eye 7.7 mV  CDR error 152 fs (model 181)  bw 1.37 MHz  stat BER 8.8e-06  [~s]
 CPPLL 200 fs   kp_shift=5: BER 1.55e-05 (6)  eye 7.6 mV  CDR error 206 fs (model 222)  bw 0.76 MHz  stat BER 1.0e-05  [~s]
 CPPLL 200 fs   kp_shift=6: BER 3.35e-05 (13)  eye 7.6 mV  CDR error 312 fs (model 285)  bw 0.67 MHz  stat BER 1.5e-05  [~s]
 CPPLL 200 fs   kp_shift=7: BER 6.96e-05 (27)  eye 7.5 mV  CDR error 449 fs (model 377)  bw 0.65 MHz  stat BER 2.6e-05  [~s]
 CPPLL 200 fs   kp_shift=8: BER 1.31e-04 (51)  eye 7.5 mV  CDR error 568 fs (model 511)  bw 0.64 MHz  stat BER 7.8e-05  [~s]
-CPPLL 200 fs   kp_shift=9: BER 2.35e-04 (91)  eye 7.5 mV  CDR error 648 fs (model 710)  bw 0.64 MHz  stat BER 3.2e-04  [~s]
+CPPLL 200 fs   kp_shift=9: BER 2.35e-04 (91)  eye 7.5 mV  CDR error 648 fs (model 710)  bw 0.64 MHz  stat BER 4.4e-04  [~s]
 
 18 runs in ~s
 
@@ -29,6 +29,8 @@ The white clock's CDR error is the loop's own hunting plus untracked white noise
 model column for it is the rj_ui smear the statistical engine applies (no CDR model for
 kind=white, by design). For the PLL clocks the model column is the linearised loop's
 sampling-instant sigma. The statistical BER is listed for the record: with the ADC's
-quantisation noise in it, it sits 0.3-1.4x of the time engine's here (TI-ADC and
-adaptation stay approximations); the comparison that is in scope is the CDR error.
+quantisation noise in it, it sits 0.3-1.9x of the time engine's here (TI-ADC and
+adaptation stay approximations; 1.9x at kp_shift 9, where a 1.2-sample wander is
+smeared over a lopsided bathtub and read at the loop's own phase, not its floor);
+the comparison that is in scope is the CDR error.
 wrote examples/output/31_pll_clock_profile.png

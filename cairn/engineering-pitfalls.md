@@ -109,7 +109,8 @@ docstring 早写了这一条。**规则:残差大到与 BER 矛盾时,先查对�
 误差传播(关 DFE 0.99–1.11;冻结 CDR、在峰值读 0.92–1.0)。**规则:双引擎比较时,统计引擎在接收机实际的采样点
 读数**(`cdr.linear.lock_offset_samples`;静态引擎无环路、在 FFE 前脉冲峰值)。ADC 收端同理(2026-10-09):统计引擎在
 ADC 上仍报最优相位,时域 MM CDR 在 FFE 自适应下停在初始脉冲峰不动;CPO + FFE、c = 0.5 按最优相位 0.35×、按时域相位 0.91× ——
-"统计引擎过于乐观"只是读错了相位。改不改约定见 ROADMAP P2 #12。
+"统计引擎过于乐观"只是读错了相位。2026-10-09 已改:ADC 也按锁定点读(`pd_input: ffe` 锁在均衡前脉冲峰,`adc` 锁在
+h(−1) = h(+1),`DSP发端与PR.md` §5)。
 
 **统计引擎里每个自己拼"一个符号的脉冲"的地方,都要卷上发端的 LTI 响应。** 主脉冲卷了 `TxPipeline.equivalent_symbol_response`,
 大信号曲线的图样平均也卷了,光噪声核(`slicer_sigma_per_level` / `slicer_sigma_binned`)却用阶段 1 的 `h1` 自己拼 —— host FFE

@@ -47,7 +47,7 @@ stat = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
 
 print("== dual-engine comparison (32G NRZ, lossy analytic channel) ==")
 print(f"  Monte-Carlo : BER = {mc.ber.ber:.3e} ({mc.ber.n_errors} errors / {mc.ber.n_checked})")
-print(f"  statistical : BER = {stat.ber:.3e} at best phase (ratio {stat.ber / mc.ber.ber:.2f}x)")
+print(f"  statistical : BER = {stat.ber:.3e} at the receiver's phase (ratio {stat.ber / mc.ber.ber:.2f}x)")
 
 # low-noise variant: where only the statistical engine can go
 import dataclasses  # noqa: E402

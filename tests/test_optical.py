@@ -585,6 +585,41 @@ def test_invariant3_holds_with_a_host_tx_ffe():
     assert 1 / 1.5 < ratio < 1.5, (st.ber, mc.ber.ber, ratio)
 
 
+def test_adc_statistical_ber_is_read_where_the_receiver_samples():
+    """Example 32's CPO with a host FFE through a c = 0.5 laser: the bathtub
+    is a sample wide (one sample either side of its floor is 2.6x / 15x),
+    and the time engine's MM loop sits one sample off that floor, on the
+    pre-FFE pulse peak it settles on. Read at the best phase the statistical
+    engine is 0.35x the time engine; read where the receiver samples, inside
+    2x. The best phase stays in extras['ber_min_phase']."""
+    seg = ChannelConfig(kind="analytic", length_m=0.04942, rdc=5.0, r_skin=2e-3,
+                        loss_tangent=0.012, n_freq=4096)          # example 32's 4 dB trace
+    cfg = LinkConfig(
+        modulation="pam4", symbol_rate=53.125e9, osr=16,
+        tx=TxConfig(swing=1.0, fir_taps=(-0.06, 0.68, -0.26), fir_n_pre=1),
+        rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=3.0),
+                    adc=AdcConfig(n_bits=10, n_lanes=16, enob=None, fullscale=0.3),
+                    ffe=FfeConfig(n_pre=4, n_post=12, adapt="lms", mu=3e-5),
+                    dfe=DfeConfig(n_taps=0),
+                    cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
+                    noise_rms=1e-4),
+        sim=SimConfig(n_symbols=200_000, seed=7, pattern="prbs13q"),
+        topology=TopologyConfig(
+            seg_a=seg,
+            optical=OpticalConfig(kind="vcsel_mmf", f_r_hz=22e9, damping_hz=30e9, er_db=4.0,
+                                  oma_dbm=-8.0, rin_db_hz=-145.0, length_m=100.0,
+                                  modal_bw_mhz_km=4700.0, responsivity_a_w=0.7,
+                                  tia_bw_hz=40e9, tia_noise_pa_sqrthz=12.0,
+                                  li_compression=0.5),
+            seg_b=seg))
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 60, mc.ber.n_errors
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert 0.5 < st.ber / mc.ber.ber < 2.0, (st.ber, mc.ber.ber)
+    assert st.extras["ber_min_phase"] / mc.ber.ber < 0.5          # the best phase would not do
+
+
 def test_optical_package_imports_only_numpy():
     # optical/ is the device-physics layer; keeping it numpy-only keeps it
     # importable on the phone and free of engine dependencies.

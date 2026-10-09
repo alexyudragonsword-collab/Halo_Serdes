@@ -61,3 +61,25 @@ def test_nrz_equalised_samples_leave_mm_without_a_gradient():
         cfg = _link("nrz", 0.1, pd)
         wander[pd] = _wander_ui(cfg, run_time_link(cfg))
     assert wander["adc"] < 0.05 and wander["ffe"] > 0.2, wander
+
+
+def test_statistical_engine_reads_where_mm_on_raw_samples_locks():
+    """The statistical engine reports the ADC's BER where the receiver
+    samples. On raw samples MM locks where the pre-FFE pulse has h(-1) =
+    h(+1); on equalised samples the loop stays on the pre-FFE peak it starts
+    from. The difference of the two reported lock phases is therefore the
+    raw-sample loop's offset from the peak -- and the time engine's loop,
+    started on the peak, has to settle there."""
+    from halo_serdes.engine.statistical import run_statistical
+
+    cfg = _link("nrz", 0.25, "adc")
+    res = run_time_link(cfg)
+    ph = np.asarray(res.extras["phase_track"])
+    moved = ph - ph[0] - np.arange(ph.size) * cfg.osr
+    settled = float(moved[ph.size // 2:].mean())                 # samples from the start
+    kw = dict(ffe_taps=res.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    lock_raw = run_statistical(cfg, **kw).extras["lock_phase_ui"]
+    lock_eq = run_statistical(_link("nrz", 0.25, "ffe"), **kw).extras["lock_phase_ui"]
+    predicted = (lock_raw - lock_eq) * cfg.osr
+    assert predicted < -0.3, predicted                             # off the peak
+    assert abs(predicted - settled) < 0.25, (predicted, settled)
