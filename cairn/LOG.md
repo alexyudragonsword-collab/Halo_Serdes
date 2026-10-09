@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-09 · reach 读法与计数口径(study/reach-grid,登记推导数时的新发现)
+
+- 发现:同一接收机在示例 20 读 32.4、示例 21 读 33.2 dB。查下来两个读法问题 + 一个计数问题:post-FEC 对数插值偏向差点(示例 21
+  全栈 44.2 vs pre-FEC 越线约 42.8)、零误码点的替身决定答案、示例 19 / 20 / 21 / 35 的离线 Viterbi 只数 `y_slicer` 的 2 万个符号。
+- 改:`fec.fec_threshold / reach / refine`(pre-FEC 阈值插值、二分加密、零误码不插值),九个示例与 app 的两个 reach 研究换用;
+  19 / 20 / 21 / 35 改用引擎 `rx.mlsd` 全程计分(20 / 21 按标签 memory 3)。同一接收机三个示例都读 33.0 dB。
+- 数:杠杆 +1.7 / +5.5 / +3.3、全栈 42.8 dB;收端 PR +5.0、两光标 +7.3;光三拓扑 156 / 255 / 214 m。旧数留作历史注记。
+  第四光标估计 +0.5 → +0.6–0.7 dB(三种子),越过门槛,ROADMAP 移回 P3 #8 待决定(不替用户翻案)。
+- 剩余进 ROADMAP P2 #14:示例 06 / 18 仍在 2 万符号上比判决器 vs MLSD。坑进 pitfalls(两条),约定进 architecture-invariants。
+- 动了 `src/halo_serdes/fec`(新模块)与 `src/halo_serdes_app/studies.py`:桌面与 Android 都要验证(Android totals 待 CI)。
+
 ## 2026-10-09 · 文档推导数的漂移检查(tools/derived-numbers,ROADMAP P3 #10)
 
 - 盘点:扫文档里带"多 / 差 / ×"的数、并查示例输出是否直接打印。多数增量示例自己打印(示例 33 / 36 / 37 / 38 的 gain 列);

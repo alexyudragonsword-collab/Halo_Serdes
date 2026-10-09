@@ -153,9 +153,11 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 - **同样的 1+aD 放到发端反而亏**(示例 37):峰值不变时 reach ≈ 无 PR − 20·log10(1 + a)(a = 0.25 / 0.5 / 0.75:29.8 / 27.6 / 26.6 dB,预测 29.4 / 27.8 / 26.5)。
   线性链路、噪声在收端,收端 FFE 照样要把信道均衡到 delta,发端整形只交出峰值。PR 的位置在收端。 / The same 1+aD in the Tx
   loses: peak-limited, reach ≈ no-PR − 20 log10(1 + a); the receive FFE still inverts the channel to a delta.
-- **第三个受控光标不再划算**(`tools/pr_target_length.py`,2026-10-08):四光标目标估 ≈ +0.5 dB(基带 MC 校准到示例 38 的
-  delta reach、按它对前两档的高估比例折算);同 256 状态(四光标 + memory 1)也只这些,故未实现。 / A third controlled cursor
-  is worth ≈ 0.5 dB on this link (baseband MC calibrated to example 38), even at equal trellis size; not built.
+- **第三个受控光标值不值,待重新决定**(`tools/pr_target_length.py`):四光标目标估 +0.6–0.7 dB(基带 MC 校准到示例 38 的
+  delta reach、按它对前两档的高估比例折算,三个种子;2026-10-09 示例 38 改读法后重算,此前估 ≈ +0.5 dB、按成本未做),
+  越过事先定的 0.5 dB 门槛;同 256 状态(四光标 + memory 1)就拿得到。尚未实现。 / A third controlled cursor is worth
+  +0.6-0.7 dB on this link (baseband MC calibrated to example 38, three seeds; 0.5 dB before example 38's reach read-out was
+  fixed), past the 0.5 dB bar set beforehand, even at equal trellis size; not built, to be decided.
 - 21 抽头 FFE:到 −28.8 dB 零误码,−30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
   error-free to −28.8 dB and memory-2 MLSD matches it at −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.

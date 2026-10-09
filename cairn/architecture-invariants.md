@@ -171,6 +171,7 @@ numpy/scipy 版本跑同一条计算路径,把"版本"这一维从"平台差异"
   `tests/test_examples_api.py` 检查它能编译且 import 的符号都存在。
 - README 里的示例数、标签页数由 `tests/test_docs_fresh.py` 守着;测试数没有自动检查,要手动同步(2026-10-08 更正:原写测试数也守着)。
 - 文档引用的示例数字:每个示例的全尺寸输出存在 `examples/expected/`,改数的 PR 同时刷新它和文档;`tools/example_drift.py` 从"哪行输出变了"反查仍引用旧值的文档行,CI `examples-full` 跑同样的比对(2026-10-09 起)。文档里由输出推导的数(差、和、范围)登记在 `examples/derived.yaml`,测试按 `examples/expected/` 逐处检查(2026-10-09 起)。
+- **reach 一律用 `halo_serdes.fec` 的 `reach` / `refine` 读**:在 pre-FEC BER 越过 `fec_threshold()` 处插值,扫描在穿越点附近二分加密(示例 0.4 dB / 10 m),零误码点不插值。时域 MLSD 的误码用引擎的 `rx.mlsd` 在全部符号上数,不在 `res.y_slicer`(只存 2 万个符号)上离线数。理由与实测见 `engineering-pitfalls.md`"reach 读法会改 reach"(2026-10-09 起)。
 
 ### 常用命令
 
