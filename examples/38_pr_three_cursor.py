@@ -16,6 +16,9 @@ so the comparison is not of hand-picked numbers; the last row lets LMS track
   1 + aD   -- MMSE a
   1 + aD + bD^2 -- MMSE (a, b)
 
+Reach is where the pre-FEC BER crosses KP4's threshold (post-KP4 1e-15),
+the length sweep refined to 0.4 dB around it (``fec.refine``).
+
 Pass ``--quick`` for a smoke run (fewer symbols, half the sweep).
 """
 
@@ -27,7 +30,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 
 plt.rcParams["font.sans-serif"] = ["WenQuanYi Zen Hei", "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
@@ -42,7 +44,7 @@ from halo_serdes.config.schema import (  # noqa: E402
     MlsdConfig, RxConfig, SimConfig, TxConfig,
 )
 from halo_serdes.engine import run_time_link  # noqa: E402
-from halo_serdes.fec import pre_to_post_fec_ber  # noqa: E402
+from halo_serdes.fec import fec_threshold, refine  # noqa: E402
 
 OUT = REPO / "examples" / "output"
 OUT.mkdir(exist_ok=True)
@@ -79,43 +81,39 @@ def make_cfg(length_m: float, pr: PrConfig, n_sym: int = N_SYM) -> LinkConfig:
     )
 
 
-def kp4_threshold(target: float = 1e-15) -> float:
-    lo, hi = -8.0, -2.0                       # log10 pre-FEC BER
-    for _ in range(60):
-        mid = 0.5 * (lo + hi)
-        if pre_to_post_fec_ber(10 ** mid, "kp4") > target:
-            hi = mid
-        else:
-            lo = mid
-    return 10 ** lo
+P_STAR = fec_threshold("kp4")
 
 
-P_STAR = kp4_threshold()
-il = np.array([-ChannelModel.from_config(make_cfg(L, PrConfig(), 1000)).loss_at(56e9) for L in LENGTHS])
+def loss_db(length_m: float) -> float:
+    return -ChannelModel.from_config(make_cfg(length_m, PrConfig(), 1000)).loss_at(56e9)
+
+
 print("224 Gb/s PAM4 LR, 21-tap LMS FFE + memory-2 Viterbi: delta, 1 + aD, 1 + aD + bD^2")
 print(f"reach: post-KP4 1e-15 <=> pre-FEC BER <= {P_STAR:.2e}")
-sweep, targets = {}, {}
+sweep, targets, reach = {}, {}, {}
 for name, pr in CASES.items():
     t0 = time.time()
-    rows = [run_time_link(make_cfg(L, pr)) for L in LENGTHS]
-    sweep[name] = np.array([max(r.ber.ber, 0.5 / r.ber.n_checked) for r in rows])
-    targets[name] = [r.extras["pr_target"] for r in rows]
-    print(f"  {name:<27} " + " ".join(f"{x:4.1f}dB:{b:8.1e}" for x, b in zip(il, sweep[name]))
+    shown, targets[name] = {}, {}
+
+    def measure(L, pr=pr, shown=shown, tg=targets[name]):
+        r = run_time_link(make_cfg(L, pr))
+        shown[L] = (loss_db(L), max(r.ber.ber, 0.5 / r.ber.n_checked))   # no errors: half a count
+        tg[L] = r.extras["pr_target"]
+        return shown[L][0], r.ber.ber
+
+    # the length sweep refined to 0.4 dB at the KP4 crossing
+    r = refine({L: measure(L) for L in LENGTHS}, measure, P_STAR, tol=0.4)
+    sweep[name] = shown
+    reach[name] = r.value if r.value is not None else r.hi if r.note == "below sweep" else r.lo
+    print(f"  {name:<27} " + " ".join(f"{shown[L][0]:4.1f}dB:{shown[L][1]:8.1e}" for L in LENGTHS)
           + f"  [{time.time() - t0:.0f}s]")
-    if targets[name][0] is not None:
+    if targets[name][LENGTHS[0]] is not None:
         print("  " + " " * 27 + " targets: " + "  ".join(
-            "(" + ", ".join(f"{c:.2f}" for c in t) + ")" for t in targets[name]))
-
-
-def reach_db(b: np.ndarray) -> float:
-    lb, lt = np.log10(b), np.log10(P_STAR)
-    for k in range(len(il) - 1):
-        if lb[k] <= lt < lb[k + 1]:
-            return float(il[k] + (lt - lb[k]) / (lb[k + 1] - lb[k]) * (il[k + 1] - il[k]))
-    return float(il[-1]) if lb[-1] <= lt else float(il[0])   # clipped to the sweep
-
-
-reach = {name: reach_db(b) for name, b in sweep.items()}
+            "(" + ", ".join(f"{c:.2f}" for c in targets[name][L]) + ")" for L in LENGTHS))
+    extra = sorted(set(shown) - set(LENGTHS))
+    if extra:
+        print(f"  {'':<27} " + " ".join(f"{shown[L][0]:4.1f}dB:{shown[L][1]:8.1e}" for L in extra)
+              + "  (refined)")
 ctrl = reach["control (delta + Viterbi)"]
 print("\nreach [dB @ 56 GHz]:")
 for name, v in reach.items():
@@ -129,7 +127,8 @@ assert abs(reach[names[3]] - reach[names[2]]) < 0.5, reach
 # ------------------------------------------------------------------ plot ---
 fig, ax = plt.subplots(figsize=(7.5, 4.8))
 for name, style in zip(CASES, ("s--k", "o-C0", "^-C3", "v:C2")):
-    ax.semilogy(il, sweep[name], style, label=f"{name}: {reach[name]:.1f} dB")
+    ax.semilogy(*zip(*(sweep[name][L] for L in sorted(sweep[name]))), style,
+                label=f"{name}: {reach[name]:.1f} dB")
 ax.axhline(P_STAR, color="r", ls="--", lw=1, label=f"KP4 1e-15 ({P_STAR:.1e})")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="pre-FEC BER after Viterbi",
        title="A second controlled cursor (224 Gb/s PAM4, MMSE targets)")

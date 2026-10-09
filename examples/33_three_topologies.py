@@ -11,8 +11,10 @@ host and retimer receivers.
 Two outputs:
 
 1. Reach over fibre length for the three topologies (time engine, KP4
-   projected to 1e-15). The retimed optical segment's reach exceeds the LPO
-   link's -- the direction is the claim, the number depends on the segments.
+   projected to 1e-15: where the pre-FEC BER crosses KP4's threshold, the
+   ladder refined to 10 m around it). The retimed optical segment's reach
+   exceeds the LPO link's -- the direction is the claim, the number depends
+   on the segments.
 2. The lever table for docs/SUMMARY.md: electrical loss, optical noise (RIN)
    and retiming, each alone against the LPO baseline and all three together,
    in reach. Whether they add is the result, not the premise.
@@ -26,7 +28,6 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 
 plt.rcParams["font.sans-serif"] = ["WenQuanYi Zen Hei", "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
@@ -41,7 +42,7 @@ from halo_serdes.config.schema import (  # noqa: E402
     OpticalConfig, RxConfig, SimConfig, TopologyConfig, TxConfig,
 )
 from halo_serdes.engine.cascade import run_cascade  # noqa: E402
-from halo_serdes.fec import pre_to_post_fec_ber  # noqa: E402
+from halo_serdes.fec import fec_threshold, pre_to_post_fec_ber, refine  # noqa: E402
 
 OUT = REPO / "examples" / "output"
 OUT.mkdir(exist_ok=True)
@@ -96,36 +97,40 @@ def make_cfg(seg_db: float, fibre_m: float, retimer: str, rin_db_hz: float,
                                   tia_noise_pa_sqrthz=12.0, tz_ohm=2000.0)))
 
 
-def post_fec(cfg: LinkConfig) -> tuple[float, float, list[float]]:
-    r = run_cascade(cfg)
-    pre = max(r.ber.ber, 0.5 / max(r.ber.n_checked, 1))
-    return pre, pre_to_post_fec_ber(pre, "kp4"), [s.result.ber.ber for s in r.segments]
+KP4 = fec_threshold("kp4")
 
 
-def reach_m(fibre, post):
-    fibre = np.asarray(fibre, float)
-    lp = np.log10(np.maximum(post, 1e-300))
-    t = np.log10(POST_FEC_TARGET)
-    if lp[0] > t:
-        return 0.0
-    for i in range(1, lp.size):
-        if lp[i] > t:
-            return float(np.interp(t, [lp[i - 1], lp[i]], [fibre[i - 1], fibre[i]]))
-    return float(fibre[-1])
+def point(seg_db, L, retimer, rin, label, note=""):
+    """One fibre length: (measured pre-FEC BER, as printed, post-KP4)."""
+    t0 = time.time()
+    r = run_cascade(make_cfg(seg_db, L, retimer, rin))
+    pre = max(r.ber.ber, 0.5 / max(r.ber.n_checked, 1))   # no errors printed as half a count
+    post = pre_to_post_fec_ber(pre, "kp4")
+    segs = [s.result.ber.ber for s in r.segments]
+    seg_txt = " ".join(f"{p:.1e}" for p in segs) if len(segs) > 1 else ""
+    print(f"  {label:<34} {L:4.0f} m  pre {pre:.2e}  post {post:.1e}  {seg_txt}{note}  [{time.time() - t0:.0f}s]")
+    return r.ber.ber, pre, post
 
 
 def ladder(seg_db, retimer, rin, label):
+    """The ladder's points (fibre length -> point) and its reach in metres."""
     fibres = FIBRE_M[::3] if QUICK else FIBRE_M
-    rows = []
+    rows = {}
     for L in fibres:
-        t0 = time.time()
-        pre, post, segs = post_fec(make_cfg(seg_db, L, retimer, rin))
-        rows.append((L, pre, post, segs))
-        seg_txt = " ".join(f"{p:.1e}" for p in segs) if len(segs) > 1 else ""
-        print(f"  {label:<34} {L:4.0f} m  pre {pre:.2e}  post {post:.1e}  {seg_txt}  [{time.time() - t0:.0f}s]")
-        if post > 1e-3:
+        rows[L] = point(seg_db, L, retimer, rin, label)
+        if rows[L][2] > 1e-3:
             break
-    return rows
+
+    def measure(L):
+        rows[L] = point(seg_db, L, retimer, rin, label, "  (refined)")
+        return L, rows[L][0]
+
+    r = refine({L: (L, row[0]) for L, row in rows.items()}, measure, KP4, tol=10.0)
+    if r.value is not None:
+        return rows, r.value
+    # below the first rung: 0; beyond the last, or no errors just below the
+    # crossing even at 10 m: the last rung known to pass
+    return rows, 0.0 if r.note == "below sweep" else r.lo
 
 
 # -------------------------------------------------------- three topologies ---
@@ -135,15 +140,13 @@ TOPOLOGIES = [
     ("CPO (4 dB segments, no retimer)", 4.0, "none", -145.0),
 ]
 print(f"VCSEL + OM4, {BAUD / 1e9:.3f} GBd PAM4, OMA {OMA_DBM:+.0f} dBm, ER 4 dB, ADC RX + KP4")
-results = {}
+results, reaches = {}, {}
 for label, seg_db, retimer, rin in TOPOLOGIES:
-    results[label] = ladder(seg_db, retimer, rin, label)
+    results[label], reaches[label] = ladder(seg_db, retimer, rin, label)
 
 print()
 print(f"{'topology':<36} {'reach':>7}  (post-KP4 < 1e-15)")
-reaches = {}
-for label, rows in results.items():
-    reaches[label] = reach_m([r[0] for r in rows], [r[2] for r in rows])
+for label in results:
     print(f"{label:<36} {reaches[label]:6.0f}m")
 lpo, ret, cpo = (reaches[t[0]] for t in TOPOLOGIES)
 print(f"retimed optics reach > LPO reach: {ret > lpo}   (retimed {ret:.0f} m vs LPO {lpo:.0f} m; "
@@ -166,8 +169,7 @@ print()
 print("Lever table (reach at post-KP4 < 1e-15):")
 lever_reach = {}
 for label, seg_db, retimer, rin in LEVERS:
-    rows = ladder(seg_db, retimer, rin, label)
-    lever_reach[label] = reach_m([r[0] for r in rows], [r[2] for r in rows])
+    _, lever_reach[label] = ladder(seg_db, retimer, rin, label)
 base = lever_reach[LEVERS[0][0]]
 print()
 print(f"{'lever':<34} {'reach':>7} {'gain':>8}")
@@ -183,7 +185,7 @@ print(f"sum of single-lever gains {singles:+.0f} m vs all three together {combin
 fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6))
 ax = axes[0]
 for label, rows in results.items():
-    ax.semilogy([r[0] for r in rows], [max(r[2], 1e-30) for r in rows], "o-", label=label)
+    ax.semilogy(sorted(rows), [max(rows[L][2], 1e-30) for L in sorted(rows)], "o-", label=label)
 ax.axhline(POST_FEC_TARGET, color="green", ls=":", lw=1, label="target 1e-15")
 ax.set(xlabel="OM4 fibre length [m]", ylabel="post-KP4 BER",
        title="Same optics, three ways to cut the chain\n(53 GBd PAM4, ADC RX)")

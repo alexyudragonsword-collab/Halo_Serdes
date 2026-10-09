@@ -20,8 +20,9 @@ Two questions, both on the ADC receiver with KP4 FEC:
    ``tia_ctle_db``), and the host Tx has its own FFE. Which of them buys
    margin back, given that the photodiode noise sits between them?
 
-The reach ladder is the time engine (pre-FEC BER measured, KP4 projected);
-the OMA margin is the statistical engine, which stage 1 cross-checked
+The reach ladder is the time engine (pre-FEC BER measured, KP4 projected;
+reach where it crosses KP4's threshold, the ladder refined to 10 m around
+it); the OMA margin is the statistical engine, which stage 1 cross-checked
 against the time engine within 2x on this receiver (tests/test_optical.py).
 """
 
@@ -51,7 +52,7 @@ from halo_serdes.config.schema import (  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
 from halo_serdes.engine.optical_stage import transmitter_power  # noqa: E402
 from halo_serdes.engine.statistical import run_statistical  # noqa: E402
-from halo_serdes.fec import pre_to_post_fec_ber  # noqa: E402
+from halo_serdes.fec import fec_threshold, pre_to_post_fec_ber, refine  # noqa: E402
 
 OUT = REPO / "examples" / "output"
 OUT.mkdir(exist_ok=True)
@@ -110,7 +111,7 @@ def time_point(cfg: LinkConfig) -> dict:
     cm = ChannelModel.from_config(cfg)
     res = run_time_link(cfg, channel=cm)
     pre = max(res.ber.ber, 0.5 / max(res.ber.n_checked, 1))  # MC floor: half an error
-    return {"loss": -cm.loss_at(NYQ), "pre": pre, "post": pre_to_post_fec_ber(pre, "kp4"),
+    return {"loss": -cm.loss_at(NYQ), "ber": res.ber.ber, "pre": pre, "post": pre_to_post_fec_ber(pre, "kp4"),
             "snr": res.slicer_snr_db, "n_err": res.ber.n_errors, "ffe": res.ffe_taps}
 
 
@@ -118,19 +119,6 @@ def stat_post_fec(cfg: LinkConfig, ffe_taps) -> float:
     cm = ChannelModel.from_config(cfg)
     st = run_statistical(cfg, channel=cm, ffe_taps=ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
     return pre_to_post_fec_ber(max(st.ber, 1e-30), "kp4")
-
-
-def reach_from_ladder(fibre_m, post):
-    """Longest fibre with post-FEC below target, interpolated in log BER."""
-    fibre_m = np.asarray(fibre_m, float)
-    lp = np.log10(np.maximum(post, 1e-300))
-    target = np.log10(POST_FEC_TARGET)
-    if lp[0] > target:
-        return 0.0
-    for i in range(1, lp.size):
-        if lp[i] > target:
-            return float(np.interp(target, [lp[i - 1], lp[i]], [fibre_m[i - 1], fibre_m[i]]))
-    return float(fibre_m[-1])
 
 
 # ------------------------------------------------------------ reach ladder ---
@@ -141,28 +129,34 @@ ladder = {}
 print(f"VCSEL + OM4, {BAUD / 1e9:.3f} GBd PAM4, OMA {OMA_NOMINAL_DBM:+.0f} dBm, ER 4 dB, "
       f"RIN {RIN_DB_HZ:.0f} dB/Hz, ADC RX + KP4; segments A = B")
 print(f"{'seg loss':>8} {'fibre':>6} {'pre-FEC':>9} {'post-KP4':>9} {'SNR':>6}  errs")
+KP4 = fec_threshold("kp4")
 for loss_db in losses:
     seg = segment_for_loss(loss_db)
-    rows = []
-    for L in fibres:
+    rows = {}
+
+    def measure(L, seg=seg, rows=rows, loss_db=loss_db, note=""):
         t0 = time.time()
-        r = time_point(make_cfg(seg, L, OMA_NOMINAL_DBM, n_sym))
-        rows.append(r)
+        r = rows[L] = time_point(make_cfg(seg, L, OMA_NOMINAL_DBM, n_sym))
         print(f"{loss_db:7.0f}dB {L:5.0f}m {r['pre']:9.2e} {r['post']:9.1e} {r['snr']:5.1f}dB  "
-              f"{r['n_err']:5d}  [{time.time() - t0:.0f}s]")
-        if r["post"] > 1e-3:          # the ladder is over; the rest only costs time
+              f"{r['n_err']:5d}{note}  [{time.time() - t0:.0f}s]")
+        return L, r["ber"]
+
+    for L in fibres:
+        measure(L)
+        if rows[L]["post"] > 1e-3:    # the ladder is over; the rest only costs time
             break
-    ladder[loss_db] = rows
+    # reach: the pre-FEC BER at KP4's threshold, the ladder refined to 10 m around it
+    ladder[loss_db] = rows, refine({L: (L, r["ber"]) for L, r in rows.items()},
+                                   lambda L, m=measure: m(L, note="  (refined)"), KP4, tol=10.0)
 
 print()
 print("Reach ladder (post-KP4 < 1e-15):")
 print(f"{'seg A/B loss':>12} {'total elec.':>11} {'reach':>7} {'SNR @ reach':>11}")
 summary = []
-for loss_db, rows in ladder.items():
-    L = [fibres[i] for i in range(len(rows))]
-    post = [r["post"] for r in rows]
-    reach = reach_from_ladder(L, post)
-    snr = float(np.interp(reach, L, [r["snr"] for r in rows])) if reach > 0 else float("nan")
+for loss_db, (rows, rc) in ladder.items():
+    L = sorted(rows)
+    reach = rc.value if rc.value is not None else 0.0 if rc.note == "below sweep" else rc.lo
+    snr = float(np.interp(reach, L, [rows[x]["snr"] for x in L])) if reach > 0 else float("nan")
     summary.append((loss_db, 2 * loss_db, reach, snr))
     print(f"{loss_db:11.0f}dB {2 * loss_db:10.0f}dB {reach:6.0f}m {snr:10.1f}dB")
 
@@ -291,9 +285,9 @@ assert eq_rows[(16.0, True, 6.0, 0.0)][2] > eq_rows[(16.0, True, 0.0, 0.0)][2] +
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6))
 ax = axes[0]
-for loss_db, rows in ladder.items():
-    L = [fibres[i] for i in range(len(rows))]
-    ax.semilogy(L, [max(r["post"], 1e-30) for r in rows], "o-",
+for loss_db, (rows, _) in ladder.items():
+    L = sorted(rows)
+    ax.semilogy(L, [max(rows[x]["post"], 1e-30) for x in L], "o-",
                 label=f"seg A = B = {loss_db:.0f} dB")
 ax.axhline(POST_FEC_TARGET, color="green", ls=":", lw=1, label="target 1e-15")
 ax.set(xlabel="OM4 fibre length [m]", ylabel="post-KP4 BER",

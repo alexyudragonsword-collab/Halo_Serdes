@@ -47,15 +47,16 @@ def _stat_ber(cfg: LinkConfig, channel=None, xtalk_pulses=None) -> float:
                            ffe_taps=taps, ffe_pre=pre).ber
 
 
-def _reach(loss, post):
-    """Interpolate the loss where post-FEC BER crosses 1e-15 (or None)."""
-    x = np.asarray(loss)
-    lp = np.log10(np.maximum(post, 1e-300))
-    for i in range(len(x) - 1):
-        if lp[i] < -15 <= lp[i + 1]:
-            t = (-15 - lp[i]) / (lp[i + 1] - lp[i])
-            return float(x[i] + t * (x[i + 1] - x[i]))
-    return None
+def _reach(sweep: dict, measure, tol: float):
+    """Where the pre-FEC BER crosses KP4's threshold (post-KP4 1e-15), or None.
+
+    ``sweep`` maps the swept length to (x, BER); a copy is refined around the
+    crossing (``fec.refine``, at most four more points) so the plotted series
+    keep their grid. Interpolating log post-FEC BER between grid points, as
+    this did until 2026-10-09, leans towards the worse point."""
+    from halo_serdes.fec import fec_threshold, refine
+
+    return refine(dict(sweep), measure, fec_threshold("kp4"), tol=tol, max_runs=4).value
 
 
 # --- reach vs channel loss -------------------------------------------------
@@ -75,18 +76,20 @@ def reach_study(rec) -> dict:
         base = cfg.channel.length_m or 0.2
         lengths = np.linspace(0.6 * base, 1.9 * base, 8)
         from halo_serdes.fec import pre_to_post_fec_ber
-        loss, pre = [], []
-        for L in lengths:
+
+        def measure(L):
             c = dataclasses.replace(cfg, channel=dataclasses.replace(
                 cfg.channel, length_m=float(L)))
             cm = ChannelModel.from_config(c)
-            loss.append(-cm.loss_at(cfg.f_nyquist))
-            pre.append(max(_stat_ber(c, cm), 1e-300))
-        loss = np.array(loss); pre = np.array(pre)
+            return -cm.loss_at(cfg.f_nyquist), max(_stat_ber(c, cm), 1e-300)
+
+        sweep = {float(L): measure(L) for L in lengths}
+        loss = np.array([x for x, _ in sweep.values()])
+        pre = np.array([b for _, b in sweep.values()])
         kp4 = np.array([pre_to_post_fec_ber(max(p, 1e-9), "kp4") for p in pre])
         kr4 = np.array([pre_to_post_fec_ber(max(p, 1e-9), "kr4") for p in pre])
         return {"loss": loss, "pre": pre, "kp4": kp4, "kr4": kr4,
-                "reach_kp4": _reach(loss, kp4)}
+                "reach_kp4": _reach(sweep, measure, tol=0.25)}
     return _cached(("reach", rec.id), compute)
 
 
@@ -290,19 +293,25 @@ def optical_study(rec) -> dict:
                     "vcsel_mmf or eml_smf; this link is electrical."}
         base = cfg.topology.optical.length_m or 100.0
         lengths = np.linspace(0.3 * base, 3.0 * base, 8)
-        pre, pre_ret = [], []
-        for L in lengths:
-            top = dc.replace(cfg.topology, optical=dc.replace(cfg.topology.optical, length_m=float(L)))
-            c_as = dc.replace(cfg, topology=dc.replace(top, retimer="none"))
-            c_rt = dc.replace(cfg, topology=dc.replace(top, retimer="both"))
-            pre.append(max(run_cascade_statistical(c_as).stat_ber, 1e-300))
-            pre_ret.append(max(run_cascade_statistical(c_rt).stat_ber, 1e-300))
-        pre = np.array(pre); pre_ret = np.array(pre_ret)
+
+        def measurer(retimer):
+            def measure(L):
+                top = dc.replace(cfg.topology, retimer=retimer,
+                                 optical=dc.replace(cfg.topology.optical, length_m=float(L)))
+                return float(L), max(run_cascade_statistical(dc.replace(cfg, topology=top)).stat_ber, 1e-300)
+            return measure
+
+        as_is, retimed = measurer("none"), measurer("both")
+        sweep = {float(L): as_is(L) for L in lengths}
+        sweep_ret = {float(L): retimed(L) for L in lengths}
+        pre = np.array([b for _, b in sweep.values()])
+        pre_ret = np.array([b for _, b in sweep_ret.values()])
         kp4 = np.array([pre_to_post_fec_ber(max(p, 1e-9), "kp4") for p in pre])
         kp4_ret = np.array([pre_to_post_fec_ber(max(p, 1e-9), "kp4") for p in pre_ret])
         return {"length_m": lengths, "pre": pre, "pre_retimed": pre_ret,
                 "kp4": kp4, "kp4_retimed": kp4_ret,
-                "reach_m": _reach(lengths, kp4), "reach_m_retimed": _reach(lengths, kp4_ret),
+                "reach_m": _reach(sweep, as_is, tol=0.05 * base),
+                "reach_m_retimed": _reach(sweep_ret, retimed, tol=0.05 * base),
                 "retimer": cfg.topology.retimer}
     return _cached(("optical", rec.id), compute)
 

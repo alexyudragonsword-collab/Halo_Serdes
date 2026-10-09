@@ -8,8 +8,19 @@ separately. This combines them. Four cumulative configs, same channel sweep:
   C. + better ADC ENOB 7.5            (ADC lever)
   D. both: ADC 7.5 + concatenated FEC (full stack)
 
-Reach = where post-FEC crosses 1e-15. The question: does the full stack reach
-into the 802.3dj LR band (35-45 dB @ 56 GHz Nyquist)?
+Reach = where the pre-FEC BER crosses the FEC's threshold (post-FEC 1e-15),
+with the sweep refined to 0.4 dB around each crossing (``fec.refine``). The
+question: does the full stack reach into the 802.3dj LR band (35-45 dB @ 56
+GHz Nyquist)?
+
+Until 2026-10-09 this read the crossing off log post-FEC BER on the 3 dB grid
+alone: the baseline came out at 33.2 dB (its last point below had no errors,
+so the answer was the stand-in 1e-9's) and the full stack at 44.2 dB (the
+concatenated code's post-FEC map is far from linear across a 3 dB step),
+and it ran its own Viterbi on the 20k symbols the engine keeps in
+``y_slicer`` -- about nine errors at KP4's threshold. The engine's Viterbi
+(memory 3, as labelled; the old fit used 3 taps, memory 2) now scores every
+symbol.
 """
 
 import sys
@@ -32,13 +43,10 @@ from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig,
-    RxConfig, SimConfig, ClockConfig, TxConfig,
+    MlsdConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
-from halo_serdes.core.prbs import symbol_checker  # noqa: E402
-from halo_serdes.dsp import viterbi_mlsd  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
-from halo_serdes.engine.static_link import make_pattern  # noqa: E402
-from halo_serdes.fec import concatenated_post_fec_ber, pre_to_post_fec_ber  # noqa: E402
+from halo_serdes.fec import concatenated_post_fec_ber, fec_threshold, pre_to_post_fec_ber, refine  # noqa: E402
 
 OUT = REPO / "examples" / "output"
 OUT.mkdir(exist_ok=True)
@@ -57,64 +65,65 @@ def pre_fec(length_m, enob, noise, n_sym=500_000):
                     adc=AdcConfig(n_bits=8, n_lanes=16, enob=enob, fullscale=0.6),
                     ffe=FfeConfig(n_pre=6, n_post=4, adapt="lms", mu=3e-5),
                     dfe=DfeConfig(n_taps=8, adapt="lms", mu=3e-5),
+                    mlsd=MlsdConfig(kind="viterbi", memory=3),
                     cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
                     noise_rms=noise),
         sim=SimConfig(n_symbols=n_sym, seed=3, pattern="prbs13q"))
     cm = ChannelModel.from_config(cfg)
-    res = run_time_link(cfg, channel=cm)
-    lv = res.extras["levels"]; warm = res.extras["warmup"]
-    y = res.y_slicer; ref = make_pattern(cfg)[warm: warm + y.size]
-    ld = lv[ref]
-    cols = [ld] + [np.concatenate([np.zeros(i), ld[:-i]]) for i in range(1, 4)]
-    coef, *_ = np.linalg.lstsq(np.vstack(cols).T, y, rcond=None)
-    dec = viterbi_mlsd(y.astype(np.float64), lv.astype(np.float64), coef[:3])
-    return cm.loss_at(56e9), symbol_checker(ref, dec).ber
+    # the engine's Viterbi, scored over every symbol after warm-up (see
+    # example 19: an offline one on res.y_slicer sees only the first 20k)
+    return cm.loss_at(56e9), run_time_link(cfg, channel=cm).ber.ber
 
 
 lengths = [0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30]
+GRADES = {6.5: 0.0015, 7.5: 0.0008}  # ADC ENOB -> input-referred noise rms
 print("Sweeping pre-FEC BER, two ADC grades...")
-loss65, pre65, loss75, pre75 = [], [], [], []
+sweeps = {e: {} for e in GRADES}     # channel length -> (loss dB, pre-FEC BER)
 for L in lengths:
-    lo, pb = pre_fec(L, enob=6.5, noise=0.0015)
-    loss65.append(lo); pre65.append(pb)
-    lo2, pb2 = pre_fec(L, enob=7.5, noise=0.0008)
-    loss75.append(lo2); pre75.append(pb2)
-    print(f"  {lo:6.1f}dB: pre-FEC(ENOB6.5) {pb:.2e} | (ENOB7.5) {pb2:.2e}")
-loss = np.array(loss65)
-pre65 = np.array(pre65); pre75 = np.array(pre75)
+    for e, noise in GRADES.items():
+        lo, pb = pre_fec(L, enob=e, noise=noise)
+        sweeps[e][L] = (-lo, pb)
+    print(f"  {-sweeps[6.5][L][0]:6.1f}dB: pre-FEC(ENOB6.5) {sweeps[6.5][L][1]:.2e} | (ENOB7.5) {sweeps[7.5][L][1]:.2e}")
 
 BCH_N, BCH_T = 255, 5  # inner code for the concatenated schemes
+KP4 = fec_threshold("kp4")
+CONCAT = fec_threshold("kp4", inner=(BCH_N, BCH_T))
+print(f"\nreach: post-FEC 1e-15 <=> pre-FEC BER <= {KP4:.2e} (KP4), {CONCAT:.2e} (+ BCH({BCH_N},{BCH_N - 8 * BCH_T}))")
 
 CONFIGS = [
-    ("A. KP4 + ADC 6.5 (baseline)", pre65,
-     lambda p: pre_to_post_fec_ber(max(p, 1e-9), "kp4"), "C1", "o"),
-    ("B. + concatenated FEC (ADC 6.5)", pre65,
+    ("A. KP4 + ADC 6.5 (baseline)", 6.5, KP4, lambda p: pre_to_post_fec_ber(max(p, 1e-9), "kp4"), "C1", "o"),
+    ("B. + concatenated FEC (ADC 6.5)", 6.5, CONCAT,
      lambda p: concatenated_post_fec_ber(max(p, 1e-9), BCH_N, BCH_T), "C0", "s"),
-    ("C. + better ADC 7.5 (KP4 only)", pre75,
-     lambda p: pre_to_post_fec_ber(max(p, 1e-9), "kp4"), "C2", "^"),
-    ("D. full stack: ADC 7.5 + concatenated FEC", pre75,
+    ("C. + better ADC 7.5 (KP4 only)", 7.5, KP4, lambda p: pre_to_post_fec_ber(max(p, 1e-9), "kp4"), "C2", "^"),
+    ("D. full stack: ADC 7.5 + concatenated FEC", 7.5, CONCAT,
      lambda p: concatenated_post_fec_ber(max(p, 1e-9), BCH_N, BCH_T), "C3", "D"),
 ]
 
 
-def reach(post):
-    x = -loss
-    lp = np.log10(np.maximum(post, 1e-300))
-    for i in range(len(x) - 1):
-        if lp[i] < -15 <= lp[i + 1]:
-            t = (-15 - lp[i]) / (lp[i + 1] - lp[i])
-            return x[i] + t * (x[i + 1] - x[i])
-    return x[0] if lp[0] >= -15 else None
+def measure(enob):
+    def run(L):
+        lo, pb = pre_fec(L, enob=enob, noise=GRADES[enob])
+        return -lo, pb
+    return run
 
+
+reaches = {label: refine(sweeps[e], measure(e), thr, tol=0.4) for label, e, thr, *_ in CONFIGS}
+print("refined around the crossings:")
+for e in GRADES:
+    for L in sorted(set(sweeps[e]) - set(lengths)):
+        print(f"  {-sweeps[e][L][0]:6.1f}dB: pre-FEC(ENOB{e}) {sweeps[e][L][1]:.2e}")
 
 fig, ax = plt.subplots(figsize=(8.5, 5.4))
 print("\n== reach summary (post-FEC < 1e-15) ==")
-for label, pre, fn, c, m in CONFIGS:
-    post = np.array([fn(p) for p in pre])
-    rc = reach(post)
-    tag = f"{label}  (reach {rc:.1f} dB)" if rc else label
-    ax.semilogy(-loss, np.maximum(post, 1e-30), m + "-", color=c, label=tag)
-    print(f"  {label:28s}: reach {rc:.1f} dB" if rc else f"  {label}: <start")
+for label, e, thr, fn, c, m in CONFIGS:
+    pts = [sweeps[e][L] for L in sorted(sweeps[e])]
+    post = np.array([fn(b) for _, b in pts])
+    rc = reaches[label].value
+    tag = f"{label}  (reach {rc:.1f} dB)" if rc is not None else label
+    ax.semilogy([x for x, _ in pts], np.maximum(post, 1e-30), m + "-", color=c, label=tag)
+    r = reaches[label]
+    print(f"  {label:28s}: reach {rc:.1f} dB" if rc is not None
+          else f"  {label}: {r.note} ({r.lo} - {r.hi} dB)")
 ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.axvspan(35, 46, color="gray", alpha=0.10)
 ax.text(35.3, 1e-27, "802.3dj LR\n(35-45 dB)", fontsize=8, color="dimgray")
