@@ -6,6 +6,15 @@
 
 ---
 
+## [未发布] — 桌面打包:Nuitka 编译缓存跨运行保存
+
+### 变更
+- `build-windows-desktop` 的 `nuitka` / `nuitka-onefile`:用 `actions/cache` 跨运行保存 `NUITKA_CACHE_DIR`(约 92 MB,每次运行一个新 key,
+  从本类最新的一份恢复;分支也读 main 的)。一次构建 114 分钟里有 97 分钟是 MSVC 编 3643 个 C 文件,此前每次 0 命中。实测(2026-10-09):
+  冷 onefile 87 / standalone 109 分钟,热两轮 40 / 31、42 / 35 分钟,3642–3643 / 3643 命中。上限 120 → 180 分钟,留给冷构建(依赖升级后、缓存被淘汰时)。
+- 背景:10-03…08 onefile 在 120 分钟上被取消 7 次;取消不受 `continue-on-error` 管,打 tag 时还会让 `release` 被跳过。
+  `packaging/README.md`、`CONTRIBUTING.md` 同步。
+
 ## [未发布] — ADC 收端的统计结果按 MM 锁定点读
 
 ### 变更

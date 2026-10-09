@@ -56,19 +56,39 @@ jobs:
 
   nuitka:
     runs-on: windows-latest
-    timeout-minutes: 120
+    # a cold build (empty cache: new dependency versions, an evicted entry)
+    # took 64-118 min in 2026-10 and the onefile one was cancelled at the old
+    # 120 min limit seven times in a week; the cache makes warm builds short,
+    # the limit is for the cold ones
+    timeout-minutes: 180
     continue-on-error: true        # Nuitka compile of scipy is slow/heavy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      # Most of a Nuitka build is MSVC compiling ~3600 generated C files
+      # (97 of 114 min on 2026-10-09), almost all of them scipy / pandas /
+      # matplotlib / dash, identical from run to run while their versions
+      # are. Nuitka caches them (clcache) in NUITKA_CACHE_DIR, which a fresh
+      # runner never had: "0 cache hits and 3643 cache misses". Keep it
+      # between runs -- a fresh key per run so each saves what it compiled,
+      # starting from the latest of its kind (a branch also reads main's).
+      - name: Restore Nuitka's compile cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/nuitka-cache
+          key: nuitka-standalone-${{ runner.os }}-py3.11-${{ github.run_id }}
+          restore-keys: |
+            nuitka-standalone-${{ runner.os }}-py3.11-
       - name: Install (gui + desktop + nuitka)
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[gui,desktop]"
           pip install "nuitka>=2.0" ordered-set zstandard
       - name: Build (standalone)
+        env:
+          NUITKA_CACHE_DIR: ${{ runner.temp }}/nuitka-cache   # the runner context is not available at job level
         run: |
           python -m nuitka --standalone --assume-yes-for-downloads `
             --include-package=dash --include-package=plotly `
@@ -96,19 +116,29 @@ jobs:
 
   nuitka-onefile:
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 180           # see the nuitka job
     continue-on-error: true        # Nuitka compile of scipy is slow/heavy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      # as in the nuitka job (its own key: the build directory differs)
+      - name: Restore Nuitka's compile cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/nuitka-cache
+          key: nuitka-onefile-${{ runner.os }}-py3.11-${{ github.run_id }}
+          restore-keys: |
+            nuitka-onefile-${{ runner.os }}-py3.11-
       - name: Install (gui + desktop + nuitka)
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[gui,desktop]"
           pip install "nuitka>=2.0" ordered-set zstandard
       - name: Build (onefile)
+        env:
+          NUITKA_CACHE_DIR: ${{ runner.temp }}/nuitka-cache
         run: |
           # the exe's version resource follows the package, which the release
           # job holds the tag to

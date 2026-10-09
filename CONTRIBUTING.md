@@ -54,7 +54,7 @@ HALO_NO_JIT=1 pytest -q       # 纯 Python 内核:铁律 4,结果必须一致
 | | `rtl-lockstep` | SystemVerilog 与 Python 黄金模型逐位一致 | 同上 |
 | `android` | `assemble`、`wheel-versions`、`emulator`(API 34 / 35)、`compiled-apk`、`compiled-emulator` | 能否打包;在手机的 numpy / scipy 版本上跑手机的计算路径;仪器化测试(解释版与 Cython 编译版) | push 改动 `android/`、共用层、`configs/`、`data/channels/`、`data/clock_profiles/`;PR 改动 `android/` |
 | `examples-full` | `full` | 每个示例按原尺寸跑,输出与 `examples/expected/` 逐行比对(`tools/example_drift.py`);不一致即红,日志里列出仍引用旧值的文档行,输出存为 artifact | PR / push main 改动库、app 层、示例、`configs/`、`data/`、`pyproject.toml`;每周一次(依赖升级也会改数) |
-| `build-windows-desktop` | `pyinstaller`、`nuitka`、`nuitka-onefile` | 冻结后的桌面包能启动 | push 改动共用层、`src/halo_serdes_gui/`、`configs/`、`packaging/`、`pyproject.toml`;`v*` tag 时发布 |
+| `build-windows-desktop` | `pyinstaller`、`nuitka`、`nuitka-onefile` | 冻结后的桌面包能启动(Nuitka 冷编译 1.5–2 小时,有缓存 30–42 分钟,见 `packaging/README.md`) | push 改动共用层、`src/halo_serdes_gui/`、`configs/`、`packaging/`、`pyproject.toml`;`v*` tag 时发布 |
 
 ## 两端验证(铁律 6)
 
