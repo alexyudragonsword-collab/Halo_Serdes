@@ -15,6 +15,7 @@
 - 示例 32 带 FFE 的 7 行裕度变了(16 dB + FFE 3.92 → 5.52 dB 等),`example_drift.py` 第一次实战找出文档行;顺手把一位数排除
   (170 → 74 行)。推翻一条:"c = 0.5 时 CPO 上 FFE 增益缩水"(修后 4.17 vs 线性 4.12)。§6 更正段、SUMMARY / USAGE 同步,预加重研究表重跑。
 - 坑进 engineering-pitfalls(两条)。全量(JIT + iverilog):903 passed / 1 skipped(+3);ruff 通过;新测试在旧代码上三条全挂。
+- PR #54;CI 全部 test job + examples + rtl-lockstep + `examples-full`(40 / 40)+ pyinstaller 绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 
 ## 2026-10-09 · 示例输出入库 + 文档数字漂移检查(tools/example-drift,ROADMAP P3 #10 一项)
 
