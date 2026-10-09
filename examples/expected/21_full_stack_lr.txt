@@ -1,15 +1,30 @@
 Sweeping pre-FEC BER, two ADC grades...
    -27.3dB: pre-FEC(ENOB6.5) 0.00e+00 | (ENOB7.5) 0.00e+00
-   -30.3dB: pre-FEC(ENOB6.5) 0.00e+00 | (ENOB7.5) 0.00e+00
-   -33.3dB: pre-FEC(ENOB6.5) 4.25e-04 | (ENOB7.5) 0.00e+00
-   -36.4dB: pre-FEC(ENOB6.5) 9.28e-03 | (ENOB7.5) 1.00e-04
-   -39.4dB: pre-FEC(ENOB6.5) 3.07e-02 | (ENOB7.5) 6.50e-04
-   -42.4dB: pre-FEC(ENOB6.5) 6.93e-02 | (ENOB7.5) 4.05e-03
-   -45.5dB: pre-FEC(ENOB6.5) 1.31e-01 | (ENOB7.5) 3.62e-02
+   -30.3dB: pre-FEC(ENOB6.5) 3.04e-06 | (ENOB7.5) 0.00e+00
+   -33.3dB: pre-FEC(ENOB6.5) 3.99e-04 | (ENOB7.5) 0.00e+00
+   -36.4dB: pre-FEC(ENOB6.5) 8.14e-03 | (ENOB7.5) 3.24e-05
+   -39.4dB: pre-FEC(ENOB6.5) 3.02e-02 | (ENOB7.5) 5.69e-04
+   -42.4dB: pre-FEC(ENOB6.5) 7.02e-02 | (ENOB7.5) 4.40e-03
+   -45.5dB: pre-FEC(ENOB6.5) 1.30e-01 | (ENOB7.5) 3.54e-02
+
+reach: post-FEC 1e-15 <=> pre-FEC BER <= 2.19e-04 (KP4), 6.86e-03 (+ BCH(255,215))
+refined around the crossings:
+   -31.8dB: pre-FEC(ENOB6.5) 1.42e-04
+   -32.6dB: pre-FEC(ENOB6.5) 1.40e-04
+   -33.0dB: pre-FEC(ENOB6.5) 1.96e-04
+   -34.9dB: pre-FEC(ENOB6.5) 1.82e-03
+   -35.6dB: pre-FEC(ENOB6.5) 2.84e-03
+   -36.0dB: pre-FEC(ENOB6.5) 4.36e-03
+   -37.9dB: pre-FEC(ENOB7.5) 1.32e-05
+   -38.3dB: pre-FEC(ENOB7.5) 8.50e-05
+   -38.6dB: pre-FEC(ENOB7.5) 3.87e-04
+   -42.8dB: pre-FEC(ENOB7.5) 7.37e-03
+   -43.2dB: pre-FEC(ENOB7.5) 1.31e-02
+   -44.0dB: pre-FEC(ENOB7.5) 1.30e-02
 
 == reach summary (post-FEC < 1e-15) ==
-  A. KP4 + ADC 6.5 (baseline) : reach 33.2 dB
-  B. + concatenated FEC (ADC 6.5): reach 36.2 dB
-  C. + better ADC 7.5 (KP4 only): reach 37.7 dB
-  D. full stack: ADC 7.5 + concatenated FEC: reach 44.2 dB
+  A. KP4 + ADC 6.5 (baseline) : reach 33.0 dB
+  B. + concatenated FEC (ADC 6.5): reach 36.3 dB
+  C. + better ADC 7.5 (KP4 only): reach 38.5 dB
+  D. full stack: ADC 7.5 + concatenated FEC: reach 42.8 dB
 wrote examples/output/21_full_stack_lr.png

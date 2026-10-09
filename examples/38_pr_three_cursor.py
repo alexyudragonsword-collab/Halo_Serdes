@@ -1,7 +1,7 @@
 """224G long-reach: a second controlled cursor, 1 + aD + bD^2.
 
 Example 36 left the FFE one controlled cursor (1 + aD) and Viterbi resolved
-it: +4.7 dB of reach over the delta target. On a lossy channel the pulse has
+it: +5.0 dB of reach over the delta target. On a lossy channel the pulse has
 a long tail, so the next step is to leave the FFE a second one -- the target
 (1, a, b), up to EPR4's 1 + 2D + D^2 -- at the price of a trellis N times
 bigger (memory 2 behind the target: 256 states for PAM4).

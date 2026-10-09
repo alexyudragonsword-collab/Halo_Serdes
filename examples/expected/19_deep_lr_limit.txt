@@ -1,23 +1,27 @@
 == FFE + MLSD mem2 (example 18) ==
    -24.3dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
    -27.3dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
-   -28.8dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
-   -30.3dB: pre-FEC 2.50e-05 -> post-KP4 2.2e-30
-   -31.8dB: pre-FEC 3.50e-04 -> post-KP4 9.2e-13
-   -33.3dB: pre-FEC 1.75e-03 -> post-KP4 1.4e-04
-   -36.4dB: pre-FEC 1.65e-02 -> post-KP4 4.7e-03
-   -39.4dB: pre-FEC 4.88e-02 -> post-KP4 4.7e-03
-   -42.4dB: pre-FEC 9.35e-02 -> post-KP4 4.7e-03
+   -28.8dB: pre-FEC 4.05e-06 -> post-KP4 5.4e-43
+   -30.3dB: pre-FEC 3.04e-05 -> post-KP4 4.7e-29
+   -31.8dB: pre-FEC 4.17e-04 -> post-KP4 1.1e-11
+   -33.3dB: pre-FEC 1.71e-03 -> post-KP4 1.2e-04
+   -36.4dB: pre-FEC 1.53e-02 -> post-KP4 4.7e-03
+   -39.4dB: pre-FEC 4.61e-02 -> post-KP4 4.7e-03
+   -42.4dB: pre-FEC 9.41e-02 -> post-KP4 4.7e-03
+   -31.1dB: pre-FEC 1.54e-04 -> post-KP4 4.8e-18  (refined)
+   -31.4dB: pre-FEC 2.65e-04 -> post-KP4 1.7e-14  (refined)
 == FFE + DFE8 + MLSD mem3 ==
    -24.3dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
    -27.3dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
    -28.8dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
-   -30.3dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
-   -31.8dB: pre-FEC 1.50e-04 -> post-KP4 3.2e-18
-   -33.3dB: pre-FEC 4.25e-04 -> post-KP4 1.4e-11
-   -36.4dB: pre-FEC 9.18e-03 -> post-KP4 4.7e-03
-   -39.4dB: pre-FEC 3.07e-02 -> post-KP4 4.7e-03
-   -42.4dB: pre-FEC 6.93e-02 -> post-KP4 4.7e-03
+   -30.3dB: pre-FEC 3.04e-06 -> post-KP4 5.4e-45
+   -31.8dB: pre-FEC 1.42e-04 -> post-KP4 1.4e-18
+   -33.3dB: pre-FEC 3.99e-04 -> post-KP4 5.8e-12
+   -36.4dB: pre-FEC 8.14e-03 -> post-KP4 4.7e-03
+   -39.4dB: pre-FEC 3.02e-02 -> post-KP4 4.7e-03
+   -42.4dB: pre-FEC 7.02e-02 -> post-KP4 4.7e-03
+   -32.6dB: pre-FEC 1.40e-04 -> post-KP4 1.1e-18  (refined)
+   -33.0dB: pre-FEC 1.96e-04 -> post-KP4 1.9e-16  (refined)
 == same + better ADC (ENOB7.5) ==
    -24.3dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
    -27.3dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
@@ -25,12 +29,15 @@
    -30.3dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
    -31.8dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
    -33.3dB: pre-FEC 0.00e+00 -> post-KP4 1.1e-100
-   -36.4dB: pre-FEC 1.00e-04 -> post-KP4 6.3e-21
-   -39.4dB: pre-FEC 6.50e-04 -> post-KP4 4.1e-09
-   -42.4dB: pre-FEC 4.05e-03 -> post-KP4 4.3e-03
+   -36.4dB: pre-FEC 3.24e-05 -> post-KP4 1.3e-28
+   -39.4dB: pre-FEC 5.69e-04 -> post-KP4 7.3e-10
+   -42.4dB: pre-FEC 4.40e-03 -> post-KP4 4.5e-03
+   -37.9dB: pre-FEC 1.32e-05 -> post-KP4 7.9e-35  (refined)
+   -38.3dB: pre-FEC 8.50e-05 -> post-KP4 5.1e-22  (refined)
+   -38.6dB: pre-FEC 3.87e-04 -> post-KP4 3.8e-12  (refined)
 
 == reach summary (max loss with post-KP4 < 1e-15) ==
-  FFE + MLSD mem2 (example 18): 31.6 dB
-  FFE + DFE8 + MLSD mem3: 32.4 dB
-  same + better ADC (ENOB7.5): 37.7 dB
+  FFE + MLSD mem2 (example 18): 31.3 dB
+  FFE + DFE8 + MLSD mem3: 33.0 dB
+  same + better ADC (ENOB7.5): 38.5 dB
 wrote examples/output/19_deep_lr_limit.png

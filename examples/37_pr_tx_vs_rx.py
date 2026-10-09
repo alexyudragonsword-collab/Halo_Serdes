@@ -1,7 +1,7 @@
 """224G long-reach: partial response in the transmitter, in the receiver, or not at all.
 
 Example 36 found that equalising to 1 + aD at the receiver and letting
-Viterbi resolve a buys ~4.7 dB of reach over a delta target with the same
+Viterbi resolve a buys ~5.0 dB of reach over a delta target with the same
 Viterbi. This example puts the same 1 + aD in the transmitter instead
 (``pr.at = "tx"``), before the Tx FFE and the DAC, scaled by 1 / (1 + a) so
 the Tx peak swing is unchanged, and lines the three up on example 18's

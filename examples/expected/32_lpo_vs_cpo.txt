@@ -7,23 +7,29 @@ seg loss  fibre   pre-FEC  post-KP4    SNR  errs
       4dB   180m  7.73e-06   1.7e-38  20.2dB      3  [~s]
       4dB   220m  4.10e-04   8.5e-12  17.7dB    159  [~s]
       4dB   260m  5.98e-03   4.7e-03  14.8dB   2318  [~s]
+      4dB   200m  7.99e-05   1.9e-22  19.0dB     31  (refined)  [~s]
+      4dB   210m  1.50e-04   3.1e-18  18.4dB     58  (refined)  [~s]
       8dB    30m  1.29e-06   6.1e-51  21.3dB      0  [~s]
       8dB    60m  5.16e-06   2.5e-41  20.9dB      2  [~s]
       8dB   100m  1.55e-05   1.0e-33  20.1dB      6  [~s]
       8dB   140m  7.22e-05   4.0e-23  18.8dB     28  [~s]
       8dB   180m  8.76e-04   1.6e-07  17.0dB    340  [~s]
       8dB   220m  7.18e-03   4.7e-03  14.5dB   2787  [~s]
+      8dB   160m  2.71e-04   2.2e-14  17.9dB    105  (refined)  [~s]
+      8dB   150m  1.60e-04   8.5e-18  18.4dB     62  (refined)  [~s]
      12dB    30m  2.11e-04   5.8e-16  18.1dB     82  [~s]
      12dB    60m  3.51e-04   9.4e-13  17.7dB    136  [~s]
      12dB   100m  8.66e-04   1.4e-07  16.9dB    336  [~s]
      12dB   140m  3.30e-03   3.2e-03  15.5dB   1281  [~s]
+     12dB    45m  2.42e-04   4.4e-15  18.0dB     94  (refined)  [~s]
+     12dB    38m  1.91e-04   1.2e-16  18.1dB     74  (refined)  [~s]
      16dB    30m  6.59e-03   4.7e-03  14.6dB   2555  [~s]
 
 Reach ladder (post-KP4 < 1e-15):
 seg A/B loss total elec.   reach SNR @ reach
-          4dB          8dB    214m       18.1dB
-          8dB         16dB    159m       17.9dB
-         12dB         24dB     32m       18.0dB
+          4dB          8dB    214m       18.2dB
+          8dB         16dB    156m       18.1dB
+         12dB         24dB     42m       18.0dB
          16dB         32dB      0m        nandB
 reach decreases monotonically with electrical loss: True
 

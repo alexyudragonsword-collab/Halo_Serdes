@@ -8,20 +8,27 @@ TX SNDR [dB] at the Tx output (PAM4 112 GBd, FFE (-0.06, 1, -0.12)), vs ideal Tx
 measured R_LM vs c (ideal DAC): 0:1.000  0.1:0.940  0.2:0.874  0.3:0.801
 
 reach: post-KP4 1e-15 <=> pre-FEC BER <= 2.19e-04 (after MLSD)
-  ideal DAC      22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 1.3e-06 28.8dB: 1.3e-06 30.3dB: 2.5e-05 33.3dB: 1.6e-03  [~s]
-  8-bit DAC      22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 1.3e-06 28.8dB: 1.3e-06 30.3dB: 2.5e-05 33.3dB: 1.7e-03  [~s]
-  7-bit DAC      22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 1.3e-06 28.8dB: 1.3e-06 30.3dB: 2.5e-05 33.3dB: 1.8e-03  [~s]
-  6-bit DAC      22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 1.3e-06 28.8dB: 1.3e-06 30.3dB: 5.0e-05 33.3dB: 1.9e-03  [~s]
-  7-bit + c=0.1  22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 2.5e-05 28.8dB: 1.3e-06 30.3dB: 2.5e-05 33.3dB: 2.1e-03  [~s]
-  7-bit + c=0.2  22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 2.5e-05 28.8dB: 1.0e-04 30.3dB: 2.0e-04 33.3dB: 3.8e-03  [~s]
-  ideal + c=0.2  22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 2.5e-05 28.8dB: 1.0e-04 30.3dB: 2.5e-04 33.3dB: 3.9e-03  [~s]
+  ideal DAC      22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 1.3e-06 28.8dB: 3.8e-06 30.3dB: 4.6e-05 33.3dB: 1.7e-03  [~s]
+                 31.1dB: 1.4e-04 31.4dB: 2.7e-04 31.8dB: 4.3e-04  (refined)
+  8-bit DAC      22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 1.3e-06 28.8dB: 5.1e-06 30.3dB: 4.6e-05 33.3dB: 1.8e-03  [~s]
+                 31.1dB: 1.6e-04 31.4dB: 2.9e-04 31.8dB: 4.5e-04  (refined)
+  7-bit DAC      22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 1.3e-06 28.8dB: 3.8e-06 30.3dB: 4.9e-05 33.3dB: 1.8e-03  [~s]
+                 31.1dB: 1.6e-04 31.4dB: 2.7e-04 31.8dB: 4.3e-04  (refined)
+  6-bit DAC      22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 1.3e-06 28.8dB: 6.3e-06 30.3dB: 3.7e-05 33.3dB: 1.9e-03  [~s]
+                 31.1dB: 1.6e-04 31.4dB: 2.6e-04 31.8dB: 4.7e-04  (refined)
+  7-bit + c=0.1  22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 2.5e-06 28.8dB: 8.9e-06 30.3dB: 7.7e-05 33.3dB: 2.2e-03  [~s]
+                 30.7dB: 1.4e-04 31.1dB: 2.6e-04 31.8dB: 6.4e-04  (refined)
+  7-bit + c=0.2  22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 8.9e-06 28.8dB: 6.9e-05 30.3dB: 2.8e-04 33.3dB: 4.0e-03  [~s]
+                 29.6dB: 1.5e-04 29.9dB: 1.9e-04  (refined)
+  ideal + c=0.2  22.7dB: 1.3e-06 25.8dB: 1.3e-06 27.3dB: 3.8e-06 28.8dB: 6.3e-05 30.3dB: 2.6e-04 33.3dB: 3.9e-03  [~s]
+                 29.6dB: 1.4e-04 29.9dB: 1.8e-04  (refined)
 
 reach [dB @ 56 GHz]:
-  ideal DAC             31.90  +0.00 dB
-  8-bit DAC             31.87  -0.03 dB
-  7-bit DAC             31.85  -0.04 dB
-  6-bit DAC             31.55  -0.35 dB
-  7-bit + c=0.1         31.81  -0.09 dB
-  7-bit + c=0.2         30.41  -1.49 dB
-  ideal + c=0.2         30.10  -1.80 dB
+  ideal DAC             31.33  +0.00 dB
+  8-bit DAC             31.27  -0.07 dB
+  7-bit DAC             31.29  -0.05 dB
+  6-bit DAC             31.32  -0.01 dB
+  7-bit + c=0.1         30.97  -0.37 dB
+  7-bit + c=0.2         30.09  -1.24 dB
+  ideal + c=0.2         30.15  -1.19 dB
 wrote examples/output/35_dsp_tx_sndr.png

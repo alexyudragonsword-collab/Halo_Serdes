@@ -5,17 +5,22 @@
 
 reach: post-KP4 1e-15 <=> pre-FEC BER <= 2.19e-04
   a=0    27.3dB: 6.3e-07 30.3dB: 4.6e-05 33.3dB: 1.7e-03 36.4dB: 1.5e-02 39.4dB: 4.6e-02 42.4dB: 9.4e-02  [~s]
+         31.1dB: 1.4e-04 31.4dB: 2.7e-04 31.8dB: 4.3e-04  (refined)
   a=0.25 27.3dB: 6.3e-07 30.3dB: 2.5e-06 33.3dB: 1.2e-04 36.4dB: 4.7e-03 39.4dB: 2.5e-02 42.4dB: 6.8e-02  [~s]
+         33.7dB: 2.9e-04 34.1dB: 5.1e-04 34.9dB: 9.2e-04  (refined)
   a=0.5  27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 7.6e-06 36.4dB: 9.2e-04 39.4dB: 9.9e-03 42.4dB: 4.1e-02  [~s]
+         34.9dB: 8.9e-05 35.6dB: 2.1e-04 36.0dB: 4.8e-04  (refined)
   a=0.75 27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 2.5e-06 36.4dB: 2.4e-04 39.4dB: 4.3e-03 42.4dB: 2.5e-02  [~s]
+         34.9dB: 2.3e-05 35.6dB: 3.9e-05 36.0dB: 1.2e-04  (refined)
   a=1    27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 2.5e-06 36.4dB: 3.0e-04 39.4dB: 5.1e-03 42.4dB: 2.9e-02  [~s]
+         34.9dB: 3.9e-05 35.6dB: 8.5e-05 36.0dB: 1.8e-04  (refined)
 
 reach [dB @ 56 GHz]:
-  a=0     31.62 dB  +0.00 dB  (control: delta target + Viterbi)
-  a=0.25  33.86 dB  +2.24 dB
-  a=0.5   35.47 dB  +3.85 dB
-  a=0.75  36.33 dB  +4.71 dB  <- best
-  a=1     36.17 dB  +4.55 dB
+  a=0     31.33 dB  +0.00 dB  (control: delta target + Viterbi)
+  a=0.25  33.60 dB  +2.27 dB
+  a=0.5   35.64 dB  +4.31 dB
+  a=0.75  36.33 dB  +5.00 dB  <- best
+  a=1     36.14 dB  +4.81 dB
 
 a = 1 at 33.3 dB: plain 2.54e-06, precoded 8.88e-06
 
@@ -26,5 +31,8 @@ receiver-chosen a (pr.adapt = 'lms': MMSE start, LMS-tracked):
   36.4 dB  a 0.745 -> 0.752  BER  2.4e-04
   39.4 dB  a 0.763 -> 0.766  BER  4.5e-03
   42.4 dB  a 0.775 -> 0.778  BER  2.6e-02
-  reach  36.32 dB  (-0.00 dB vs the best fixed a = 0.75)
+  34.9 dB  a 0.725 -> 0.733  BER  2.0e-05  (refined)
+  35.6 dB  a 0.732 -> 0.741  BER  3.7e-05  (refined)
+  36.0 dB  a 0.743 -> 0.749  BER  1.1e-04  (refined)
+  reach  36.34 dB  (+0.00 dB vs the best fixed a = 0.75)
 wrote examples/output/36_pr_rx_alpha.png

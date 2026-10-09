@@ -30,12 +30,12 @@
   quotes:
     - {doc: docs/SUMMARY.md, text: "DSP depth | +{dfe - ffe} dB |"}
     - {doc: docs/SUMMARY.md, text: "ADC quality | **+{adc - dfe} dB** |"}
-    - {doc: docs/SUMMARY.md, text: "只多 {dfe - ffe} dB({ffe} → {dfe} dB),ADC 采样质量多 {adc - dfe} dB(→ {adc} dB)"}
+    - {doc: docs/SUMMARY.md, text: "加 DFE + 更深 MLSD 多 {dfe - ffe} dB({ffe} → {dfe} dB),ADC 采样质量多 {adc - dfe} dB(→ {adc} dB)"}
     - {doc: docs/SUMMARY.md, text: "DSP depth buys {dfe - ffe} dB, ADC quality {adc - dfe} dB"}
     - {doc: docs/SUMMARY.md, text: "| 深 LR 上的 FFE(+ MLSD) | {ffe} dB |"}
     - {doc: docs/SUMMARY.md, text: "| + DFE + 更深 MLSD | {dfe} dB | DSP 深度(+{dfe - ffe} dB) |"}
     - {doc: docs/COMPARISON.md, text: "DFE/deeper MLSD +{dfe - ffe} dB、级联 FEC +{*} dB、better ADC +{adc - dfe} dB"}
-    - {doc: docs/summary.html, text: "只多 {dfe - ffe} dB"}
+    - {doc: docs/summary.html, text: "(memory-3)多 {dfe - ffe} dB"}
     - {doc: docs/summary.html, text: "同 DSP 多 {adc - dfe} dB"}
     - {doc: docs/summary.html, text: "+{dfe - ffe} dB DSP 深度"}
     - {doc: docs/summary.html, text: "+{adc - dfe} dB ADC 质量"}
@@ -50,7 +50,15 @@
   values:
     kp4: {example: "20", line: "KP4 only (t=15) : reach {} dB"}
     bch: {example: "20", line: "+ inner BCH(255,215,t=5) : reach {} dB"}
+    kp4_thr: {example: "20", line: "KP4 only (t=15) : {} ({*}x KP4's)"}
+    bch_thr: {example: "20", line: "+ inner BCH(255,215,t=5) : {} ({*}x KP4's)"}
   quotes:
+    - {doc: docs/SUMMARY.md, text: "可容忍 pre-FEC BER 从 {kp4_thr} 抬到 ~{bch_thr}({bch_thr / kp4_thr} 倍"}
+    - {doc: docs/SUMMARY.md, text: "raises tolerable pre-FEC {bch_thr / kp4_thr}×"}
+    - {doc: docs/summary.html, text: "pre-FEC BER 从 {kp4_thr} 抬到 ~{bch_thr}({bch_thr / kp4_thr} 倍)"}
+    - {doc: docs/summary.html, text: "from {kp4_thr} to ~{bch_thr} ({bch_thr / kp4_thr}×)"}
+    - {doc: docs/COMPARISON.md, text: "抬高约 {bch_thr / kp4_thr}×(BCH(255,215):{kp4_thr} → {bch_thr}"}
+    - {doc: examples/20_concatenated_fec_reach.py, text: "pre-FEC BER ~{bch_thr / kp4_thr}x ({kp4_thr} -> {bch_thr} for BCH(255,215))"}
     - {doc: docs/SUMMARY.md, text: "concat FEC | **+{bch - kp4} dB** |"}
     - {doc: docs/SUMMARY.md, text: "reach 从 {kp4} 到 {bch} dB"}
     - {doc: docs/SUMMARY.md, text: "reach {kp4} → {bch} dB"}
@@ -86,14 +94,15 @@
     - {doc: docs/summary.html, text: "{d} dB 全栈 +{d - a} dB"}
     - {doc: examples/21_full_stack_lr.py, text: "(baseline, ~{a} dB)"}
 
-- name: ex33 optical levers, the sum of the rounded rows
+- name: ex33 optical levers, the sum of the single-lever rows
   values:
     elec: {example: "33", line: "+ electrical: 4 dB segments {*}m {}m"}
     rin: {example: "33", line: "+ optical noise: RIN -148 {*}m {}m"}
     retime: {example: "33", line: "+ retiming {*}m {}m"}
   quotes:
-    - {doc: docs/SUMMARY.md, text: "各行四舍五入后相加为 +{elec + rin + retime}"}
-    - {doc: docs/SUMMARY.md, text: "(+{elec + rin + retime} from the rounded rows)"}
+    - {doc: docs/SUMMARY.md, text: "单杠杆增益之和 +{elec + rin + retime} m"}
+    - {doc: docs/SUMMARY.md, text: "The single-lever gains sum to +{elec + rin + retime} m"}
+    - {doc: cairn/光互联建模.md, text: "(单杠杆之和 +{elec + rin + retime} m)"}
 
 - name: ex34 TDECQ, the EML's DFE saving and the L-I compression penalty
   values:
@@ -115,3 +124,15 @@
     cpo_ffe: {example: "32", line: "4dB on 0dB 0dB {*}dB {}dB"}
   quotes:
     - {doc: cairn/光互联建模.md, text: "CPO 上 FFE 的增益仍是 {*} dB(线性时 {cpo_ffe - cpo})"}
+
+- name: ex38 PR reach ladder, as tools/pr_target_length.py is calibrated to it
+  values:
+    delta: {example: "38", line: "control (delta + Viterbi) {} dB {*} dB"}
+    ad: {example: "38", line: "1 + aD (MMSE a) {} dB {*} dB"}
+    adbd: {example: "38", line: "1 + aD + bD^2 (MMSE a, b) {} dB {*} dB"}
+  quotes:
+    - {doc: tools/pr_target_length.py, text: "MEASURED = {1: {delta}, 2: {ad}, 3: {adbd}}"}
+    - {doc: tools/pr_target_length.py, text: "the delta target ({delta} dB), 1 + aD ({ad} dB) and"}
+    - {doc: tools/pr_target_length.py, text: "held against the measured +{ad - delta} / +{adbd - delta} dB"}
+    - {doc: docs/SUMMARY.md, text: "two controlled cursors | **+{adbd - delta} dB** |"}
+    - {doc: docs/COMPARISON.md, text: "多 {adbd - delta} dB reach(示例 38)"}

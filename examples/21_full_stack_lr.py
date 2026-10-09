@@ -1,6 +1,6 @@
 """Full-stack deep LR: best DSP + better ADC + concatenated FEC together.
 
-Examples 19 and 20 showed the ADC lever (~+5 dB) and the FEC lever (~+4 dB)
+Examples 19 and 20 showed the ADC lever (~+5.5 dB) and the FEC lever (~+3 dB)
 separately. This combines them. Four cumulative configs, same channel sweep:
 
   A. KP4 + ADC ENOB 6.5              (baseline, ~33 dB)

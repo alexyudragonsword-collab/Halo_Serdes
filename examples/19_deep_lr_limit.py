@@ -1,15 +1,15 @@
 """Deep 224G long-reach: how far can FFE + DFE + deeper MLSD + KP4 reach?
 
-Pushing past the ~31.6 dB reach of example 18's receiver by adding DFE (cancels far
+Pushing past the ~31.3 dB reach of example 18's receiver by adding DFE (cancels far
 postcursors without FFE's noise enhancement) and deeper MLSD memory. The
 honest finding: at deep LR the link is SNR-limited, not ISI/DSP-depth-limited.
 
-- adding DFE + MLSD memory-3 over FFE+memory-2 buys under 1 dB (the residual
+- adding DFE + MLSD memory-3 over FFE+memory-2 buys under 2 dB (the residual
   ISI is already small; the wall is noise, and FFE-inverting a 30 dB channel
   enhances it);
 - the big lever is ADC sampling quality — better ENOB / lower noise floor
-  buys ~5 dB of reach with the SAME DSP (31.6 -> 32.4 dB from DSP depth, but
-  32.4 -> 37.7 dB from the ADC; full-size rerun 2026-10-08). The earlier
+  buys ~5.5 dB of reach with the SAME DSP (31.3 -> 33.0 dB from DSP depth, but
+  33.0 -> 38.5 dB from the ADC; recomputed 2026-10-09). The earlier
   28 -> 29 -> 35.5 dB ladder was taken with MM-CDR off the peak.
 
 The sequence detector is the engine's (``mlsd``), scored over every symbol.
@@ -131,7 +131,7 @@ for label in ("FFE + MLSD mem2 (example 18)", "FFE + DFE8 + MLSD mem3"):
                 color=colors[label], label=tag(label))
 ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
-       title="Add DFE + deeper MLSD: under 1 dB more at same ADC\n(residual ISI already small; deep LR is SNR-limited)")
+       title="Add DFE + deeper MLSD: under 2 dB more at same ADC\n(residual ISI already small; deep LR is SNR-limited)")
 ax.yaxis.set_major_formatter(_fmt); ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=7.5); ax.grid(True, which="both", alpha=0.3)
 

@@ -50,8 +50,8 @@
    (比值 1.03×),是本框架最大差异化增量。
 2. **双 RX 架构公平对比** —— mixed-signal 与 ADC-DSP 共享 Tx/信道/分析层,差异
    限制在两个组装类内。serdespy/PyBERT 只有 mixed-signal,DragonPHY2 只有 ADC。
-3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→32→36/38→44 dB
-   杠杆分解(DFE/deeper MLSD +0.8 dB、级联 FEC +3.8 dB、better ADC +5.3 dB,正交可叠加;
+3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→33→36/38.5→43 dB
+   杠杆分解(DFE/deeper MLSD +1.7 dB、级联 FEC +3.3 dB、better ADC +5.5 dB,正交可叠加;
    2026-10-03 接收端修复与统计引擎一致性修复后重跑,旧阶梯 18→28→29→35→41 dB 是 CDR 锁偏时量的)。
 4. **双 MLSD 实现 + 解析 MLSE 增益 + 双引擎接线** —— Viterbi MLSE(最优)+ DragonPHY 式
    sliding-detector(低复杂度);`mlse_min_distance_sq`/`mlse_gain_over_dfe_db` 给出对理想
@@ -108,7 +108,7 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
   孤立错误精确翻倍(1+D 解码的已知代价),换取 DFE 错误突发被截断。
 - ✅ **Duobinary / PR 信道整形** —— 已建模(预编码 ≠ PR 整形:前者是映射,后者有意引入受控 ISI 并配匹配的检测器):
   收端 FFE 对 1 + aD / 1 + aD + bD² 目标均衡 + Viterbi(a、b 可 MMSE 选或 LMS 跟踪,示例 36 / 38),发端 1 + aD 整形
-  (示例 37);统计引擎建了逐符号判决。224G LR 上收端两光标目标比 delta + Viterbi 多 7.0 dB reach(示例 38)
+  (示例 37);统计引擎建了逐符号判决。224G LR 上收端两光标目标比 delta + Viterbi 多 7.3 dB reach(示例 38)
 - **GUI** —— 纯脚本/库,无交互界面(设计取向,非缺陷)
 - ✅ **多 lane 串扰系统级** —— **本轮补齐**(`aggressor_bank`/`icn_rms`,见上);单 lane 数据仍为主
 
