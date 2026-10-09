@@ -170,7 +170,7 @@ numpy/scipy 版本跑同一条计算路径,把"版本"这一维从"平台差异"
 - 新增示例脚本按编号排(`examples/NN_name.py`),它同时是文档;
   `tests/test_examples_api.py` 检查它能编译且 import 的符号都存在。
 - README 里的示例数、标签页数由 `tests/test_docs_fresh.py` 守着;测试数没有自动检查,要手动同步(2026-10-08 更正:原写测试数也守着)。
-- 文档引用的示例数字:每个示例的全尺寸输出存在 `examples/expected/`,改数的 PR 同时刷新它和文档;`tools/example_drift.py` 从"哪行输出变了"反查仍引用旧值的文档行,CI `examples-full` 跑同样的比对(2026-10-09 起)。
+- 文档引用的示例数字:每个示例的全尺寸输出存在 `examples/expected/`,改数的 PR 同时刷新它和文档;`tools/example_drift.py` 从"哪行输出变了"反查仍引用旧值的文档行,CI `examples-full` 跑同样的比对(2026-10-09 起)。文档里由输出推导的数(差、和、范围)登记在 `examples/derived.yaml`,测试按 `examples/expected/` 逐处检查(2026-10-09 起)。
 
 ### 常用命令
 
@@ -185,6 +185,7 @@ bash rtl/run_lockstep.sh                # SV vs Python 黄金模型逐位比对(
 python tools/fingerprint.py record A.json   # 数值指纹;改动前后各录一份,再 compare A.json B.json
 python tools/run_examples.py --jobs 4 --save new/ && python tools/example_drift.py compare new/
                                         # 示例全尺寸输出 vs examples/expected/,列出仍引用旧值的文档行
+python tools/example_drift.py derived   # examples/derived.yaml 里每处推导数的引用 vs examples/expected/
 python -m halo_serdes_gui               # 启动 GUI
 ```
 

@@ -30,9 +30,14 @@ noise-kernel fix, listed 170 lines, most of them a lone digit).
 Each listed line says which of the three it is. Expect some that are history
 on purpose ("before the fix it read 3e-2"); the tool cannot tell those apart.
 
-What it cannot see: numbers the docs derive (a difference of two printed
-values, a ratio), and a quote too short to be told from any other number
-outside a block that names the example. CI's ``examples-full`` workflow runs
+What it cannot see by itself: numbers the docs derive (a difference of two
+printed values, a ratio, a sum of rounded rows), and a quote too short to be
+told from any other number outside a block that names the example. Those are
+registered in ``examples/derived.yaml``: where each operand is printed, and
+the doc text that quotes the result. ``compare`` re-derives them from the new
+outputs and lists the quotes that went stale; ``derived`` (and the test suite)
+checks every registered quote against ``examples/expected/``, so an ``accept``
+that leaves one behind fails the tests. CI's ``examples-full`` workflow runs
 the comparison on every change to the library or the examples, and weekly
 (dependency updates move numbers too).
 
@@ -55,8 +60,11 @@ import tokenize
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
+
 REPO = Path(__file__).resolve().parent.parent
 EXPECTED = REPO / "examples" / "expected"
+DERIVED = REPO / "examples" / "derived.yaml"
 
 #: the documents that state current results (history is left alone)
 DOC_GLOBS = ("README.md", "ROADMAP.md", "CONTRIBUTING.md", "docs/*.md", "docs/*.html",
@@ -277,6 +285,202 @@ def stale(change: Change, index: DocIndex) -> list[tuple[DocNumber, str, str | N
     return hits
 
 
+# --- derived numbers ---------------------------------------------------------
+#
+# examples/derived.yaml, a list of entries:
+#
+#   - name: ex19 DSP depth lever
+#     values:                       # operands, each read from one output line
+#       ffe: {example: "19", line: "FFE + MLSD mem2 (example 18): {} dB"}
+#       dfe: {example: "19", line: "FFE + DFE8 + MLSD mem3: {} dB"}
+#     quotes:                       # doc text; {expr} marks the quoted number
+#       - {doc: docs/SUMMARY.md, text: "只多 {dfe - ffe} dB({ffe} → {dfe} dB)"}
+#
+# In ``line``, ``{}`` is the number read and ``{*}`` any number skipped; the
+# pattern must match exactly one line of the example's output, or with
+# ``after`` the first line below the one line that pattern matches. With
+# ``each`` the operand is every match of that pattern within the line (a list:
+# ``x[0]``, ``x[-1]``, ``min(x - y)``). In a quote, ``{expr}`` is an arithmetic
+# expression over the operands (+ - * /, min, max, abs, sum, log10, indexing),
+# ``{*}`` any number, and ``{expr |upper}`` / ``{expr |lower}`` a quote that
+# bounds the value ("under 1 dB") instead of rounding it. Whitespace matches
+# loosely and HTML tags are ignored on both sides; every place the text occurs
+# must hold, and a quote found nowhere is reported (the doc was reworded).
+
+_ONUM = r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?"
+_DNUM = r"[-+−]?\d+(?:\.\d+)?(?:[eE][-+−]?\d+)?"
+_HOLE = re.compile(r"\{([^{}]*)\}")
+
+
+def _flat(text: str) -> str:
+    return " ".join(_TAG.sub(" ", text).split())
+
+
+def _lit(text: str, gap: str) -> str:
+    """Literal text, its inner whitespace matching ``gap`` and its edges any."""
+    return r"\s*" + gap.join(map(re.escape, text.split())) + r"\s*" if text.strip() else r"\s*"
+
+
+def _line_pattern(text: str) -> re.Pattern:
+    """An output-line pattern: ``{}`` captures a number, ``{*}`` skips one."""
+    out, pos = [], 0
+    for m in _HOLE.finditer(text):
+        out.append(_lit(text[pos:m.start()], r"\s+"))
+        out.append(f"({_ONUM})" if m.group(1) == "" else _ONUM)
+        pos = m.end()
+    out.append(_lit(text[pos:], r"\s+"))
+    return re.compile("".join(out))
+
+
+def _quote_pattern(text: str) -> tuple[re.Pattern, list[str]]:
+    """A doc-quote pattern and the expression of each captured number."""
+    out, exprs, pos = [], [], 0
+    for m in _HOLE.finditer(text):
+        out.append(_lit(text[pos:m.start()], r"\s*"))
+        body = m.group(1).strip()
+        if body == "*":
+            out.append(_DNUM)
+        else:
+            out.append(rf"(?<![\d.])({_DNUM})(?![\d])")
+            exprs.append(body)
+        pos = m.end()
+    out.append(_lit(text[pos:], r"\s*"))
+    return re.compile("".join(out)), exprs
+
+
+_FUNCS = {"min": np.min, "max": np.max, "abs": np.abs, "sum": np.sum, "log10": np.log10}
+_OPS = {ast.Add: np.add, ast.Sub: np.subtract, ast.Mult: np.multiply, ast.Div: np.divide}
+
+
+def evaluate(expr: str, env: dict):
+    """The value of an arithmetic expression over named operands (no Python
+    beyond numbers, names, + - * /, indexing and the functions in ``_FUNCS``:
+    the registry is data, and must not be able to run anything)."""
+    def ev(n):
+        if isinstance(n, ast.BinOp) and type(n.op) in _OPS:
+            return _OPS[type(n.op)](ev(n.left), ev(n.right))
+        if isinstance(n, ast.UnaryOp) and isinstance(n.op, (ast.USub, ast.UAdd)):
+            return -ev(n.operand) if isinstance(n.op, ast.USub) else ev(n.operand)
+        if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
+            return n.value
+        if isinstance(n, ast.Name) and n.id in env:
+            return env[n.id]
+        if isinstance(n, ast.Subscript):
+            return ev(n.value)[int(ev(n.slice))]
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in _FUNCS
+                and len(n.args) == 1 and not n.keywords):
+            return _FUNCS[n.func.id](ev(n.args[0]))
+        raise ValueError(f"not allowed in a derived expression: {ast.unparse(n)!r}")
+    return ev(ast.parse(expr, mode="eval").body)
+
+
+@dataclass
+class Derived:
+    name: str
+    values: dict
+    quotes: list
+
+    def operands(self, outputs: dict[str, str]) -> dict:
+        """Each operand read from ``outputs`` (example name -> normalised text).
+        Raises ValueError when a line is missing or ambiguous."""
+        env = {}
+        for key, src in self.values.items():
+            ex = str(src["example"])
+            text = next((t for n, t in outputs.items() if n.startswith(ex + "_")), None)
+            if text is None:
+                raise ValueError(f"{self.name}: no output for example {ex}")
+            lines = text.splitlines()
+            if "after" in src:
+                anchor = _line_pattern(src["after"])
+                at = [i for i, ln in enumerate(lines) if anchor.search(ln)]
+                if len(at) != 1:
+                    raise ValueError(f"{self.name}: {key}: {src['after']!r} matches {len(at)} lines of example {ex}")
+                lines = lines[at[0] + 1:]
+            rx = _line_pattern(src["line"])
+            hits = [ln for ln in lines if rx.search(ln)]
+            if "after" in src:
+                hits = hits[:1]
+            if len(hits) != 1:
+                raise ValueError(f"{self.name}: {key}: {src['line']!r} matches {len(hits)} lines of example {ex}")
+            if "each" in src:
+                found = _line_pattern(src["each"]).findall(hits[0])
+                if not found:
+                    raise ValueError(f"{self.name}: {key}: {src['each']!r} not in {hits[0].strip()!r}")
+                env[key] = np.array([float(t) for t in found])
+            else:
+                env[key] = float(rx.search(hits[0]).group(1))
+        return env
+
+
+def load_derived(path: Path = DERIVED) -> list[Derived]:
+    import yaml
+
+    if not path.exists():
+        return []
+    return [Derived(e["name"], e["values"], e["quotes"]) for e in yaml.safe_load(path.read_text(encoding="utf-8")) or []]
+
+
+def _holds(tok: str, value: float, bound: str | None) -> bool:
+    q = abs(float(tok.replace("−", "-")))
+    if bound == "upper":
+        return abs(value) <= q
+    if bound == "lower":
+        return abs(value) >= q
+    return rounds_to(tok.replace("−", "-"), value)
+
+
+def check_derived(entries: list[Derived], outputs: dict[str, str], repo: Path = REPO):
+    """Every registered quote against the operands in ``outputs``: a list of
+    (entry, doc path, line number, quoted, value) for the ones that do not
+    hold -- value None for a quote not found -- and the entries whose
+    operands could not be read, as (entry, message)."""
+    bad, broken = [], []
+    texts: dict[str, list[str]] = {}
+    for e in entries:
+        try:
+            env = e.operands(outputs)
+        except ValueError as exc:
+            broken.append((e, str(exc)))
+            continue
+        for q in e.quotes:
+            doc = q["doc"]
+            if doc not in texts:
+                raw = (repo / doc).read_text(encoding="utf-8").splitlines()
+                texts[doc] = [_flat(ln) if len(ln) < 3000 else "" for ln in raw]  # skip inlined figures
+            rx, exprs = _quote_pattern(q["text"])
+            found = False
+            for i, ln in enumerate(texts[doc], 1):
+                for m in rx.finditer(ln):
+                    found = True
+                    for tok, expr in zip(m.groups(), exprs):
+                        body, _, bound = (s.strip() for s in expr.partition("|"))
+                        value = float(evaluate(body, env))
+                        if not _holds(tok, value, bound or None):
+                            bad.append((e, doc, i, tok, value))
+            if not found:
+                bad.append((e, doc, 0, q["text"], None))
+    return bad, broken
+
+
+def _outputs(directory: Path) -> dict[str, str]:
+    return {p.stem: normalise(p.read_text(encoding="utf-8")) for p in directory.glob("*.txt")}
+
+
+def report_derived(outputs: dict[str, str], repo: Path = REPO, entries=None, out=None) -> int:
+    """Print the registered quotes that do not hold for ``outputs``; how many."""
+    out = out or sys.stdout
+    entries = load_derived() if entries is None else entries
+    bad, broken = check_derived(entries, outputs, repo)
+    for e, msg in broken:
+        print(f"  derived: {msg}", file=out)
+    for e, doc, ln, tok, value in bad:
+        if value is None:
+            print(f"  derived: {e.name}: {doc}: quote {tok!r} not found", file=out)
+        else:
+            print(f"  derived: {e.name}: {doc}:{ln}  '{tok}'  (now {value:.4g})", file=out)
+    return len(bad) + len(broken)
+
+
 def compare(expected: Path, new: Path, repo: Path = REPO, out=None) -> int:
     """Print what moved and where the docs quote it; 1 if anything differs.
     Only the examples in ``new`` are compared, so a run of a few is enough to
@@ -318,8 +522,16 @@ def compare(expected: Path, new: Path, repo: Path = REPO, out=None) -> int:
     if not moved:
         print(f"{len(got)} output(s) match {expected}", file=out)
         return 0
+    n_derived = 0
+    entries = load_derived(repo / DERIVED.relative_to(REPO))
+    if entries:
+        # re-derived from the new outputs where there are some, the expected elsewhere
+        print(f"\nderived numbers ({DERIVED.relative_to(REPO).as_posix()}), re-derived from {new}:", file=out)
+        n_derived = report_derived({**_outputs(expected), **_outputs(new)}, repo, entries, out)
+        if not n_derived:
+            print("  every registered quote still holds", file=out)
     print(f"\n{moved} output(s) differ; {n_stale} doc number(s) quote a moved value; "
-          f"{unquoted} changed line(s) found in no doc", file=out)
+          f"{n_derived} derived quote(s) no longer hold; {unquoted} changed line(s) found in no doc", file=out)
     return 1
 
 
@@ -345,9 +557,19 @@ def main(argv=None) -> int:
     a.add_argument("new", type=Path)
     a.add_argument("only", nargs="*", help="number prefixes (default: all)")
     a.add_argument("--expected", type=Path, default=EXPECTED)
+    d = sub.add_parser("derived", help="check every quote in examples/derived.yaml; exit 1 on any that fails")
+    d.add_argument("outputs", type=Path, nargs="?", default=EXPECTED,
+                   help="outputs to derive from (default: the expected ones)")
     args = ap.parse_args(argv)
     if args.cmd == "compare":
         return compare(args.expected, args.new)
+    if args.cmd == "derived":
+        entries = load_derived()
+        n = report_derived({**_outputs(EXPECTED), **_outputs(args.outputs)}, REPO, entries)
+        n_quotes = sum(len(e.quotes) for e in entries)
+        print(f"{len(entries)} derived number(s), {n_quotes} quote(s): "
+              + (f"{n} problem(s)" if n else "all hold"))
+        return 1 if n else 0
     names = accept(args.new, args.expected, args.only)
     print(f"wrote {len(names)} expected output(s) to {args.expected}")
     return 0

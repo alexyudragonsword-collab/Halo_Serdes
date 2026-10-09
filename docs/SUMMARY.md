@@ -88,8 +88,8 @@ A product mixed-signal RX carries **no RX FFE**. The split is Tx FIR (backchanne
 
 > CTLE 名义 4 dB 峰化实测仅 1.5 dB(2×Nyquist 次极点压低 boost);ADC 架构只需 1.5 dB 轻均衡,mixed-signal 要 8.6 dB。 / Nominal 4 dB peaking realizes only 1.5 dB; ADC needs 1.5 dB light EQ vs mixed-signal's 8.6 dB.
 
-**速率上限 / Rate ceiling**：Whisper 背板上 NRZ 约 -30 dB、PAM4 约 -20.5 dB 闭眼,差值恰为 PAM4 的 9.5 dB 电平代价。
-NRZ closes at ~−30 dB, PAM4 at ~−20.5 dB — the 9.5 dB gap is the PAM4 level penalty.
+**速率上限 / Rate ceiling**：Whisper 背板上最后一个开眼点 NRZ −30.2 dB、PAM4 −20.4 dB,相差 9.8 dB(扫描步长 1.6 dB),与 PAM4 的电平代价 20·log10 3 ≈ 9.5 dB 相符(2026-10-09 更正:原写"约 −30 / −20.5 dB,差值恰为 9.5 dB",示例 12 打印的两点差 9.8 dB)。
+The last open eyes are NRZ at −30.2 dB and PAM4 at −20.4 dB: 9.8 dB apart (1.6 dB sweep steps), consistent with PAM4's 20·log10 3 ≈ 9.5 dB level penalty.
 
 ![mixed-signal 上限扫描 / limit sweep](../examples/output/12_ms_limit_sweep.png)
 
