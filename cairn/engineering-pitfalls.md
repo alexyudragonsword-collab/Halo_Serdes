@@ -272,7 +272,7 @@ slew 比值却很小。统计引擎另加一条 σ_e > 0.1 UI 的 `noise-limited
 被取消的 job 不归它管:整个 run 记为 cancelled;`release` 的条件里 `needs.nuitka-onefile.result != 'cancelled'` 本是"有人手动取消就别发布",
 超时也落进这条 —— 打 tag 那次若 onefile 超时,发布被静默跳过。2026-10-03…08 一周里 onefile 在 120 分钟上被取消 7 次,成功的中位数
 115–118 分钟。根因是每次在新 runner 上从零编 3643 个 C 文件(97 / 114 分钟),Nuitka 自带的 clcache 从未命中。**规则:贴着上限跑的 job
-要看耗时分布与超时次数,不只看绿勾;能缓存的编译产物先缓存(现在热构建 31–40 分钟),上限给冷构建留余量。**
+要看耗时分布与超时次数,不只看绿勾;能缓存的编译产物先缓存(现在热构建 31–42 分钟),上限给冷构建留余量。**
 
 **CI 路径过滤要覆盖 APK 打包的一切,不只是代码。** `android.yml` 的 push 路径曾只列 `android/`、两个 Python 包与工作流本身;
 `configs/`、`data/channels/`、`data/clock_profiles/` 由 `stageHaloAssets` 打进 APK,却不在列表里 —— PR #9 只改了 4 个预置,

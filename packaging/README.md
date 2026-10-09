@@ -69,9 +69,10 @@ Most of a Nuitka build is MSVC compiling the ~3600 C files Nuitka generates,
 almost all of them for scipy / pandas / matplotlib / dash. The two Nuitka jobs
 keep Nuitka's compile cache (`NUITKA_CACHE_DIR`, ~92 MB) between runs with
 `actions/cache`: a cold build took 87-109 min on 2026-10-09 (64-120 min that
-month), a warm one 31-40 min with 3642 of 3643 files from the cache. A branch
-reads main's cache; the first run on main after a dependency upgrade is cold,
-which is what the 180 min limit is for. A job that reaches its limit is
+month), two warm ones 31-42 min with 3642-3643 of 3643 files from the cache
+-- the C phase still took ~26 min with every file a hit. A branch reads main's
+cache; the first run on main after a dependency upgrade is cold, which is what
+the 180 min limit is for. A job that reaches its limit is
 *cancelled*, not failed -- `continue-on-error` does not cover it, and a
 cancelled onefile build skips the release below.
 
