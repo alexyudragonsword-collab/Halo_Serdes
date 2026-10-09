@@ -88,7 +88,7 @@ def _repo(tmp_path, text):
 
 DOC = """# One
 
-示例 32 的第三问:裕度 20.2 dB,误码 7.7e-6,2026-10-08 测。
+示例 32 的第三问:裕度 20.2 dB,误码 7.7e-6,2026-10-08 测,共 3 点。
 
 同节另一段:20.2、7.7e-6、3。
 
@@ -103,8 +103,9 @@ def test_stale_quotes_are_found_by_scope(drift, tmp_path):
     ch = drift.Change("32_lpo", "", "", [("20.17", "20.05"), ("7.73e-06", "7.80e-06"), ("3", "4")])
     hits = sorted((d.lineno, d.tok, where) for d, _, _, where in drift.stale(ch, index))
     assert hits == [(3, "20.2", "block"), (3, "7.7e-6", "block"),
-                    (5, "20.2", "section"), (5, "7.7e-6", "section"),   # "3" too short there
+                    (5, "20.2", "section"), (5, "7.7e-6", "section"),
                     (9, "20.17", "elsewhere"), (9, "20.2", "elsewhere")]  # "7.7e-6" too short
+    # one digit is never enough: the block's "3" and the section's are both left out
     # 20.17 -> 20.19: a doc saying 20.2 is still right; one saying 20.17 is not
     ch = drift.Change("32_lpo", "", "", [("20.17", "20.19")])
     assert [(d.lineno, d.tok) for d, *_ in drift.stale(ch, index)] == [(9, "20.17")]

@@ -18,11 +18,14 @@ the old value and not to the new one -- a doc that says "4.7 dB" is not stale
 when 4.66 becomes 4.71. The lookup is a heuristic and errs towards listing:
 
 - a number in a block (paragraph or table) that cites the example, or in the
-  docstrings and comments of the example's own file, at any precision;
-- one in a section (between headings) that cites it, at two or more
-  significant digits;
+  docstrings and comments of the example's own file, or in a section
+  (between headings) that cites it, at two or more significant digits;
 - one anywhere else, only at three or more ("1.5e-2" is some BER in half the
   documents).
+
+One-digit numbers are never listed: a "4" rounds from anything in 3.5..4.5
+and every block has some (the first real run, example 32 after the 2026-10-09
+noise-kernel fix, listed 170 lines, most of them a lone digit).
 
 Each listed line says which of the three it is. Expect some that are history
 on purpose ("before the fix it read 3e-2"); the tool cannot tell those apart.
@@ -233,10 +236,12 @@ def _scope(d: DocNumber, example: str) -> str | None:
     """Where a doc number this precise could be a quote of ``example``: "block",
     "section", "elsewhere", or None when it is too short to tell from any other
     number there."""
+    if _sig(d.tok) < 2:
+        return None
     if example in d.block:
         return "block"
     if example in d.section:
-        return "section" if _sig(d.tok) >= 2 else None
+        return "section"
     return "elsewhere" if _sig(d.tok) >= 3 else None
 
 

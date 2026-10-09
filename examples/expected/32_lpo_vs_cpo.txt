@@ -39,14 +39,14 @@ LPO at 16 dB segments has no optical margin at 100 m: no OMA in the SR1 window c
 Equalisation at 100 m fibre (OMA margin, statistical engine; host FFE (-0.06, 0.68, -0.26) where set):
 segments host FFE driver   TIA    SNR  margin laser c=0.2 p-p/OMA no headroom
       4dB        -     0dB    0dB  23.1dB   8.59dB      8.26dB    0.97       8.59dB
-      4dB       on     0dB    0dB  29.2dB  12.62dB     12.24dB    1.80      10.08dB
+      4dB       on     0dB    0dB  29.2dB  12.71dB     12.39dB    1.80      10.16dB
      12dB        -     0dB    0dB  16.9dB    fails       fails    0.83        fails
      12dB        -     0dB    6dB  16.7dB    fails       fails    0.83        fails
      12dB        -     6dB    0dB  19.2dB   4.04dB      2.76dB    0.87       4.04dB
-     12dB       on     0dB    0dB  23.3dB   8.76dB      8.32dB    1.19       8.00dB
-     12dB       on     6dB    0dB  25.4dB  10.58dB     10.25dB    1.46       8.95dB
-     16dB       on     0dB    0dB  19.6dB   3.92dB      1.66dB    1.00       3.92dB
-     16dB       on     0dB    6dB  19.7dB   3.29dB      0.51dB    1.00       3.29dB
-     16dB       on     6dB    0dB  21.4dB   7.44dB      6.86dB    1.19       6.69dB
-     16dB       on     9dB    0dB  23.3dB   9.31dB      8.92dB    1.43       7.75dB
+     12dB       on     0dB    0dB  23.3dB   9.07dB      8.76dB    1.19       8.31dB
+     12dB       on     6dB    0dB  25.4dB  10.72dB     10.44dB    1.46       9.09dB
+     16dB       on     0dB    0dB  19.6dB   5.52dB      4.63dB    1.00       5.52dB
+     16dB       on     0dB    6dB  19.7dB   5.30dB      4.28dB    1.00       5.30dB
+     16dB       on     6dB    0dB  21.4dB   7.88dB      7.48dB    1.19       7.14dB
+     16dB       on     9dB    0dB  23.3dB   9.53dB      9.21dB    1.43       7.97dB
 wrote examples/output/32_lpo_vs_cpo.png
