@@ -25,7 +25,7 @@ AMI GetWave 记入下方「边界」。)
 
 (2026-10-09 清空:原 #12 ADC 收端统计引擎的相位口径 —— 改为按 MM 的锁定点报,见 CHANGELOG 与 `cairn/DSP发端与PR.md` §5。)
 
-(2026-10-09 清空:原 #13 nuitka job 贴着 120 分钟超时 —— Nuitka 的 C 编译缓存跨运行保存、上限 180 分钟,热构建 31–40 分钟,见 CHANGELOG 与 `packaging/README.md`。)
+(2026-10-09 清空:原 #13 nuitka job 贴着 120 分钟超时 —— Nuitka 的 C 编译缓存跨运行保存、上限 180 分钟,热构建 31–42 分钟,见 CHANGELOG 与 `packaging/README.md`。)
 
 ---
 
@@ -71,8 +71,11 @@ AMI GetWave 记入下方「边界」。)
 - (2026-10-07 已做:CI `examples` job 用 `tools/run_examples.py --smoke` 把示例全部真跑一遍,`n_symbols` 压到 2 万。
   2026-10-08 已做:40 个示例按原尺寸全跑(3 路并行),输出逐条对照现行文档,修了约 40 处漂移;`run_examples.py` 加了
   `--save DIR`(存每个示例的输出)与 `--jobs N`。2026-10-09 已做:全尺寸输出入库 `examples/expected/`,`tools/example_drift.py`
-  从变了的输出行反查仍引用旧值的文档行,CI `examples-full` 在改库 / 示例的 PR 上与每周跑同样的比对(4 核约 10 分钟)。)
-  剩余:推导出来的数(两个输出之差、比值,如"收端 PR 多 4.7 dB")工具看不见,仍靠人对照(`cairn/engineering-pitfalls.md`)。
+  从变了的输出行反查仍引用旧值的文档行,CI `examples-full` 在改库 / 示例的 PR 上与每周跑同样的比对(4 核约 10 分钟)。
+  2026-10-09 又做:文档里由输出推导的数登记在 `examples/derived.yaml`(7 组、57 处引用:示例 12 / 19 / 20 / 21 / 32 / 33 / 34),
+  `compare` 用新输出重算、测试按 `examples/expected/` 逐处核对;顺带更正示例 12 的"差值恰为 9.5 dB"(两点实差 9.8 dB)。
+  更正:此处原举的例子"收端 PR 多 4.7 dB"不是推导数,示例 36 / 37 自己打印 +4.71 dB。没登记的推导数仍看不见;
+  "级联内码把可容忍 BER 抬高 31 倍"的两个阈值不是示例打印的,不在此列。)
 - (2026-10-08 已做:`CONTRIBUTING.md`,附 `tools/fingerprint.py`("重构用数值指纹证明"这条规则此前没有入库工具)。
   更正:原记 "`LICENSE` 尚缺" 不实 —— MIT 的 `LICENSE` 自 2026-09-12(b6e15ca)就在根目录,`pyproject.toml` 也写着 MIT。)
 

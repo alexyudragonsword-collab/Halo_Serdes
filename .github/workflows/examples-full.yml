@@ -3,8 +3,10 @@ name: examples-full
 # Every example at its own size, compared line by line with
 # examples/expected/ (tools/example_drift.py). The docs quote these numbers;
 # a change that moves one fails here, with the doc lines that still quote the
-# old value listed in the log. The test workflow's `examples` job runs the
-# same scripts at smoke size, which checks the code paths, not the numbers.
+# old value listed in the log -- including the numbers the docs derive from
+# the outputs (examples/derived.yaml), re-derived from this run. The test
+# workflow's `examples` job runs the same scripts at smoke size, which checks
+# the code paths, not the numbers.
 #
 # When the change is meant to move numbers: fix the listed doc lines, then
 # refresh the expected files -- `python tools/example_drift.py accept <dir>`

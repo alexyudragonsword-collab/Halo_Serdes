@@ -1,0 +1,117 @@
+# Numbers the docs derive from the examples' outputs -- a difference of two
+# printed values, a sum of rounded rows, the range of a printed column -- that
+# tools/example_drift.py cannot find from the outputs alone. Each entry says
+# where its operands are printed and which doc text quotes the result;
+# `python tools/example_drift.py derived` checks every quote against
+# examples/expected/, and `compare` re-derives them from a new run. The format
+# is described above `Derived` in tools/example_drift.py.
+#
+# Register a number here when a doc states one that no example prints. A
+# number an example prints is found without this file (unless the doc quotes
+# it at one or two digits outside a block that cites the example, as the
+# "36 / 38 dB" milestones below do).
+
+- name: ex12 mixed-signal limit, NRZ vs PAM4 (last open eye on the Whisper backplane)
+  values:
+    nrz: {example: "12", line: "NRZ @ Whisper backplane: {*} Gb/s ({*} GBd, {} dB@Nyq"}
+    pam4: {example: "12", line: "PAM4 @ Whisper backplane: {*} Gb/s ({*} GBd, {} dB@Nyq"}
+  quotes:
+    - {doc: README.md, text: "最后一个开眼点 NRZ {nrz} dB、PAM4 {pam4} dB,相差 {nrz - pam4} dB"}
+    - {doc: docs/SUMMARY.md, text: "最后一个开眼点 NRZ {nrz} dB、PAM4 {pam4} dB,相差 {nrz - pam4} dB"}
+    - {doc: docs/SUMMARY.md, text: "NRZ at {nrz} dB and PAM4 at {pam4} dB: {nrz - pam4} dB apart"}
+    - {doc: docs/summary.html, text: "最后一个开眼点 NRZ {nrz} dB、PAM4 {pam4} dB,相差 {nrz - pam4} dB"}
+    - {doc: docs/summary.html, text: "NRZ at {nrz} dB and PAM4 at {pam4} dB, {nrz - pam4} dB apart"}
+
+- name: ex19 DSP-depth and ADC-quality levers
+  values:
+    ffe: {example: "19", line: "FFE + MLSD mem2 (example 18): {} dB"}
+    dfe: {example: "19", line: "FFE + DFE8 + MLSD mem3: {} dB"}
+    adc: {example: "19", line: "same + better ADC (ENOB7.5): {} dB"}
+  quotes:
+    - {doc: docs/SUMMARY.md, text: "DSP depth | +{dfe - ffe} dB |"}
+    - {doc: docs/SUMMARY.md, text: "ADC quality | **+{adc - dfe} dB** |"}
+    - {doc: docs/SUMMARY.md, text: "只多 {dfe - ffe} dB({ffe} → {dfe} dB),ADC 采样质量多 {adc - dfe} dB(→ {adc} dB)"}
+    - {doc: docs/SUMMARY.md, text: "DSP depth buys {dfe - ffe} dB, ADC quality {adc - dfe} dB"}
+    - {doc: docs/SUMMARY.md, text: "| 深 LR 上的 FFE(+ MLSD) | {ffe} dB |"}
+    - {doc: docs/SUMMARY.md, text: "| + DFE + 更深 MLSD | {dfe} dB | DSP 深度(+{dfe - ffe} dB) |"}
+    - {doc: docs/COMPARISON.md, text: "DFE/deeper MLSD +{dfe - ffe} dB、级联 FEC +{*} dB、better ADC +{adc - dfe} dB"}
+    - {doc: docs/summary.html, text: "只多 {dfe - ffe} dB"}
+    - {doc: docs/summary.html, text: "同 DSP 多 {adc - dfe} dB"}
+    - {doc: docs/summary.html, text: "+{dfe - ffe} dB DSP 深度"}
+    - {doc: docs/summary.html, text: "+{adc - dfe} dB ADC 质量"}
+    - {doc: docs/summary.html, text: "DSP 深度(+{dfe - ffe} dB)"}
+    - {doc: examples/19_deep_lr_limit.py, text: "Pushing past the ~{ffe} dB reach of example 18's receiver"}
+    - {doc: examples/19_deep_lr_limit.py, text: "MLSD memory-3 over FFE+memory-2 buys under {dfe - ffe |upper} dB"}
+    - {doc: examples/19_deep_lr_limit.py, text: "buys ~{adc - dfe} dB of reach with the SAME DSP ({ffe} -> {dfe} dB from DSP depth"}
+    - {doc: examples/19_deep_lr_limit.py, text: "{dfe} -> {adc} dB from the ADC"}
+    - {doc: examples/21_full_stack_lr.py, text: "the ADC lever (~+{adc - dfe} dB)"}
+
+- name: ex20 concatenated-FEC lever (KP4 alone vs + BCH(255,215) inner code)
+  values:
+    kp4: {example: "20", line: "KP4 only (t=15) : reach {} dB"}
+    bch: {example: "20", line: "+ inner BCH(255,215,t=5) : reach {} dB"}
+  quotes:
+    - {doc: docs/SUMMARY.md, text: "concat FEC | **+{bch - kp4} dB** |"}
+    - {doc: docs/SUMMARY.md, text: "reach 从 {kp4} 到 {bch} dB"}
+    - {doc: docs/SUMMARY.md, text: "reach {kp4} → {bch} dB"}
+    - {doc: docs/COMPARISON.md, text: "级联 FEC +{bch - kp4} dB、better ADC"}
+    - {doc: docs/summary.html, text: "+{bch - kp4} dB 级联 FEC"}
+    - {doc: docs/summary.html, text: "reach 从 {kp4} 到 {bch} dB"}
+    - {doc: examples/21_full_stack_lr.py, text: "the FEC lever (~+{bch - kp4} dB)"}
+
+- name: ex21 full-stack levers (A baseline, B + concatenated FEC, C + better ADC, D both)
+  values:
+    a: {example: "21", line: "A. KP4 + ADC 6.5 (baseline) : reach {} dB"}
+    b: {example: "21", line: "B. + concatenated FEC (ADC 6.5): reach {} dB"}
+    c: {example: "21", line: "C. + better ADC 7.5 (KP4 only): reach {} dB"}
+    d: {example: "21", line: "D. full stack: ADC 7.5 + concatenated FEC: reach {} dB"}
+  quotes:
+    - {doc: docs/SUMMARY.md, text: "(基线 / baseline) | {a} dB | — |"}
+    - {doc: docs/SUMMARY.md, text: "concat FEC | {b} dB | +{b - a} |"}
+    - {doc: docs/SUMMARY.md, text: "better ADC | {c} dB | +{c - a} |"}
+    - {doc: docs/SUMMARY.md, text: "full stack** | **{d} dB** | **+{d - a}** |"}
+    - {doc: docs/SUMMARY.md, text: "两个正交的杠杆(+{b - a} 与 +{c - a} dB)合起来 +{d - a} dB,不少于单独之和(+{b + c - 2 * a})"}
+    - {doc: docs/SUMMARY.md, text: "合起来比相加还多 {d - b - c + a} dB"}
+    - {doc: docs/SUMMARY.md, text: "levers (+{b - a} and +{c - a} dB) give +{d - a} dB together, no less than their sum (+{b + c - 2 * a})"}
+    - {doc: docs/SUMMARY.md, text: "beats the sum by {d - b - c + a} dB"}
+    - {doc: docs/SUMMARY.md, text: "| {b} / {c} dB | 单杠杆 +{b - a} / +{c - a} dB |"}
+    - {doc: docs/SUMMARY.md, text: "| **{d} dB** | 全栈 +{d - a} dB |"}
+    - {doc: docs/COMPARISON.md, text: "224G 深 LR 的 {*}→{*}→{b}/{c}→{d} dB"}
+    - {doc: docs/summary.html, text: "级联 FEC +{b - a} / 更好 ADC +{c - a} dB)合起来 +{d - a} dB"}
+    - {doc: docs/summary.html, text: "reach 从 {a} dB(基线)推到 {d} dB"}
+    - {doc: docs/summary.html, text: "concat FEC {b} dB +{b - a}"}
+    - {doc: docs/summary.html, text: "better ADC 7.5 {c} dB +{c - a}"}
+    - {doc: docs/summary.html, text: "full stack {d} dB +{d - a}"}
+    - {doc: docs/summary.html, text: "{b} / {c} dB 单杠杆 +{b - a}(FEC)/ +{c - a} dB(ADC)"}
+    - {doc: docs/summary.html, text: "{d} dB 全栈 +{d - a} dB"}
+    - {doc: examples/21_full_stack_lr.py, text: "(baseline, ~{a} dB)"}
+
+- name: ex33 optical levers, the sum of the rounded rows
+  values:
+    elec: {example: "33", line: "+ electrical: 4 dB segments {*}m {}m"}
+    rin: {example: "33", line: "+ optical noise: RIN -148 {*}m {}m"}
+    retime: {example: "33", line: "+ retiming {*}m {}m"}
+  quotes:
+    - {doc: docs/SUMMARY.md, text: "各行四舍五入后相加为 +{elec + rin + retime}"}
+    - {doc: docs/SUMMARY.md, text: "(+{elec + rin + retime} from the rounded rows)"}
+
+- name: ex34 TDECQ, the EML's DFE saving and the L-I compression penalty
+  values:
+    ffe_bw: {example: "34", line: "(FFE only) bandwidth", each: "{*}:{}"}
+    dfe_bw: {example: "34", line: "EML 3 dB bandwidth [GHz]", each: "{*}:{}"}
+    vcsel_c: {example: "34", after: "VCSEL 100G/λ (SR1): TDECQ", line: "li_compression", each: "{*}:{}"}
+    eml_c: {example: "34", after: "EML 200G/λ (DR1): TDECQ", line: "li_compression", each: "{*}:{}"}
+  quotes:
+    - {doc: docs/USAGE.md, text: "DFE 省 {min(ffe_bw - dfe_bw)}–{max(ffe_bw - dfe_bw)} dB"}
+    - {doc: cairn/光互联建模.md, text: "只 FFE {ffe_bw[0]}…{ffe_bw[-1]} → 带 DFE {dfe_bw[0]}…{dfe_bw[-1]} dB,省 {max(ffe_bw - dfe_bw)}…{min(ffe_bw - dfe_bw)} dB"}
+    - {doc: docs/SUMMARY.md, text: "VCSEL 的 TDECQ +{vcsel_c[-1] - vcsel_c[0]} dB、EML 只 +{eml_c[-1] - eml_c[0]} dB"}
+    - {doc: docs/SUMMARY.md, text: "costs the VCSEL +{vcsel_c[-1] - vcsel_c[0]} dB of TDECQ and the EML only +{eml_c[-1] - eml_c[0]} dB"}
+    - {doc: cairn/光互联建模.md, text: "EML 只 +{eml_c[-1] - eml_c[0]} dB(只 FFE +{*})、VCSEL +{vcsel_c[-1] - vcsel_c[0]} dB"}
+    - {doc: cairn/光互联建模.md, text: "60 GHz:+{vcsel_c[-1] - vcsel_c[0]} / +{*} / +{*} dB"}
+
+- name: ex32 host FFE's gain on CPO (OMA margin at 100 m, linear laser)
+  values:
+    cpo: {example: "32", line: "4dB - 0dB 0dB {*}dB {}dB"}
+    cpo_ffe: {example: "32", line: "4dB on 0dB 0dB {*}dB {}dB"}
+  quotes:
+    - {doc: cairn/光互联建模.md, text: "CPO 上 FFE 的增益仍是 {*} dB(线性时 {cpo_ffe - cpo})"}

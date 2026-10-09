@@ -135,3 +135,83 @@ def test_compare_and_accept(drift, tmp_path, capsys):
     (new / "34_z.txt").write_text("new example\n")
     assert drift.main(["compare", str(new), "--expected", str(exp)]) == 1
     assert "34_z: no expected output" in capsys.readouterr().out
+
+
+def test_registered_derived_quotes_hold(drift):
+    # examples/derived.yaml: the docs' differences / sums / ranges of printed
+    # values, checked against the expected outputs -- an `accept` that moves an
+    # operand without fixing the quote fails here
+    entries = drift.load_derived()
+    assert entries, "examples/derived.yaml is empty"
+    bad, broken = drift.check_derived(entries, drift._outputs(drift.EXPECTED))
+    assert not broken, broken
+    assert not bad, [(e.name, doc, ln, tok, value) for e, doc, ln, tok, value in bad]
+
+
+def test_derived_expressions_are_arithmetic_only(drift):
+    env = {"a": 33.2, "b": 36.2, "x": __import__("numpy").array([5.07, 1.49]), "y": __import__("numpy").array([4.14, 1.40])}
+    assert round(drift.evaluate("b - a", env), 6) == 3.0
+    assert round(float(drift.evaluate("min(x - y)", env)), 6) == 0.09
+    assert drift.evaluate("x[-1]", env) == 1.49
+    for bad in ("__import__('os')", "a.real", "open('f')", "[a, b]", "a if b else 0"):
+        with pytest.raises(ValueError):
+            drift.evaluate(bad, env)
+
+
+DERIVED_YAML = """
+- name: levers
+  values:
+    a: {example: "21", line: "A. base: reach {} dB"}
+    b: {example: "21", line: "B. + fec: reach {} dB"}
+    col: {example: "21", after: "== second ==", line: "row", each: "{*}:{}"}
+  quotes:
+    - {doc: docs/A.md, text: "FEC 多 {b - a} dB({a} → {b})"}
+    - {doc: docs/A.md, text: "under {b - a |upper} dB"}
+    - {doc: docs/A.md, text: "range {min(col)}–{max(col)}, last {col[-1]}"}
+"""
+
+OUT21 = """A. base: reach 33.2 dB
+B. + fec: reach 36.2 dB
+== first ==
+  row 1:9.0  2:9.5
+== second ==
+  row 1:0.42  2:1.38
+"""
+
+
+def test_derived_quotes_are_read_from_their_lines(drift, tmp_path):
+    repo = _repo(tmp_path, "**结论**:FEC 多 3.0 dB(33.2 → 36.2),<b>under 4 dB</b>。\n\nrange 0.42–1.4, last 1.38\n")
+    (repo / "examples").mkdir()
+    (repo / "examples" / "derived.yaml").write_text(DERIVED_YAML, encoding="utf-8")
+    entries = drift.load_derived(repo / "examples" / "derived.yaml")
+    assert drift.check_derived(entries, {"21_full": OUT21}, repo) == ([], [])
+    # the operand moved: the difference and the bound go stale, the rest still round
+    bad, _ = drift.check_derived(entries, {"21_full": OUT21.replace("36.2", "37.5")}, repo)
+    assert [(doc, ln, tok, round(v, 2)) for _, doc, ln, tok, v in bad] == \
+        [("docs/A.md", 1, "3.0", 4.3), ("docs/A.md", 1, "36.2", 37.5), ("docs/A.md", 1, "4", 4.3)]
+    # a reworded doc is reported, not passed
+    (repo / "docs" / "A.md").write_text("FEC gains 3.0 dB\n", encoding="utf-8")
+    bad, _ = drift.check_derived(entries, {"21_full": OUT21}, repo)
+    assert {(doc, ln, v) for _, doc, ln, _, v in bad} == {("docs/A.md", 0, None)}
+    # an operand line that is gone or ambiguous breaks the entry
+    _, broken = drift.check_derived(entries, {"21_full": OUT21.replace("B. + fec", "B. fec")}, repo)
+    assert "matches 0 lines" in broken[0][1]
+    _, broken = drift.check_derived(entries, {"21_full": OUT21 + "A. base: reach 33.0 dB\n"}, repo)
+    assert "matches 2 lines" in broken[0][1]
+
+
+def test_compare_lists_derived_quotes_gone_stale(drift, tmp_path, capsys):
+    repo = _repo(tmp_path / "repo", "FEC 多 3.0 dB(33.2 → 36.2)\n\nunder 4 dB\n\nrange 0.42–1.4, last 1.38\n")
+    (repo / "examples").mkdir()
+    (repo / "examples" / "derived.yaml").write_text(DERIVED_YAML, encoding="utf-8")
+    exp, new = tmp_path / "exp", tmp_path / "new"
+    exp.mkdir()
+    new.mkdir()
+    (exp / "21_full.txt").write_text(OUT21)
+    (new / "21_full.txt").write_text(OUT21.replace("33.2", "33.0"))
+    assert drift.compare(exp, new, repo) == 1
+    out = capsys.readouterr().out
+    # the operand itself is quoted too (and found by the plain lookup as well)
+    assert "derived: levers: docs/A.md:1  '3.0'  (now 3.2)" in out
+    assert "derived: levers: docs/A.md:1  '33.2'  (now 33)" in out
+    assert "2 derived quote(s) no longer hold" in out

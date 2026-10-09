@@ -74,7 +74,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 硬件 | `rtl/` | FFE+DFE+slicer 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**(2026-10-03):核心库 ~9.8k 行 / 应用层与 GUI ~4.2k 行 / 测试 ~7.3k 行 / 示例 ~4.4k 行;
-**905 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**909 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
 **40 个编号示例**(`examples/00`–`39`)。
 
 ## 路线图
@@ -131,8 +131,8 @@ IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
 
 **产品级 mixed-signal 包络**(CTLE + DFE(tap-1 unrolled)+ BB-CDR、
 无 RX FFE),三层结构,由 Whisper 参考背板上的极限扫描标定
-(`examples/12`,闭眼损耗 NRZ ~-30 dB / PAM4 ~-20.5 dB,差值即
-PAM4 的 9.5 dB 电平代价):
+(`examples/12`:最后一个开眼点 NRZ −30.2 dB、PAM4 −20.4 dB,相差 9.8 dB(扫描步长 1.6 dB),
+与 PAM4 的电平代价 20·log10 3 ≈ 9.5 dB 相符):
 
 | 层级 | NRZ | PAM4 | 引擎行为 |
 |---|---|---|---|
