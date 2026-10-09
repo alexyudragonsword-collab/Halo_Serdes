@@ -65,8 +65,9 @@ AMI GetWave 记入下方「边界」。)
   剩下没覆盖的是 `desktop.main` / `__main__` 的起服务路径(CI 的打包 selfcheck 在跑)。)
 - (2026-10-07 已做:CI `examples` job 用 `tools/run_examples.py --smoke` 把示例全部真跑一遍,`n_symbols` 压到 2 万。
   2026-10-08 已做:40 个示例按原尺寸全跑(3 路并行),输出逐条对照现行文档,修了约 40 处漂移;`run_examples.py` 加了
-  `--save DIR`(存每个示例的输出)与 `--jobs N`。)剩余:全尺寸运行仍是手动步骤,数字会随模型改动再漂 —— 大改前后各
-  `--save` 一份,`diff` 即知哪些文档数字要动。
+  `--save DIR`(存每个示例的输出)与 `--jobs N`。2026-10-09 已做:全尺寸输出入库 `examples/expected/`,`tools/example_drift.py`
+  从变了的输出行反查仍引用旧值的文档行,CI `examples-full` 在改库 / 示例的 PR 上与每周跑同样的比对(4 核约 10 分钟)。)
+  剩余:推导出来的数(两个输出之差、比值,如"收端 PR 多 4.7 dB")工具看不见,仍靠人对照(`cairn/engineering-pitfalls.md`)。
 - (2026-10-08 已做:`CONTRIBUTING.md`,附 `tools/fingerprint.py`("重构用数值指纹证明"这条规则此前没有入库工具)。
   更正:原记 "`LICENSE` 尚缺" 不实 —— MIT 的 `LICENSE` 自 2026-09-12(b6e15ca)就在根目录,`pyproject.toml` 也写着 MIT。)
 

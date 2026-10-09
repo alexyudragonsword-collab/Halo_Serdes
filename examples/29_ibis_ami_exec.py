@@ -8,7 +8,7 @@ AMI_Close ABI by AmiCModel — no pyibisami, no vendor binary.
 
 Panel 1: the model's AMI_Init transform of the channel impulse response,
 run inside the .so, overlaid on the dependency-free native reference (they
-agree to machine precision, ~1e-18 -- the seam is faithful).
+agree to machine precision, below 1e-15 -- the seam is faithful).
 Panel 2: the Tx-EQ effect on the link — slicer-input SNR with the AMI model in
 the Tx slot vs no equalization, for both the Init (LTI) and GetWave (time-domain)
 flows.
@@ -69,7 +69,11 @@ h = ch.response_set(cfg.dt).h.y
 c_model = AmiCModel(so, taps=TAPS, n_pre=N_PRE)
 h_c = c_model.init(h.copy(), cfg.dt, cfg.ui)
 h_n = NativeFirAmi(TAPS, n_pre=N_PRE, sample_spaced=False).init(h.copy(), cfg.dt, cfg.ui)
-print(f"AMI_Init: max|C .so - native| = {np.max(np.abs(h_c - h_n)):.2e}")
+# The two differ only in the order of float rounding (C vs numpy), so the
+# residual itself depends on the compiler and CPU (1.7e-18 here, 3.5e-18 on
+# CI's runner): print the bound, which does not, and the value only if it fails.
+err = np.max(np.abs(h_c - h_n))
+print(f"AMI_Init: max|C .so - native| {'< 1e-15' if err < 1e-15 else f'= {err:.2e}'}")
 print(f"model msg: {c_model.messages}")
 c_model.close()
 

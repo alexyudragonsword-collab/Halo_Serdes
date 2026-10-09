@@ -6,6 +6,24 @@
 
 ---
 
+## [未发布] — 示例输出入库与文档数字漂移检查
+
+### 新增
+- `examples/expected/`:40 个示例的全尺寸 stdout(计时与仓库绝对路径已屏蔽)。
+- `tools/example_drift.py`:`compare` 把新的全尺寸输出与期望输出逐行比对,对每个变了的数,列出文档里能舍入成旧值、
+  却舍入不成新值的引用(按所在段落 / 小节 / 别处分三档放宽精度要求);`accept` 刷新期望输出。搜 README、ROADMAP、CONTRIBUTING、
+  `docs/`、`cairn/` 专题文档与示例的 docstring / 注释,不搜 CHANGELOG 与 LOG。
+- CI `examples-full` workflow:每个示例按原尺寸跑,再与期望输出比对(4 核约 10 分钟),输出存为 artifact。在改动库、app 层、示例、
+  `configs/`、`data/`、`pyproject.toml` 的 PR 与 main push 上跑,另每周一次。
+
+### 变更
+- 示例 29 打印 AMI_Init 与原生实现之差的上界(< 1e-15),不再打印残差本身:残差随编译器与 CPU 变(本地 1.73e-18、CI 3.47e-18),
+  是两台机器之间唯一不同的输出。`docs/COMPARISON.md` 同步。
+
+### 测试
+- `tests/test_example_drift.py`(10 条):期望输出与示例一一对应且已规范化、计时与路径屏蔽、数字切分、舍入判定、
+  同形行的数字配对、示例只取 docstring 与注释、引用识别、三档范围、`compare` / `accept` 的退出码。
+
 ## [未发布] — 预加重过激光器曲线(研究)
 
 ### 变更

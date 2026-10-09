@@ -7,7 +7,7 @@ found about forty stale ones, one of them a conclusion (a "300x" that was
 as of the last time the docs were checked against it. A change is compared
 with that, line by line, and every number that moved is looked up in the docs:
 
-    python tools/run_examples.py --jobs 4 --save new/    # full size, ~15 min on 4 cores
+    python tools/run_examples.py --jobs 4 --save new/    # full size, 10-20 min on 4 cores
     python tools/example_drift.py compare new/           # what moved; which doc lines quote it
     python tools/example_drift.py accept new/            # after the docs are fixed
 
@@ -281,7 +281,8 @@ def compare(expected: Path, new: Path, repo: Path = REPO, out=None) -> int:
     moved, n_stale, unquoted = 0, 0, 0
     not_run = sorted(exp.keys() - got.keys())
     if not_run:
-        print(f"not in {new}, not compared: {', '.join(not_run)}", file=out)
+        names = ", ".join(not_run) if len(not_run) <= 5 else f"{len(not_run)} examples"
+        print(f"not in {new}, not compared: {names}", file=out)
     for name in sorted(got):
         if name not in exp:
             print(f"{name}: no expected output -- run `accept` once it is checked", file=out)

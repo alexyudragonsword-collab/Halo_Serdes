@@ -1,5 +1,5 @@
 compiled halo_fir_ami.so from halo_fir_ami.c + halo_fir.ami
-AMI_Init: max|C .so - native| = 1.73e-18
+AMI_Init: max|C .so - native| < 1e-15
 model msg: halo_serdes reference FIR AMI: 3 taps, osr=16, n_pre=1
 Init (LTI)  : C .so SNR=15.370 dB  native=15.370 dB  (Δ=0.0e+00)
 GetWave     : C .so SNR=12.780 dB  native=12.780 dB  (Δ=0.0e+00)
