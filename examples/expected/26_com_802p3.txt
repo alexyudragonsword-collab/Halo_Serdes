@@ -1,0 +1,3 @@
+@ IL=16.2 dB:  COM=-1.96 dB  (A_s=0.0438 V, A_ni=0.0549 V, FOM=7.75 dB; σ_ISI=0.0015 σ_XT=0.0177 σ_N=0.0023 σ_J=0.0002)
+   optimized CTLE peaking = 10.0 dB, sample phase = 2, DFE taps = 1, FOM = 7.7 dB
+wrote examples/output/26_com_802p3.png

@@ -1,0 +1,16 @@
+noise=0.040: slicer=7.446e-03  sliding=4.258e-03  viterbi=3.848e-03  (gain 1.94x)
+noise=0.045: slicer=1.216e-02  sliding=7.911e-03  viterbi=7.661e-03  (gain 1.59x)
+noise=0.050: slicer=1.810e-02  sliding=1.320e-02  viterbi=1.283e-02  (gain 1.41x)
+noise=0.055: slicer=2.486e-02  sliding=1.975e-02  viterbi=1.926e-02  (gain 1.29x)
+noise=0.060: slicer=3.254e-02  sliding=2.778e-02  viterbi=2.712e-02  (gain 1.20x)
+
+residual cursors [1.0, 0.161, 0.051]
+closed-form asymptotic MLSE gain over an IDEAL DFE: 0.12 dB
+  NOTE: that bound and the measured curve use different baselines. The
+  measured gain is against the memoryless slicer (this link runs with
+  the DFE off), which pays the full ISI penalty; the closed-form number
+  is against a DFE that already cancels those postcursors perfectly.
+  Small residual cursors -> little left for MLSE to win over ideal DFE,
+  yet a lot to win over a slicer that ignores them entirely.
+precoding @ noise=0.050: plain SER=1.810e-02 -> precoded SER=3.417e-02 (1.89x, the known isolated-error doubling)
+wrote examples/output/30_mlsd_precode_link.png

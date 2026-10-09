@@ -1,0 +1,30 @@
+== TI-ADC background calibration, 1,000,000 symbols, last quarter scored ==
+  drawn mismatch: offset rms 10.25 mV, gain rms 2.86 %
+  uncalibrated        SNR  14.34 dB
+  ideal (calibrated)  SNR  26.90 dB
+    step  tau [sym]  SNR [dB]  offset left  gain left
+  2^-8        4,096     23.58      3.98 mV     2.08 %
+  2^-10      16,384     26.05      1.83 mV     0.99 %
+  2^-12      65,536     26.80      0.58 mV     0.33 %
+  2^-14     262,144     26.78      0.25 mV     0.08 %
+  wrote examples/output/39_adc_calibration.png
+
+== with 0.04 UI rms lane skew as well (offset / gain step 2^-12) ==
+  uncalibrated                SNR  14.21 dB
+  ideal offset / gain         SNR  24.17 dB
+  offset + gain               SNR  24.12 dB
+  offset + gain + skew 2^-8   SNR  26.70 dB   skew 0.0422 UI rms -> 0.0091 UI left
+
+== foreground calibration, ENOB 6.5 ==
+  ideal offset / gain         SNR  26.90 dB
+  background 2^-12            SNR  26.80 dB
+  foreground     64 samples    SNR  26.87 dB   offset left  0.27 mV, gain left 0.072 %
+  foreground   1024 samples    SNR  26.90 dB   offset left  0.06 mV, gain left 0.015 %
+  foreground  16384 samples    SNR  26.90 dB   offset left  0.01 mV, gain left 0.005 %
+
+== foreground calibration, ENOB off (quantizer only) ==
+  ideal offset / gain         SNR  29.74 dB
+  background 2^-12            SNR  29.55 dB
+  foreground     64 samples    SNR  29.21 dB   offset left  0.70 mV, gain left 0.173 %
+  foreground   1024 samples    SNR  29.21 dB   offset left  0.70 mV, gain left 0.173 %
+  foreground  16384 samples    SNR  29.21 dB   offset left  0.70 mV, gain left 0.173 %

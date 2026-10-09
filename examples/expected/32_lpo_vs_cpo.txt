@@ -1,0 +1,52 @@
+VCSEL + OM4, 53.125 GBd PAM4, OMA +1 dBm, ER 4 dB, RIN -145 dB/Hz, ADC RX + KP4; segments A = B
+seg loss  fibre   pre-FEC  post-KP4    SNR  errs
+      4dB    30m  1.29e-06   6.1e-51  24.2dB      0  [~s]
+      4dB    60m  1.29e-06   6.1e-51  23.9dB      0  [~s]
+      4dB   100m  1.29e-06   6.1e-51  23.1dB      0  [~s]
+      4dB   140m  1.29e-06   6.1e-51  21.9dB      0  [~s]
+      4dB   180m  7.73e-06   1.7e-38  20.2dB      3  [~s]
+      4dB   220m  4.10e-04   8.5e-12  17.7dB    159  [~s]
+      4dB   260m  5.98e-03   4.7e-03  14.8dB   2318  [~s]
+      8dB    30m  1.29e-06   6.1e-51  21.3dB      0  [~s]
+      8dB    60m  5.16e-06   2.5e-41  20.9dB      2  [~s]
+      8dB   100m  1.55e-05   1.0e-33  20.1dB      6  [~s]
+      8dB   140m  7.22e-05   4.0e-23  18.8dB     28  [~s]
+      8dB   180m  8.76e-04   1.6e-07  17.0dB    340  [~s]
+      8dB   220m  7.18e-03   4.7e-03  14.5dB   2787  [~s]
+     12dB    30m  2.11e-04   5.8e-16  18.1dB     82  [~s]
+     12dB    60m  3.51e-04   9.4e-13  17.7dB    136  [~s]
+     12dB   100m  8.66e-04   1.4e-07  16.9dB    336  [~s]
+     12dB   140m  3.30e-03   3.2e-03  15.5dB   1281  [~s]
+     16dB    30m  6.59e-03   4.7e-03  14.6dB   2555  [~s]
+
+Reach ladder (post-KP4 < 1e-15):
+seg A/B loss total elec.   reach SNR @ reach
+          4dB          8dB    214m       18.1dB
+          8dB         16dB    159m       17.9dB
+         12dB         24dB     32m       18.0dB
+         16dB         32dB      0m        nandB
+reach decreases monotonically with electrical loss: True
+
+Optical margin at 100 m fibre (statistical engine, KP4 projection):
+  seg 4 dB x2: minimum OMA -7.6 dBm -> margin 8.6 dB (time-engine SNR at nominal 23.1 dB)
+  seg 8 dB x2: minimum OMA -4.5 dBm -> margin 5.5 dB (time-engine SNR at nominal 20.1 dB)
+  seg 12 dB x2: target not met even at OMA +3.5 dBm (RIN-limited: more light brings more RIN noise; SNR 16.9 dB)
+  seg 16 dB x2: target not met even at OMA +3.5 dBm (RIN-limited: more light brings more RIN noise; SNR 13.3 dB)
+CPO (4 dB segments) keeps 3.1 dB more optical margin than LPO (8 dB segments) at 100 m
+LPO at 12 dB segments has no optical margin at 100 m: no OMA in the SR1 window closes it with this receiver (CTLE + FFE, no DFE/MLSD)
+LPO at 16 dB segments has no optical margin at 100 m: no OMA in the SR1 window closes it with this receiver (CTLE + FFE, no DFE/MLSD)
+
+Equalisation at 100 m fibre (OMA margin, statistical engine; host FFE (-0.06, 0.68, -0.26) where set):
+segments host FFE driver   TIA    SNR  margin laser c=0.2 p-p/OMA no headroom
+      4dB        -     0dB    0dB  23.1dB   8.59dB      8.26dB    0.97       8.59dB
+      4dB       on     0dB    0dB  29.2dB  12.62dB     12.24dB    1.80      10.08dB
+     12dB        -     0dB    0dB  16.9dB    fails       fails    0.83        fails
+     12dB        -     0dB    6dB  16.7dB    fails       fails    0.83        fails
+     12dB        -     6dB    0dB  19.2dB   4.04dB      2.76dB    0.87       4.04dB
+     12dB       on     0dB    0dB  23.3dB   8.76dB      8.32dB    1.19       8.00dB
+     12dB       on     6dB    0dB  25.4dB  10.58dB     10.25dB    1.46       8.95dB
+     16dB       on     0dB    0dB  19.6dB   3.92dB      1.66dB    1.00       3.92dB
+     16dB       on     0dB    6dB  19.7dB   3.29dB      0.51dB    1.00       3.29dB
+     16dB       on     6dB    0dB  21.4dB   7.44dB      6.86dB    1.19       6.69dB
+     16dB       on     9dB    0dB  23.3dB   9.31dB      8.92dB    1.43       7.75dB
+wrote examples/output/32_lpo_vs_cpo.png

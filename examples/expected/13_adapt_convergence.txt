@@ -1,0 +1,7 @@
+NRZ 16 Gb/s: taps zero-init -> [0.3831, 0.1796, 0.1234, 0.0831]
+          cursor targets      [0.3857, 0.1861, 0.1211, 0.0879]
+          n=113992  BER=1.755e-04 (20/113992)  SER=1.755e-04  slicer SNR=11.7 dB
+PAM4 32 Gb/s: taps zero-init -> [-0.0291, 0.0081, 0.0126, 0.0091]
+          cursor targets      [-0.0168, 0.0059, 0.0135, 0.01]
+          n=113976  BER=0.000e+00 (0/227952)  SER=0.000e+00  slicer SNR=16.9 dB
+wrote examples/output/13_adapt_convergence.png

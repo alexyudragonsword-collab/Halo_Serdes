@@ -1,0 +1,11 @@
+loss@Nyq   -4.9 dB | MS : SNR  25.1 dB SER 0.00e+00 | ADC: SNR  34.9 dB SER 0.00e+00
+loss@Nyq   -9.9 dB | MS : SNR  17.9 dB SER 3.40e-06 | ADC: SNR  31.6 dB SER 0.00e+00
+loss@Nyq  -14.8 dB | MS : SNR  12.5 dB SER 2.57e-02 | ADC: SNR  28.5 dB SER 0.00e+00
+loss@Nyq  -19.8 dB | MS : SNR   8.8 dB SER 2.09e-01 | ADC: SNR  24.6 dB SER 0.00e+00
+loss@Nyq  -24.7 dB | MS : SNR   6.3 dB SER 3.40e-01 | ADC: SNR  20.8 dB SER 0.00e+00
+
+power/complexity proxy (digital multiplies x bits): MS = 0, ADC = 160
+post-FEC (KP4) projection at the deepest common operating point:
+  ms: pre-FEC 1.05e-01 -> post-FEC 4.67e-03
+  adc: pre-FEC 1.00e-07 -> post-FEC 1.05e-68
+wrote examples/output/07_arch_compare.png

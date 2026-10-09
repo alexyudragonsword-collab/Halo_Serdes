@@ -1,0 +1,9 @@
+== NRZ 32G over Whisper backplane ==
+  n=199974  BER=0.000e+00 (0/199974)  SER=0.000e+00  slicer SNR=15.1 dB
+  sample phase: 27/32,  main cursor: 0.0174 V
+  FFE taps: [0.017, -0.051, 0.104, -0.191, 0.373, -0.206, 0.021, -0.008, -0.004, 0.001, -0.003, 0.001, -0.004, 0.003, -0.005, 0.004, -0.003]
+  DFE taps: [0.0068, -0.0041, 0.0022]
+  wrote examples/output/01_nrz32_link.png
+== PAM4 56 GBd over mild analytic channel ==
+  n=99951  BER=0.000e+00 (0/199902)  SER=0.000e+00  slicer SNR=30.7 dB
+  wrote examples/output/01_pam4_sanity.png

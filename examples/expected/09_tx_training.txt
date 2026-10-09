@@ -1,0 +1,6 @@
+== product partition: Tx FIR (backchannel) + RX CTLE + DFE, no RX FFE ==
+  baseline (no de-emphasis): n=143983  BER=0.000e+00 (0/143983)  SER=0.000e+00  slicer SNR=12.2 dB
+  Tx FIR trained in 13 rounds (converged): [-0.1698, 0.8302, 0.0]
+  with trained Tx FIR      : n=143983  BER=0.000e+00 (0/143983)  SER=0.000e+00  slicer SNR=23.0 dB
+  slicer SNR: 12.2 -> 23.0 dB
+  wrote examples/output/09_tx_training.png

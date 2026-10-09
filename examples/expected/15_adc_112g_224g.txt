@@ -1,0 +1,9 @@
+== PAM4 112 Gb/s (56 GBd, -10.1 dB @ Nyquist) ==
+  n=993963  BER=0.000e+00 (0/1987926)  SER=0.000e+00  slicer SNR=31.2 dB  [~s]
+  lane SER: min 0.00e+00  max 0.00e+00
+  pre-FEC BER 1.00e-09 -> post-KP4 1.05e-100  (PASS: below 1e-15)
+== PAM4 224 Gb/s (112 GBd, -18.2 dB @ Nyquist) ==
+  n=993977  BER=0.000e+00 (0/1987954)  SER=0.000e+00  slicer SNR=26.1 dB  [~s]
+  lane SER: min 0.00e+00  max 0.00e+00
+  pre-FEC BER 1.00e-09 -> post-KP4 1.05e-100  (PASS: below 1e-15)
+wrote examples/output/15_adc_112g_224g.png

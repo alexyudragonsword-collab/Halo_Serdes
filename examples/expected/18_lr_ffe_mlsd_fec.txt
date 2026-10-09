@@ -1,0 +1,18 @@
+224 Gb/s PAM4 LR: FFE-only vs FFE + MLSD (memory 2), two FFE lengths, + KP4 projection
+== 21-tap FFE (6 pre / 14 post) ==
+ Loss@Nyq Class    SNR    FFE BER   MLSD BER MLSD gain  post-KP4(MLSD)  residual h1..h3
+   -22.7dB   C2M  24.8dB  0.00e+00  0.00e+00       -      1.1e-100  -0.001 +0.000 +0.000  [~s]
+   -25.8dB    MR  22.4dB  0.00e+00  0.00e+00       -      1.1e-100  -0.000 +0.000 +0.000  [~s]
+   -27.3dB    MR  21.3dB  0.00e+00  0.00e+00       -      1.1e-100  +0.000 +0.000 -0.000  [~s]
+   -28.8dB    MR  19.7dB  0.00e+00  0.00e+00       -      1.1e-100  +0.000 +0.000 -0.000  [~s]
+   -30.3dB    MR  18.8dB  2.50e-05  2.50e-05    1.0x       2.2e-30  +0.001 -0.000 +0.000  [~s]
+   -33.3dB    MR  16.0dB  1.58e-03  1.60e-03    1.0x       7.1e-05  +0.002 -0.001 +0.000  [~s]
+== 3-tap FFE (1 pre / 1 post) ==
+ Loss@Nyq Class    SNR    FFE BER   MLSD BER MLSD gain  post-KP4(MLSD)  residual h1..h3
+   -22.7dB   C2M  21.6dB  0.00e+00  0.00e+00       -      1.1e-100  -0.001 -0.016 +0.034  [~s]
+   -25.8dB    MR  19.4dB  0.00e+00  0.00e+00       -      1.1e-100  +0.008 -0.035 +0.035  [~s]
+   -27.3dB    MR  18.4dB  2.50e-05  5.00e-05    0.5x       1.2e-25  +0.011 -0.032 +0.035  [~s]
+   -28.8dB    MR  17.0dB  3.25e-04  1.75e-04    1.9x       3.4e-17  +0.020 -0.057 +0.033  [~s]
+   -30.3dB    MR  16.2dB  1.12e-03  5.50e-04    2.0x       4.7e-10  +0.024 -0.054 +0.033  [~s]
+   -33.3dB    MR  13.6dB  1.14e-02  2.60e-03    4.4x       1.5e-03  +0.055 -0.108 +0.024  [~s]
+wrote examples/output/18_lr_ffe_mlsd_fec.png

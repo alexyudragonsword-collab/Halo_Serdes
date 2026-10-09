@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-09 · 示例输出入库 + 文档数字漂移检查(tools/example-drift,ROADMAP P3 #10 一项)
+
+- 先量静态绑定:引用示例的文档段落共 1243 个数,只有 334 个(27%)能在输出里找到 → 不可行。改为差分:
+  `examples/expected/` 存 40 个示例的全尺寸输出(计时、仓库路径屏蔽);`tools/example_drift.py compare` 从变了的输出行反查
+  能舍入成旧值、舍入不成新值的文档数(段落 / 小节 / 别处三档);`accept` 刷新。坑进 engineering-pitfalls(两条)。
+- 试跑:10-08 的输出对当前 main,38 个逐字节同;示例 27 的 sliding 列点到 2 处文档,都是有意保留的历史描述;示例 32 只多了第 3 问。
+- CI `examples-full`(改库 / 示例的 PR、main push、每周):4 核约 10 分钟。首跑跨机器 39 / 40 逐字节同,唯一不同是示例 29 的
+  C .so 与 numpy 之差(本地 1.73e-18、CI 3.47e-18,COMPARISON 还引用了它)→ 示例改打印上界 < 1e-15。
+- 本地全尺寸 4 路并行约 20 分钟(示例 32 用 416 s);CONTRIBUTING、architecture-invariants 速查同步。
+- PR #53;CI 全部 test job + examples + rtl-lockstep 绿,`examples-full` 修后 40 / 40 一致(10.5 分钟)。
+- 全量(JIT + iverilog):900 passed / 1 skipped(+10);ruff 通过;库代码未动。
+
 ## 2026-10-08 · 预加重过激光器曲线(study/preemphasis-vs-laser,ROADMAP P3 #11 一项)
 
 - 上个 PR 只给了过冲的两个口径(不罚 / 无余量)。本模型的激光器限制过冲的是零功率下限与翻转峰;7 种均衡 × ER 4 / 6 × 曲线

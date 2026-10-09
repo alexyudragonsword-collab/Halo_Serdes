@@ -1,0 +1,12 @@
+== Behavioral COM sweep (28 GBd NRZ) ==
+  Weak Tx FIR (-0.06,0.9,-0.04): 7dB->16.7  10dB->16.1  12dB->15.5  15dB->14.1  17dB->12.6  19dB->11.0  22dB->9.3  24dB->7.4
+  Strong Tx FIR (-0.12,0.8,-0.08): 7dB->14.7  10dB->14.7  12dB->14.2  15dB->13.2  17dB->11.8  19dB->10.2  22dB->8.6  24dB->6.8
+
+== AMI Rx GetWave model in engine (SNR readback) ==
+  Rx AMI post tap +0.00 -> slicer SNR 17.13 dB (BER 0.0e+00)
+  Rx AMI post tap -0.03 -> slicer SNR 16.94 dB (BER 0.0e+00)
+  Rx AMI post tap -0.06 -> slicer SNR 16.46 dB (BER 0.0e+00)
+  Rx AMI post tap -0.09 -> slicer SNR 15.74 dB (BER 0.0e+00)
+  Rx AMI post tap -0.12 -> slicer SNR 14.91 dB (BER 0.0e+00)
+
+wrote examples/output/23_ami_com.png

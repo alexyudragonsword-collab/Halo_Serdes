@@ -66,7 +66,7 @@
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
    30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、890 个测试全通过、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、900 个测试全通过、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -88,7 +88,7 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
   后端,绑定厂商 .ami/.dll);**新增 `AmiCModel`**:通过真实 IBIS-AMI **C ABI**(ctypes)
   加载并执行一个**编译的共享库**——随仓库附带的参考模型 `io/ami_c/halo_fir_ami.c`
   实现 spec 的 AMI_Init/AMI_GetWave/AMI_Close 三入口,`build_reference_ami()` 用系统
-  C 编译器现编译成 .so,与 `NativeFirAmi` 一致(Init 冲激响应差 1.7e-18、机器精度;GetWave 与链路 SNR 逐位相同),
+  C 编译器现编译成 .so,与 `NativeFirAmi` 一致(Init 冲激响应差在机器精度 —— < 1e-15,具体值随编译器与 CPU 在 1e-18 量级变;GetWave 与链路 SNR 逐位相同),
   经引擎 Tx/Rx 槽两流验证;示例 29。厂商模型即 `load_ami_model(so_file=...)` 直接替换。
 - ✅ **COM(Channel Operating Margin)** —— **本轮补齐 + 升级为标准 COM**:`io/ami.py` 的
   `ComAdapter` 有两个实现:`NativeCom`(基于均衡脉冲响应的透明行为级 RSS 图,快、易读)与
@@ -151,5 +151,5 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 890 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 900 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。

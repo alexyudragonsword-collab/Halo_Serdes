@@ -1,0 +1,6 @@
+== 16G NRZ over Whisper (-18.7 dB @ Nyquist), NO RX FFE ==
+  no Tx FIR      : n=113992  BER=0.000e+00 (0/113992)  SER=0.000e+00  slicer SNR=14.7 dB
+  Tx FIR trained in 8 rounds (converged): [-0.1028, 0.8972, 0.0]
+  trained Tx FIR : n=113992  BER=0.000e+00 (0/113992)  SER=0.000e+00  slicer SNR=17.6 dB
+  post-DFE inner eye: no FIR 104.9 mV -> trained FIR 93.5 mV  (slicer levels ±94.0 mV)
+  wrote examples/output/10_nrz16_dfe_eye.png

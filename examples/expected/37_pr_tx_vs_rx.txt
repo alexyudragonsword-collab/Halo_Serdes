@@ -1,0 +1,25 @@
+224 Gb/s PAM4 LR, 21-tap LMS FFE + memory-2 Viterbi: PR at the Tx, at the Rx, or none
+reach: post-KP4 1e-15 <=> pre-FEC BER <= 2.19e-04
+  control (delta + Viterbi)    21.2dB: 6.3e-07 24.3dB: 6.3e-07 27.3dB: 6.3e-07 30.3dB: 4.6e-05 33.3dB: 1.7e-03 36.4dB: 1.5e-02 39.4dB: 4.6e-02  [~s]
+  RX PR a=0.75                 21.2dB: 6.3e-07 24.3dB: 6.3e-07 27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 2.5e-06 36.4dB: 2.4e-04 39.4dB: 4.3e-03  [~s]
+  TX PR a=0.25                 21.2dB: 6.3e-07 24.3dB: 6.3e-07 27.3dB: 5.1e-06 30.3dB: 5.3e-04 33.3dB: 8.8e-03 36.4dB: 4.1e-02 39.4dB: 9.0e-02  [~s]
+  TX PR a=0.5                  21.2dB: 6.3e-07 24.3dB: 6.3e-07 27.3dB: 8.4e-05 30.3dB: 3.7e-03 33.3dB: 2.8e-02 36.4dB: 7.6e-02 39.4dB: 1.4e-01  [~s]
+  TX PR a=0.75                 21.2dB: 6.3e-07 24.3dB: 6.3e-07 27.3dB: 5.2e-04 30.3dB: 9.0e-03 33.3dB: 4.4e-02 36.4dB: 2.0e-01 39.4dB: 2.3e-01  [~s]
+  TX PR a=1                    21.2dB: 6.3e-07 24.3dB: 6.3e-07 27.3dB: 4.8e-04 30.3dB: 9.6e-03 33.3dB: 1.9e-01 36.4dB: 2.2e-01 39.4dB: 2.5e-01  [~s]
+
+reach [dB @ 56 GHz]:                  vs control   control - 20 log10(1 + a)
+  control (delta + Viterbi)     31.62 dB  +0.00 dB
+  RX PR a=0.75                  36.33 dB  +4.71 dB
+  TX PR a=0.25                  29.74 dB  -1.88 dB    29.68 dB
+  TX PR a=0.5                   28.05 dB  -3.56 dB    28.10 dB
+  TX PR a=0.75                  26.89 dB  -4.73 dB    26.76 dB
+  TX PR a=1                     26.92 dB  -4.70 dB    25.60 dB
+
+slicer SNR at 30.3 dB:
+  control (delta + Viterbi)     18.8 dB
+  RX PR a=0.75                  23.1 dB
+  TX PR a=0.25                  17.2 dB
+  TX PR a=0.5                   16.4 dB
+  TX PR a=0.75                  16.2 dB
+  TX PR a=1                     16.5 dB
+wrote examples/output/37_pr_tx_vs_rx.png

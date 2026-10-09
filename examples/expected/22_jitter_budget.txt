@@ -1,0 +1,12 @@
+16 GBd NRZ, 0.30 m analytic channel — loss @ Nyquist -9.5 dB
+post-DFE: BER=0.00e+00  slicer SNR=15.6 dB
+
+injected Tx jitter: Rj=0.80%UI  SJ=1.20%UI  DCD=2.00%UI
+
+stage         ISI      DCD       Pj   Rj(rms)   TJ@1e-12
+--------------------------------------------------------
+tx          0.98%    2.01%    1.60%    0.779%     12.41%
+chnl       19.15%    1.95%    2.07%    0.822%     32.11%
+ctle       11.69%    1.77%    1.74%    0.767%     26.84%
+
+wrote examples/output/22_jitter_budget.png

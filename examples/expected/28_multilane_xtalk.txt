@@ -1,0 +1,9 @@
+channel IL @ Nyquist = 12.9 dB
+   0 aggressors: ICN=  0.00 mV   COM= 15.01 dB
+   1 aggressors: ICN= 15.90 mV   COM=  3.42 dB
+   2 aggressors: ICN= 22.18 mV   COM= -1.38 dB
+   4 aggressors: ICN= 31.37 mV   COM= -5.35 dB
+   6 aggressors: ICN= 36.48 mV   COM= -7.01 dB
+   8 aggressors: ICN= 42.77 mV   COM= -8.50 dB
+  12 aggressors: ICN= 51.22 mV   COM=-10.25 dB
+wrote examples/output/28_multilane_xtalk.png
