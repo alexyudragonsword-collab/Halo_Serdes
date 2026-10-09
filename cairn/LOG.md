@@ -12,6 +12,7 @@
 - CI `examples-full`(改库 / 示例的 PR、main push、每周):4 核约 10 分钟。首跑跨机器 39 / 40 逐字节同,唯一不同是示例 29 的
   C .so 与 numpy 之差(本地 1.73e-18、CI 3.47e-18,COMPARISON 还引用了它)→ 示例改打印上界 < 1e-15。
 - 本地全尺寸 4 路并行约 20 分钟(示例 32 用 416 s);CONTRIBUTING、architecture-invariants 速查同步。
+- PR #53;CI 全部 test job + examples + rtl-lockstep 绿,`examples-full` 修后 40 / 40 一致(10.5 分钟)。
 - 全量(JIT + iverilog):900 passed / 1 skipped(+10);ruff 通过;库代码未动。
 
 ## 2026-10-08 · 预加重过激光器曲线(study/preemphasis-vs-laser,ROADMAP P3 #11 一项)
