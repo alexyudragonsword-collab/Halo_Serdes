@@ -10,7 +10,8 @@ reaches:
 - both clock kinds with a Tx FIR and Tx bandwidth;
 - the reconstructed front end;
 - the Tx edge offsets;
-- an optical link with its E/O power curve;
+- an optical link (time and statistical engines, Tx FFE on) with its E/O
+  power curve;
 - a retimed cascade.
 
 Scalars are stored by ``repr`` and arrays by SHA-256, so the comparison is
@@ -171,6 +172,9 @@ def record_synthetic() -> dict:
                 oc = dataclasses.replace(cfg, topology=top,
                                          sim=dataclasses.replace(cfg.sim, n_symbols=4000))
                 out["optical/time"] = _guarded(lambda: result_values(run_time_link(oc)))
+                # the stat engine's optical noise kernels under a Tx FFE (no
+                # preset has both; they missed the FFE until 2026-10-09)
+                out["optical/stat"] = _guarded(lambda: result_values(run_statistical(oc)))
                 for c in (0.0, 0.3):
                     oc2 = dataclasses.replace(oc, topology=dataclasses.replace(
                         top, optical=dataclasses.replace(top.optical, li_compression=c)))

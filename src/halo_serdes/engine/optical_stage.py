@@ -57,6 +57,26 @@ def split_impulses_nonlinear(cfg: LinkConfig, channel: ChannelModel
     return hd, ho, h2
 
 
+def _symbol_pulse_at_pd(cfg: LinkConfig, h1: np.ndarray) -> np.ndarray:
+    """One symbol's pulse at the photodiode node [V per unit level]: the hold,
+    the Tx's LTI part (FFE, PR filter, driver pole --
+    ``TxPipeline.equivalent_symbol_response``) and stage 1.
+
+    The waveform reaching the photodiode carries the Tx FFE, so the light
+    along the receiver's memory does too. Without it a host Tx FFE of
+    (-0.06, 0.68, -0.26) read as a full-height main cursor with no pre- or
+    post-tap, the noise per level came out too level-dependent, and the
+    statistical engine was 1.3-2.7x pessimistic on example 32's equalised
+    links (2026-10-09). The curve's pattern average already shaped its drive
+    this way.
+    """
+    from ..tx.pipeline import TxPipeline
+
+    p1 = np.convolve(h1, np.ones(cfg.osr))
+    resp = TxPipeline.from_config(cfg).equivalent_symbol_response(cfg.osr)
+    return p1 if resp is None else np.convolve(p1, resp)
+
+
 def slicer_sigma_per_level(cfg: LinkConfig, channel: ChannelModel, h1: np.ndarray,
                            h2: np.ndarray, ffe_taps: np.ndarray | None = None,
                            nominal: bool = False) -> np.ndarray:
@@ -71,7 +91,8 @@ def slicer_sigma_per_level(cfg: LinkConfig, channel: ChannelModel, h1: np.ndarra
         sigma_k^2 = sum_n g[n]^2 * E[ s^2(P(t_s - n)) | a_0 = a_k ]
 
     and the power along the filter's memory is not P_k: it is the pre-PD
-    pulse of symbol k, p1, riding on the random neighbours. With symmetric
+    pulse of symbol k, p1 (stage 1 ``h1`` after the Tx's own response, see
+    ``_symbol_pulse_at_pd``), riding on the random neighbours. With symmetric
     levels, E[P | k] = P_mid + a_k p1 / (R v), var(P | k) = E[a^2] *
     sum_{m != 0} p1(. - mT)^2 / (R v)^2; shot noise needs the mean, RIN also
     the variance (``OpticalNoise.sample_var_v2``). ``nominal=True`` is the
@@ -89,7 +110,7 @@ def slicer_sigma_per_level(cfg: LinkConfig, channel: ChannelModel, h1: np.ndarra
         return np.sqrt(noise.sample_var_v2(noise.level_powers_w) * g2.sum())
 
     # pre-PD pulse of one symbol (volts per unit level) and the slicer instant
-    p1 = np.convolve(h1, np.ones(osr))
+    p1 = _symbol_pulse_at_pd(cfg, h1)
     p_full = np.convolve(p1, g)
     t_s = int(np.argmax(np.abs(p_full)))
     # PD-node sample feeding output delay n is t_s - n; take p1 there (0 outside)
@@ -201,7 +222,7 @@ def slicer_sigma_binned(cfg: LinkConfig, channel: ChannelModel, h1: np.ndarray,
         g = np.convolve(g, upsampled_taps(ffe_taps, osr))
     g2 = g * g
 
-    p1 = np.convolve(h1, np.ones(osr))
+    p1 = _symbol_pulse_at_pd(cfg, h1)
     p_full = np.convolve(p1, g)
     t_s = int(np.argmax(np.abs(p_full)))
     base = t_s - np.arange(g.size)

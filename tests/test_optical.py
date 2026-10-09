@@ -533,6 +533,58 @@ def test_invariant3_holds_with_module_equalisation(drv_db, tia_db, oma_dbm):
     assert 1 / 1.5 < ratio < 1.5, (drv_db, tia_db, st.ber, mc.ber.ber, ratio)
 
 
+def _with_host_tx_ffe(cfg):
+    # example 32's host FFE: the light reaching the photodiode is pre-emphasised
+    return dataclasses.replace(cfg, tx=dataclasses.replace(cfg.tx, fir_taps=(-0.06, 0.68, -0.26),
+                                                           fir_n_pre=1))
+
+
+@pytest.mark.parametrize("er_db", [4.5, 6.0])
+def test_optical_noise_kernels_carry_the_tx_ffe(er_db):
+    """The light at the photodiode carries the Tx FFE, so the noise each level
+    sees along the receiver's memory comes from that pulse. Checked exactly,
+    without Monte Carlo: the per-sample variance the time engine draws at the
+    power of a noiseless waveform, through the receiver's impulse, averaged
+    per transmitted level. Both kernels match it to 1 %; built from stage 1
+    alone (before 2026-10-09) they were 16-22 % low on the bottom level and
+    19-22 % high on the top one."""
+    from halo_serdes.core.sampler import hold
+    from halo_serdes.engine.lti import fft_filter
+    from halo_serdes.engine.optical_stage import slicer_sigma_binned
+    from halo_serdes.engine.static_link import _levels
+    from halo_serdes.tx.pipeline import TxPipeline
+
+    cfg = _with_host_tx_ffe(_adc_cfg(er_db, -4.0))
+    cm = ChannelModel.from_config(cfg)
+    osr, noise = cfg.osr, cm.optical.noise
+    h1, h2 = split_impulses(cfg, cm)
+    tx = TxPipeline.from_config(cfg).equivalent_symbol_response(osr)
+    sym = np.random.default_rng(3).integers(0, 4, size=20_000)
+    y_pd = fft_filter(fft_filter(hold(_levels(cfg)[sym], osr), tx), h1)
+    var = fft_filter(noise.sigma_v(noise.power_w(y_pd)) ** 2, h2 * h2)
+    peak = int(np.argmax(np.abs(np.convolve(np.convolve(np.convolve(np.ones(osr), tx), h1), h2))))
+    k = np.arange(200, sym.size - 200)
+    exact = np.array([np.sqrt(var[k[sym[k] == lv] * osr + peak].mean()) for lv in range(4)])
+    per_level = slicer_sigma_per_level(cfg, cm, h1, h2)
+    binned = slicer_sigma_binned(cfg, cm, h1, h2)
+    binned = np.sqrt((binned ** 2).reshape(4, -1).mean(axis=1))   # neighbours equally likely
+    np.testing.assert_allclose(per_level, exact, rtol=0.01)
+    np.testing.assert_allclose(binned, exact, rtol=0.01)
+
+
+def test_invariant3_holds_with_a_host_tx_ffe():
+    """End to end on a linear optical link: with the Tx FFE missing from the
+    noise kernels the statistical engine read 3.0x the time engine here (the
+    cross-check itself broken, not just loose); with it, 1.16x."""
+    cfg = _with_host_tx_ffe(_adc_cfg(4.5, -10.0, n_sym=1_000_000))
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 100, mc.ber.n_errors
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    ratio = st.ber / mc.ber.ber
+    assert 1 / 1.5 < ratio < 1.5, (st.ber, mc.ber.ber, ratio)
+
+
 def test_optical_package_imports_only_numpy():
     # optical/ is the device-physics layer; keeping it numpy-only keeps it
     # importable on the phone and free of engine dependencies.

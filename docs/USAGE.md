@@ -713,7 +713,7 @@ DFE 的判决用发送符号(无误码传播),噪声只经过 FFE,所以 C_eq �
 
 **模块均衡**:`drv_ctle_db` / `tia_ctle_db` 是 OIF CEI-112G-LINEAR 允许 LPO 模块驱动器与 TIA 各带的 CTLE(`afe.Ctle`,极点在 Nyquist
 与 2×Nyquist,直流增益 1,OMA 不变;0 = 不插入)。位置决定一切:驱动器的在 PD 噪声之前,示例 32 上 100 m 处 16 dB 段 + host FFE 时
-OMA 裕度 3.92 → 7.44 dB(6 dB 峰化);TIA 的在噪声之后,把噪声和信号一起抬,一律小亏(3.92 → 3.29 dB)。host 的 `tx.fir_taps` 同样在
+OMA 裕度 5.52 → 7.88 dB(6 dB 峰化);TIA 的在噪声之后,把噪声和信号一起抬,一律小亏(5.52 → 5.30 dB)。host 的 `tx.fir_taps` 同样在
 噪声之前,作用相同。预加重会让 TP2 波形越过稳态外电平,示例 32 给出有 / 无激光器余量两个口径(`cairn/光互联建模.md` §6)。
 
 **不做的**:功耗、重定时器内的 FEC 终结;AMI 模型与 `topology` 互斥。
