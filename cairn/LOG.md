@@ -15,6 +15,7 @@
   的 ADC 条目变(未均衡,无意义)。
 - 顺带:桌面打包 nuitka 两个 job 各用 108–118 分钟,上限 120;2026-10-08 main 的 `nuitka-onefile` 在 120 分 04 秒被取消 → ROADMAP P2 #13。
 - 全量(JIT + iverilog):905 passed / 1 skipped(+2);ruff 通过。
+- PR #55;CI 全部 test job + examples + rtl-lockstep + `examples-full`(40 / 40)绿;Android instrumented 34 tests / 0 failures(API 34、35、编译版 APK)。
 
 ## 2026-10-09 · 统计引擎的光噪声核补上发端 FFE(study/stat-strong-eq,ROADMAP P3 #11 一项)
 
