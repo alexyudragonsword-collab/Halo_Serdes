@@ -225,7 +225,8 @@ a DSP-retimed module decides and re-transmits at ingress and egress, so the link
 **均衡放在哪里比放多少重要 / Where the equaliser sits matters more than how much**(示例 32 第 3 问,100 m 处 OMA 裕度):
 光电二极管噪声是分界线。噪声之前的 host Tx FFE 与 LPO 模块驱动器 CTLE 都在加噪声前抵消段 A,16 dB 段从关不上到 3.92(FFE)/ 7.44 dB
 (FFE + 驱动器 6 dB);噪声之后的 TIA CTLE 把噪声一起抬,一律小亏(3.92 → 3.29 dB)。示例 32 原来"CPO 多 3.1 dB"是两边都不做发端
-均衡时的比较;都开 FFE 后 CPO 12.6 dB、LPO 12 dB 段 + 驱动器 10.6 dB(激光器无过冲余量时 10.1 / 9.0 dB)。
+均衡时的比较;都开 FFE 后 CPO 12.6 dB、LPO 12 dB 段 + 驱动器 10.6 dB(过一颗 L-I 压缩 0.2 的激光器 12.2 / 10.3 dB:
+激光器罚的是电平压缩而不是预加重的过冲)。
 / The photodiode noise is the dividing line: EQ ahead of it (host Tx FFE, the module's driver CTLE) undoes segment A before the
 noise is added, EQ behind it (TIA CTLE) lifts the noise too and loses a little. Example 32's "CPO keeps 3.1 dB more" held with
 no transmit EQ on either side; with it, CPO 12.6 dB vs LPO (12 dB traces + driver CTLE) 10.6 dB.
