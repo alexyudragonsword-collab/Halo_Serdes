@@ -37,7 +37,8 @@ HALO_NO_JIT=1 pytest -q       # 纯 Python 内核:铁律 4,结果必须一致
 |---|---|
 | 引擎、内核、DSP、配置 —— 任何本不该改数的改动 | 在基线提交上 `python tools/fingerprint.py record before.json`,改完 `record after.json`,再 `compare before.json after.json`。重构必须逐位相同;修复只许动它解释得了的数,并在 PR 里列出。工具列出的报错条目要逐个看:两边报同样的错也算"相同" |
 | 定点数据通路或 `rtl/` | `bash rtl/run_lockstep.sh`(要 iverilog;没有 iverilog 时 `tests/test_rtl_lockstep.py` 会跳过,不算通过) |
-| 示例、结果字段、配置字段名 | `python tools/run_examples.py --smoke`。动了示例输出的数字:改前改后各 `--save DIR` 一份全尺寸输出,对照文档里引用的数 |
+| 示例、结果字段、配置字段名 | `python tools/run_examples.py --smoke` |
+| 可能改示例输出数字的改动(库、示例、`configs/`、`data/`) | 全尺寸跑 `python tools/run_examples.py --jobs 4 --save new/`(只动了几个示例时按编号只跑那几个),再 `python tools/example_drift.py compare new/`:列出变了的输出行,以及文档里仍引用旧值的行。改完文档后 `accept new/` 刷新 `examples/expected/`,与改动放在同一个 PR。CI 的 `examples-full` 做同样的比对。推导出来的数(两个输出之差、比值)工具看不见,要自己查 |
 | `src/halo_serdes/vendor/` | 不要原地改;从上游重新拷贝,跑 `python tools/vendor_check.py --fail-on-skip --siblings pll_simulator=<上游检出>`(没有上游检出时文件被跳过,不算通过;约定见该目录的 `__init__.py`) |
 | 共用层 `src/halo_serdes/`、`src/halo_serdes_app/` | Android 与桌面打包会被 CI 触发,见下面"两端验证" |
 
@@ -52,6 +53,7 @@ HALO_NO_JIT=1 pytest -q       # 纯 Python 内核:铁律 4,结果必须一致
 | | `vendor-drift` | vendored 文件与钉住的上游一致 | 同上 |
 | | `rtl-lockstep` | SystemVerilog 与 Python 黄金模型逐位一致 | 同上 |
 | `android` | `assemble`、`wheel-versions`、`emulator`(API 34 / 35)、`compiled-apk`、`compiled-emulator` | 能否打包;在手机的 numpy / scipy 版本上跑手机的计算路径;仪器化测试(解释版与 Cython 编译版) | push 改动 `android/`、共用层、`configs/`、`data/channels/`、`data/clock_profiles/`;PR 改动 `android/` |
+| `examples-full` | `full` | 每个示例按原尺寸跑,输出与 `examples/expected/` 逐行比对(`tools/example_drift.py`);不一致即红,日志里列出仍引用旧值的文档行,输出存为 artifact | PR / push main 改动库、app 层、示例、`configs/`、`data/`、`pyproject.toml`;每周一次(依赖升级也会改数) |
 | `build-windows-desktop` | `pyinstaller`、`nuitka`、`nuitka-onefile` | 冻结后的桌面包能启动 | push 改动共用层、`src/halo_serdes_gui/`、`configs/`、`packaging/`、`pyproject.toml`;`v*` tag 时发布 |
 
 ## 两端验证(铁律 6)

@@ -1,0 +1,4 @@
+== 32 Gb/s PAM4 (16 GBd) mixed-signal, -7.9 dB @ Nyquist ==
+  n=113976  BER=0.000e+00 (0/227952)  SER=0.000e+00  slicer SNR=16.9 dB
+  PAM4 sub-eye heights @ sampler: 44.8 mV, 47.2 mV, 48.6 mV  (levels ±185/62 mV)
+  wrote examples/output/11_pam4_32g_ms_eye.png

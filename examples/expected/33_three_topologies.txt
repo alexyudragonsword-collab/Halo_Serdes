@@ -1,0 +1,73 @@
+VCSEL + OM4, 53.125 GBd PAM4, OMA +1 dBm, ER 4 dB, ADC RX + KP4
+  LPO (8 dB segments, no retimer)      30 m  pre 1.29e-06  post 6.1e-51    [~s]
+  LPO (8 dB segments, no retimer)      60 m  pre 5.16e-06  post 2.5e-41    [~s]
+  LPO (8 dB segments, no retimer)     100 m  pre 1.55e-05  post 1.0e-33    [~s]
+  LPO (8 dB segments, no retimer)     140 m  pre 7.22e-05  post 4.0e-23    [~s]
+  LPO (8 dB segments, no retimer)     180 m  pre 8.76e-04  post 1.6e-07    [~s]
+  LPO (8 dB segments, no retimer)     220 m  pre 7.18e-03  post 4.7e-03    [~s]
+  DSP retimed (8 dB segments, both)    30 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  DSP retimed (8 dB segments, both)    60 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  DSP retimed (8 dB segments, both)   100 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  DSP retimed (8 dB segments, both)   140 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  DSP retimed (8 dB segments, both)   180 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  DSP retimed (8 dB segments, both)   220 m  pre 8.25e-06  post 4.6e-38  0.0e+00 8.0e-06 0.0e+00  [~s]
+  DSP retimed (8 dB segments, both)   260 m  pre 3.24e-04  post 3.1e-13  0.0e+00 3.3e-04 0.0e+00  [~s]
+  DSP retimed (8 dB segments, both)   300 m  pre 6.67e-03  post 4.7e-03  0.0e+00 6.7e-03 0.0e+00  [~s]
+  CPO (4 dB segments, no retimer)      30 m  pre 1.29e-06  post 6.1e-51    [~s]
+  CPO (4 dB segments, no retimer)      60 m  pre 1.29e-06  post 6.1e-51    [~s]
+  CPO (4 dB segments, no retimer)     100 m  pre 1.29e-06  post 6.1e-51    [~s]
+  CPO (4 dB segments, no retimer)     140 m  pre 1.29e-06  post 6.1e-51    [~s]
+  CPO (4 dB segments, no retimer)     180 m  pre 7.73e-06  post 1.7e-38    [~s]
+  CPO (4 dB segments, no retimer)     220 m  pre 4.10e-04  post 8.5e-12    [~s]
+  CPO (4 dB segments, no retimer)     260 m  pre 5.98e-03  post 4.7e-03    [~s]
+
+topology                               reach  (post-KP4 < 1e-15)
+LPO (8 dB segments, no retimer)         159m
+DSP retimed (8 dB segments, both)       256m
+CPO (4 dB segments, no retimer)         214m
+retimed optics reach > LPO reach: True   (retimed 256 m vs LPO 159 m; CPO 214 m)
+
+Lever table (reach at post-KP4 < 1e-15):
+  baseline: LPO 8 dB, RIN -143         30 m  pre 3.35e-05  post 2.2e-28    [~s]
+  baseline: LPO 8 dB, RIN -143         60 m  pre 5.93e-05  post 1.8e-24    [~s]
+  baseline: LPO 8 dB, RIN -143        100 m  pre 2.22e-04  post 1.2e-15    [~s]
+  baseline: LPO 8 dB, RIN -143        140 m  pre 8.89e-04  post 1.9e-07    [~s]
+  baseline: LPO 8 dB, RIN -143        180 m  pre 4.42e-03  post 4.5e-03    [~s]
+  + electrical: 4 dB segments          30 m  pre 1.29e-06  post 6.1e-51    [~s]
+  + electrical: 4 dB segments          60 m  pre 1.29e-06  post 6.1e-51    [~s]
+  + electrical: 4 dB segments         100 m  pre 1.29e-06  post 6.1e-51    [~s]
+  + electrical: 4 dB segments         140 m  pre 2.32e-05  post 6.6e-31    [~s]
+  + electrical: 4 dB segments         180 m  pre 2.06e-04  post 4.0e-16    [~s]
+  + electrical: 4 dB segments         220 m  pre 2.46e-03  post 1.2e-03    [~s]
+  + optical noise: RIN -148            30 m  pre 1.29e-06  post 6.1e-51    [~s]
+  + optical noise: RIN -148            60 m  pre 1.29e-06  post 6.1e-51    [~s]
+  + optical noise: RIN -148           100 m  pre 1.29e-06  post 6.1e-51    [~s]
+  + optical noise: RIN -148           140 m  pre 2.58e-06  post 3.9e-46    [~s]
+  + optical noise: RIN -148           180 m  pre 1.29e-05  post 5.7e-35    [~s]
+  + optical noise: RIN -148           220 m  pre 7.89e-04  post 4.6e-08    [~s]
+  + optical noise: RIN -148           260 m  pre 8.37e-03  post 4.7e-03    [~s]
+  + retiming                           30 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  + retiming                           60 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  + retiming                          100 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  + retiming                          140 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  + retiming                          180 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  + retiming                          220 m  pre 1.07e-04  post 1.9e-20  0.0e+00 1.0e-04 0.0e+00  [~s]
+  + retiming                          260 m  pre 2.22e-03  post 7.0e-04  0.0e+00 2.2e-03 0.0e+00  [~s]
+  + retiming                          300 m  pre 1.91e-02  post 4.7e-03  0.0e+00 1.9e-02 0.0e+00  [~s]
+  all three                            30 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  all three                            60 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  all three                           100 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  all three                           140 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  all three                           180 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  all three                           220 m  pre 1.37e-06  post 1.7e-50  0.0e+00 0.0e+00 0.0e+00  [~s]
+  all three                           260 m  pre 5.50e-06  post 7.1e-41  0.0e+00 5.3e-06 0.0e+00  [~s]
+  all three                           300 m  pre 8.03e-04  post 5.6e-08  0.0e+00 8.1e-04 0.0e+00  [~s]
+
+lever                                reach     gain
+baseline: LPO 8 dB, RIN -143          100m      +0m
++ electrical: 4 dB segments           181m     +82m
++ optical noise: RIN -148             209m    +109m
++ retiming                            231m    +132m
+all three                             291m    +191m
+sum of single-lever gains +322 m vs all three together +191 m -> not additive
+wrote examples/output/33_three_topologies.png

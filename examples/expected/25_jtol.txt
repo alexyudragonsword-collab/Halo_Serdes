@@ -1,0 +1,4 @@
+Sweeping JTOL for two CDR loop gains...
+  slower loop (Kp=2^-7): JTOL @ BER<1e-03: 5.00 UI at 1.00 MHz -> 0.282 UI at 400.0 MHz (0-pk)
+  faster loop (Kp=2^-3): JTOL @ BER<1e-03: 5.00 UI at 1.00 MHz -> 0.437 UI at 400.0 MHz (0-pk)
+wrote examples/output/25_jtol.png

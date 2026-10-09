@@ -1,0 +1,17 @@
+== ADC-based PAM4 RX: 1e6-symbol runs ==
+   106.25 GBd (osr 32): n=993978  BER=0.000e+00 (0/1987956)  SER=0.000e+00  slicer SNR=27.1 dB  [~s]
+           lane SER: min 0.00e+00 max 0.00e+00
+   112.00 GBd (osr 16): n=993977  BER=0.000e+00 (0/1987954)  SER=0.000e+00  slicer SNR=26.1 dB  [~s]
+           lane SER: min 0.00e+00 max 0.00e+00
+== sensitivity sweeps (2e5 symbols each) ==
+  n_bits=5: SNR=11.9 dB, SER=5.97e-02
+  n_bits=6: SNR=17.7 dB, SER=5.21e-04
+  n_bits=7: SNR=22.9 dB, SER=0.00e+00
+  n_bits=8: SNR=26.6 dB, SER=0.00e+00
+  n_bits=9: SNR=28.4 dB, SER=0.00e+00
+  skew=0.0 UI: SNR=26.6 dB, SER=0.00e+00
+  skew=0.005 UI: SNR=26.6 dB, SER=0.00e+00
+  skew=0.01 UI: SNR=26.4 dB, SER=0.00e+00
+  skew=0.02 UI: SNR=25.9 dB, SER=0.00e+00
+  skew=0.04 UI: SNR=24.1 dB, SER=0.00e+00
+  wrote examples/output/05_adc_rx_pam4.png

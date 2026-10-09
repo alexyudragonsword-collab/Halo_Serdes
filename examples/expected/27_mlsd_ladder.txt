@@ -1,0 +1,11 @@
+residual channel [1.0, 0.55]: analytic MLSE gain over DFE = 1.15 dB
+  σ=0.200: DFE=1.00e-07  sliding=1.00e-07  Viterbi=1.00e-07
+  σ=0.235: DFE=2.50e-05  sliding=2.00e-05  Viterbi=5.00e-06
+  σ=0.270: DFE=1.70e-04  sliding=6.00e-05  Viterbi=2.00e-05
+  σ=0.305: DFE=7.10e-04  sliding=2.05e-04  Viterbi=6.00e-05
+  σ=0.340: DFE=2.38e-03  sliding=1.27e-03  Viterbi=5.55e-04
+  σ=0.375: DFE=5.43e-03  sliding=3.12e-03  Viterbi=1.62e-03
+  σ=0.410: DFE=1.05e-02  sliding=6.34e-03  Viterbi=4.11e-03
+  σ=0.445: DFE=1.72e-02  sliding=1.12e-02  Viterbi=7.92e-03
+  σ=0.480: DFE=2.57e-02  sliding=1.79e-02  Viterbi=1.39e-02
+wrote examples/output/27_mlsd_ladder.png

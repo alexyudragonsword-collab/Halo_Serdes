@@ -1,0 +1,4 @@
+channel: TEC_Whisper42p8in_Meg6_THRU_C8C9.s4p
+  insertion loss @ Nyquist (16 GHz): -31.8 dB
+  wrote examples/output/00_channel_TEC_Whisper42p8in_Meg6_THRU_C8C9.png
+  main cursor: 0.0836 V, sum|ISI| (±3/+11 UI): 0.2850 V, ISI/main = 3.41

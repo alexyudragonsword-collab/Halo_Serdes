@@ -1,0 +1,18 @@
+== Same config (peak_db=4) across rates: poles/zero derived from Nyquist ==
+  112 Gb/s (28 GHz Nyq): fz=17.7 GHz, fp1=28 GHz, fp2=56 GHz | realized peaking 1.48 dB (nominal 4 dB), @Nyq +1.5 dB
+  224 Gb/s (56 GHz Nyq): fz=35.3 GHz, fp1=56 GHz, fp2=112 GHz | realized peaking 1.48 dB (nominal 4 dB), @Nyq +1.5 dB
+== Nominal peak_db vs realized peaking (224G, fnyq=56 GHz) ==
+  nominal  2 dB -> realized 0.26 dB
+  nominal  4 dB -> realized 1.48 dB
+  nominal  6 dB -> realized 3.07 dB
+  nominal  8 dB -> realized 4.84 dB
+  nominal 10 dB -> realized 6.70 dB
+  nominal 12 dB -> realized 8.62 dB
+  nominal 14 dB -> realized 10.57 dB
+  nominal 16 dB -> realized 12.53 dB
+  nominal 18 dB -> realized 14.51 dB
+  nominal 20 dB -> realized 16.50 dB
+== Architecture comparison (28 GHz Nyquist) ==
+  ADC arch (peak_db=4): realized peaking 1.5 dB, @Nyq +1.5 dB
+  mixed-signal (peak_db=12): realized peaking 8.6 dB, @Nyq +8.3 dB
+wrote examples/output/17_ctle_response.png

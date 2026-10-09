@@ -1,0 +1,5 @@
+== 16G NRZ, product mixed-signal RX (canonical default config) ==
+  n=113992  BER=0.000e+00 (0/113992)  SER=0.000e+00  slicer SNR=14.4 dB
+  DFE taps: init [0.3857, 0.1861, 0.1211, 0.0879] -> final [0.3921, 0.1865, 0.1269, 0.0858]
+  startup: settle=2000, data-aided until 6000
+  wrote examples/output/02_ms_rx_nrz16.png

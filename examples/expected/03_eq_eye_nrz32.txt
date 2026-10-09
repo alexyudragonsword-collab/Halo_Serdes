@@ -1,0 +1,5 @@
+== 32G NRZ over Whisper backplane ==
+  n=199974  BER=0.000e+00 (0/199974)  SER=0.000e+00  slicer SNR=15.1 dB
+  post-EQ inner eye height at sampling instant: 6.8 mV
+  slicer levels: ±0.0174 V
+  wrote examples/output/03_eq_eye_nrz32.png
