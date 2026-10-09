@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-09 · 桌面打包 Nuitka 编译缓存(ci/nuitka-timeout,ROADMAP P2 #13)
+
+- 115 次桌面打包的 job 耗时:10 月 nuitka 中位数 ~108–111、onefile ~115–118 分钟,上限 120;onefile 10-03…08 被取消 7 次。
+  日志:Python 层 8 分钟、生成 C 2 分钟、MSVC 编 3643 个 C 文件 97 分钟("clcache with 0 cache hits")、链接打包 7 分钟。
+- 改:`actions/cache` 跨运行保存 `NUITKA_CACHE_DIR`(step 级 env —— job 级 env 拿不到 `runner` 上下文),上限 180 分钟。
+  两轮实测:冷 onefile 87 / standalone 109 分钟,手动再触发一轮热的 40 / 31 分钟,3642 / 3643 命中,缓存 92 MB / job。
+- 坑进 engineering-pitfalls(超时是 cancelled 不是 failure,`continue-on-error` 不管,还会让 tag 的 release 被跳过)。
+  合并后 main 的第一次仍是冷的(分支缓存 main 读不到)。只改 workflow 与文档,不动库与测试。
+
 ## 2026-10-09 · ADC 收端的统计结果按 MM 锁定点读(study/adc-phase,ROADMAP P2 #12)
 
 - 查"时域 MM CDR 为何不动":把环路起点挪开 ±0.5 / ±2 采样再跑。`ffe` 输入的五条 PAM4 链路都往原起点回摆(衰减往复,周期约

@@ -25,11 +25,7 @@ AMI GetWave 记入下方「边界」。)
 
 (2026-10-09 清空:原 #12 ADC 收端统计引擎的相位口径 —— 改为按 MM 的锁定点报,见 CHANGELOG 与 `cairn/DSP发端与PR.md` §5。)
 
-### 13. 桌面打包的 nuitka job 贴着 120 分钟超时跑
-`build-windows-desktop` 的 `nuitka` / `nuitka-onefile` 设 `timeout-minutes: 120`,近几次各用 108 / 120(取消)(2026-10-08 main,
-run 37802601061:`nuitka-onefile` 在 120 分 04 秒被取消,即超时)、111 / 118(feat/lpo-linear-eq)、113 / 117(main)、114 / 67
-(study/stat-strong-eq)分钟。取消读起来像构建失败。改法:提高上限,或缓存 nuitka 的编译产物(ccache / `NUITKA_CACHE_DIR`);
-先看耗时是不是随依赖或代码量在涨。
+(2026-10-09 清空:原 #13 nuitka job 贴着 120 分钟超时 —— Nuitka 的 C 编译缓存跨运行保存、上限 180 分钟,热构建 31–40 分钟,见 CHANGELOG 与 `packaging/README.md`。)
 
 ---
 
