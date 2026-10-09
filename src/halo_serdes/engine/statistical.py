@@ -459,6 +459,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # the DAC's error enters after the Tx FFE, before the driver pole
     drv_resp = tx_pipe.after_dac_response(osr)
     h_after_dac = h if drv_resp is None else np.convolve(h, drv_resp)
+    h_chan = h
     tx_resp = tx_pipe.equivalent_symbol_response(osr)
     if tx_resp is not None:
         h = np.convolve(h, tx_resp)
@@ -715,24 +716,42 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     best = int(np.argmin(ber_phi))
     ber, ser = float(ber_phi[best]), float(ser_phi[best])
     lock_ui = None
-    if cfg.rx.arch == "mixed_signal":
-        # Report what the receiver samples, not the best it could. The
-        # bang-bang loop settles where its edge samples balance, which is not
-        # where BER is lowest: a DFE moves the bathtub's floor 0.1-0.2 UI away
-        # from it. With an FFE this is the static engine, which has no loop and
-        # samples at the pre-FFE pulse peak. Either point is found on the
-        # pre-FFE pulse, then moved to the equalised pulse's phase axis (the
-        # FFE's main tap delays it by ffe_pre UI).
-        pre_y = pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr).y
+    if cfg.rx.arch in ("mixed_signal", "adc_dsp"):
+        # Report what the receiver samples, not the best it could; the best
+        # stays in extras['ber_min_phase']. Each point is found on the pre-FFE
+        # pulse, then moved to the equalised pulse's phase axis (the FFE's
+        # main tap delays it by ffe_pre UI).
+        # - mixed-signal: the bang-bang loop settles where its edge samples
+        #   balance, which is not where BER is lowest (a DFE moves the
+        #   bathtub's floor 0.1-0.2 UI away). With an FFE this is the static
+        #   engine, which has no loop and samples at the pre-FFE pulse peak.
+        # - ADC, Mueller-Muller on the raw samples (pd_input adc): it locks
+        #   where the pre-FFE pulse has h(-1) = h(+1).
+        # - ADC, MM on the equalised samples (ffe): the FFE holds h(+-1) near
+        #   0 at any phase, and the loop together with the LMS FFE settles
+        #   back on the pre-FFE pulse peak it starts from -- started 2 samples
+        #   off on five PAM4 links it returned there (2026-10-09). Where the
+        #   bathtub is narrow that is not its floor: example 32's CPO with a
+        #   host FFE through a c = 0.5 laser read 0.35x the time engine at the
+        #   best phase and 0.91x here.
+        h_lock = h_pre_ffe
+        if tx_pipe.pr_taps is not None:
+            # a 1 + aD Tx pulse peaks on either cursor; the time engine
+            # starts on the unshaped pulse's (TxPipeline.receiver_view)
+            un = tx_pipe.equivalent_symbol_response(osr, shaping=False)
+            h_lock = h_chan if un is None else np.convolve(h_chan, un)
+        pre_y = pulse_from_impulse(Waveform(h_lock, cfg.dt), osr).y
         pk_pre = int(np.argmax(np.abs(pre_y)))
         has_ffe = ffe_taps is not None and len(ffe_taps) > 1
-        at = 0.0 if has_ffe else lock_offset_samples(pre_y, pk_pre, osr, osr // 2)
+        if cfg.rx.arch == "mixed_signal":
+            at = 0.0 if has_ffe else lock_offset_samples(pre_y, pk_pre, osr, osr // 2)
+        else:
+            at = 0.0 if cfg.mm_pd_input == "ffe" else lock_offset_samples(pre_y, pk_pre, osr, osr)
         lag = pk_pre + at + (ffe_pre * osr if has_ffe else 0) - peak
         lock = (lag + osr / 2) % osr - osr / 2
         ber = float(np.interp(lock, phi_offsets, ber_phi))
         ser = float(np.interp(lock, phi_offsets, ser_phi))
         best = int(np.argmin(np.abs(phi_offsets - lock)))
-        # mixed-signal has no PR (LinkConfig refuses it), so best is the ADC's
         lock_ui = lock / osr
     return StatResult(
         ber_phi=ber_phi, ser_phi=ser_phi, best_phi=best,
