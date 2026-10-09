@@ -6,6 +6,23 @@
 
 ---
 
+## [未发布] — ADC 收端的统计结果按 MM 锁定点读
+
+### 变更
+- `run_statistical` 对 ADC 收端不再报一个 UI 内的 BER 最低点,而是按接收机的锁定点报(mixed-signal 早就这样):
+  `pd_input: adc` 锁在均衡前脉冲 h(−1) = h(+1) 处(`lock_offset_samples(..., osr)`),`pd_input: ffe` 锁在均衡前脉冲峰。
+  依据:把时域环路起点挪开 ±0.5 / ±2 个采样,`ffe` 的五条 PAM4 链路都往原起点回摆,`adc` 的 NRZ 链路锁在预测点(−2.33 vs −2.30)。
+  最低点留在 `extras['ber_min_phase']`,`extras['lock_phase_ui']` 现在对 ADC 也有值。电链路预置上两者本来同点(BER 不变);
+  示例 32 的 CPO + FFE、c = 0.5 浴盆窄,0.35× → 0.91×;示例 31 kp_shift 9 两行 3.1e-4 / 3.2e-4 → 4.2e-4 / 4.4e-4(统计 / 时域
+  1.37 → 1.85×,抖动 1.2 采样时读在环路自己的相位上),正文的"0.3–1.4×"改为"0.3–1.9×"。示例 04 的输出标签改为"at the
+  receiver's phase"(mixed-signal 早已按接收机相位报,原标签"at best phase"不准)。指纹:不带 FFE 抽头调用统计引擎的 ADC 条目变了
+  (未均衡,任何相位都没有意义)。
+- `tools/example_drift.py`:一行的文字变了而数字个数没变时按位置配对,改标签不再把整行的数当成"可能变了"。
+
+### 测试
+- `tests/test_mm_pd_input.py`:统计引擎预测的 `adc` 输入锁定偏移与时域环路实际停留处一致(−0.563 vs −0.572 采样);
+  `tests/test_optical.py`:窄浴盆上按接收机相位读在 2× 内、按最低点读不行。两条在旧代码上都挂。
+
 ## [未发布] — 统计引擎的光噪声核补上发端 FFE
 
 ### 修复

@@ -23,12 +23,13 @@ SV 逐位对照,见 CHANGELOG 与 `rtl/README.md`;原 #2 流式见 P2 #2;原 #3 
 (2026-10-06 清空:原 #2 流式覆盖 —— 光拓扑、串扰、Init 流程 AMI、`collect_jitter` 已接入流式,见 CHANGELOG;
 AMI GetWave 记入下方「边界」。)
 
-### 12. ADC 收端的统计引擎报最优相位,时域停在初始相位
-统计引擎对 ADC 收端报一个 UI 内 BER 最低的相位;时域的 MM CDR 在 FFE 自适应下几乎不动(2026-10-09 示例 32 各点相位标准差
-0.006 采样),停在收端视角的脉冲峰 + `ffe.n_pre` UI。浴盆宽时无差;窄时差一个采样就是几倍 —— CPO + FFE、c = 0.5:统计浴盆
-±1 采样变 2.6× / 15×,时域恰在 −1 采样,按最优相位比 0.35×、按时域相位比 0.91×(`cairn/光互联建模.md` §6"相位口径")。
-mixed-signal 已经按收端的锁定点报(`statistical.py` 末尾)。待定:ADC 也按收端相位报(改动所有 ADC 统计结果,要全尺寸重跑示例),
-还是只在结果里多给一个"收端相位处的 BER"。先查 MM CDR 在 FFE 自适应下为何不动 —— 若是锁定点本就不确定,按初始相位报也只是另一种约定。
+(2026-10-09 清空:原 #12 ADC 收端统计引擎的相位口径 —— 改为按 MM 的锁定点报,见 CHANGELOG 与 `cairn/DSP发端与PR.md` §5。)
+
+### 13. 桌面打包的 nuitka job 贴着 120 分钟超时跑
+`build-windows-desktop` 的 `nuitka` / `nuitka-onefile` 设 `timeout-minutes: 120`,近几次各用 108 / 120(取消)(2026-10-08 main,
+run 37802601061:`nuitka-onefile` 在 120 分 04 秒被取消,即超时)、111 / 118(feat/lpo-linear-eq)、113 / 117(main)、114 / 67
+(study/stat-strong-eq)分钟。取消读起来像构建失败。改法:提高上限,或缓存 nuitka 的编译产物(ccache / `NUITKA_CACHE_DIR`);
+先看耗时是不是随依赖或代码量在涨。
 
 ---
 

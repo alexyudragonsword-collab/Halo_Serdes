@@ -105,7 +105,7 @@ from halo_serdes.engine.statistical import run_statistical
 from halo_serdes.engine import run_static_link
 
 stat = run_statistical(cfg, channel=ch)
-print(stat.ber, stat.best_phi)          # 最佳采样相位处的 BER
+print(stat.ber, stat.best_phi)          # 接收机实际采样相位处的 BER(浴盆最低点在 stat.extras['ber_min_phase'])
 ```
 
 **双引擎交叉校验**是本框架的核心纪律 —— 纯 LTI + AWGN 下两者应在 2× 内:

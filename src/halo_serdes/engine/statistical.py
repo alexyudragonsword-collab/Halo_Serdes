@@ -34,11 +34,16 @@ Non-LTI approximations (each cross-checked against the time engine):
   chain over the last decision errors (``pr_symbol_decisions``) gives their
   SER, reported as ``extras['ser_slicer']``; as an ideal tap it was 2.7-4.1x
   optimistic, now 0.8-1.6x. Its effect on the LMS and the CDR is not modelled;
-- sampling phase: the ADC receiver is read at the bathtub minimum; the
-  mixed-signal receiver at the bang-bang loop's lock point (where its edge
-  samples balance, ``cdr.linear.lock_offset_samples``), because that loop
-  does not look for minimum BER and with a DFE the two are 0.1-0.2 UI and up
-  to 8x in BER apart (``extras['ber_min_phase']`` keeps the minimum);
+- sampling phase: each receiver is read where its loop locks, not at the
+  bathtub minimum (``extras['ber_min_phase']`` keeps the minimum). The
+  mixed-signal bang-bang loop settles where its edge samples balance
+  (``cdr.linear.lock_offset_samples``); with a DFE that is 0.1-0.2 UI and up
+  to 8x in BER from the minimum. The ADC's Mueller-Muller loop locks where the
+  pre-FFE pulse has h(-1) = h(+1) on raw samples, and on equalised samples
+  settles with the LMS FFE on the pre-FFE pulse peak; on a narrow bathtub
+  (example 32's CPO with a host FFE through a c = 0.5 laser) that is one
+  sample and 3x from the minimum (until 2026-10-09 the ADC was read at the
+  minimum);
 - coloured clock (``tx.clock.kind = "profile"``): the CDR is linearised
   (``cdr/linear.py``) and the smear sigma is the profile power the loop does
   not track plus the jitter it acquires from its own detector noise, both
@@ -120,8 +125,8 @@ from .static_link import _levels
 class StatResult:
     ber_phi: np.ndarray          # BER vs sampling-phase offset (osr points)
     ser_phi: np.ndarray
-    best_phi: int                # index into the phase axis (0 = pulse peak)
-    ber: float                   # at best phase
+    best_phi: int                # index into the phase axis where the receiver samples (0 = pulse peak)
+    ber: float                   # there; the bathtub's floor is extras['ber_min_phase']
     ser: float
     eye_pdf: np.ndarray          # (v_bins, osr) slicer-input PDF vs phase
     v_centers: np.ndarray
@@ -729,8 +734,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         #   where the pre-FFE pulse has h(-1) = h(+1).
         # - ADC, MM on the equalised samples (ffe): the FFE holds h(+-1) near
         #   0 at any phase, and the loop together with the LMS FFE settles
-        #   back on the pre-FFE pulse peak it starts from -- started 2 samples
-        #   off on five PAM4 links it returned there (2026-10-09). Where the
+        #   on the pre-FFE pulse peak it starts from -- started 2 samples off
+        #   on five PAM4 links it swings back towards it, a slowly decaying
+        #   oscillation of the loop and the LMS pulling on each other
+        #   (2026-10-09). Where the
         #   bathtub is narrow that is not its floor: example 32's CPO with a
         #   host FFE through a c = 0.5 laser read 0.35x the time engine at the
         #   best phase and 0.91x here.
