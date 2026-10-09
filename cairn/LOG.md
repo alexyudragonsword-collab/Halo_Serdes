@@ -12,7 +12,7 @@
 - 数:杠杆 +1.7 / +5.5 / +3.3、全栈 42.8 dB;收端 PR +5.0、两光标 +7.3;光三拓扑 156 / 255 / 214 m。旧数留作历史注记。
   第四光标估计 +0.5 → +0.6–0.7 dB(三种子),越过门槛,ROADMAP 移回 P3 #8 待决定(不替用户翻案)。
 - 剩余进 ROADMAP P2 #14:示例 06 / 18 仍在 2 万符号上比判决器 vs MLSD。坑进 pitfalls(两条),约定进 architecture-invariants。
-- 动了 `src/halo_serdes/fec`(新模块)与 `src/halo_serdes_app/studies.py`:桌面与 Android 都要验证(Android totals 待 CI)。测试 909 → 913。
+- 动了 `src/halo_serdes/fec`(新模块)与 `src/halo_serdes_app/studies.py`:桌面全套 913 passed / 1 skipped;Android(601f8f2,其后未再动 src)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures,桌面打包三个 job 通过。测试 909 → 913。
 
 ## 2026-10-09 · 文档推导数的漂移检查(tools/derived-numbers,ROADMAP P3 #10)
 
