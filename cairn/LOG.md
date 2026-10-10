@@ -13,7 +13,8 @@
 - 数:16 个 PR 链路统计 / 时域 0.78–2.09× → 0.67–1.55×(几何平均 1.45 → 1.05);直接抽样核对并集 / 直接 0.98–0.99。
   非 PR 逐位不变(指纹 819 值),示例输出不变。P2 #15 第一项清空,第二项(高 SER 判决导向环路失效)留着。
 - 测试 935 → 939(全量 939 passed / 1 skipped,JIT + iverilog);ruff 通过。动了 `src/` → Android:第一次推送编译版 APK 失败(Cython 不认
-  长度不同的元组条件表达式,坑进 pitfalls),改写后本地 Cython 编译通过;Android 结果待补入本条。详见 `cairn/DSP发端与PR.md` §14。
+  长度不同的元组条件表达式,坑进 pitfalls),改写后本地 Cython 编译通过;
+  Android(435ae33)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包三个 job 通过(nuitka 62 / onefile 115 分钟)。详见 `cairn/DSP发端与PR.md` §14。
 
 ## 2026-10-10 · 第三个受控光标:实现与实测(feat/pr-four-cursor,ROADMAP P3 #8)
 
