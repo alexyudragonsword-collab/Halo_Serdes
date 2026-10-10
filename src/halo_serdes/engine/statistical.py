@@ -35,7 +35,10 @@ Non-LTI approximations (each cross-checked against the time engine):
   controlled cursors off with earlier decisions, errors included: a Markov
   chain over the last decision errors (``pr_symbol_decisions``) gives their
   SER, reported as ``extras['ser_slicer']``; as an ideal tap it was 2.7-4.1x
-  optimistic, now 0.8-1.6x. Its effect on the LMS and the CDR is not modelled;
+  optimistic, now 0.8-1.6x. Its effect on the LMS and the CDR is not modelled:
+  the MM CDR reads the residual those decisions leave, and once
+  ``extras['pr_loop_load']`` (their SER x the controlled cursors' energy)
+  passes 0.09-0.14 the time engine's loop cycle-slips -- warned from 0.08;
 - sampling phase: each receiver is read where its loop locks, not at the
   bathtub minimum (``extras['ber_min_phase']`` keeps the minimum). The
   mixed-signal bang-bang loop settles where its edge samples balance
@@ -451,6 +454,11 @@ def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> f
     return float(sigma_q * np.sqrt(np.sum(cursors ** 2)))
 
 
+#: PR loop load (per-symbol decision SER x sum c_k^2) from which run_statistical
+#: warns that the time engine's MM CDR may slip (measured 0.09-0.14, never below)
+_PR_LOOP_LOAD_WARN = 0.08
+
+
 def _lock_position(cfg: LinkConfig, h_pre_ffe: np.ndarray, h_chan: np.ndarray, tx_pipe,
                    has_ffe: bool, ffe_pre: int) -> float:
     """The sample, on the equalised pulse's axis, where the receiver's loop
@@ -599,6 +607,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     ber_phi = np.zeros(osr)
     ser_sym_phi = np.zeros(osr)
     ber_sym_phi = np.zeros(osr)
+    head_energy_phi = np.zeros(osr)       # the controlled cursors' energy, sum c_k^2 (k >= 1)
     # precoded 1 + D at a = 1 slices composite levels in the kernel (no
     # propagation); the same condition as engine.timedomain's pr_mode 2
     pr_composite = (pr_active and cfg.precode and n_t == 2 and cfg.pr.alpha == 1.0
@@ -787,6 +796,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 pdf_lv if mlsd_mem == 0 else noisy(1.0), v_centers, levels_norm * main, head,
                 composite=pr_composite, precoded=cfg.precode)
             ser_sym_phi[pi], ber_sym_phi[pi] = s_sym, b_sym / bits_per_sym
+            head_energy_phi[pi] = float(np.sum(np.square(head[1:])))
             if mlsd_mem == 0:
                 ser_phi[pi], ber_phi[pi] = ser_sym_phi[pi], ber_sym_phi[pi]
 
@@ -843,6 +853,28 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         ser = float(np.interp(lock, phi_offsets, ser_phi))
         best = int(np.argmin(np.abs(phi_offsets - lock)))
         lock_ui = lock / osr
+    loop_load = None
+    if pr_active and cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "ffe":
+        # The Mueller-Muller CDR reads the sample less the controlled cursors
+        # times the per-symbol decisions, so each wrong one leaves c_k times
+        # its error in what the detector sees: power ~ SER * sum c_k^2 (in
+        # level steps). Past a point the loop walks off, cycle-slipping in
+        # the time engine, which this engine does not model. On six PR
+        # targets (two to four cursors, precoded 1 + D, c < 0; 0.26 m,
+        # 2.2-5.4 mV) the time engine slipped or read more than 2x this
+        # engine's BER from 0.09-0.14 of this load, never below 0.09
+        # (cairn/DSP发端与PR.md §15)
+        loop_load = float(ser_sym_phi[best] * head_energy_phi[best])
+        if loop_load >= _PR_LOOP_LOAD_WARN:
+            import warnings
+
+            warnings.warn(
+                f"partial-response loop load {loop_load:.3f} (per-symbol decision SER "
+                f"{ser_sym_phi[best]:.2g} x controlled-cursor energy {head_energy_phi[best]:.2g}) "
+                f">= {_PR_LOOP_LOAD_WARN}: the Mueller-Muller CDR reads those decisions, and "
+                "from 0.09-0.14 it cycle-slipped in the time engine on the PR targets measured, "
+                "which this engine does not model -- its BER is optimistic here; use the time "
+                "engine", stacklevel=2)
     return StatResult(
         ber_phi=ber_phi, ser_phi=ser_phi, best_phi=best,
         ber=ber, ser=ser,
@@ -856,7 +888,11 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "ber_min_phase": float(ber_phi.min()),
                 # SER of the per-symbol PR decisions (the time engine's
                 # extras['ser_slicer']); None without a PR target
-                "ser_slicer": float(ser_sym_phi[best]) if pr_active else None})
+                "ser_slicer": float(ser_sym_phi[best]) if pr_active else None,
+                # that SER times the controlled cursors' energy: the load the
+                # PR decisions put on the MM CDR (warned from 0.08; None
+                # without a PR target or with the detector on raw samples)
+                "pr_loop_load": loop_load})
 
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
