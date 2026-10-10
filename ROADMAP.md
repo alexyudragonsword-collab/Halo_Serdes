@@ -25,12 +25,7 @@ AMI GetWave 记入下方「边界」。)
 
 (2026-10-09 清空:原 #12 ADC 收端统计引擎的相位口径 —— 改为按 MM 的锁定点报,见 CHANGELOG 与 `cairn/DSP发端与PR.md` §5。)
 
-### 14. 示例 06 / 18 只在 2 万个符号上数 MLSD 的误码
-两个示例都在 `res.y_slicer` 上离线跑 Viterbi 与判决器对比,而 `y_slicer` 只存预热后前 2 万个符号(`SLICER_CAPTURE_SYMBOLS`,
-诊断用)。示例 18 跑 n_symbols 但计分只在 4 万比特上(BER 是 2.5e-5 的整数倍),"21 抽头 FFE 下 MLSD 1.0×"、"3 抽头时拿回
-1.9–4.4×"这些比值由十几个错误决定。示例 19 / 20 / 21 / 35 已于 2026-10-09 改用引擎的 Viterbi 在全部符号上计分
-(`cairn/engineering-pitfalls.md`"仿真了多少符号,不等于数了多少符号")。示例 18 / 06 要比的是同一段数据上判决器 vs MLSD,
-改法是引擎同时报 `ser_slicer`(已有,统计引擎侧)与 MLSD 后的 BER,或把截取长度做成参数。
+(2026-10-10 清空:原 #14 示例 06 / 18 只在 2 万个符号上数 MLSD 误码 —— 改为引擎在全部符号上报 MLSD 前后的误码;结论不变,3 抽头时的 MLSD 收益 1.9–4.4× → 2.4–4.3×,21 抽头 FFE 的零误码点 −28.8 → −27.3 dB。见 CHANGELOG。)
 
 (2026-10-09 清空:原 #13 nuitka job 贴着 120 分钟超时 —— Nuitka 的 C 编译缓存跨运行保存、上限 180 分钟,热构建 31–42 分钟,见 CHANGELOG 与 `packaging/README.md`。)
 

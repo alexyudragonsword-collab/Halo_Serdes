@@ -5,16 +5,21 @@ LMS-adapted FFE converges to the MMSE solution, which leaves almost none: on
 this channel a 21-tap FFE leaves residual cursors of 0.002 or less and MLSD
 memory-2 adds nothing at any loss. Cut the FFE to 3 taps and it leaves a real
 residual (second postcursor -0.06 to -0.11 from -28.8 dB of loss on); MLSD
-then recovers 1.9-4.4x in BER there -- but the 3-tap FFE + MLSD still does
-not beat the 21-tap FFE alone.
+then recovers 2.4-4.3x in symbol errors there -- but the 3-tap FFE + MLSD still
+does not beat the 21-tap FFE alone.
 
 So in this model MLSD substitutes for FFE taps rather than adding reach. Where
 MLSD really adds reach is an FFE that equalises to a partial-response target
-(e.g. 1 + 0.5D) instead of to a delta, so it enhances less noise and leaves the
-MLSE a known, controlled ISI; that FFE target is not modelled (ROADMAP P3 #8).
+(e.g. 1 + 0.75D) instead of to a delta, so it enhances less noise and leaves
+the MLSE a known, controlled ISI: example 36.
 
 The sweep runs both FFE lengths across the LR channel lengths and reports, at
-each loss: FFE-only slicer BER, FFE + MLSD (memory 2) BER, and post-KP4.
+each loss: the slicer's SER before the engine's memory-2 Viterbi and after it
+(both over every scored symbol, ``extras["ser_slicer"]`` and ``ser``), their
+ratio, and the BER after it with its KP4 projection. The residual cursors are
+a least-squares fit on the 20k slicer samples the engine keeps
+(``y_slicer``), which is plenty for three numbers. Until 2026-10-09 the
+example also counted errors on those 20k: a few to a few dozen per point.
 
 History (2026-10-03): this example used to show a 29x MLSD gain at -27 dB with
 the 21-tap FFE. That gain came from the receiver, not the channel -- the
@@ -43,19 +48,16 @@ from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig,
-    RxConfig, SimConfig, ClockConfig, TxConfig,
+    MlsdConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
-from halo_serdes.core.prbs import symbol_checker  # noqa: E402
-from halo_serdes.dsp import viterbi_mlsd  # noqa: E402
-from halo_serdes.dsp.kernels import slice_nearest  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
 from halo_serdes.engine.static_link import make_pattern  # noqa: E402
-from halo_serdes.fec import pre_to_post_fec_ber  # noqa: E402
+from halo_serdes.fec import fec_threshold, pre_to_post_fec_ber  # noqa: E402
 
 OUT = REPO / "examples" / "output"
 OUT.mkdir(exist_ok=True)
 
-KP4_WATERFALL = 2.4e-4  # pre-FEC BER below which KP4 -> post-FEC << 1e-12
+KP4 = fec_threshold("kp4")  # pre-FEC BER at post-KP4 1e-15
 
 
 # (label, n_pre, n_post): the 21-tap FFE is the receiver examples 19 and 35 reuse
@@ -74,6 +76,7 @@ def make_cfg(length_m: float, n_pre: int = 6, n_post: int = 14,
                     adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5, fullscale=0.6),
                     ffe=FfeConfig(n_pre=n_pre, n_post=n_post, adapt="lms", mu=3e-5),
                     dfe=DfeConfig(n_taps=0),
+                    mlsd=MlsdConfig(kind="viterbi", memory=2),
                     cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
                     noise_rms=0.0015),
         sim=SimConfig(n_symbols=n_sym, seed=3, pattern="prbs13q"),
@@ -90,20 +93,15 @@ def evaluate(length_m: float, n_pre: int, n_post: int):
     y = res.y_slicer
     ref = make_pattern(cfg)[warm: warm + y.size]
 
-    # slicer (FFE-only) BER
-    ber_ffe = symbol_checker(ref, slice_nearest(y, levels)).ber
-
-    # residual channel estimate (LMMSE fit of the slicer stream)
+    # residual channel at the slicer (LMMSE fit of the captured slicer stream)
     ld = levels[ref]
     cols = [ld] + [np.concatenate([np.zeros(i), ld[:-i]]) for i in (1, 2, 3)]
     coef, *_ = np.linalg.lstsq(np.vstack(cols).T, y, rcond=None)
 
-    # MLSD (Viterbi MLSE) over memory-2 residual
-    dec_m = viterbi_mlsd(y.astype(np.float64), levels.astype(np.float64), coef[:3])
-    ber_mlsd = symbol_checker(ref, dec_m).ber
-
+    # the slicer before the Viterbi and the Viterbi's output, both scored over
+    # every symbol: the same decisions, so the ratio is the MLSD gain
     return {"loss": loss, "snr": res.slicer_snr_db, "resid": coef[:4] / coef[0],
-            "ber_ffe": ber_ffe, "ber_mlsd": ber_mlsd}
+            "ser_ffe": res.extras["ser_slicer"], "ser_mlsd": res.ser, "ber_mlsd": res.ber.ber}
 
 
 lengths = [0.15, 0.17, 0.18, 0.19, 0.20, 0.22]
@@ -111,19 +109,19 @@ results = {}
 print("224 Gb/s PAM4 LR: FFE-only vs FFE + MLSD (memory 2), two FFE lengths, + KP4 projection")
 for label, n_pre, n_post in FFES:
     print(f"== {label} ({n_pre} pre / {n_post} post) ==")
-    print(f"{'Loss@Nyq':>9} {'Class':>5} {'SNR':>6} {'FFE BER':>10} {'MLSD BER':>10} "
-          f"{'MLSD gain':>8}  {'post-KP4(MLSD)':>13}  residual h1..h3")
+    print(f"{'Loss@Nyq':>9} {'Class':>5} {'SNR':>6} {'FFE SER':>10} {'MLSD SER':>10} "
+          f"{'MLSD gain':>8} {'MLSD BER':>10}  {'post-KP4(MLSD)':>13}  residual h1..h3")
     rows = []
     for L in lengths:
         t0 = time.time()
         r = evaluate(L, n_pre, n_post)
         rows.append(r)
         reach = "C2M" if r["loss"] > -25 else ("MR" if r["loss"] > -35 else "LR")
-        gain = f"{r['ber_ffe'] / r['ber_mlsd']:6.1f}x" if r["ber_mlsd"] > 0 else "      -"
+        gain = f"{r['ser_ffe'] / r['ser_mlsd']:6.1f}x" if r["ser_mlsd"] > 0 else "      -"
         post = pre_to_post_fec_ber(max(r["ber_mlsd"], 1e-9), "kp4")
         resid = " ".join(f"{c:+.3f}" for c in r["resid"][1:4])
-        print(f"{r['loss']:8.1f}dB {reach:>5} {r['snr']:5.1f}dB {r['ber_ffe']:9.2e} "
-              f"{r['ber_mlsd']:9.2e} {gain}  {post:12.1e}  {resid}  [{time.time()-t0:.0f}s]")
+        print(f"{r['loss']:8.1f}dB {reach:>5} {r['snr']:5.1f}dB {r['ser_ffe']:9.2e} "
+              f"{r['ser_mlsd']:9.2e} {gain} {r['ber_mlsd']:9.2e}  {post:12.1e}  {resid}  [{time.time()-t0:.0f}s]")
     results[label] = rows
 
 # ------------------------------------------------------------------ plot ---
@@ -137,13 +135,14 @@ fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
 ax = axes[0]
 for label, rows in results.items():
     loss = np.array([r["loss"] for r in rows])
-    ffe = np.array([max(r["ber_ffe"], 5e-7) for r in rows])
-    mlsd = np.array([max(r["ber_mlsd"], 5e-7) for r in rows])
+    ffe = np.array([max(r["ser_ffe"], 5e-7) for r in rows])
+    mlsd = np.array([max(r["ser_mlsd"], 5e-7) for r in rows])
     ax.semilogy(-loss, ffe, "o--", color=colors[label], label=f"{label} only")
     ax.semilogy(-loss, mlsd, "s-", color=colors[label], label=f"{label} + MLSD (memory 2)")
-ax.axhline(KP4_WATERFALL, color="r", ls="--", lw=1, label="KP4 pre-FEC waterfall 2.4e-4")
+# Gray-coded PAM4: one symbol error is mostly one bit of two, so SER ~ 2 BER
+ax.axhline(2 * KP4, color="r", ls="--", lw=1, label=f"KP4 1e-15: BER {KP4:.2e}, SER ~{2 * KP4:.1e}")
 ax.text(22.8, 6e-7, "no errors in 400k symbols (plotted at 5e-7)", fontsize=7, color="gray")
-ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="pre-FEC BER",
+ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="pre-FEC SER",
        title="MLSD recovers what a short FFE leaves;\na 21-tap MMSE FFE leaves it nothing (224 Gb/s PAM4)")
 ax.yaxis.set_major_formatter(_fmt)
 ax.yaxis.set_minor_formatter(_nofmt)
@@ -152,13 +151,13 @@ ax.grid(True, which="both", alpha=0.3)
 
 ax = axes[1]
 for label, rows in results.items():
-    pts = [(-r["loss"], r["ber_ffe"] / r["ber_mlsd"]) for r in rows
-           if r["ber_mlsd"] > 0 and r["ber_ffe"] > 0]
+    pts = [(-r["loss"], r["ser_ffe"] / r["ser_mlsd"]) for r in rows
+           if r["ser_mlsd"] > 0 and r["ser_ffe"] > 0]
     if pts:
         x, g = zip(*pts)
         ax.plot(x, g, "s-", color=colors[label], label=label)
 ax.axhline(1.0, color="gray", lw=1)
-ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="MLSD gain (FFE BER / MLSD BER)",
+ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="MLSD gain (FFE SER / MLSD SER)",
        title="MLSD gain by FFE length\n(points where either detector made no errors omitted)")
 ax.legend(fontsize=8)
 ax.grid(True, alpha=0.3)
