@@ -240,7 +240,7 @@ def test_mm_cdr_holds_its_phase_under_a_pr_target(alpha, precode):
 def test_invariant3_with_a_pr_target(alpha):
     """LTI + AWGN + receive PR + Viterbi: statistical (union bound over the
     alternating error events of [1, alpha, r...] in the FFE-coloured noise,
-    consecutive events' overlap taken out, pr_error_events) and time-domain
+    counted as their union, pr_error_events) and time-domain
     BER within 2x. The operating point is BER ~1e-4.
     No ADC excess noise (enob=None), so the check isolates the PR event
     model; the ENOB term is pinned in test_statistical.py."""
@@ -336,7 +336,8 @@ def test_invariant3_with_a_tx_pr_target(alpha):
     within 2x of the time engine. At a = 0.5 the lag-1 noise correlation is
     -0.67 and the alternating events of lengths 2-6 sit within 10 % of each
     other's distance; summed as a plain union bound they read 2.5-2.9x
-    pessimistic, with consecutive events' overlap taken out 1.8x."""
+    pessimistic, with consecutive events' overlap taken out 1.86x, as the
+    union of the whole event family 1.25x."""
     noise = 0.0019 if alpha == 0.5 else 0.0022
     cfg = _tx_pr(_link(0.20, alpha, n_sym=600_000, noise=noise, enob=None,
                        precode=alpha == 1.0), alpha)
@@ -818,15 +819,15 @@ def test_numba_kernel_matches_python_with_a_four_cursor_target(adapt):
 
 @needs_jit
 @pytest.mark.parametrize("target,noise", [((1.0, 1.2, 0.7, 0.25), 0.0026),
-                                          ((1.0, 0.8, 0.1, -0.25), 0.0022)])
+                                          ((1.0, 0.8, 0.1, -0.25), 0.0022),
+                                          ((1.0, 0.9, 0.3, -0.15), 0.0022)])
 def test_invariant3_with_a_four_cursor_target(target, noise):
     """1 + aD + bD^2 + cD^3, Viterbi over [1, a, b, c, r]: the statistical
     engine within 2x of the time engine, and its 343-state model of the
-    per-symbol decisions within 2x of their measured SER. Measured 1.02x
-    and 1.75x here; a target with c < 0 reads 1.75-2.09x across noise and
-    targets (the union bound over alternating events of near-equal
-    distance; cairn/DSP发端与PR.md §12), the receiver's own c > 0 ones
-    0.78-1.73x."""
+    per-symbol decisions within 2x of their measured SER. The last target
+    read 2.09x while each error event only lost its overlap with the one
+    before; with the union over the whole family 1.30x (0.96 / 1.10x the
+    others; cairn/DSP发端与PR.md §14)."""
     cfg = dataclasses.replace(_link(0.26, 0.5, n_sym=400_000, noise=noise, enob=None),
                               pr=PrConfig(target=target))
     cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig(kind="viterbi",
