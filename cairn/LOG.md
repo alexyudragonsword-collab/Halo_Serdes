@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-10 · 第三个受控光标:实现与实测(feat/pr-four-cursor,ROADMAP P3 #8)
+
+- 用户按"重算后越过 0.5 dB 门槛"选择实现。`pr.target = (1, a, b, c)`:内核 `pr_gamma` / `fs[6]`、`mmse_pr_target(4)`、定点环
+  `prs[2]` + c 的范围、RTL `ab[3]` + 新向量 `vectors/pr4`(逐位一致)。Viterbi 与 343 状态判决模型本来通用。
+- 旧配置逐位不变:仓库指纹 819 值;另录 11 个 PR 用例(含定点 / 统计)前后一致;RTL 旧向量只多 c 行与两参数。
+- 实测(示例 38):四光标 memory 1 38.94 dB、memory 2 38.97,三光标 38.60 → **+0.34 dB**;种子 7 / 8 / 9 +0.18 / +0.31 / +0.48。
+  **四个种子都不到门槛**;MC 折算的 +0.6–0.7 约高一倍(§12 写的"CDR / LMS 反作用可能更重"成真)。可用,不推荐。
+- 顺带修:统计引擎 PR 下相位网格以锁定点为中心(a > 1 时原读到下一个光标,BER 2.7 对 6e-4)。双引擎四光标:MMSE 型 c > 0
+  0.78–1.73×;手选 c < 0 1.75–2.09×(一格越界)、强目标高 SER 时域失效 → ROADMAP P2 #15。坑两条进 pitfalls。
+- 测试 913 → 935(全量 935 passed / 1 skipped,JIT + iverilog);`HALO_NO_JIT=1` 下四光标内核 / 定点测试 35 passed;ruff 通过。
+  动了 `src/` → Android 需验证(CI 结果待补入本条)。详见 `cairn/DSP发端与PR.md` §13。
+
 ## 2026-10-10 · 示例 06 / 18 的 MLSD 增益全程计数(study/mlsd-full-count,ROADMAP P2 #14)
 
 - 示例 18 / 06 改用引擎 `rx.mlsd` 计分:`extras["ser_slicer"]`(MLSD 前)与 `ser` / `ber`(MLSD 后)来自同一组判决、约 79 万比特;
