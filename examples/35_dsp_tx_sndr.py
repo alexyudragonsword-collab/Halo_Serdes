@@ -14,7 +14,10 @@ the same parameter as an E/O's ``li_compression`` (``core.static_curve``).
    level), and the overall slope (about 6 dB per bit) is the check.
 2. Reach on example 18's channel sweep (FFE + memory-2 MLSD + KP4) for
    DAC 6 / 7 / 8 bits and ideal, and for the 7-bit DAC with a compressing
-   driver: the longest channel whose post-KP4 BER stays at 1e-15.
+   driver: where the pre-FEC BER crosses KP4's threshold (post-KP4 1e-15),
+   the sweep refined to 0.4 dB around it. The engine's Viterbi scores every
+   symbol; until 2026-10-09 the example ran its own on the 20k symbols the
+   engine keeps in ``y_slicer``.
 
 Approximate, unsourced: 802.3dj specifies a TX SNDR and an R_LM for its
 200G/lane electrical transmitters (order of 30+ dB and 0.95); the clause was
@@ -44,13 +47,10 @@ from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, ClockConfig, CtleConfig, DfeConfig, FfeConfig,
-    RxConfig, SimConfig, TxConfig,
+    MlsdConfig, RxConfig, SimConfig, TxConfig,
 )
-from halo_serdes.core.prbs import symbol_checker  # noqa: E402
-from halo_serdes.dsp import viterbi_mlsd  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
-from halo_serdes.engine.static_link import make_pattern  # noqa: E402
-from halo_serdes.fec import pre_to_post_fec_ber  # noqa: E402
+from halo_serdes.fec import fec_threshold, refine  # noqa: E402
 from halo_serdes.tx.dac import TxDac  # noqa: E402
 
 OUT = REPO / "examples" / "output"
@@ -72,6 +72,7 @@ def make_cfg(length_m: float, dac_bits=None, c: float = 0.0, n_sym: int = N_SYM)
                     adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5, fullscale=0.6),
                     ffe=FfeConfig(n_pre=6, n_post=14, adapt="lms", mu=3e-5),
                     dfe=DfeConfig(n_taps=0),
+                    mlsd=MlsdConfig(kind="viterbi", memory=2),
                     cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
                     noise_rms=0.0015),
         sim=SimConfig(n_symbols=n_sym, seed=3, pattern="prbs13q"))
@@ -104,55 +105,28 @@ TXS = {"ideal DAC": (None, 0.0), "8-bit DAC": (8, 0.0), "7-bit DAC": (7, 0.0),
        "ideal + c=0.2": (None, 0.2)}
 
 
-def mlsd_ber(cfg: LinkConfig) -> tuple[float, float]:
-    """Example 18's receiver read-out: FFE slicer stream, LMMSE residual fit,
-    memory-2 Viterbi; returns (pre-FEC BER after MLSD, slicer SNR)."""
-    res = run_time_link(cfg)
-    levels, warm, y = res.extras["levels"], res.extras["warmup"], res.y_slicer
-    ref = make_pattern(cfg)[warm: warm + y.size]
-    ld = levels[ref]
-    cols = [ld] + [np.concatenate([np.zeros(i), ld[:-i]]) for i in (1, 2, 3)]
-    coef, *_ = np.linalg.lstsq(np.vstack(cols).T, y, rcond=None)
-    dec = viterbi_mlsd(y.astype(np.float64), levels.astype(np.float64), coef[:3])
-    return symbol_checker(ref, dec).ber, res.slicer_snr_db
-
-
-def kp4_threshold(target: float = 1e-15) -> float:
-    lo, hi = -8.0, -2.0                       # log10 pre-FEC BER
-    for _ in range(60):
-        mid = 0.5 * (lo + hi)
-        if pre_to_post_fec_ber(10 ** mid, "kp4") > target:
-            hi = mid
-        else:
-            lo = mid
-    return 10 ** lo
-
-
-P_STAR = kp4_threshold()
-loss = np.array([ChannelModel.from_config(make_cfg(L)).loss_at(56e9) for L in LENGTHS])
-ber = {}
+P_STAR = fec_threshold("kp4")
 print(f"\nreach: post-KP4 1e-15 <=> pre-FEC BER <= {P_STAR:.2e} (after MLSD)")
+reach, sweeps = {}, {}
 for name, (n, c) in TXS.items():
     t0 = time.time()
-    rows = [mlsd_ber(make_cfg(L, n, c)) for L in LENGTHS]
-    ber[name] = np.array([max(b, 0.5 / N_SYM) for b, _ in rows])
-    print(f"  {name:<14} " + " ".join(f"{-ls:4.1f}dB:{b:8.1e}" for ls, b in zip(loss, ber[name]))
+
+    def measure(L, n=n, c=c):
+        cfg = make_cfg(L, n, c)
+        return -ChannelModel.from_config(cfg).loss_at(56e9), run_time_link(cfg).ber.ber
+
+    sweep = sweeps[name] = {L: measure(L) for L in LENGTHS}
+    print(f"  {name:<14} " + " ".join(f"{x:4.1f}dB:{max(b, 0.5 / N_SYM):8.1e}" for x, b in sweep.values())
           + f"  [{time.time() - t0:.0f}s]")
-
-
-def reach_db(b: np.ndarray) -> float | str:
-    lb, lt = np.log10(b), np.log10(P_STAR)
-    il = -loss
-    for k in range(len(il) - 1):
-        if lb[k] <= lt < lb[k + 1]:
-            return float(il[k] + (lt - lb[k]) / (lb[k + 1] - lb[k]) * (il[k + 1] - il[k]))
-    return "beyond sweep" if lb[-1] <= lt else "below sweep"
-
+    r = refine(sweep, measure, P_STAR, tol=0.4)
+    extra = sorted(set(sweep) - set(LENGTHS))
+    if extra:
+        print(f"  {'':<14} " + " ".join(f"{sweep[L][0]:4.1f}dB:{max(sweep[L][1], 0.5 / N_SYM):8.1e}" for L in extra)
+              + "  (refined)")
+    reach[name] = r.value if r.value is not None else r.note
 
 print("\nreach [dB @ 56 GHz]:")
-reach = {}
 for name in TXS:
-    reach[name] = reach_db(ber[name])
     v = reach[name]
     d = (f"{v - reach['ideal DAC']:+.2f} dB" if isinstance(v, float) and isinstance(reach["ideal DAC"], float)
          else "")
@@ -170,7 +144,9 @@ ax.grid(True, alpha=0.3)
 ax.legend(fontsize=7)
 ax = axes[1]
 for name in TXS:
-    ax.semilogy(-loss, ber[name], "o-" if "c=" not in name else "s--", label=name)
+    pts = [sweeps[name][L] for L in sorted(sweeps[name])]
+    ax.semilogy([x for x, _ in pts], [max(b, 0.5 / N_SYM) for _, b in pts],
+                "o-" if "c=" not in name else "s--", label=name)
 ax.axhline(P_STAR, color="r", ls=":", lw=1, label=f"KP4 1e-15 ({P_STAR:.1e})")
 ax.set(xlabel="channel loss @ 56 GHz [dB]", ylabel="pre-FEC BER after MLSD",
        title="Reach on example 18's sweep (224 Gb/s PAM4)")

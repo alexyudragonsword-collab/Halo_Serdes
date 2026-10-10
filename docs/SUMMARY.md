@@ -15,7 +15,7 @@
 
 **224G reach 阶梯 / The 224G reach ladder**
 
-| 18 dB (C2M) | 32 dB (MR/LR) | 36–38 dB (LR) | 44 dB (Deep LR) |
+| 18 dB (C2M) | 31–33 dB (MR/LR) | 36–38.5 dB (LR) | 43 dB (Deep LR) |
 |---|---|---|---|
 | FFE+DFE 基线 | FFE(+MLSD) | +级联 FEC 或更好 ADC | 全栈组合 |
 | FFE+DFE baseline | FFE (+MLSD) | +concat FEC / better ADC | full stack |
@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**909 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **909 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**913 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **913 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -136,31 +136,33 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 
 | 杠杆 / Lever | 增益 / Gain | 代价 / Cost |
 |---|---|---|
-| DSP 深度(DFE + 更深 MLSD)/ DSP depth | +0.8 dB | 收益递减 / diminishing |
-| **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+5.3 dB** | ADC 功耗 / power |
-| **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.8 dB** | 开销 6%→24% / overhead |
-| **收端 PR 整形**(FFE 均衡到 1+0.75D,Viterbi 解受控光标)/ RX partial response | **+4.7 dB** | Viterbi 网格(N² 状态)/ trellis |
-| **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.0 dB** | 网格 ×4(256 状态)/ trellis ×4 |
+| DSP 深度(DFE + 更深 MLSD)/ DSP depth | +1.7 dB | 收益递减 / diminishing |
+| **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+5.5 dB** | ADC 功耗 / power |
+| **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.3 dB** | 开销 6%→24% / overhead |
+| **收端 PR 整形**(FFE 均衡到 1+0.75D,Viterbi 解受控光标)/ RX partial response | **+5.0 dB** | Viterbi 网格(N² 状态)/ trellis |
+| **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.3 dB** | 网格 ×4(256 状态)/ trellis ×4 |
 
 - **MLSD 只拿回短 FFE 留下的 ISI**(示例 18):21 抽头 LMS FFE 收敛到 MMSE,残余光标 ≤ 0.002,MLSD memory-2 在每个损耗都是 1.0×;
   3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 从 −28.8 dB 起拿回 1.9×、−33.3 dB 处 4.4× —— 但 3 抽头 + MLSD 仍不如 21 抽头 FFE 单独用。
   要 MLSD 真加 reach,FFE 得均衡到部分响应目标(1+αD)而不是 delta —— 见下一条。 / MLSD only recovers what a
   short FFE leaves: 1.0× behind a 21-tap MMSE FFE, 1.9–4.4× behind a 3-tap one, which still loses to the 21-tap FFE alone.
 - **收端 PR 整形把 MLSD 变成 reach**(示例 36,2026-10-03):同一 21 抽头 FFE 均衡到 1+aD、memory-2 Viterbi 解 a,reach 从对照
-  (delta 目标 + Viterbi)31.6 dB 到 a = 0.25 / 0.5 / 0.75 / 1 的 33.9 / 35.5 / **36.3** / 36.2 dB;−33.3 dB 处 BER 1.7e-3 → 2.5e-6。
+  (delta 目标 + Viterbi)31.3 dB 到 a = 0.25 / 0.5 / 0.75 / 1 的 33.6 / 35.6 / **36.3** / 36.1 dB;−33.3 dB 处 BER 1.7e-3 → 2.5e-6。
   delta 目标的 FFE 把噪声放大花掉了,整形后由网格收回。与 FEC / ADC 杠杆是否可叠加未量。 / RX partial response turns MLSD into reach:
-  a 1+0.75D target with memory-2 Viterbi buys +4.7 dB (31.6 → 36.3 dB) over the delta target with the same Viterbi.
-- **同样的 1+aD 放到发端反而亏**(示例 37):峰值不变时 reach ≈ 无 PR − 20·log10(1 + a)(a = 0.25 / 0.5 / 0.75:29.7 / 28.1 / 26.9 dB)。
+  a 1+0.75D target with memory-2 Viterbi buys +5.0 dB (31.3 → 36.3 dB) over the delta target with the same Viterbi.
+- **同样的 1+aD 放到发端反而亏**(示例 37):峰值不变时 reach ≈ 无 PR − 20·log10(1 + a)(a = 0.25 / 0.5 / 0.75:29.8 / 27.6 / 26.6 dB,预测 29.4 / 27.8 / 26.5)。
   线性链路、噪声在收端,收端 FFE 照样要把信道均衡到 delta,发端整形只交出峰值。PR 的位置在收端。 / The same 1+aD in the Tx
   loses: peak-limited, reach ≈ no-PR − 20 log10(1 + a); the receive FFE still inverts the channel to a delta.
-- **第三个受控光标不再划算**(`tools/pr_target_length.py`,2026-10-08):四光标目标估 ≈ +0.5 dB(基带 MC 校准到示例 38 的
-  delta reach、按它对前两档的高估比例折算);同 256 状态(四光标 + memory 1)也只这些,故未实现。 / A third controlled cursor
-  is worth ≈ 0.5 dB on this link (baseband MC calibrated to example 38), even at equal trellis size; not built.
+- **第三个受控光标值不值,待重新决定**(`tools/pr_target_length.py`):四光标目标估 +0.6–0.7 dB(基带 MC 校准到示例 38 的
+  delta reach、按它对前两档的高估比例折算,三个种子;2026-10-09 示例 38 改读法后重算,此前估 ≈ +0.5 dB、按成本未做),
+  越过事先定的 0.5 dB 门槛;同 256 状态(四光标 + memory 1)就拿得到。尚未实现。 / A third controlled cursor is worth
+  +0.6-0.7 dB on this link (baseband MC calibrated to example 38, three seeds; 0.5 dB before example 38's reach read-out was
+  fixed), past the 0.5 dB bar set beforehand, even at equal trellis size; not built, to be decided.
 - 21 抽头 FFE:到 −28.8 dB 零误码,−30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
   error-free to −28.8 dB and memory-2 MLSD matches it at −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
-- **深 LR 是 SNR 受限,不是 ISI/DSP 深度受限**——加 DFE + 更深 MLSD 只多 0.8 dB(31.6 → 32.4 dB),ADC 采样质量多 5.3 dB(→ 37.7 dB)。 / Deep LR is SNR-limited; DSP depth buys 0.8 dB, ADC quality 5.3 dB.
-- **级联内码**把可容忍 pre-FEC BER 从 2.2e-4 抬到 ~7e-3(31 倍;2026-10-08 复核更正:原记 2.2e-5 / 300 倍),reach 从 32.4 到 36.2 dB(BCH(255,215);此前 29 → 35.5 dB)。 / Concat inner code raises tolerable pre-FEC 300×; reach 32.4 → 36.2 dB.
+- **深 LR 主要是 SNR 受限**——加 DFE + 更深 MLSD 多 1.7 dB(31.3 → 33.0 dB),ADC 采样质量多 5.5 dB(→ 38.5 dB)。 / Deep LR is mostly SNR-limited; DSP depth buys 1.7 dB, ADC quality 5.5 dB.
+- **级联内码**把可容忍 pre-FEC BER 从 2.2e-4 抬到 ~7e-3(31 倍;2026-10-08 复核更正:原记 2.2e-5 / 300 倍),reach 从 33.0 到 36.3 dB(BCH(255,215);此前 29 → 35.5 dB)。 / Concat inner code raises tolerable pre-FEC 31×; reach 33.0 → 36.3 dB.
 
 **全栈组合:进入 802.3dj LR / Full stack: into the 802.3dj LR band**
 
@@ -168,16 +170,16 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 
 | 配置 / Config | reach | 增益 / gain |
 |---|---|---|
-| A. KP4 + ADC 6.5(基线 / baseline) | 33.2 dB | — |
-| B. + 级联 FEC / concat FEC | 36.2 dB | +3.0 |
-| C. + 更好 ADC 7.5 / better ADC | 37.7 dB | +4.5 |
-| **D. 全栈 / full stack** | **44.2 dB** | **+11.0** |
+| A. KP4 + ADC 6.5(基线 / baseline) | 33.0 dB | — |
+| B. + 级联 FEC / concat FEC | 36.3 dB | +3.3 |
+| C. + 更好 ADC 7.5 / better ADC | 38.5 dB | +5.5 |
+| **D. 全栈 / full stack** | **42.8 dB** | **+9.8** |
 
-(2026-10-03 重跑;此前 29.3 / 35.5 / 35.5 / 41.4 dB。/ Rerun 2026-10-03; previously 29.3 / 35.5 / 35.5 / 41.4 dB.)
+(2026-10-09 重算:reach 改按 pre-FEC 阈值读、扫描在穿越点附近加密到 0.4 dB,Viterbi 改由引擎在全部符号上计数;此前 33.2 / 36.2 / 37.7 / 44.2 dB —— 基线是从零误码点插值出来的,全栈是在 3 dB 步长上对级联 FEC 的 post-FEC 取对数插值出来的。2026-10-03 前 29.3 / 35.5 / 35.5 / 41.4 dB。/ Recomputed 2026-10-09 (reach read at the pre-FEC threshold on a sweep refined to 0.4 dB, the engine's Viterbi scored over every symbol); previously 33.2 / 36.2 / 37.7 / 44.2 dB, before 2026-10-03 29.3 / 35.5 / 35.5 / 41.4 dB.)
 
-> 两个正交的杠杆(+3.0 与 +4.5 dB)合起来 +11.0 dB,不少于单独之和(+7.5):一个改"信号有多干净"(ADC/SNR),一个改"能容忍多脏"(FEC 阈值),正交,所以相加。
-> 合起来比相加还多 3.5 dB 的原因没单独核实。 / The two orthogonal levers (+3.0 and +4.5 dB) give +11.0 dB together, no less than their sum (+7.5):
-> one changes how clean the signal is (ADC/SNR), the other how dirty it may be (FEC threshold). Why the combination beats the sum by 3.5 dB was not isolated.
+> 两个正交的杠杆(+3.3 与 +5.5 dB)合起来 +9.8 dB,不少于单独之和(+8.8):一个改"信号有多干净"(ADC/SNR),一个改"能容忍多脏"(FEC 阈值),正交,所以相加。
+> 合起来比相加还多 1.0 dB 的原因没单独核实(此前写 3.5 dB,大半是上面说的插值误差)。 / The two orthogonal levers (+3.3 and +5.5 dB) give +9.8 dB together, no less than their sum (+8.8):
+> one changes how clean the signal is (ADC/SNR), the other how dirty it may be (FEC threshold). Why the combination beats the sum by 1.0 dB was not isolated.
 
 ---
 
@@ -193,8 +195,8 @@ a DSP-retimed module decides and re-transmits at ingress and egress, so the link
 
 | 拓扑 / Topology | 电段 A = B | 重定时 | reach(RIN −145) | 说明 / note |
 |---|---|---|---|---|
-| LPO | 8 dB | 无 | **159 m** | 主机 RX 背光纤 + 两段 trace 的 ISI / host RX carries fibre + both traces |
-| DSP retimed | 8 dB | 两端 | **256 m** | 光路段只背自己的 ISI,电段各自干净 / optics carry only their own ISI |
+| LPO | 8 dB | 无 | **156 m** | 主机 RX 背光纤 + 两段 trace 的 ISI / host RX carries fibre + both traces |
+| DSP retimed | 8 dB | 两端 | **255 m** | 光路段只背自己的 ISI,电段各自干净 / optics carry only their own ISI |
 | CPO | 4 dB | 无 | **214 m** | 电段短,主机仍背光纤 / short traces, host still carries the fibre |
 
 **三个杠杆,各自单独加码与一起加码 / Three levers, alone and together**(基线 LPO 8 dB、RIN −143 dB/Hz,reach 100 m;
@@ -203,20 +205,20 @@ a DSP-retimed module decides and re-transmits at ingress and egress, so the link
 | 杠杆 / Lever | reach | 增益 / gain |
 |---|---|---|
 | 基线 / baseline: LPO 8 dB, RIN −143 | 100 m | — |
-| + 电段 8 → 4 dB(CPO 的动作)/ electrical | 181 m | +82 m |
-| + 激光器 RIN −143 → −148 / optical noise | 209 m | +109 m |
-| + 重定时 / retiming | 231 m | +132 m |
-| **三者全上 / all three** | **291 m** | **+191 m** |
+| + 电段 8 → 4 dB(CPO 的动作)/ electrical | 181 m | +81 m |
+| + 激光器 RIN −143 → −148 / optical noise | 205 m | +105 m |
+| + 重定时 / retiming | 228 m | +128 m |
+| **三者全上 / all three** | **288 m** | **+188 m** |
 
-(2026-10-03 两次重跑,两张表都是;统计引擎一致性修复前为拓扑 157 / 254 / 211 m、杠杆 99 / 180 / 206 / 231 / 287 m、之和 +320 m,更早为 143 / 249 / 182 m、97 / 159 / 178 / 229 / 282 m、+274 m。结论不变。
-/ Both tables rerun twice on 2026-10-03; before the stat-engine consistency fix 157 / 254 / 211 m and 99 / 180 / 206 / 231 / 287 m, earlier 143 / 249 / 182 m and 97 / 159 / 178 / 229 / 282 m. Same conclusions.)
+(2026-10-09 reach 改按 pre-FEC 阈值读、阶梯在穿越点附近加密到 10 m,两张表此前为拓扑 159 / 256 / 214 m、杠杆 100 / 181 / 209 / 231 / 291 m、之和 +322 m;2026-10-03 两次重跑,统计引擎一致性修复前为拓扑 157 / 254 / 211 m、杠杆 99 / 180 / 206 / 231 / 287 m、之和 +320 m,更早为 143 / 249 / 182 m、97 / 159 / 178 / 229 / 282 m、+274 m。结论不变。
+/ Since 2026-10-09 reach is read at the pre-FEC threshold on a ladder refined to 10 m (before: 159 / 256 / 214 m and 100 / 181 / 209 / 231 / 291 m). Both tables rerun twice on 2026-10-03; before the stat-engine consistency fix 157 / 254 / 211 m and 99 / 180 / 206 / 231 / 287 m, earlier 143 / 249 / 182 m and 97 / 159 / 178 / 229 / 282 m. Same conclusions.)
 
-> 单杠杆增益之和 +322 m(各行四舍五入后相加为 +323),三者一起 +191 m —— **不正交,不可叠加**。重定时已经把电段的 ISI 从光路段上拿走,
+> 单杠杆增益之和 +314 m,三者一起 +188 m —— **不正交,不可叠加**。重定时已经把电段的 ISI 从光路段上拿走,
 > 再缩短电段就几乎没有光路可以多拿的;RIN 与重定时都作用在同一个光路段的噪声裕度上。这与探索三里
 > "ADC × FEC 相加"的结论相反,原因是那两个杠杆分别改"信号多干净"与"能容忍多脏",而这里三个杠杆都在改
 > 同一段链路的 SNR。退一步说,到了 300 m,OM4 自身 15.7 GHz 的模式带宽才是墙。
 >
-> The single-lever gains sum to +322 m (+323 from the rounded rows), all three together give +191 m: **not orthogonal, not additive**. Retiming already
+> The single-lever gains sum to +314 m, all three together give +188 m: **not orthogonal, not additive**. Retiming already
 > lifts the traces' ISI off the optical segment, so shortening the traces afterwards leaves little for the optics to gain,
 > and RIN and retiming both act on the same segment's noise margin. Unlike exploration III (ADC × FEC, where one lever
 > changes how clean the signal is and the other how dirty it may be), all three here move the SNR of the same segment;
@@ -271,14 +273,14 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 | 里程碑 / Milestone | reach | 手段 / means | 代价 / cost |
 |---|---|---|---|
 | 基线 ADC-DSP | 18 dB | FFE + 1-tap DFE | DSP 面积/功耗 |
-| 深 LR 上的 FFE(+ MLSD) | 32 dB | 长 FFE;MLSD 在本扫描无增益 | DSP 面积/功耗 |
-| + DFE + 更深 MLSD | 32 dB | DSP 深度(+0.8 dB) | 收益递减 |
-| + 级联 FEC / 更好 ADC | 36 / 38 dB | 单杠杆 +3.0 / +4.5 dB | FEC 开销 / ADC 功耗 |
-| **+ 两者全上** | **44 dB** | 全栈 +11.0 dB | 功耗 + 开销叠加 |
+| 深 LR 上的 FFE(+ MLSD) | 31 dB | 长 FFE;MLSD 在本扫描无增益 | DSP 面积/功耗 |
+| + DFE + 更深 MLSD | 33 dB | DSP 深度(+1.7 dB) | 收益递减 |
+| + 级联 FEC / 更好 ADC | 36 / 38.5 dB | 单杠杆 +3.3 / +5.5 dB | FEC 开销 / ADC 功耗 |
+| **+ 两者全上** | **43 dB** | 全栈 +9.8 dB | 功耗 + 开销叠加 |
 
-> **核心论点 / The thesis**：深 LR 是全栈问题,没有单一杠杆能到。每个杠杆单独到顶都会撞上各自的墙——DSP 撞 SNR 墙、FEC 撞 pre-FEC 悬崖、ADC 撞功耗。只有正交组合(ADC 质量 × DSP × FEC)才能从 33 dB 推到 44 dB。这套框架的价值是把每个杠杆的 dB 贡献与代价量化摆出来——给的是一张权衡表,而非一个是非题。
+> **核心论点 / The thesis**：深 LR 是全栈问题,没有单一杠杆能到。每个杠杆单独到顶都会撞上各自的墙——DSP 撞 SNR 墙、FEC 撞 pre-FEC 悬崖、ADC 撞功耗。只有正交组合(ADC 质量 × DSP × FEC)才能从 33 dB 推到 43 dB。这套框架的价值是把每个杠杆的 dB 贡献与代价量化摆出来——给的是一张权衡表,而非一个是非题。
 >
-> Deep LR is a full-stack problem; no single lever gets there. Each tops out at its own wall — DSP at the SNR wall, FEC at the pre-FEC cliff, ADC at power. Only the orthogonal combination reaches from 33 to 44 dB. The framework's value is quantifying each lever's dB and cost — a trade table, not a yes/no answer.
+> Deep LR is a full-stack problem; no single lever gets there. Each tops out at its own wall — DSP at the SNR wall, FEC at the pre-FEC cliff, ADC at power. Only the orthogonal combination reaches from 33 to 43 dB. The framework's value is quantifying each lever's dB and cost — a trade table, not a yes/no answer.
 
 **贯穿始终的方法论 / Methodology throughout**
 
@@ -289,4 +291,4 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 909 项测试 · 双引擎 · 40 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 913 项测试 · 双引擎 · 40 个实验脚本*

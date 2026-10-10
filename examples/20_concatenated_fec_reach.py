@@ -1,6 +1,6 @@
 """Deep 224G LR with concatenated inner-code FEC — how far can reach go?
 
-Example 19 showed the DSP (FFE+DFE+MLSD) is SNR-limited near ~32 dB with KP4
+Example 19 showed the DSP (FFE+DFE+MLSD) is SNR-limited near ~33 dB with KP4
 alone. Concatenated FEC attacks the OTHER lever: an inner hard-decision block
 code corrects most raw errors, presenting a far lower BER to the RS-KP4 outer
 and raising the tolerable pre-FEC BER ~31x (2.2e-4 -> 6.9e-3 for BCH(255,215)) — the deep-LR
@@ -8,8 +8,11 @@ and raising the tolerable pre-FEC BER ~31x (2.2e-4 -> 6.9e-3 for BCH(255,215)) �
 
 Fixed DSP (FFE + DFE8 + MLSD mem3) and fixed ADC (ENOB 6.5): sweep channel
 loss, then apply KP4-only vs three concatenated schemes and read off the
-reach (post-FEC < 1e-15). Total FEC overhead is annotated (real budget
-<~15%).
+reach: where the pre-FEC BER crosses each scheme's threshold (post-FEC
+1e-15), the sweep refined to 0.4 dB around each crossing (``fec.refine``).
+Total FEC overhead is annotated (real budget <~15%). The engine's Viterbi
+(memory 3) scores every symbol; until 2026-10-09 the example ran its own, with
+3 taps (memory 2), on the 20k symbols the engine keeps in ``y_slicer``.
 """
 
 import sys
@@ -32,13 +35,10 @@ from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig,
-    RxConfig, SimConfig, ClockConfig, TxConfig,
+    MlsdConfig, RxConfig, SimConfig, ClockConfig, TxConfig,
 )
-from halo_serdes.core.prbs import symbol_checker  # noqa: E402
-from halo_serdes.dsp import viterbi_mlsd  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
-from halo_serdes.engine.static_link import make_pattern  # noqa: E402
-from halo_serdes.fec import concatenated_post_fec_ber, pre_to_post_fec_ber  # noqa: E402
+from halo_serdes.fec import concatenated_post_fec_ber, fec_threshold, pre_to_post_fec_ber, refine  # noqa: E402
 
 OUT = REPO / "examples" / "output"
 OUT.mkdir(exist_ok=True)
@@ -57,61 +57,63 @@ def pre_fec_ber(length_m, n_sym=500_000):
                     adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5, fullscale=0.6),
                     ffe=FfeConfig(n_pre=6, n_post=4, adapt="lms", mu=3e-5),
                     dfe=DfeConfig(n_taps=8, adapt="lms", mu=3e-5),
+                    mlsd=MlsdConfig(kind="viterbi", memory=3),
                     cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
                     noise_rms=0.0015),
         sim=SimConfig(n_symbols=n_sym, seed=3, pattern="prbs13q"))
     cm = ChannelModel.from_config(cfg)
-    res = run_time_link(cfg, channel=cm)
-    lv = res.extras["levels"]; warm = res.extras["warmup"]
-    y = res.y_slicer; ref = make_pattern(cfg)[warm: warm + y.size]
-    ld = lv[ref]
-    cols = [ld] + [np.concatenate([np.zeros(i), ld[:-i]]) for i in range(1, 4)]
-    coef, *_ = np.linalg.lstsq(np.vstack(cols).T, y, rcond=None)
-    dec = viterbi_mlsd(y.astype(np.float64), lv.astype(np.float64), coef[:3])
-    return cm.loss_at(56e9), symbol_checker(ref, dec).ber
+    # the engine's Viterbi, scored over every symbol after warm-up (see
+    # example 19: an offline one on res.y_slicer sees only the first 20k)
+    return cm.loss_at(56e9), run_time_link(cfg, channel=cm).ber.ber
 
 
-# (label, post_fn, overhead%)  overhead = KP4 5.8% + inner m*t/(n-m*t)
+# (label, inner (n, t) or None, overhead%)  overhead = KP4 5.8% + inner m*t/(n-m*t)
 SCHEMES = {
-    "KP4 only (t=15)":
-        (lambda p: pre_to_post_fec_ber(max(p, 1e-9), "kp4"), 5.8, "C1", "o"),
-    "+ inner Hamming(128,120)":
-        (lambda p: concatenated_post_fec_ber(max(p, 1e-9), 128, 1), 5.8 + 7.1, "C0", "s"),
-    "+ inner BCH(255,215,t=5)":
-        (lambda p: concatenated_post_fec_ber(max(p, 1e-9), 255, 5), 5.8 + 18.6, "C2", "^"),
-    "+ inner BCH(511,439,t=8)":
-        (lambda p: concatenated_post_fec_ber(max(p, 1e-9), 511, 8), 5.8 + 16.4, "C3", "D"),
+    "KP4 only (t=15)": (None, 5.8, "C1", "o"),
+    "+ inner Hamming(128,120)": ((128, 1), 5.8 + 7.1, "C0", "s"),
+    "+ inner BCH(255,215,t=5)": ((255, 5), 5.8 + 18.6, "C2", "^"),
+    "+ inner BCH(511,439,t=8)": ((511, 8), 5.8 + 16.4, "C3", "D"),
 }
+
+
+def post_fec(p, inner):
+    p = max(p, 1e-9)
+    return concatenated_post_fec_ber(p, *inner) if inner else pre_to_post_fec_ber(p, "kp4")
+
+
+def measure(L):
+    lo, pb = pre_fec_ber(L)
+    return -lo, pb
+
 
 lengths = [0.16, 0.18, 0.19, 0.20, 0.21, 0.22, 0.24, 0.26]
 print("Sweeping link pre-FEC BER (FFE + DFE8 + MLSD mem3, ADC ENOB 6.5)...")
-loss, pre = [], []
+sweep = {}                           # channel length -> (loss dB, pre-FEC BER)
 for L in lengths:
-    lo, pb = pre_fec_ber(L)
-    loss.append(lo); pre.append(pb)
-    print(f"  {lo:6.1f}dB: pre-FEC {pb:.2e}")
-loss = np.array(loss); pre = np.array(pre)
+    sweep[L] = measure(L)
+    print(f"  {-sweep[L][0]:6.1f}dB: pre-FEC {sweep[L][1]:.2e}")
 
-
-def reach(post):
-    x = -loss
-    lp = np.log10(np.maximum(post, 1e-300))
-    for i in range(len(x) - 1):
-        if lp[i] < -15 <= lp[i + 1]:
-            t = (-15 - lp[i]) / (lp[i + 1] - lp[i])
-            return x[i] + t * (x[i + 1] - x[i])
-    return x[0] if lp[0] >= -15 else None
-
+thresholds = {label: fec_threshold("kp4", inner=inner) for label, (inner, *_) in SCHEMES.items()}
+kp4 = thresholds["KP4 only (t=15)"]
+print("\npre-FEC BER for post-FEC 1e-15:")
+for label, thr in thresholds.items():
+    print(f"  {label:26s}: {thr:.2e} ({thr / kp4:.1f}x KP4's)")
+reaches = {label: refine(sweep, measure, thr, tol=0.4) for label, thr in thresholds.items()}
+print("refined around the crossings:")
+for L in sorted(set(sweep) - set(lengths)):
+    print(f"  {-sweep[L][0]:6.1f}dB: pre-FEC {sweep[L][1]:.2e}")
 
 fig, ax = plt.subplots(figsize=(8, 5.2))
 print("\n== reach summary (post-FEC < 1e-15) ==")
-for label, (fn, ovh, c, m) in SCHEMES.items():
-    post = np.array([fn(p) for p in pre])
-    rc = reach(post)
-    tag = f"{label}  (reach {rc:.1f} dB, overhead {ovh:.0f}%)" if rc else label
-    ax.semilogy(-loss, np.maximum(post, 1e-30), m + "-", color=c, label=tag)
+pts = [sweep[L] for L in sorted(sweep)]
+for label, (inner, ovh, c, m) in SCHEMES.items():
+    post = np.array([post_fec(b, inner) for _, b in pts])
+    r = reaches[label]
+    rc = r.value
+    tag = f"{label}  (reach {rc:.1f} dB, overhead {ovh:.0f}%)" if rc is not None else label
+    ax.semilogy([x for x, _ in pts], np.maximum(post, 1e-30), m + "-", color=c, label=tag)
     print(f"  {label:26s}: reach {rc:.1f} dB (overhead {ovh:.0f}%)"
-          if rc else f"  {label}: <start")
+          if rc is not None else f"  {label}: {r.note} ({r.lo} - {r.hi} dB)")
 ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.axvspan(35, 46, color="gray", alpha=0.08)
 ax.text(35.2, 1e-28, "802.3dj LR\n(35-45 dB)", fontsize=7, color="gray")

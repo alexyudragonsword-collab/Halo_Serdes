@@ -1,7 +1,7 @@
 """How much reach would a fourth partial-response cursor buy? (ROADMAP #8)
 
 Example 38 measures, on its 224 Gb/s PAM4 long-reach link, the reach to the
-KP4 threshold of the delta target (31.6 dB), 1 + aD (36.3 dB) and
+KP4 threshold of the delta target (31.3 dB), 1 + aD (36.3 dB) and
 1 + aD + bD^2 (38.6 dB). The engine stops at three cursors. A fourth grows
 the trellis by N again: PAM4 with memory 2 behind the target goes from 256
 to 1024 states. The kernel's per-symbol decision, the bit-true datapath and
@@ -16,8 +16,8 @@ plus ``mem`` residual ones (example 38 runs memory 2).
 
 There is no CDR, no time-interleaved ADC lanes and no adaptation. What they
 cost is folded into one noise scale, fitted so the delta target lands on
-example 38's measured 31.6 dB. The model's 2- and 3-cursor gains are then
-held against the measured +4.7 / +7.0 dB before its fourth-cursor gain is
+example 38's measured 31.3 dB. The model's 2- and 3-cursor gains are then
+held against the measured +5.0 / +7.3 dB before its fourth-cursor gain is
 read off, because a model that over-predicts the first two will
 over-predict the third too.
 
@@ -60,7 +60,7 @@ SYMBOL_POWER = float(np.mean(LEVELS ** 2))         # 5/9
 N_PRE, N_POST = 6, 14                               # example 38's FFE
 LENGTHS = np.linspace(0.16, 0.36, 21)               # 24 .. 55 dB at 56 GHz
 #: example 38's measured reach [dB] by target length (memory-2 Viterbi)
-MEASURED = {1: 31.6, 2: 36.3, 3: 38.6}
+MEASURED = {1: 31.33, 2: 36.33, 3: 38.60}
 #: (target cursors, residual memory): example 38's three, then a fourth cursor
 #: at the same trellis size as three (memory 1) and at four times it (memory 2)
 CONFIGS = ((1, 2), (2, 2), (3, 2), (4, 1), (4, 2))

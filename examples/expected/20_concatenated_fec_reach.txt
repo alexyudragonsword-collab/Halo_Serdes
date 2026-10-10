@@ -2,15 +2,29 @@ Sweeping link pre-FEC BER (FFE + DFE8 + MLSD mem3, ADC ENOB 6.5)...
    -24.3dB: pre-FEC 0.00e+00
    -27.3dB: pre-FEC 0.00e+00
    -28.8dB: pre-FEC 0.00e+00
-   -30.3dB: pre-FEC 0.00e+00
-   -31.8dB: pre-FEC 1.50e-04
-   -33.3dB: pre-FEC 4.25e-04
-   -36.4dB: pre-FEC 9.28e-03
-   -39.4dB: pre-FEC 3.07e-02
+   -30.3dB: pre-FEC 3.04e-06
+   -31.8dB: pre-FEC 1.42e-04
+   -33.3dB: pre-FEC 3.99e-04
+   -36.4dB: pre-FEC 8.14e-03
+   -39.4dB: pre-FEC 3.02e-02
+
+pre-FEC BER for post-FEC 1e-15:
+  KP4 only (t=15)           : 2.19e-04 (1.0x KP4's)
+  + inner Hamming(128,120)  : 1.37e-03 (6.3x KP4's)
+  + inner BCH(255,215,t=5)  : 6.86e-03 (31.3x KP4's)
+  + inner BCH(511,439,t=8)  : 7.09e-03 (32.3x KP4's)
+refined around the crossings:
+   -32.6dB: pre-FEC 1.40e-04
+   -33.0dB: pre-FEC 1.96e-04
+   -33.7dB: pre-FEC 1.23e-03
+   -34.1dB: pre-FEC 1.64e-03
+   -34.9dB: pre-FEC 1.82e-03
+   -35.6dB: pre-FEC 2.84e-03
+   -36.0dB: pre-FEC 4.36e-03
 
 == reach summary (post-FEC < 1e-15) ==
-  KP4 only (t=15)           : reach 32.4 dB (overhead 6%)
-  + inner Hamming(128,120)  : reach 35.0 dB (overhead 13%)
-  + inner BCH(255,215,t=5)  : reach 36.2 dB (overhead 24%)
-  + inner BCH(511,439,t=8)  : reach 36.2 dB (overhead 22%)
+  KP4 only (t=15)           : reach 33.0 dB (overhead 6%)
+  + inner Hamming(128,120)  : reach 33.9 dB (overhead 13%)
+  + inner BCH(255,215,t=5)  : reach 36.3 dB (overhead 24%)
+  + inner BCH(511,439,t=8)  : reach 36.3 dB (overhead 22%)
 wrote examples/output/20_concatenated_fec_reach.png

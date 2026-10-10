@@ -9,10 +9,12 @@ from .rs import (
     rs_kp4,
     rs_kr4,
 )
+from .reach import Reach, fec_threshold, reach, refine
 
 __all__ = [
     "RsCode", "rs_kp4", "rs_kr4",
     "bits_to_gf_symbols", "gf_symbols_to_bits",
     "post_fec_frame_error_rate", "pre_to_post_fec_ber",
     "inner_decoded_ber", "concatenated_post_fec_ber",
+    "Reach", "fec_threshold", "reach", "refine",
 ]

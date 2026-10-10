@@ -794,7 +794,7 @@ precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 �
 (FFE 起始解、LMS、Viterbi 光标与收端 PR 相同);收端的主光标在不含 PR 的脉冲上定位(a = 1 时整形脉冲有两个等高光标)。
 
 线性链路、噪声在收端时,发端整形不改变收端 FFE 要反演的东西(信道,一直到 delta),所以拿不到收端 PR 省下的噪声放大;
-峰值受限时还要再付最多 20·log10(1 + a)。示例 `examples/37_pr_tx_vs_rx.py` 三方同台(无 PR / 收端 / 发端):发端 PR 的 reach ≈ 无 PR − 20·log10(1 + a),收端 PR 多 4.7 dB。
+峰值受限时还要再付最多 20·log10(1 + a)。示例 `examples/37_pr_tx_vs_rx.py` 三方同台(无 PR / 收端 / 发端):发端 PR 的 reach ≈ 无 PR − 20·log10(1 + a),收端 PR 多 5.0 dB。
 
 ---
 
