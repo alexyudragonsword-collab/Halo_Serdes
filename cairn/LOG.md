@@ -13,7 +13,8 @@
 - 顺带修:统计引擎 PR 下相位网格以锁定点为中心(a > 1 时原读到下一个光标,BER 2.7 对 6e-4)。双引擎四光标:MMSE 型 c > 0
   0.78–1.73×;手选 c < 0 1.75–2.09×(一格越界)、强目标高 SER 时域失效 → ROADMAP P2 #15。坑两条进 pitfalls。
 - 测试 913 → 935(全量 935 passed / 1 skipped,JIT + iverilog);`HALO_NO_JIT=1` 下四光标内核 / 定点测试 35 passed;ruff 通过。
-  动了 `src/` → Android 需验证(CI 结果待补入本条)。详见 `cairn/DSP发端与PR.md` §13。
+  Android(e9c889d,其后未再动 src)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包三个 job 通过
+  (nuitka 112 / onefile 114 分钟,缓存未全命中,仍在 180 分钟上限内)。详见 `cairn/DSP发端与PR.md` §13。
 
 ## 2026-10-10 · 示例 06 / 18 的 MLSD 增益全程计数(study/mlsd-full-count,ROADMAP P2 #14)
 
