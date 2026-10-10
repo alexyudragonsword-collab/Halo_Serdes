@@ -254,7 +254,9 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     start, sign, pat = [], [], []
     for k in range(len(pats)):
         for st in range(-nb, nb + 1):
-            for sg in ((1.0,) if st == 0 else (1.0, -1.0)):
+            for sg in (1.0, -1.0):
+                if st == 0 and sg < 0.0:
+                    continue
                 start.append(st)
                 sign.append(sg)
                 pat.append(k)

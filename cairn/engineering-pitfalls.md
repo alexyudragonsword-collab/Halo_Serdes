@@ -285,6 +285,11 @@ slew 比值却很小。统计引擎另加一条 σ_e > 0.1 UI 的 `noise-limited
 
 ### 打包 / 跨平台类
 
+**编译版 APK 的 Cython 比 Python 严格。** `for sg in ((1.0,) if st == 0 else (1.0, -1.0))` Python 照跑,Cython 3 报
+"Incompatible types in conditional expression"(把两边推成长度不同的 C 元组),Android 的"build compiled APK"一步失败,
+解释版 APK 与桌面全绿(2026-10-10,`study/pr-event-union`)。改成同类型(固定元组 + `continue`)。**动了 `src/` 就在本地
+`python -m cython -3 --no-docstrings` 把改过的模块编一遍**,比等 Android CI 快得多。
+
 **CI 超时是 cancelled,不是 failure。** `nuitka-onefile` 设了 `continue-on-error: true`,看上去"失败了也不挡",但到 `timeout-minutes`
 被取消的 job 不归它管:整个 run 记为 cancelled;`release` 的条件里 `needs.nuitka-onefile.result != 'cancelled'` 本是"有人手动取消就别发布",
 超时也落进这条 —— 打 tag 那次若 onefile 超时,发布被静默跳过。2026-10-03…08 一周里 onefile 在 120 分钟上被取消 7 次,成功的中位数
