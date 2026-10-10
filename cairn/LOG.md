@@ -10,7 +10,8 @@
 - 界线:6 个目标扫噪声,逐符号 SER 分不开(首次失效 0.03–0.24);× Σc_k² 后首次失效都在 0.09–0.14,正常最高 0.117。
 - 改:`extras['pr_loop_load']`,≥ 0.08 警告(预编码 1 + D 最早 0.090 定阈值;0.08–0.117 误报)。不建模漂走本身。
 - 非 PR 逐位不变(指纹);本地 Cython 编译通过;测试 939 → 940(全量 940 passed / 1 skipped,JIT + iverilog)。P2 再次清空。
-  Android(94ea0ff)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包待补。详见 `cairn/DSP发端与PR.md` §15。
+  Android(94ea0ff)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包三个 job 通过
+  (nuitka 116 / onefile 121 分钟)。详见 `cairn/DSP发端与PR.md` §15。
 
 ## 2026-10-10 · 统计引擎 PR 联合界改为整族事件的并集(study/pr-event-union,ROADMAP P2 #15)
 
