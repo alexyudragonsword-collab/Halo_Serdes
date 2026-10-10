@@ -285,6 +285,11 @@ slew 比值却很小。统计引擎另加一条 σ_e > 0.1 UI 的 `noise-limited
 
 ### 打包 / 跨平台类
 
+**编译版 APK 的 Cython 比 Python 严格。** `for sg in ((1.0,) if st == 0 else (1.0, -1.0))` Python 照跑,Cython 3 报
+"Incompatible types in conditional expression"(把两边推成长度不同的 C 元组),Android 的"build compiled APK"一步失败,
+解释版 APK 与桌面全绿(2026-10-10,`study/pr-event-union`)。改成同类型(固定元组 + `continue`)。**动了 `src/` 就在本地
+`python -m cython -3 --no-docstrings` 把改过的模块编一遍**,比等 Android CI 快得多。
+
 **CI 超时是 cancelled,不是 failure。** `nuitka-onefile` 设了 `continue-on-error: true`,看上去"失败了也不挡",但到 `timeout-minutes`
 被取消的 job 不归它管:整个 run 记为 cancelled;`release` 的条件里 `needs.nuitka-onefile.result != 'cancelled'` 本是"有人手动取消就别发布",
 超时也落进这条 —— 打 tag 那次若 onefile 超时,发布被静默跳过。2026-10-03…08 一周里 onefile 在 120 分钟上被取消 7 次,成功的中位数
@@ -475,6 +480,11 @@ handle,而每一条 `field: None` 的错误都会去把一个名叫 `"null"` 的
 做 golden 比对时记住它跨的是**版本 + 平台**两个变量,别一上来就归因给平台。
 
 ### MLSD 类
+
+**逐起点的联合界会把一个错误算好几次。** 序列检测器的一个错误事件,在联合界里会被①同一起点上别的长度(距离接近时)
+②从下一个符号起的后缀事件(长度 4 的 (+, −, +, −) 包含长度 3 的 (−, +, −))各算一次。只扣同起点相邻长度(链式界)
+手选 c < 0 的四光标目标仍悲观 2.09×;整族事件(各长度、两族、所有重叠起点)取并集、误码按检测器实际选中的那条分摊
+后 1.30×(`cairn/DSP发端与PR.md` §14)。**核对这类估计别只看双引擎比值,对一小族事件做直接抽样**(中等 SNR 下直接数得准)。
 
 **MLSD 只在有残余 ISI 时有用。** FFE/DFE 把眼睁开后(残余 ~1e-3)它无事可做、
 甚至因为在近零残余上跑网格而略微添噪。测 MLSD 增益要用**欠均衡**配置

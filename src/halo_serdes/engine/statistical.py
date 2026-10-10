@@ -24,11 +24,13 @@ Non-LTI approximations (each cross-checked against the time engine):
   [1, alpha, r...], without one the per-symbol decision cancels it (below). The
   DFE then starts after it. With a sequence detector the BER is not the
   plain MLSD's minimum-distance gain but a union bound over the alternating error
-  events, in the noise the shaping FFE coloured, each event's overlap with
-  the one before taken out (``pr_error_events``): the minimum distance alone
-  was 2.5-20x optimistic against the time engine, the plain sum up to 2.9x
-  pessimistic (transmit a = 0.5); with the overlap 1.0-1.8x across receive
-  and transmit PR at BER 7e-5 to 6e-3. The per-symbol decisions the LMS and
+  events, in the noise the shaping FFE coloured, each event weighted by its
+  share of what the detector decides among all the events that hold with it
+  (``pr_error_events``): the minimum distance alone was 2.5-20x optimistic
+  against the time engine, the plain sum up to 2.9x pessimistic (transmit
+  a = 0.5), each event less its overlap with the one before 0.78-2.09x;
+  this 0.67-1.55x across receive and transmit PR, two to four cursors, at
+  BER 7e-5 to 2e-2. The per-symbol decisions the LMS and
   the CDR read (and, without a sequence detector, the detector) take the
   controlled cursors off with earlier decisions, errors included: a Markov
   chain over the last decision errors (``pr_symbol_decisions``) gives their
@@ -175,28 +177,11 @@ def isi_pdf(cursor_amps: np.ndarray, levels_norm: np.ndarray,
     return pdf
 
 
-def _bvn_upper(a: float, b: float, r: float) -> float:
-    """P(X > a, Y > b) for standard normals with correlation r (Owen's T;
-    every term is a tail, so it keeps its relative precision far out)."""
-    from scipy.special import ndtr, owens_t
-
-    if r >= 1.0 - 1e-12:
-        return float(ndtr(-max(a, b)))
-    h, k = -a, -b                      # P(X > a, Y > b) = Phi2(-a, -b; r)
-    q = np.sqrt(1.0 - r * r)
-
-    def t(x, y):
-        x = x if x != 0.0 else 1e-300   # the limit; never reached at a positive SNR
-        return float(owens_t(x, (y - r * x) / (x * q)))
-
-    corr = 0.5 if (h * k < 0.0 or (h * k == 0.0 and h + k < 0.0)) else 0.0
-    return max(0.5 * float(ndtr(h)) + 0.5 * float(ndtr(k)) - t(h, k) - t(k, h) - corr, 0.0)
-
-
 def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
                     precoded: bool, max_len: int = 12,
                     snr: float | None = None,
-                    families: tuple[str, ...] = ("alternating",)) -> list[tuple[float, float]]:
+                    families: tuple[str, ...] = ("alternating",),
+                    n_samples: int = 1000, seed: int = 0) -> list[tuple[float, float]]:
     """(distance gain, weight) per error event of a sequence detector on a
     partial-response target, for a union bound.
 
@@ -216,58 +201,119 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     The gain is relative to the memoryless slicer's half-distance; with white
     noise and L = 1 it is |d|, the plain MLSD path's sqrt(d_min^2).
 
-    ``snr`` (that half-distance over the noise sigma) takes the overlap of
-    consecutive events out: an event of length L and the one of length L - 1
-    share their start and most of their noise projection, and where the
-    noise is strongly anticorrelated (rho1 = -0.67 behind a transmit 1 + 0.5D)
-    the distances of lengths 2-6 sit within 10 % of each other, so a plain
-    sum counts one detector error several times (2.5-2.9x pessimistic).
-    Each L >= 2 is weighted by P(A_L and not A_{L-1}) / P(A_L), from the
-    bivariate normal of the two events' statistics -- the chain form of
-    Hunter's bound, still an upper bound on the union, at the SNR given
-    (the ISI around it is left out of the overlap).
+    Without ``snr`` the weight is that support times the errors: a plain sum
+    over the events, which counts one detector error once for every event
+    whose metric it also beats. Where the distances of many lengths sit close
+    together (behind a transmit 1 + 0.5D, rho1 = -0.67, lengths 2-6 within
+    10 % of each other) that is 2.5-2.9x pessimistic. So with ``snr`` (the
+    half-distance over the noise sigma) each weight is the event's share of
+    what the detector actually decides when its metric condition holds: the
+    competing events are all of them -- every length, both families, and
+    every start that overlaps (an error of length 4 contains the opposite-
+    sign one of length 3 that starts a symbol later, which the per-start
+    sum would count again) -- and the detector takes the one that beats the
+    correct path by the most. Sampling the noise given event j's condition
+    (and the symbols given its moves are possible), its weight is support_j
+    times the mean of errs(chosen) / (number of events whose condition holds
+    and whose moves the symbols allow). Summed against each event's own
+    probability, sum_j P(A_j) w_j is then the expected number of decided
+    symbol errors per start, the union and not the sum: the at-least-one-event
+    estimator of Owen, Maximov and Chertkov (2019), whose relative error stays
+    bounded however rare the events. The ISI around the events is left out
+    of the weights, as the per-level sum adds it to each P(A_j).
+
+    The chained pairwise overlap this replaced (each L less its intersection
+    with L - 1) read 0.78-2.09x the time engine on 16 PR links, up to 2.09x
+    with a negative third cursor; this 0.67-1.55x
+    (``cairn/DSP发端与PR.md`` §14).
 
     ``families`` adds ``"constant"`` (+1, +1, ...): with a negative
     controlled cursor after the first (b or c < 0) a run of same-sign errors is
     pulled close by it, where for a non-negative target it lies far.
-    Each family is chained on its own.
+    ``n_samples`` per event and ``seed`` fix the sampling (deterministic).
     """
+    from scipy.special import ndtr, ndtri
+
     h = np.asarray(cursors, dtype=float)
     rho = np.asarray(noise_acf, dtype=float) / float(noise_acf[0])
-    size = max_len + h.size - 1
-    lag = np.arange(size)
-    r_mat = np.where(np.abs(lag[:, None] - lag[None, :]) < rho.size,
-                     rho[np.minimum(np.abs(lag[:, None] - lag[None, :]), rho.size - 1)], 0.0)
-    out = []
-    pairs = [(fam, n) for fam in families for n in range(1, max_len + 1)
-             if not (fam == "constant" and n == 1)]       # L = 1 is the same event
-    prev = None                         # (d padded, sqrt(d' R d), g) of length L - 1
-    first = None                        # the single error both families start from
-    for fam, n in pairs:
-        if fam == "constant" and n == 2:
-            prev = first
-        e = (np.where(np.arange(n) % 2 == 0, 1.0, -1.0) if fam == "alternating"
-             else np.ones(n))
-        d = np.zeros(size)
-        d[: n + h.size - 1] = np.convolve(e, h)
-        sd = float(np.sqrt(max(d @ r_mat @ d, 1e-300)))
-        g = float(d @ d / sd)
-        if precoded:
-            errs = int(np.count_nonzero(np.convolve(e, [1.0, 1.0]).round().astype(int) % n_levels))
-        else:
-            errs = n
-        w = ((n_levels - 1) / n_levels) ** (n - 1) * errs
-        if snr is not None and prev is not None:
-            from scipy.special import ndtr
+    pats = [np.where(np.arange(n) % 2 == 0, 1.0, -1.0) if fam == "alternating" else np.ones(n)
+            for fam in families for n in range(1, max_len + 1)
+            if not (fam == "constant" and n == 1)]       # L = 1 is the same event
+    if precoded:
+        errs_p = np.array([np.count_nonzero(np.convolve(e, [1.0, 1.0]).round().astype(int) % n_levels)
+                           for e in pats], dtype=float)
+    else:
+        errs_p = np.array([e.size for e in pats], dtype=float)
+    supp_p = np.array([((n_levels - 1) / n_levels) ** (e.size - 1) for e in pats])
+    # every pattern at every start that can overlap one starting at 0 (both
+    # signs; at 0 the per-level sum covers the sign), in one noise window
+    nb = max_len - 1 if snr is not None else 0
+    size = 2 * nb + max_len + h.size - 1
+    lag = np.abs(np.arange(size)[:, None] - np.arange(size)[None, :])
+    r_mat = np.where(lag < rho.size, rho[np.minimum(lag, rho.size - 1)], 0.0)
+    start, sign, pat = [], [], []
+    for k in range(len(pats)):
+        for st in range(-nb, nb + 1):
+            for sg in (1.0, -1.0):
+                if st == 0 and sg < 0.0:
+                    continue
+                start.append(st)
+                sign.append(sg)
+                pat.append(k)
+    start, sign, pat = np.array(start), np.array(sign), np.array(pat)
+    d = np.zeros((pat.size, size))
+    for i in range(pat.size):
+        dd = np.convolve(sign[i] * pats[pat[i]], h)
+        d[i, nb + start[i]: nb + start[i] + dd.size] = dd
+    s = np.sqrt(np.maximum(np.einsum("ij,jk,ik->i", d, r_mat, d), 1e-300))
+    g = np.einsum("ij,ij->i", d, d) / s
+    base = np.flatnonzero(start == 0)                    # one per pattern, in order
+    if snr is None:
+        return [(float(g[i]), float(supp_p[pat[i]] * errs_p[pat[i]])) for i in base]
 
-            corr = float(d @ r_mat @ prev[0]) / (sd * prev[1])
-            p_l = float(ndtr(-g * snr))
-            if p_l > 0.0:
-                w *= max(1.0 - _bvn_upper(g * snr, prev[2] * snr, min(corr, 1.0)) / p_l, 0.0)
-        out.append((g, w))
-        prev = (d, sd, g)
-        if n == 1:
-            first = prev
+    # whitened unit directions: event i's statistic is a_i . w, w ~ N(0, I)
+    ev, evec = np.linalg.eigh(r_mat)
+    a = (d @ (evec * np.sqrt(np.clip(ev, 0.0, None)))) / s[:, None]
+    t = g * snr                                          # its condition: a_i . w > t_i
+    errs = errs_p[pat]
+    n_sym = 2 * nb + max_len                             # symbols the events can move
+    up = np.zeros((pat.size, n_sym))
+    dn = np.zeros((pat.size, n_sym))
+    for i in range(pat.size):
+        e = sign[i] * pats[pat[i]]
+        cols = nb + start[i] + np.arange(e.size)
+        up[i, cols[e > 0]] = 1.0
+        dn[i, cols[e < 0]] = 1.0
+    rng = np.random.default_rng(seed)
+    out = []
+    for j in base:
+        # the events that can hold together with j: given j's statistic at
+        # its threshold, the rest are left out once below 1e-6
+        rho_j = a @ a[j]
+        q = np.sqrt(np.maximum(1.0 - rho_j ** 2, 1e-12))
+        keep = ndtr(-(t - rho_j * (t[j] + 1.0 / max(t[j], 1.0))) / q) > 1e-6
+        keep[j] = True
+        idx = np.flatnonzero(keep)
+        jj = int(np.flatnonzero(idx == j)[0])
+        # the noise given j's condition: its statistic from the normal tail
+        # beyond t_j, the rest of w as it is
+        z = -ndtri(np.maximum(rng.random(n_samples) * ndtr(-t[j]), 1e-300))
+        w = rng.standard_normal((n_samples, a.shape[1]))
+        w += np.outer(z - w @ a[j], a[j])
+        stat = w @ a[idx].T
+        # symbols uniform, given the moves j makes are possible
+        lo = np.where(dn[j] > 0, 1, 0)
+        hi = np.where(up[j] > 0, n_levels - 1, n_levels)
+        sym = lo + (rng.random((n_samples, n_sym)) * (hi - lo)).astype(int)
+        blocked = ((sym >= n_levels - 1).astype(float) @ up[idx].T
+                   + (sym <= 0).astype(float) @ dn[idx].T)
+        hold = (stat > t[idx]) & (blocked == 0)
+        hold[:, jj] = True
+        # the detector's choice: the path that beats the correct one by the
+        # most, metric difference 2 sigma_d s_i (stat_i - t_i)
+        chosen = np.argmax(np.where(hold, s[idx] * (stat - t[idx]), -np.inf), axis=1)
+        share = errs[idx][chosen] / hold.sum(axis=1)
+        out.append((float(g[j]), float(supp_p[pat[j]] * share.mean())))
     return out
 
 
@@ -568,7 +614,16 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         w = np.asarray(ffe_taps, dtype=float)
         noise_acf = np.correlate(w, w, "full")[w.size - 1:]
 
-    for pi, off in enumerate(phi_offsets):
+    # the phase the receiver samples goes first: the PR union bound's overlap
+    # weights are sampled there once (pr_error_events) and carried to the
+    # other phases as ratios to the plain sum's -- per phase they would cost
+    # the bathtub's flanks 16x as much for little
+    i_lock = osr // 2
+    if lock_pos is not None:
+        i_lock = int(np.argmin(np.abs(phi_offsets - ((lock_pos - peak + osr / 2) % osr - osr / 2))))
+    union_ratio = None
+    for pi in [i_lock] + [i for i in range(osr) if i != i_lock]:
+        off = phi_offsets[pi]
         # cursors at this phase (volts, per unit symbol level)
         idx = peak + off + np.arange(-n_pre, n_post + 1) * osr
         valid = (idx >= 0) & (idx < pulse.y.size)
@@ -622,12 +677,17 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         events = [(g_mlsd, 1.0)]
         if pr_active and mlsd_mem > 0:
             half_gap = 0.5 * abs(main) * float(np.min(np.diff(np.sort(levels_norm))))
-            events = pr_error_events(np.concatenate([head, np.asarray(res)]), noise_acf,
-                                     n_levels, cfg.precode,
-                                     snr=half_gap / noise_sigma if noise_sigma > 0 else None,
-                                     families=(("alternating", "constant")
-                                               if min(cfg.pr.target[2:], default=0.0) < 0.0
-                                               else ("alternating",)))
+            fams = (("alternating", "constant") if min(cfg.pr.target[2:], default=0.0) < 0.0
+                    else ("alternating",))
+            cur = np.concatenate([head, np.asarray(res)])
+            events = pr_error_events(cur, noise_acf, n_levels, cfg.precode, families=fams)
+            if noise_sigma > 0:
+                if union_ratio is None:
+                    union = pr_error_events(cur, noise_acf, n_levels, cfg.precode,
+                                            snr=half_gap / noise_sigma, families=fams)
+                    union_ratio = [u[1] / e[1] if e[1] > 0 else 0.0
+                                   for u, e in zip(union, events)]
+                events = [(g_e, w_e * r) for (g_e, w_e), r in zip(events, union_ratio)]
 
         if pattern_sigma is not None:
             # the binned neighbours leave the random ISI and become a shift

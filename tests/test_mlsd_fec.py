@@ -128,23 +128,96 @@ def test_pr_error_events_reduce_to_the_minimum_distance_in_white_noise():
     assert g_col > np.sqrt(2.0)
 
 
-def test_pr_error_event_overlap_only_lowers_the_longer_events():
-    """With an SNR the events of length >= 2 lose the part they share with
-    the one before (a chain Hunter bound): L = 1 is untouched, no weight
-    grows, and events whose statistics are almost the same keep almost
-    nothing."""
-    from halo_serdes.engine.statistical import _bvn_upper, pr_error_events
+def _direct_union(cursors, acf, n_levels, precoded, max_len, snr, families, n=200_000, seed=5):
+    """Decided symbol errors per start, by plain sampling of the noise and
+    the symbols over every event of the family at every overlapping start:
+    each holding event that starts at 0 is credited errs(chosen) / (number
+    holding), the chosen one beating the correct path by the most."""
+    h = np.asarray(cursors, float)
+    rho = np.asarray(acf, float) / acf[0]
+    pats = [np.where(np.arange(m) % 2 == 0, 1.0, -1.0) if f == "alternating" else np.ones(m)
+            for f in families for m in range(1, max_len + 1) if not (f == "constant" and m == 1)]
+    nb = max_len - 1
+    size = 2 * nb + max_len + h.size - 1
+    lag = np.abs(np.arange(size)[:, None] - np.arange(size)[None, :])
+    r = np.where(lag < rho.size, rho[np.minimum(lag, rho.size - 1)], 0.0)
+    rows, moves, errs, base = [], [], [], []
+    for e in pats:
+        k = (np.count_nonzero(np.convolve(e, [1.0, 1.0]).round().astype(int) % n_levels)
+             if precoded else e.size)
+        for st in range(-nb, nb + 1):
+            for sg in ((1.0,) if st == 0 else (1.0, -1.0)):
+                d = np.zeros(size)
+                d[nb + st: nb + st + e.size + h.size - 1] = np.convolve(sg * e, h)
+                mv = np.zeros(2 * nb + max_len)
+                mv[nb + st: nb + st + e.size] = sg * e
+                rows.append(d), moves.append(mv), errs.append(k), base.append(st == 0)
+    d, mv, errs, base = np.array(rows), np.array(moves), np.array(errs, float), np.array(base)
+    sd = np.sqrt(np.einsum("ij,jk,ik->i", d, r, d))
+    t = np.einsum("ij,ij->i", d, d) / sd * snr
+    rng = np.random.default_rng(seed)
+    chol = np.linalg.cholesky(r + 1e-9 * np.eye(size))
+    noise = rng.standard_normal((n, size)) @ chol.T
+    stat = noise @ d.T / sd
+    sym = rng.integers(0, n_levels, size=(n, mv.shape[1]))
+    ok = np.ones(stat.shape, bool)
+    for i in range(mv.shape[0]):
+        for c in np.flatnonzero(mv[i]):
+            ok[:, i] &= (sym[:, c] < n_levels - 1) if mv[i, c] > 0 else (sym[:, c] > 0)
+    hold = (stat > t) & ok
+    n_hold = hold.sum(axis=1)
+    any_ = n_hold > 0
+    chosen = np.argmax(np.where(hold, sd * (stat - t), -np.inf), axis=1)
+    credit = np.where(any_, hold[:, base].sum(axis=1) * errs[chosen] / np.maximum(n_hold, 1), 0.0)
+    # per start: the base events at 0 carry the first symbol's move up only,
+    # whose possibility the engine's per-level sum supplies: P = (M - 1) / M
+    return float(credit.mean() / ((n_levels - 1) / n_levels))
 
-    acf = np.array([1.0, -0.67, 0.26, -0.1])
-    plain = pr_error_events(np.array([1.0, 0.5]), acf, 4, False)
-    tight = pr_error_events(np.array([1.0, 0.5]), acf, 4, False, snr=3.0)
-    assert tight[0] == plain[0]
-    assert all(t[0] == p[0] and t[1] <= p[1] for t, p in zip(tight, plain))
-    assert sum(w for _, w in tight[1:]) < 0.75 * sum(w for _, w in plain[1:])   # 0.53 here
-    assert _bvn_upper(3.0, 3.0, 1.0) == pytest.approx(_bvn_upper(3.0, 3.0, 1.0 - 1e-9), rel=1e-3)
-    from scipy.stats import multivariate_normal as mvn
-    for a, b, r in ((1.0, 1.5, 0.5), (3.0, 3.2, 0.9), (2.5, 2.6, 0.99)):
-        assert _bvn_upper(a, b, r) == pytest.approx(mvn([0, 0], [[1, r], [r, 1]]).cdf([-a, -b]), rel=1e-6)
+
+def _acf(taps):
+    """The noise autocorrelation an FFE with these taps leaves (white in)."""
+    w = np.asarray(taps, float)
+    return np.correlate(w, w, "full")[w.size - 1:]
+
+
+@pytest.mark.parametrize("cursors,taps,precoded,families", [
+    ([1.0, 0.5], [1.0, -0.8, 0.3], False, ("alternating",)),
+    ([1.0, 0.9, 0.3, -0.15], [1.0, -0.6, 0.2, -0.05], False, ("alternating", "constant")),
+    ([1.0, 1.0], [1.0, -0.3, -0.25], True, ("alternating",)),
+])
+def test_pr_error_event_weights_are_the_union_not_the_sum(cursors, taps, precoded, families):
+    """With an SNR the weights count what the detector decides once: summed
+    against each event's probability they give the decided symbol errors per
+    start that plain sampling of the whole family finds (every length, both
+    families, overlapping starts of either sign), within its sampling error;
+    the plain sum is well above it where distances crowd."""
+    from scipy.special import ndtr
+
+    from halo_serdes.engine.statistical import pr_error_events
+
+    snr, max_len = 1.6, 6                  # events common enough to count directly
+    acf = _acf(taps)
+    union = pr_error_events(np.array(cursors), acf, 4, precoded, max_len=max_len, snr=snr,
+                            families=families, n_samples=4000)
+    plain = pr_error_events(np.array(cursors), acf, 4, precoded, max_len=max_len,
+                            families=families)
+    assert [g for g, _ in union] == [g for g, _ in plain]
+    e_union = sum(w * ndtr(-g * snr) for g, w in union)
+    e_plain = sum(w * ndtr(-g * snr) for g, w in plain)
+    e_direct = _direct_union(cursors, acf, 4, precoded, max_len, snr, families)
+    assert e_union == pytest.approx(e_direct, rel=0.05), (e_union, e_direct, e_plain)
+    assert e_plain > 1.3 * e_direct
+
+
+def test_pr_error_event_union_leaves_an_isolated_event_alone():
+    """An event nothing else holds with keeps its plain weight: in white noise
+    a near-delta target's single error is alone at a high SNR."""
+    from halo_serdes.engine.statistical import pr_error_events
+
+    union = pr_error_events(np.array([1.0, 0.1]), np.ones(1), 4, False, snr=4.0)
+    plain = pr_error_events(np.array([1.0, 0.1]), np.ones(1), 4, False)
+    assert union[0][1] == pytest.approx(plain[0][1], rel=0.02)
+    assert all(u[1] <= p[1] * 1.02 + 1e-12 for u, p in zip(union, plain))
 
 
 def test_post_detect_beats_slicer_on_real_residual():
