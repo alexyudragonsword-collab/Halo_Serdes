@@ -145,3 +145,23 @@
     - {doc: docs/SUMMARY.md, text: "two controlled cursors | **+{adbd - delta} dB** |"}
     - {doc: docs/COMPARISON.md, text: "收端两光标目标比 delta + Viterbi 多 {adbd - delta} dB reach,"}
     - {doc: docs/COMPARISON.md, text: "第三个受控光标再多约 {c4m1 - adbd} dB(示例 38)"}
+    - {doc: docs/USAGE.md, text: "第三个受控光标比两个只多约 {c4m1 - adbd} dB"}
+    - {doc: ROADMAP.md, text: "实测示例 38 只 +{c4m1 - adbd} dB"}
+    - {doc: cairn/DSP发端与PR.md, text: "第二个受控光标在这条 224G LR 链路上再加 {adbd - ad} dB reach"}
+    - {doc: cairn/DSP发端与PR.md, text: "delta 目标 {delta} → 两光标 {adbd} dB"}
+    - {doc: cairn/DSP发端与PR.md, text: "memory 1 与 2 差 {c4m2 - c4m1} dB,也与 §12 相符"}
+    - {doc: cairn/engineering-pitfalls.md, text: '示例 38 的"再加 {adbd - ad} dB"所在段'}
+    - {doc: cairn/engineering-pitfalls.md, text: '("约 {c4m1 - adbd} dB"对上了目标光标 0.30)'}
+
+- name: ex37 TX PR against its peak-cost prediction (control reach - 20 log10(1 + a))
+  values:
+    t25: {example: "37", line: "TX PR a=0.25 {} dB {*} dB {*} dB"}
+    p25: {example: "37", line: "TX PR a=0.25 {*} dB {*} dB {} dB"}
+    t50: {example: "37", line: "TX PR a=0.5 {} dB {*} dB {*} dB"}
+    p50: {example: "37", line: "TX PR a=0.5 {*} dB {*} dB {} dB"}
+    t75: {example: "37", line: "TX PR a=0.75 {} dB {*} dB {*} dB"}
+    p75: {example: "37", line: "TX PR a=0.75 {*} dB {*} dB {} dB"}
+    t1: {example: "37", line: "TX PR a=1 {} dB {*} dB {*} dB"}
+    p1: {example: "37", line: "TX PR a=1 {*} dB {*} dB {} dB"}
+  quotes:
+    - {doc: cairn/DSP发端与PR.md, text: "发端与预测的差在 {max(abs(t25 - p25), abs(t50 - p50), abs(t75 - p75))} dB 内,a = 1 仍差 {t1 - p1} dB"}

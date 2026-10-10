@@ -192,6 +192,7 @@ python tools/fingerprint.py record A.json   # 数值指纹;改动前后各录一
 python tools/run_examples.py --jobs 4 --save new/ && python tools/example_drift.py compare new/
                                         # 示例全尺寸输出 vs examples/expected/,列出仍引用旧值的文档行
 python tools/example_drift.py derived   # examples/derived.yaml 里每处推导数的引用 vs examples/expected/
+python tools/example_drift.py candidates [文档…]   # 比较措辞里所引示例不打印、又没登记的数:读,真推导数就登记
 python -m halo_serdes_gui               # 启动 GUI
 ```
 

@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-10 · 推导数登记补全 + `example_drift.py candidates`(tools/derived-coverage,ROADMAP P3 #10)
+
+- 扫法:先按"段落引用某示例、该示例不打印、未登记"扫(217 行、493 个数,几乎全是配置 / 历史 / 理论值,噪声太大);
+  改按比较措辞("多 / 差 / 再加 X dB""+X dB""X×")扫,默认 79 行 + `--strict` 多出约 14 行,逐条读。
+- 结果:真推导数 6 个 —— 示例 38 的 +0.34(ROADMAP)/ 约 0.3(USAGE)/ 2.3 / 0.03 dB(DSP §10 / §13),示例 37 发端与预测之差 0.4 / 1.3 dB;
+  数都还对。登记 8 组 76 处 → 9 组 84 处(含 pitfalls 举例的两处)。其余是历史值、单独实测(多种子、定点扫描)、配置或别的示例打印的数。
+- 工具:`candidates [文档…] [--strict]` 只列不拦;推导式 `max` / `min` 支持多操作数。顺带修 `docs/summary.html` 三处停在 913 的测试数。
+- 测试 940 → 941(`tests/test_example_drift.py` 15 passed);只动 tools / docs,不涉及 `src/`,无需 Android。坑见 `engineering-pitfalls.md`
+  "文档里引用的示例数字"一条的 2026-10-10 更新。
+
 ## 2026-10-10 · 高 SER 下 CDR 失效:统计引擎报环路负载(study/pr-high-ser,ROADMAP P2 #15 余项)
 
 - 隔离:(1, 1.4, 1.0, 0.4) 3 mV 时域 BER 0.16 是 MM-CDR 漂走(−3.9 UI、4 次周跳),冻结 CDR 后 4.3e-3 对统计 3.1e-3(0.71×);
