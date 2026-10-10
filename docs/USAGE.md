@@ -397,7 +397,7 @@ precode: true          # 1/(1+D) mod-N 预编码
 ```
 
 sliding 检测器**修正接收机自己的判决**(DFE / PR 逐符号判决),只建模一个后光标(残余的第一光标,PR 下是目标的 a);
-三光标 PR 目标(1 + aD + bD²)配 sliding 会被拒,用 viterbi。独立调用 `post_detect(..., "sliding")` 时不给 `dec0`
+三光标 / 四光标 PR 目标(1 + aD + bD² [+ cD³])配 sliding 会被拒,用 viterbi。独立调用 `post_detect(..., "sliding")` 时不给 `dec0`
 就从"把该后光标反馈掉"的判决起步。(2026-10-08 前它丢掉传入的判决、从忽略该光标的切片起步:1 + 0.5D 目标下
 SER 从 2e-5 变 3e-2,示例 27 里不如 DFE;见 CHANGELOG。)
 
@@ -538,7 +538,7 @@ rx:
 - 整数 LMS:权重累加器比权重细 `numeric.lms_guard_bits`(默认 24)位,权重取其高位;步长是最接近
   `ffe.mu` / `dfe.mu` 的 2 的幂(换算到整数单位后),`float_equivalent_mu()` 给出精确对应的浮点步长。
   保护位太少时小更新被舍入成 0,环路就不再自适应;
-- PR 目标(`pr.target`)在定点下同样是整数:1 + aD [+ bD²] 减受控光标再切(a、b 是 `dfe_weight.fl` 小数位的字,
+- PR 目标(`pr.target`)在定点下同样是整数:1 + aD [+ bD² [+ cD³]] 减受控光标再切(a、b、c 是 `dfe_weight.fl` 小数位的字,
   `pr.adapt: lms` 时整数 LMS 跟踪),预编码 1 + D 走合成电平切片;sliding MLSD 的残差此时取目标的第一光标 a,起步判决是环路自己的;
 - 不建模(直接报错):mixed-signal(DFE / CDR 是模拟的)、`sim.stream`、非 2 的幂 lane 数。
 
@@ -769,9 +769,10 @@ rx:
 pr:
   target: [1.0, 0.75]      # (1.0,) = delta(默认,逐位等于不设);1 + aD:a ∈ [0, 1];
                            # 1 + aD + bD²:[1.0, a, b],a ∈ [0, 2]、b ∈ [-1, 1];EPR4 即 (1, 2, 1)
+                           # 1 + aD + bD² + cD³:[1.0, a, b, c],a ∈ [0, 3]、b ∈ [-1, 3]、c ∈ [-1, 1];E2PR4 即 (1, 3, 3, 1)
   at: rx                   # rx:收端 FFE 整形;tx:发端在 FFE 与 DAC 之前整形(见下)
-  adapt: none              # none:用上面的 a;mmse:按起始脉冲解 MMSE 最优 a(三光标时 a、b 一起解;主光标固定为 1);
-                           # lms:从 mmse 的目标起,与 FFE 一起 LMS 跟踪 a(三光标时 a、b 都跟)(只限收端)
+  adapt: none              # none:用上面的 a;mmse:按起始脉冲解 MMSE 最优 a(更长的目标各光标一起解;主光标固定为 1);
+                           # lms:从 mmse 的目标起,与 FFE 一起 LMS 跟踪 a(更长的目标每个受控光标都跟)(只限收端)
   mu: 2.0e-4               # adapt: lms 的步长(按平均符号功率归一,无量纲)
 precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 个合成电平再 mod N,不传播
 ```
@@ -784,10 +785,16 @@ precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 �
   (只看最小距离会乐观 2.5–20 倍),相邻事件的重叠扣掉(简单求和会重复计)。收端 / 发端 PR 与时域在 1.0–1.8×(BER 7e-5…6e-3)。
   逐符号判决(减 a × 上一判决,错判会传给下一个)按误差马尔可夫链算,报在 `st.extras["ser_slicer"]`(对照时域同名键);
   `mlsd.kind: none` 时它就是 BER。与时域 0.8–1.6×(按理想抽头算曾乐观 2.7–4.1×);它对 LMS / CDR 的影响不建。
+  有 PR 目标时相位网格以接收机的锁定点为中心(a > 1 的成形脉冲最大点不在主光标上;2026-10-10 前 a = 1.1 时读到下一个光标)。
+  四光标:MMSE 选的目标(c > 0)与时域 0.78–1.73×;手选 c < 0 的目标 1.75–2.09×,偏悲观(联合界对距离相近的交替事件多算),
+  见 `cairn/DSP发端与PR.md` §13。强目标在高 SER 时时域的判决导向环路会失效,统计引擎不建这个(实测一例:(1, 1.4, 1.0, 0.4)、3 mV,
+  时域 BER 0.16,统计 3.8e-3)。
 - **预编码与 Viterbi**:a = 1 + 预编码时 Viterbi 的一个错误解码后变两个,BER 比不预编码略高;预编码的价值在给 LMS / CDR
   的逐符号判决不传播。
 
 示例 `examples/36_pr_rx_alpha.py`:a ∈ {0, 0.25, 0.5, 0.75, 1} × 三个损耗,以及 reach 扫描(对照 a = 0 + Viterbi)。
+`examples/38_pr_three_cursor.py`:delta / 1 + aD / 1 + aD + bD² / + cD³ 的 reach 阶梯。第三个受控光标比两个只多约 0.3 dB
+(四个种子 +0.2–0.5 dB,同 256 状态;memory 2 的 1024 状态不再多),不到事先定的 0.5 dB 门槛 —— 可以用,但不推荐。
 
 **发端 PR(`at: tx`)**:`TxPipeline.pr_filter` 在电平之后、FFE 与 DAC 之前做 (x_k + a·x_{k−1}) / (1 + a)。除以 1 + a 让合成信号的
 峰值等于不整形时的峰值 —— DAC 与驱动器的满量程不变,多出来的电平从电平间距里出。收端用同一个 1 + aD 目标检测

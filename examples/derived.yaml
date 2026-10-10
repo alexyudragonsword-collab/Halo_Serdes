@@ -130,9 +130,18 @@
     delta: {example: "38", line: "control (delta + Viterbi) {} dB {*} dB"}
     ad: {example: "38", line: "1 + aD (MMSE a) {} dB {*} dB"}
     adbd: {example: "38", line: "1 + aD + bD^2 (MMSE a, b) {} dB {*} dB"}
+    c4m1: {example: "38", line: "+ cD^3 (MMSE, memory 1) {} dB {*} dB"}
+    c4m2: {example: "38", line: "+ cD^3 (MMSE, memory 2) {} dB {*} dB"}
   quotes:
-    - {doc: tools/pr_target_length.py, text: "MEASURED = {1: {delta}, 2: {ad}, 3: {adbd}}"}
+    - {doc: tools/pr_target_length.py, text: "MEASURED = {(1, 2): {delta}, (2, 2): {ad}, (3, 2): {adbd}, (4, 1): {c4m1}, (4, 2): {c4m2}}"}
+    - {doc: tools/pr_target_length.py, text: "measures it: {c4m1} dB at memory 1 (256 states), {c4m2} dB at memory 2, +{c4m1 - adbd}"}
+    - {doc: docs/SUMMARY.md, text: "three controlled cursors | +{c4m1 - delta} dB | 同 256 状态,比两个只多 {c4m1 - adbd} dB"}
+    - {doc: docs/SUMMARY.md, text: "第三个受控光标实测 +{c4m1 - adbd} dB"}
+    - {doc: docs/SUMMARY.md, text: "measures +{c4m1 - adbd} dB ({c4m1} vs {adbd} dB"}
+    - {doc: cairn/DSP发端与PR.md, text: "| 256 | **{c4m1} dB** | **+{c4m1 - adbd}** |"}
+    - {doc: cairn/DSP发端与PR.md, text: "| 1024 | {c4m2} dB | +{c4m2 - adbd} |"}
     - {doc: tools/pr_target_length.py, text: "the delta target ({delta} dB), 1 + aD ({ad} dB) and"}
     - {doc: tools/pr_target_length.py, text: "held against the measured +{ad - delta} / +{adbd - delta} dB"}
     - {doc: docs/SUMMARY.md, text: "two controlled cursors | **+{adbd - delta} dB** |"}
-    - {doc: docs/COMPARISON.md, text: "多 {adbd - delta} dB reach(示例 38)"}
+    - {doc: docs/COMPARISON.md, text: "收端两光标目标比 delta + Viterbi 多 {adbd - delta} dB reach,"}
+    - {doc: docs/COMPARISON.md, text: "第三个受控光标再多约 {c4m1 - adbd} dB(示例 38)"}

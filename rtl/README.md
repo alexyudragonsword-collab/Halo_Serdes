@@ -19,8 +19,9 @@ phase-interpolator code, the sampler reads the waveform there, the ADC
 quantises. The RTL replays the recorded ADC words (and the training
 reference), so the analog side it does not model is already in its input,
 and must reproduce every PI code, slicer value and decision and the final
-weights. It runs four times: delta target, 1 + aD + bD^2 with a and b
-adapted (`vectors/pr`), precoded 1 + D on the composite slicer
+weights. It runs five times: delta target, 1 + aD + bD^2 with a and b
+adapted (`vectors/pr`), 1 + aD + bD^2 + cD^3 with a, b and c adapted
+(`vectors/pr4`), precoded 1 + D on the composite slicer
 (`vectors/pre`), and offset / gain / skew lane mismatch with the background
 ADC calibration -- offset and gain between the ADC word and the FFE, skew as
 per-lane trims on the PI code (`vectors/cal`; the final offset, gain,

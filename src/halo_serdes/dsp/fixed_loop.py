@@ -82,12 +82,14 @@ def _digital_step_py(k, xi, n_pre, wf, ffe_shift, wd, dfe_shift, levels_out,
     ``lp`` = [train_len, adapt_start, FFE LMS on, FFE step shift, DFE LMS
     on, DFE step shift, guard bits, FFE weight min, max, DFE weight min, max,
     PR mode, PR cursors, PR fraction bits, PR LMS on, PR step shift, a max,
-    b min, b max]; ``wacc_f`` / ``wacc_d`` the weight accumulators (weights
-    carry their top bits, ``wf`` / ``wd`` the weights the datapath uses).
+    b min, b max, c min, c max]; ``wacc_f`` / ``wacc_d`` the weight
+    accumulators (weights carry their top bits, ``wf`` / ``wd`` the weights
+    the datapath uses).
 
     Partial response, as the float kernel's ``pr_mode``: 1 subtracts
-    ``ctl = (a L[x[s-1]] + b L[x[s-2]]) >>> fl`` before slicing (``prs`` holds
-    a and b with the guard bits, adapted with the FFE when PR LMS is on);
+    ``ctl = (a L[x[s-1]] + b L[x[s-2]] + c L[x[s-3]]) >>> fl`` before slicing
+    (``prs`` holds a, b and c with the guard bits, adapted with the FFE when
+    PR LMS is on; b and c are zero for the targets without them);
     2 slices the composite levels ``pr_lv`` and takes the line symbol as
     ``(q - d[s-1]) mod N`` (precoded 1 + D). ``xl`` is the line-symbol
     estimate the DFE and the controlled cursor use, ``r_out`` the slicer
@@ -130,13 +132,17 @@ def _digital_step_py(k, xi, n_pre, wf, ffe_shift, wd, dfe_shift, levels_out,
         nl = levels_out.size
         prev = 0
         prev2 = 0
+        prev3 = 0
         ctl = 0
         if pr_mode > 0:
             if s >= 1:
                 prev = levels_out[xl[s - 1]]
-            if nt == 3 and s >= 2:
+            if nt >= 3 and s >= 2:
                 prev2 = levels_out[xl[s - 2]]
-            ctl = _rnd_shift((prs[0] >> g) * prev + (prs[1] >> g) * prev2, -lp[13], do_round)
+            if nt == 4 and s >= 3:
+                prev3 = levels_out[xl[s - 3]]
+            ctl = _rnd_shift((prs[0] >> g) * prev + (prs[1] >> g) * prev2
+                             + (prs[2] >> g) * prev3, -lp[13], do_round)
         r_out[s] = v - ctl
         q = 0
         if pr_mode == 2:
@@ -190,13 +196,20 @@ def _digital_step_py(k, xi, n_pre, wf, ffe_shift, wd, dfe_shift, levels_out,
                     elif a > (lp[16] << g) + (1 << g) - 1:
                         a = (lp[16] << g) + (1 << g) - 1
                     prs[0] = a
-                    if nt == 3:
+                    if nt >= 3:
                         b = prs[1] + _rnd_shift(e * prev2, lp[15], do_round)
                         if b < (lp[17] << g):
                             b = lp[17] << g
                         elif b > (lp[18] << g) + (1 << g) - 1:
                             b = (lp[18] << g) + (1 << g) - 1
                         prs[1] = b
+                    if nt == 4:
+                        c = prs[2] + _rnd_shift(e * prev3, lp[15], do_round)
+                        if c < (lp[19] << g):
+                            c = lp[19] << g
+                        elif c > (lp[20] << g) + (1 << g) - 1:
+                            c = (lp[20] << g) + (1 << g) - 1
+                        prs[2] = c
             if lp[2] == 1:
                 for i in range(wf.size):
                     j = k - i
@@ -473,14 +486,14 @@ def build_fixed_loop(cfg, w_ffe: np.ndarray, w_dfe: np.ndarray, levels: np.ndarr
                      adapt_start: int = 0, pr_mode: int = 0, pr_nt: int = 1,
                      alpha: float = 0.0, beta: float = 0.0,
                      pr_levels: np.ndarray | None = None, mu_alpha: float = 0.0,
-                     adc_power: float | None = None) -> FixedLoop:
+                     adc_power: float | None = None, gamma: float = 0.0) -> FixedLoop:
     """Quantise a float receiver (weights, levels, CDR, LMS) for the loop.
 
     ``w_ffe`` / ``w_dfe`` are the weights it starts from: the float run's
     initial ones when the equaliser adapts (the loop then trains and adapts
     itself, data-aided over ``train_len`` symbols, from ``adapt_start``), its
-    final ones when it does not. ``pr_*`` / ``alpha`` / ``beta`` /
-    ``mu_alpha`` are the float kernel's partial-response arguments; a and b
+    final ones when it does not. ``pr_*`` / ``alpha`` / ``beta`` / ``gamma`` /
+    ``mu_alpha`` are the float kernel's partial-response arguments; a, b and c
     are words with ``dfe_weight.fl`` fraction bits.
 
     ``adc_power``: the mean square of the ADC's output [V^2] (the float run's),
@@ -517,14 +530,17 @@ def build_fixed_loop(cfg, w_ffe: np.ndarray, w_dfe: np.ndarray, levels: np.ndarr
     p_sym = float(np.mean(lv_v ** 2))
     lms_a = int(mu_alpha > 0 and pr_mode == 1 and (mu_f > 0 or mu_d > 0))
     sh_a = _lms_shift(mu_alpha / p_sym, out_lsb * out_lsb * 2.0 ** (pfl + g)) if lms_a else 0
-    a_max = (2 if pr_nt == 3 else 1) << pfl
+    # the controlled cursors' ranges (config.schema.PrConfig)
+    a_max = (3 if pr_nt == 4 else 2 if pr_nt == 3 else 1) << pfl
+    b_max = (3 if pr_nt == 4 else 1) << pfl
     lp = np.array([train_len, adapt_start, int(mu_f > 0), sh_f, int(mu_d > 0), sh_d, g,
                    lo_f, hi_f, lo_d, hi_d, pr_mode, pr_nt if pr_mode > 0 else 1, pfl,
-                   lms_a, sh_a, a_max, -(1 << pfl), 1 << pfl], dtype=np.int64)
+                   lms_a, sh_a, a_max, -(1 << pfl), b_max, -(1 << pfl), 1 << pfl],
+                  dtype=np.int64)
     pr_lv = (np.round(np.asarray(pr_levels, dtype=float) / out_lsb).astype(np.int64)
              if pr_mode == 2 and pr_levels is not None else np.zeros(1, dtype=np.int64))
-    pr_ab = np.array([int(np.round(alpha * 2.0 ** pfl)), int(np.round(beta * 2.0 ** pfl))],
-                     dtype=np.int64) if pr_mode > 0 else np.zeros(2, dtype=np.int64)
+    pr_ab = (np.array([int(np.round(c * 2.0 ** pfl)) for c in (alpha, beta, gamma)],
+                      dtype=np.int64) if pr_mode > 0 else np.zeros(3, dtype=np.int64))
     cal, cal_pm0 = _cal_params(cfg, in_lsb, lane_shift, adc_power, int(ph_frac),
                                float(np.max(np.abs(lv_v))))
     return FixedLoop(
@@ -618,7 +634,7 @@ def float_equivalent_mu(fl: FixedLoop, ffe_fl: int, dfe_fl: int,
 
 def _weights(fl: FixedLoop):
     """Working copies of the weights, their accumulators and the PR state
-    (a, b with the guard bits; line-symbol estimates; slicer less cursor)."""
+    (a, b, c with the guard bits; line-symbol estimates; slicer less cursor)."""
     g = int(fl.lp[6])
     return (fl.wf.copy(), fl.wd.copy(), fl.wf.astype(np.int64) << g,
             fl.wd.astype(np.int64) << g, fl.pr_ab.astype(np.int64) << g)
@@ -719,6 +735,7 @@ def loop_artifacts(fl: FixedLoop, xin: np.ndarray, ref: np.ndarray) -> dict:
                        "WF_LO": lp[7], "WF_HI": lp[8], "WD_LO": lp[9], "WD_HI": lp[10],
                        "PR_MODE": lp[11], "NT": lp[12], "PFL": lp[13], "LMS_A": lp[14],
                        "SH_A": lp[15], "A_MAX": lp[16], "B_LO": lp[17], "B_HI": lp[18],
+                       "C_LO": lp[19], "C_HI": lp[20],
                        "NPL": int(fl.pr_lv.size),
                        "CAL_ON": int(fl.cal[0]), "CAL_F": int(fl.cal[1]),
                        "CAL_B": int(fl.cal[2]), "CAL_SH_O": int(fl.cal[3]),

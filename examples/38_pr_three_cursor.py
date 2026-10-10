@@ -1,20 +1,24 @@
-"""224G long-reach: a second controlled cursor, 1 + aD + bD^2.
+"""224G long-reach: a second and a third controlled cursor, 1 + aD + bD^2 (+ cD^3).
 
 Example 36 left the FFE one controlled cursor (1 + aD) and Viterbi resolved
 it: +5.0 dB of reach over the delta target. On a lossy channel the pulse has
 a long tail, so the next step is to leave the FFE a second one -- the target
 (1, a, b), up to EPR4's 1 + 2D + D^2 -- at the price of a trellis N times
-bigger (memory 2 behind the target: 256 states for PAM4).
+bigger (memory 2 behind the target: 256 states for PAM4). A third, (1, a, b,
+c), costs another factor N, or none if the residual memory drops to 1: the
+same 256 states, the FFE leaving little ISI beyond the target.
 
-Both targets are the receiver's own choice (``pr.adapt = "mmse"``: the monic
+All targets are the receiver's own choice (``pr.adapt = "mmse"``: the monic
 target that minimises the FFE's mean-square error for the start-up pulse),
-so the comparison is not of hand-picked numbers; the last row lets LMS track
+so the comparison is not of hand-picked numbers; the fourth row lets LMS track
 (a, b) from that start with the FFE. Same receiver as examples
 18 / 36 (21-tap LMS FFE, MM-CDR, memory-2 Viterbi, ENOB 6.5, 1.5 mV):
 
   control  -- delta target + Viterbi
   1 + aD   -- MMSE a
   1 + aD + bD^2 -- MMSE (a, b)
+  1 + aD + bD^2 + cD^3 -- MMSE (a, b, c), residual memory 1 (256 states)
+  and memory 2 (1024 states)
 
 Reach is where the pre-FEC BER crosses KP4's threshold (post-KP4 1e-15),
 the length sweep refined to 0.4 dB around it (``fec.refine``).
@@ -55,13 +59,16 @@ LENGTHS = [0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30]
 if QUICK:
     LENGTHS = LENGTHS[::2]
 
-CASES = {"control (delta + Viterbi)": PrConfig(),
-         "1 + aD (MMSE a)": PrConfig(target=(1.0, 0.5), adapt="mmse"),
-         "1 + aD + bD^2 (MMSE a, b)": PrConfig(target=(1.0, 0.5, 0.0), adapt="mmse"),
-         "1 + aD + bD^2 (LMS-tracked)": PrConfig(target=(1.0, 0.5, 0.0), adapt="lms")}
+# name: (target, Viterbi residual memory)
+CASES = {"control (delta + Viterbi)": (PrConfig(), 2),
+         "1 + aD (MMSE a)": (PrConfig(target=(1.0, 0.5), adapt="mmse"), 2),
+         "1 + aD + bD^2 (MMSE a, b)": (PrConfig(target=(1.0, 0.5, 0.0), adapt="mmse"), 2),
+         "1 + aD + bD^2 (LMS-tracked)": (PrConfig(target=(1.0, 0.5, 0.0), adapt="lms"), 2),
+         "+ cD^3 (MMSE, memory 1)": (PrConfig(target=(1.0, 0.5, 0.0, 0.0), adapt="mmse"), 1),
+         "+ cD^3 (MMSE, memory 2)": (PrConfig(target=(1.0, 0.5, 0.0, 0.0), adapt="mmse"), 2)}
 
 
-def make_cfg(length_m: float, pr: PrConfig, n_sym: int = N_SYM) -> LinkConfig:
+def make_cfg(length_m: float, pr: PrConfig, n_sym: int = N_SYM, memory: int = 2) -> LinkConfig:
     return LinkConfig(
         modulation="pam4", symbol_rate=112e9, osr=16,  # 224 Gb/s
         channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=5.0,
@@ -73,7 +80,7 @@ def make_cfg(length_m: float, pr: PrConfig, n_sym: int = N_SYM) -> LinkConfig:
                     adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5, fullscale=0.6),
                     ffe=FfeConfig(n_pre=6, n_post=14, adapt="lms", mu=3e-5),
                     dfe=DfeConfig(n_taps=0),
-                    mlsd=MlsdConfig(kind="viterbi", memory=2),
+                    mlsd=MlsdConfig(kind="viterbi", memory=memory),
                     cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
                     noise_rms=0.0015),
         sim=SimConfig(n_symbols=n_sym, seed=3, pattern="prbs13q"),
@@ -88,15 +95,15 @@ def loss_db(length_m: float) -> float:
     return -ChannelModel.from_config(make_cfg(length_m, PrConfig(), 1000)).loss_at(56e9)
 
 
-print("224 Gb/s PAM4 LR, 21-tap LMS FFE + memory-2 Viterbi: delta, 1 + aD, 1 + aD + bD^2")
+print("224 Gb/s PAM4 LR, 21-tap LMS FFE + Viterbi: delta, 1 + aD, 1 + aD + bD^2, + cD^3")
 print(f"reach: post-KP4 1e-15 <=> pre-FEC BER <= {P_STAR:.2e}")
 sweep, targets, reach = {}, {}, {}
-for name, pr in CASES.items():
+for name, (pr, mem) in CASES.items():
     t0 = time.time()
     shown, targets[name] = {}, {}
 
-    def measure(L, pr=pr, shown=shown, tg=targets[name]):
-        r = run_time_link(make_cfg(L, pr))
+    def measure(L, pr=pr, mem=mem, shown=shown, tg=targets[name]):
+        r = run_time_link(make_cfg(L, pr, memory=mem))
         shown[L] = (loss_db(L), max(r.ber.ber, 0.5 / r.ber.n_checked))   # no errors: half a count
         tg[L] = r.extras["pr_target"]
         return shown[L][0], r.ber.ber
@@ -119,19 +126,23 @@ print("\nreach [dB @ 56 GHz]:")
 for name, v in reach.items():
     print(f"  {name:<27} {v:6.2f} dB  {v - ctrl:+5.2f} dB")
 
-# direction, as measured (cairn/DSP发端与PR.md §10 has the numbers)
+# direction, as measured (cairn/DSP发端与PR.md §10 / §12 have the numbers)
 names = list(CASES)
 assert reach[names[2]] > reach[names[1]] > ctrl, reach
 assert abs(reach[names[3]] - reach[names[2]]) < 0.5, reach
+# a third controlled cursor helps a little (+0.2-0.5 dB over four seeds), and
+# the 1024-state trellis buys nothing over the 256-state one
+assert reach[names[4]] > reach[names[2]], reach
+assert abs(reach[names[5]] - reach[names[4]]) < 0.2, reach
 
 # ------------------------------------------------------------------ plot ---
 fig, ax = plt.subplots(figsize=(7.5, 4.8))
-for name, style in zip(CASES, ("s--k", "o-C0", "^-C3", "v:C2")):
+for name, style in zip(CASES, ("s--k", "o-C0", "^-C3", "v:C2", "D-C1", "x:C4")):
     ax.semilogy(*zip(*(sweep[name][L] for L in sorted(sweep[name]))), style,
                 label=f"{name}: {reach[name]:.1f} dB")
 ax.axhline(P_STAR, color="r", ls="--", lw=1, label=f"KP4 1e-15 ({P_STAR:.1e})")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="pre-FEC BER after Viterbi",
-       title="A second controlled cursor (224 Gb/s PAM4, MMSE targets)")
+       title="Second and third controlled cursors (224 Gb/s PAM4, MMSE targets)")
 ax.legend(fontsize=8)
 ax.grid(True, which="both", alpha=0.3)
 fig.tight_layout()

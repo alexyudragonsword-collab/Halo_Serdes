@@ -45,7 +45,7 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
     Everything carried from one symbol to the next is in the arguments: the
     FFE / DFE taps ``wf`` / ``wd`` and the loop-latency queue ``corr_queue``
     (updated in place), ``fs`` = [position, PD accumulator, integrator,
-    applied correction, a, b], ``ist`` = [PD block count, queue index], and
+    applied correction, a, b, c], ``ist`` = [PD block count, queue index], and
     the output arrays the FFE, DFE and detector read back from. Any split of
     [0, n) into consecutive calls is the same arithmetic in the same order
     as one call, bit for bit.
@@ -59,7 +59,9 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
     nf = wf.size
     nd = wd.size
     nt = pr_nt if pr_mode > 0 else 1    # cursors the target accounts for
-    a_max = 2.0 if pr_nt == 3 else 1.0
+    # the controlled cursors' ranges (config.schema.PrConfig)
+    a_max = 3.0 if pr_nt == 4 else 2.0 if pr_nt == 3 else 1.0
+    b_max = 3.0 if pr_nt == 4 else 1.0
     p_sym = 0.0
     for m in range(nl):
         p_sym += levels[m] * levels[m]
@@ -70,6 +72,7 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
     corr_now = fs[3]
     a_pr = fs[4]
     b_pr = fs[5]
+    c_pr = fs[6]
     n_acc = ist[0]
     qi = ist[1]
     lat = loop_latency_blocks
@@ -94,6 +97,7 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
             fs[3] = corr_now
             fs[4] = a_pr
             fs[5] = b_pr
+            fs[6] = c_pr
             ist[0] = n_acc
             ist[1] = qi
             return k, st
@@ -165,9 +169,13 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                 prev = levels[xl[s - 1]]
             ctl = a_pr * prev
             prev2 = 0.0
-            if nt == 3 and s >= 2:
+            if nt >= 3 and s >= 2:
                 prev2 = levels[xl[s - 2]]
                 ctl = ctl + b_pr * prev2
+            prev3 = 0.0
+            if nt == 4 and s >= 3:
+                prev3 = levels[xl[s - 3]]
+                ctl = ctl + c_pr * prev3
             r_sl[s] = v - ctl
             q = 0
             if pr_mode == 2:
@@ -218,12 +226,18 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                             a_pr = 0.0
                         elif a_pr > a_max:
                             a_pr = a_max
-                        if nt == 3:
+                        if nt >= 3:
                             b_pr += mu_alpha * e * prev2 / p_sym
                             if b_pr < -1.0:
                                 b_pr = -1.0
-                            elif b_pr > 1.0:
-                                b_pr = 1.0
+                            elif b_pr > b_max:
+                                b_pr = b_max
+                        if nt == 4:
+                            c_pr += mu_alpha * e * prev3 / p_sym
+                            if c_pr < -1.0:
+                                c_pr = -1.0
+                            elif c_pr > 1.0:
+                                c_pr = 1.0
                 if mu_ffe > 0.0:
                     for i in range(nf):
                         j = k - i
@@ -278,6 +292,7 @@ def _adc_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
     fs[3] = corr_now
     fs[4] = a_pr
     fs[5] = b_pr
+    fs[6] = c_pr
     ist[0] = n_acc
     ist[1] = qi
     return k1, 0
@@ -298,7 +313,7 @@ class AdcRxRun:
                  loop_latency_blocks, ref_idx, train_len, adapt_start,
                  rx_clock_offset_samples, pr_alpha, pr_mode, pr_levels,
                  mu_alpha, alpha_out, pr_beta, pr_nt, cal_mode=0, mu_cal_off=0.0,
-                 mu_cal_gain=0.0, mu_cal_skew=0.0, core=None):
+                 mu_cal_gain=0.0, mu_cal_skew=0.0, core=None, pr_gamma=0.0):
         self.core = core if core is not None else _adc_rx_core
         self.osr = osr
         self.set_window(y)
@@ -311,7 +326,8 @@ class AdcRxRun:
                        pr_levels, mu_alpha, pr_nt, int(cal_mode), float(mu_cal_off),
                        float(mu_cal_gain), float(mu_cal_skew), self._cal_init(n_lanes),
                        np.zeros(loop_latency_blocks + 1, dtype=np.float64))
-        self.fs = np.array([pos0, 0.0, 0.0, 0.0, pr_alpha, pr_beta], dtype=np.float64)
+        self.fs = np.array([pos0, 0.0, 0.0, 0.0, pr_alpha, pr_beta, pr_gamma],
+                           dtype=np.float64)
         self.ist = np.zeros(2, dtype=np.int64)
         self.alpha_out = alpha_out
         self.n_symbols = n_symbols
@@ -375,6 +391,8 @@ class AdcRxRun:
         self.alpha_out[0] = self.fs[4]
         if self.alpha_out.size > 1:
             self.alpha_out[1] = self.fs[5]
+        if self.alpha_out.size > 2:
+            self.alpha_out[2] = self.fs[6]
         return (dec[:n], y_sl[:n], phase[:n], self.wf, self.wd,
                 lane_of[:n], q_hist[:n])
 
@@ -393,13 +411,13 @@ def _adc_rx_with(core):
                rx_clock_offset_samples: np.ndarray,
                pr_alpha: float, pr_mode: int, pr_levels: np.ndarray,
                mu_alpha: float, alpha_out: np.ndarray,
-               pr_beta: float, pr_nt: int):
+               pr_beta: float, pr_nt: int, pr_gamma: float = 0.0):
         run = AdcRxRun(y, osr, pos0, n_symbols, levels, n_lanes, offsets, gains,
                        skews, q_step, code_max, noise, w_ffe, n_pre_ffe, mu_ffe,
                        w_dfe, mu_dfe, kp, ki, clamp, pd_offset, pd_use_ffe,
                        loop_latency_blocks, ref_idx, train_len, adapt_start,
                        rx_clock_offset_samples, pr_alpha, pr_mode, pr_levels,
-                       mu_alpha, alpha_out, pr_beta, pr_nt, core=core)
+                       mu_alpha, alpha_out, pr_beta, pr_nt, core=core, pr_gamma=pr_gamma)
         run.advance(n_symbols)
         return run.result()
     return adc_rx
@@ -431,11 +449,15 @@ _ADC_RX_DOC = """Returns (dec, y_slicer, phase, w_ffe_out, w_dfe_out, lane_of, q
     taken in a, normalised by the mean symbol power and clipped to [0, 1].
     ``alpha_out[0]`` returns the a the run ended on (and ``alpha_out[1]``,
     when there is one, the b of a three-cursor target, adapted the same way
-    against the decision two symbols back; a in [0, 2], b in [-1, 1] there).
+    against the decision two symbols back; a in [0, 2], b in [-1, 1] there;
+    ``alpha_out[2]`` the c of a four-cursor one, against the decision three
+    back; a in [0, 3], b in [-1, 3], c in [-1, 1]).
 
     ``pr_nt`` 3 is a 1 + aD + bD^2 target: ``pr_beta`` times the decision two
     symbols back is subtracted as well, everywhere ``pr_alpha`` times the
     previous one is, and the DFE starts after both controlled cursors.
+    ``pr_nt`` 4 adds 1 + aD + bD^2 + cD^3: ``pr_gamma`` times the decision
+    three back, likewise.
 
     The loop itself is :func:`_adc_rx_core_py`; :class:`AdcRxRun` runs it in
     chunks with the same result.

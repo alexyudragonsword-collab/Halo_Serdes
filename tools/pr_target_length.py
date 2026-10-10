@@ -2,11 +2,18 @@
 
 Example 38 measures, on its 224 Gb/s PAM4 long-reach link, the reach to the
 KP4 threshold of the delta target (31.3 dB), 1 + aD (36.3 dB) and
-1 + aD + bD^2 (38.6 dB). The engine stops at three cursors. A fourth grows
-the trellis by N again: PAM4 with memory 2 behind the target goes from 256
-to 1024 states. The kernel's per-symbol decision, the bit-true datapath and
-the statistical engine's decision model would also each need a third
-controlled cursor. This script estimates the gain before anyone pays for it.
+1 + aD + bD^2 (38.6 dB). When this was written the engine stopped at three
+cursors. A fourth grows the trellis by N again: PAM4 with memory 2 behind
+the target goes from 256 to 1024 states. The kernel's per-symbol decision,
+the bit-true datapath and the statistical engine's decision model would also
+each need a third controlled cursor. This script estimated the gain before
+anyone paid for it.
+
+The engine has had the fourth cursor since 2026-10-10, and example 38
+measures it: 38.94 dB at memory 1 (256 states), 38.97 dB at memory 2, +0.3
+dB where this estimate said +0.6-0.7 dB after its correction (four seeds
+measured +0.2-0.5 dB). The script stays as the record of that estimate and
+prints the measured reach beside its own.
 
 Method: a baud-rate Monte Carlo on example 38's slicer-referred cursors,
 i.e. channel + Tx FIR + CTLE as the ADC receiver sees them. Each run uses
@@ -59,8 +66,8 @@ LEVELS = np.array([-1.0, -1.0 / 3.0, 1.0 / 3.0, 1.0])
 SYMBOL_POWER = float(np.mean(LEVELS ** 2))         # 5/9
 N_PRE, N_POST = 6, 14                               # example 38's FFE
 LENGTHS = np.linspace(0.16, 0.36, 21)               # 24 .. 55 dB at 56 GHz
-#: example 38's measured reach [dB] by target length (memory-2 Viterbi)
-MEASURED = {1: 31.33, 2: 36.33, 3: 38.60}
+#: example 38's measured reach [dB] by (target cursors, residual memory)
+MEASURED = {(1, 2): 31.33, (2, 2): 36.33, (3, 2): 38.60, (4, 1): 38.94, (4, 2): 38.97}
 #: (target cursors, residual memory): example 38's three, then a fourth cursor
 #: at the same trellis size as three (memory 1) and at four times it (memory 2)
 CONFIGS = ((1, 2), (2, 2), (3, 2), (4, 1), (4, 2))
@@ -186,7 +193,7 @@ def fit_scale(links, n_sym: int, seed: int, threshold: float) -> float:
     """The noise scale that puts the delta target's reach on the measured one."""
     from scipy.optimize import brentq
 
-    return brentq(lambda s: reach(links, 1, 2, s, n_sym, seed, threshold) - MEASURED[1],
+    return brentq(lambda s: reach(links, 1, 2, s, n_sym, seed, threshold) - MEASURED[(1, 2)],
                   1.0, 3.0, xtol=1e-3)
 
 
@@ -206,16 +213,16 @@ def main(argv=None) -> int:
     links = [slicer_cursors(L) for L in LENGTHS]
     scale = fit_scale(links, n_sym, a.seed, threshold)
     print(f"example 38's link, {n_sym} symbols, seed {a.seed}: noise scale {scale:.3f} "
-          f"puts the delta target on {MEASURED[1]} dB")
+          f"puts the delta target on {MEASURED[(1, 2)]} dB")
     jobs = [(links, k, mem, scale, n_sym, a.seed, threshold) for k, mem in CONFIGS]
     with ProcessPoolExecutor(max_workers=a.jobs) as ex:
         r = dict(zip(CONFIGS, ex.map(_reach_job, jobs)))
     base = r[(1, 2)]
     print(f"{'target cursors':>15} {'memory':>7} {'states':>7} {'reach':>8} {'gain':>7}   measured")
     for (k, mem), v in r.items():
-        meas = MEASURED.get(k) if mem == 2 else None
+        meas = MEASURED.get((k, mem))
         print(f"{k:>15} {mem:>7} {4 ** (k - 1 + mem):>7} {v:7.2f}  {v - base:+6.2f}"
-              + (f"   {meas} ({meas - MEASURED[1]:+.1f})" if meas else ""))
+              + (f"   {meas} ({meas - MEASURED[(1, 2)]:+.1f})" if meas else ""))
     print(f"[{time.time() - t0:.0f}s]")
     return 0
 

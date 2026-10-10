@@ -586,7 +586,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                                 symbol_power=float(np.mean(_levels(cfg) ** 2)), n_target=n_t)
         target = target + (0.0,) * (n_t - len(target))
     alpha = target[1] if pr.active else 0.0
-    beta = target[2] if (pr.active and n_t == 3) else 0.0
+    beta = target[2] if (pr.active and n_t >= 3) else 0.0
+    gamma = target[3] if (pr.active and n_t == 4) else 0.0
     w_ffe0 = mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
                       noise_var=cfg.rx.noise_rms ** 2, target=target)
     eq_cursors, eq_pre = equalized_cursors(cursors, w_ffe0, n_pre_c, fcfg.n_pre)
@@ -638,7 +639,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # the receiver's own clock, drawn last so an ideal clock changes nothing
     rx_clk = rx_clock_offsets_samples(n_sym, cfg, rng)
     mu_a = pr.mu if (pr.active and pr.adapt == "lms") else 0.0
-    alpha_out = np.array([alpha, beta], dtype=np.float64)
+    alpha_out = np.array([alpha, beta, gamma], dtype=np.float64)
 
     cal = cfg.rx.adc.cal
     adc_run = AdcRxRun(
@@ -653,7 +654,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         sched.reference, int(train_end), int(settle), rx_clk,
         float(alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64),
         float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1),
-        1 if cal.mode == "background" else 0, cal.mu_offset, cal.mu_gain, cal.mu_skew)
+        1 if cal.mode == "background" else 0, cal.mu_offset, cal.mu_gain, cal.mu_skew,
+        pr_gamma=float(gamma))
     dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = _run_rx(adc_run, rx_y, cfg, progress)
     jitter_budget = _stream_jitter(cfg, rx_y, jitter_budget)
 
@@ -664,15 +666,13 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         dec, y_sl, phase, lane_of, q_hist, fixed = _fixed_back_end(
             cfg, rx_y, float(peak), n_sym, levels, adc, enob_noise, rx_clk, w_ffe0, w_dfe0,
             sched, {"pr_mode": int(pr_mode), "pr_nt": int(n_t if pr.active else 1),
-                    "alpha": float(alpha), "beta": float(beta), "pr_levels": pr_levels,
-                    "mu_alpha": float(mu_a)},
+                    "alpha": float(alpha), "beta": float(beta), "gamma": float(gamma),
+                    "pr_levels": pr_levels, "mu_alpha": float(mu_a)},
             adc_power=float(np.mean(q_hist ** 2)) if q_hist.size else None)
         if pr.active:
             # the controlled cursor the bit-true loop ended on
             ab = fixed["record"]["ab"] * 2.0 ** -cfg.numeric.dfe_weight.fl
-            alpha_out[0] = ab[0]
-            if alpha_out.size > 1:
-                alpha_out[1] = ab[1]
+            alpha_out[:] = ab[:alpha_out.size]
         # the weights the bit-true loop ended on, in float units
         w_ffe = fixed["record"]["wf"] * 2.0 ** -cfg.numeric.ffe_weight.fl
         w_dfe = fixed["record"]["wd"] * 2.0 ** -cfg.numeric.dfe_weight.fl
@@ -724,7 +724,8 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     sc = score(cfg, dec=dec, dec_slicer=dec_slicer, y_slicer=y_sl,
                levels=levels, line_idx=ref_idx, user_idx=user_idx,
                n_run=n_run, warmup=warm, pr_alpha=float(alpha_out[0]),
-               pr_beta=float(alpha_out[1]) if n_t == 3 else 0.0)
+               pr_beta=float(alpha_out[1]) if n_t >= 3 else 0.0,
+               pr_gamma=float(alpha_out[2]) if n_t == 4 else 0.0)
     dec_c, ref_c = sc.decisions, sc.reference
 
     # per-lane SER (TI mismatch diagnostics)
@@ -756,7 +757,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "precode": cfg.precode,
                 # (start, end) of the controlled cursor a: equal unless pr.adapt is "lms"
                 "pr_alpha": (alpha, float(alpha_out[0])) if pr.active else None,
-                "pr_target": (1.0, float(alpha_out[0])) + ((float(alpha_out[1]),) if n_t == 3 else ())
+                "pr_target": (1.0,) + tuple(float(c) for c in alpha_out[:n_t - 1])
                 if pr.active else None,
                 "cycle_slips": sc.cycle_slips, "slip_at": sc.slip_at,
                 "decisions": sc.decisions,

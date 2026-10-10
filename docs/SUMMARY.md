@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**913 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **913 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**935 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **935 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -141,6 +141,7 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 | **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.3 dB** | 开销 6%→24% / overhead |
 | **收端 PR 整形**(FFE 均衡到 1+0.75D,Viterbi 解受控光标)/ RX partial response | **+5.0 dB** | Viterbi 网格(N² 状态)/ trellis |
 | **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.3 dB** | 网格 ×4(256 状态)/ trellis ×4 |
+| 三个受控光标(1 + aD + bD² + cD³,memory 1)/ three controlled cursors | +7.6 dB | 同 256 状态,比两个只多 0.3 dB / same 256 states |
 
 - **MLSD 只拿回短 FFE 留下的 ISI**(示例 18):21 抽头 LMS FFE 收敛到 MMSE,残余光标 ≤ 0.002,MLSD memory-2 在每个损耗都是 1.0×;
   3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 在 −27.3…−33.3 dB 拿回 2.4–4.3×(符号错,全程计数;此前只数 2 万符号时记 1.9–4.4×) —— 但 3 抽头 + MLSD 仍不如 21 抽头 FFE 单独用。
@@ -153,11 +154,12 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 - **同样的 1+aD 放到发端反而亏**(示例 37):峰值不变时 reach ≈ 无 PR − 20·log10(1 + a)(a = 0.25 / 0.5 / 0.75:29.8 / 27.6 / 26.6 dB,预测 29.4 / 27.8 / 26.5)。
   线性链路、噪声在收端,收端 FFE 照样要把信道均衡到 delta,发端整形只交出峰值。PR 的位置在收端。 / The same 1+aD in the Tx
   loses: peak-limited, reach ≈ no-PR − 20 log10(1 + a); the receive FFE still inverts the channel to a delta.
-- **第三个受控光标值不值,待重新决定**(`tools/pr_target_length.py`):四光标目标估 +0.6–0.7 dB(基带 MC 校准到示例 38 的
-  delta reach、按它对前两档的高估比例折算,三个种子;2026-10-09 示例 38 改读法后重算,此前估 ≈ +0.5 dB、按成本未做),
-  越过事先定的 0.5 dB 门槛;同 256 状态(四光标 + memory 1)就拿得到。尚未实现。 / A third controlled cursor is worth
-  +0.6-0.7 dB on this link (baseband MC calibrated to example 38, three seeds; 0.5 dB before example 38's reach read-out was
-  fixed), past the 0.5 dB bar set beforehand, even at equal trellis size; not built, to be decided.
+- **第三个受控光标实测 +0.34 dB,不到门槛**(示例 38,2026-10-10 实现):四光标目标 memory 1(与三光标 + memory 2 同为 256 状态)
+  reach 38.94 dB,memory 2(1024 状态)38.97 dB,三光标 38.60 dB;换三个种子 +0.18 / +0.31 / +0.48 dB,四个种子都低于事先定的
+  0.5 dB 门槛。更正此前的估计:基带 MC(`tools/pr_target_length.py`)折算后估 +0.6–0.7 dB 并据此越过门槛,实测约其一半 ——
+  MC 不建的 CDR / LMS 对更强的目标反作用更重。实现保留(旧配置的数一个不变),不作推荐配置。 / A third controlled cursor
+  measures +0.34 dB (38.94 vs 38.60 dB; +0.2-0.5 dB over four seeds), under the 0.5 dB bar; the baseband MC's +0.6-0.7 dB
+  estimate was about twice the measurement. Built, not recommended.
 - 21 抽头 FFE:到 −27.3 dB 零误码(−28.8 dB 处 40 万符号里 6 个错;2026-10-09 前只数 2 万符号,记为到 −28.8 dB 零误码),−28.8 / −30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
   error-free to −27.3 dB and memory-2 MLSD matches it at −28.8 / −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
@@ -291,4 +293,4 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 913 项测试 · 双引擎 · 40 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 935 项测试 · 双引擎 · 40 个实验脚本*

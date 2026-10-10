@@ -70,9 +70,20 @@ def _same(a, b):
         if k in a.extras:
             assert np.array_equal(np.asarray(a.extras[k]), np.asarray(b.extras[k])), k
     assert a.extras.get("pr_alpha") == b.extras.get("pr_alpha")
+    assert a.extras.get("pr_target") == b.extras.get("pr_target")
 
 
-@pytest.mark.parametrize("make", [_ms_cfg, _adc_cfg], ids=["mixed_signal", "adc_dsp"])
+def _adc4_cfg(n_sym=12_000):
+    """A four-cursor target with LMS-adapted a, b and c (three controlled
+    cursors' worth of decision history in the kernel's state)."""
+    cfg = _adc_cfg(n_sym)
+    return dataclasses.replace(
+        cfg, pr=PrConfig(target=(1.0, 0.5, 0.0, 0.0), adapt="lms"),
+        rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig(kind="viterbi", memory=1)))
+
+
+@pytest.mark.parametrize("make", [_ms_cfg, _adc_cfg, _adc4_cfg],
+                         ids=["mixed_signal", "adc_dsp", "adc_dsp_pr4"])
 def test_chunking_does_not_change_a_bit(make):
     cfg = make()
     cm = ChannelModel.from_config(cfg)

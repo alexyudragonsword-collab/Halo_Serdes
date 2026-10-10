@@ -228,7 +228,7 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     (the ISI around it is left out of the overlap).
 
     ``families`` adds ``"constant"`` (+1, +1, ...): with a negative
-    controlled cursor (1 + aD + bD^2, b < 0) a run of same-sign errors is
+    controlled cursor after the first (b or c < 0) a run of same-sign errors is
     pulled close by it, where for a non-negative target it lies far.
     Each family is chained on its own.
     """
@@ -405,6 +405,28 @@ def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> f
     return float(sigma_q * np.sqrt(np.sum(cursors ** 2)))
 
 
+def _lock_position(cfg: LinkConfig, h_pre_ffe: np.ndarray, h_chan: np.ndarray, tx_pipe,
+                   has_ffe: bool, ffe_pre: int) -> float:
+    """The sample, on the equalised pulse's axis, where the receiver's loop
+    samples the main cursor (``run_statistical``'s notes on the sampling
+    phase): found on the pre-FFE pulse, then delayed by the FFE's main tap
+    (``ffe_pre`` UI)."""
+    osr = cfg.osr
+    h_lock = h_pre_ffe
+    if tx_pipe.pr_taps is not None:
+        # a 1 + aD Tx pulse peaks on either cursor; the time engine
+        # starts on the unshaped pulse's (TxPipeline.receiver_view)
+        un = tx_pipe.equivalent_symbol_response(osr, shaping=False)
+        h_lock = h_chan if un is None else np.convolve(h_chan, un)
+    pre_y = pulse_from_impulse(Waveform(h_lock, cfg.dt), osr).y
+    pk_pre = int(np.argmax(np.abs(pre_y)))
+    if cfg.rx.arch == "mixed_signal":
+        at = 0.0 if has_ffe else lock_offset_samples(pre_y, pk_pre, osr, osr // 2)
+    else:
+        at = 0.0 if cfg.mm_pd_input == "ffe" else lock_offset_samples(pre_y, pk_pre, osr, osr)
+    return pk_pre + at + (ffe_pre * osr if has_ffe else 0)
+
+
 def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     ffe_taps: np.ndarray | None = None, ffe_pre: int = 0,
                     v_bins: int = 4096, n_pre: int = 24, n_post: int = 64,
@@ -491,11 +513,24 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     peak = int(np.argmax(np.abs(pulse.y)))
     pr_active = cfg.pr.active
-    for _ in range(len(cfg.pr.target) - 1 if pr_active else 0):
-        # equalised to [1, a(, b)] the pulse has comparable cursors (equal at
-        # a = 1) and nothing before them: the main one is the earliest
-        if peak >= osr and abs(pulse.y[peak - osr]) >= 0.5 * abs(pulse.y[peak]):
-            peak -= osr
+    has_ffe = ffe_taps is not None and len(ffe_taps) > 1
+    lock_pos = None
+    if cfg.rx.arch in ("mixed_signal", "adc_dsp"):
+        lock_pos = _lock_position(cfg, h_pre_ffe, h_chan, tx_pipe, has_ffe, ffe_pre)
+    if pr_active and has_ffe and lock_pos is not None:
+        # equalised to [1, a(, b(, c))] the pulse has comparable cursors and
+        # its largest sample falls between them, up to half a UI after the
+        # main one; the phase grid (+-half a UI) is centred where the
+        # receiver samples instead. Centred on the largest sample it held the
+        # lock point at its edge (a = 1) or not at all (a = 1.1: read the
+        # next cursor, BER 2.7 against the time engine's 6e-4).
+        peak = int(np.round(lock_pos))
+    else:
+        for _ in range(len(cfg.pr.target) - 1 if pr_active else 0):
+            # equalised to [1, a(, b(, c))] the pulse has comparable cursors (equal
+            # at a = 1) and nothing before them: the main one is the earliest
+            if peak >= osr and abs(pulse.y[peak - osr]) >= 0.5 * abs(pulse.y[peak]):
+                peak -= osr
     n_dfe = cfg.rx.dfe.n_taps
     n_t = len(cfg.pr.target)
     mlsd_mem = cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none" else 0
@@ -590,7 +625,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             events = pr_error_events(np.concatenate([head, np.asarray(res)]), noise_acf,
                                      n_levels, cfg.precode,
                                      snr=half_gap / noise_sigma if noise_sigma > 0 else None,
-                                     families=(("alternating", "constant") if cfg.pr.beta < 0.0
+                                     families=(("alternating", "constant")
+                                               if min(cfg.pr.target[2:], default=0.0) < 0.0
                                                else ("alternating",)))
 
         if pattern_sigma is not None:
@@ -741,20 +777,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         #   bathtub is narrow that is not its floor: example 32's CPO with a
         #   host FFE through a c = 0.5 laser read 0.35x the time engine at the
         #   best phase and 0.91x here.
-        h_lock = h_pre_ffe
-        if tx_pipe.pr_taps is not None:
-            # a 1 + aD Tx pulse peaks on either cursor; the time engine
-            # starts on the unshaped pulse's (TxPipeline.receiver_view)
-            un = tx_pipe.equivalent_symbol_response(osr, shaping=False)
-            h_lock = h_chan if un is None else np.convolve(h_chan, un)
-        pre_y = pulse_from_impulse(Waveform(h_lock, cfg.dt), osr).y
-        pk_pre = int(np.argmax(np.abs(pre_y)))
-        has_ffe = ffe_taps is not None and len(ffe_taps) > 1
-        if cfg.rx.arch == "mixed_signal":
-            at = 0.0 if has_ffe else lock_offset_samples(pre_y, pk_pre, osr, osr // 2)
-        else:
-            at = 0.0 if cfg.mm_pd_input == "ffe" else lock_offset_samples(pre_y, pk_pre, osr, osr)
-        lag = pk_pre + at + (ffe_pre * osr if has_ffe else 0) - peak
+        lag = lock_pos - peak
         lock = (lag + osr / 2) % osr - osr / 2
         ber = float(np.interp(lock, phi_offsets, ber_phi))
         ser = float(np.interp(lock, phi_offsets, ser_phi))

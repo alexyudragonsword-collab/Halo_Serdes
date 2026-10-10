@@ -1,4 +1,5 @@
-"""Receive-side partial response (1 + aD): the FFE target, the kernel's
+"""Receive-side partial response (1 + aD, and the longer targets up to
+1 + aD + bD^2 + cD^3): the FFE target, the kernel's
 decision and LMS reference, the detector, the CDR, the statistical engine
 and the configuration's limits -- each against a closed form or a direct
 comparison, not a smoke run."""
@@ -39,7 +40,13 @@ def test_config_limits():
     assert PrConfig(target=(1.0, 0.5), at="tx").at_tx
     assert not PrConfig(target=(1.0,), at="tx").at_tx            # nothing to shape
     assert PrConfig(target=(1.0, 0.5, -0.2)).beta == -0.2
-    for bad in ((0.9, 0.5), (1.0, 0.5, 0.2, 0.1), (1.0, 0.5, 1.5), (1.0, 1.5), ()):
+    t4 = PrConfig(target=(1.0, 1.2, 0.7, -0.25))
+    assert (t4.alpha, t4.beta, t4.gamma) == (1.2, 0.7, -0.25)
+    assert PrConfig(target=(1.0, 3.0, 3.0, 1.0)).gamma == 1.0       # E2PR4, (1 + D)^3, the edge
+    assert PrConfig(target=(1.0, 0.5, -0.2)).gamma == 0.0
+    for bad in ((0.9, 0.5), (1.0, 0.5, 0.2, 0.1, 0.05), (1.0, 0.5, 1.5), (1.0, 1.5), (),
+                (1.0, 3.5, 0.0, 0.0), (1.0, 1.0, 3.5, 0.0), (1.0, 1.0, -1.5, 0.0),
+                (1.0, 1.0, 0.5, 1.5), (1.0, 1.0, 0.5, -1.5)):
         with pytest.raises(ValueError):
             PrConfig(target=bad)
     with pytest.raises(ValueError, match="mixed_signal"):
@@ -696,11 +703,203 @@ def test_sliding_detector_corrects_the_pr_receivers_decisions_not_a_plain_slice(
     assert r.ser < 1e-3
 
 
+# ------------------------------------------------------ 1 + aD + bD^2 + cD^3
+
+def test_mmse_target_with_three_controlled_cursors_is_the_residual_minimum():
+    """The four-cursor solve is the minimum of the FFE's residual over (a, b, c):
+    J is a quadratic form, so every perturbation of the solution raises it,
+    and fixing c at the solve's value leaves (a, b) where a grid finds them."""
+    from halo_serdes.dsp.ffe import _conv_matrix, mmse_pr_target
+
+    c = np.array([0.04, 1.0, 0.78, 0.52, 0.31, 0.17, 0.08, 0.03])
+    c_pre, n_taps, tap_pre, s2, ps = 1, 11, 3, 4e-3, 5 / 9
+    M = _conv_matrix(c, n_taps)
+
+    def mse(t):
+        d = np.zeros(M.shape[0])
+        d[c_pre + tap_pre: c_pre + tap_pre + 4] = (1.0,) + tuple(t)
+        w = np.linalg.solve(ps * M.T @ M + s2 * np.eye(n_taps), ps * M.T @ d)
+        r = M @ w - d
+        return ps * r @ r + s2 * w @ w
+
+    t = mmse_pr_target(c, c_pre, n_taps, tap_pre, noise_var=s2, symbol_power=ps, n_target=4)
+    assert len(t) == 4 and t[3] > 0.05, t                   # a tail this long wants a third
+    j0 = mse(t[1:])
+    for d in np.random.default_rng(4).normal(scale=0.02, size=(50, 3)):
+        assert mse(np.asarray(t[1:]) + d) > j0
+    aa, bb = np.meshgrid(np.linspace(0.0, 3.0, 151), np.linspace(-1.0, 3.0, 201))
+    j = np.vectorize(lambda a, b: mse((a, b, t[3])))(aa, bb)
+    k = np.unravel_index(np.argmin(j), j.shape)
+    assert t[1] == pytest.approx(aa[k], abs=0.021) and t[2] == pytest.approx(bb[k], abs=0.021)
+    # and it lowers the residual the three-cursor target leaves
+    t3 = mmse_pr_target(c, c_pre, n_taps, tap_pre, noise_var=s2, symbol_power=ps, n_target=3)
+    assert j0 < mse((t3[1], t3[2], 0.0))
+
+
+@pytest.mark.parametrize("target", [(1.0, 1.2, 0.7, 0.25), (1.0, 0.75, -0.2, 0.1)])
+def test_zf_ffe_equalises_to_a_four_cursor_target(target):
+    c = np.array([0.05, 1.0, 0.45, 0.2, 0.08, 0.03])
+    w = zf_ffe(c, 1, 17, 4, target=target)
+    eq, pre = equalized_cursors(c, w, 1, 4)
+    shaped = eq / eq[pre]
+    assert shaped[pre + 1: pre + 4] == pytest.approx(target[1:], abs=0.01)
+    resid, _ = equalized_cursors(c, w, 1, 4, target=target)
+    assert np.max(np.abs(resid[pre - 4: pre + 12])) < 0.01 * abs(eq[pre])
+
+
+def _four_cursor_kernel(target, sigma, n_sym=6_000, osr=8):
+    """``_three_cursor_kernel`` with a third controlled cursor (``pr_gamma``,
+    the last argument) and an ADC range wide enough for E2PR4's 8x composite."""
+    levels = np.array([-1.0, -1 / 3, 1 / 3, 1.0])
+    user = np.random.default_rng(9).integers(0, 4, n_sym + 8)
+    lv = levels[user]
+    v = lv.copy()
+    for lag in (1, 2, 3):
+        v[lag:] += target[lag] * lv[:-lag]
+    v = v + np.random.default_rng(10).normal(scale=sigma, size=v.size)
+    y = np.concatenate([np.zeros(4 * osr), np.repeat(v, osr), np.zeros(4 * osr)])
+    ref = np.full(n_sym, -1, dtype=np.int64)
+    ref[:50] = user[:50]
+    args = (y, osr, 4.0 * osr + osr / 2, n_sym, levels, 4, np.zeros(4), np.ones(4),
+            np.zeros(4), 20.0 / 4096, 2047, np.zeros(n_sym + 8), np.array([1.0]), 0, 0.0,
+            np.zeros(0), 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, ref, 50, 50, np.zeros(n_sym),
+            float(target[1]), 1, np.zeros(1), 0.0, np.zeros(1), float(target[2]), 4,
+            float(target[3]))
+    return args, user[:n_sym]
+
+
+@pytest.mark.parametrize("target", [(1.0, 1.2, 0.7, 0.25), (1.0, 0.75, -0.2, 0.1),
+                                    (1.0, 3.0, 3.0, 1.0)])
+def test_kernel_decides_a_noiseless_four_cursor_composite(target):
+    """All three controlled cursors are subtracted before slicing: a clean
+    composite decides every symbol right (E2PR4, (1 + D)^3, included)."""
+    args, user = _four_cursor_kernel(target, 0.0)
+    dec = adc_rx(*args)[0]
+    assert np.array_equal(dec[60:-10], user[60:dec.size - 10])
+    if abs(target[3]) > 1 / 3:
+        # a third cursor larger than half the level spacing: left in the
+        # sample (subtracting two cursors only), it moves decisions
+        three = list(args)
+        three[33], three[34] = 3, 0.0
+        assert np.mean(adc_rx(*three)[0][60:-10] != user[60:dec.size - 10]) > 0.05
+
+
+def test_lms_finds_all_three_controlled_cursors_from_a_wrong_start():
+    """Four-cursor target: a, b and c adapted with the same error, each
+    against its own past decision, from (0.5, 0, 0) to the true (1.2, 0.7, 0.25)."""
+    args, _ = _four_cursor_kernel((1.0, 1.2, 0.7, 0.25), 0.03, n_sym=40_000)
+    args = list(args)
+    args[14] = 1e-6                                          # mu_ffe > 0: the LMS block runs
+    args[27], args[30], args[32], args[34] = 0.5, 2e-3, 0.0, 0.0
+    out = np.zeros(3)
+    args[31] = out
+    adc_rx(*args)
+    assert out == pytest.approx([1.2, 0.7, 0.25], abs=0.04), out
+
+
+@pytest.mark.parametrize("adapt", [False, True])
+def test_numba_kernel_matches_python_with_a_four_cursor_target(adapt):
+    if adc_rx is _adc_rx_py:
+        pytest.skip("numba not active")
+    outs = []
+    for fn in (adc_rx, _adc_rx_py):
+        args, _ = _four_cursor_kernel((1.0, 1.2, 0.7, 0.25), 0.05)
+        args = list(args)
+        if adapt:
+            args[14], args[27], args[30], args[32], args[34] = 1e-6, 0.5, 2e-3, 0.0, 0.0
+        args[31] = np.zeros(3)
+        res = fn(*args)
+        outs.append((res, args[31].copy()))
+    for x, z in zip(outs[0][0], outs[1][0]):
+        np.testing.assert_allclose(np.asarray(x, dtype=float), np.asarray(z, dtype=float),
+                                   rtol=0, atol=1e-12)
+    np.testing.assert_allclose(outs[0][1], outs[1][1], rtol=0, atol=1e-12)
+
+
+@needs_jit
+@pytest.mark.parametrize("target,noise", [((1.0, 1.2, 0.7, 0.25), 0.0026),
+                                          ((1.0, 0.8, 0.1, -0.25), 0.0022)])
+def test_invariant3_with_a_four_cursor_target(target, noise):
+    """1 + aD + bD^2 + cD^3, Viterbi over [1, a, b, c, r]: the statistical
+    engine within 2x of the time engine, and its 343-state model of the
+    per-symbol decisions within 2x of their measured SER. Measured 1.02x
+    and 1.75x here; a target with c < 0 reads 1.75-2.09x across noise and
+    targets (the union bound over alternating events of near-equal
+    distance; cairn/DSP发端与PR.md §12), the receiver's own c > 0 ones
+    0.78-1.73x."""
+    cfg = dataclasses.replace(_link(0.26, 0.5, n_sym=400_000, noise=noise, enob=None),
+                              pr=PrConfig(target=target))
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig(kind="viterbi",
+                                                                               memory=1)))
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    assert mc.ber.n_errors > 100, mc.ber.n_errors
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert 0.5 < st.ber / mc.ber.ber < 2.0, (target, st.ber, mc.ber.ber)
+    assert 0.5 < st.extras["ser_slicer"] / mc.extras["ser_slicer"] < 2.0, (
+        target, st.extras["ser_slicer"], mc.extras["ser_slicer"])
+
+
+@needs_jit
+def test_statistical_engine_reads_a_strong_target_where_the_receiver_samples():
+    """At a > 1 the shaped pulse's largest sample lies up to half a UI after
+    the main cursor; the phase grid centred on it missed the lock point and
+    read the next cursor (BER 2.7 against the time engine's 6e-4)."""
+    cfg = dataclasses.replace(_link(0.26, 0.5, n_sym=100_000), pr=PrConfig(target=(1.0, 1.1, 0.45)))
+    cm = ChannelModel.from_config(cfg)
+    mc = run_time_link(cfg, channel=cm)
+    st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert st.extras["lock_phase_ui"] == pytest.approx(0.0, abs=1 / 32)
+    assert 0.5 < st.ber / mc.ber.ber < 2.0, (st.ber, mc.ber.ber)
+
+
+@needs_jit
+def test_a_third_controlled_cursor_buys_ber_on_a_long_channel():
+    """Example 38's channel at -39 dB, both targets chosen by the MMSE solve:
+    the four-cursor one leaves the FFE less to invert; at the same 256 states
+    (residual memory 1) as the three-cursor target with memory 2, and a
+    1024-state trellis (memory 2) adds nothing."""
+    def run(target, mem):
+        cfg = _link(0.26, 0.5, n_sym=200_000)
+        cfg = dataclasses.replace(cfg, pr=PrConfig(target=target, adapt="mmse"),
+                                  rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig(kind="viterbi",
+                                                                                 memory=mem)))
+        res = run_time_link(cfg)
+        return res.ber.ber, res.extras["pr_target"]
+    b3, t3 = run((1.0, 0.5, 0.0), 2)
+    b4, t4 = run((1.0, 0.5, 0.0, 0.0), 1)
+    b4m2, _ = run((1.0, 0.5, 0.0, 0.0), 2)
+    assert len(t4) == 4 and t4[3] > 0.15 and t4[1] > t3[1], (t3, t4)
+    assert b4 < 0.75 * b3, (b3, b4, t3, t4)
+    assert abs(b4m2 - b4) < 0.1 * b4, (b4, b4m2)
+
+
+@needs_jit
+def test_lms_four_cursor_target_tracks_the_mmse_start():
+    """LMS on (a, b, c) starts at the MMSE target and stays near it; the
+    BER is the MMSE target's."""
+    def run(mode):
+        cfg = _link(0.26, 0.5, n_sym=200_000)
+        cfg = dataclasses.replace(cfg, pr=PrConfig(target=(1.0, 0.5, 0.0, 0.0), adapt=mode),
+                                  rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig(kind="viterbi",
+                                                                                 memory=1)))
+        return run_time_link(cfg)
+    fixed, tracked = run("mmse"), run("lms")
+    t0, t1 = fixed.extras["pr_target"], tracked.extras["pr_target"]
+    assert len(t1) == 4 and max(abs(x - y) for x, y in zip(t0, t1)) < 0.05, (t0, t1)
+    assert tracked.ber.ber < 1.5 * fixed.ber.ber + 2e-5, (tracked.ber.ber, fixed.ber.ber)
+
+
 def test_sliding_detector_is_refused_under_a_three_cursor_target():
     """It models one postcursor; the second controlled cursor would read as
     error and flip correct decisions."""
     with pytest.raises(ValueError, match="sliding"):
         dataclasses.replace(_link(0.18, 0.0, n_sym=1000), pr=PrConfig(target=(1.0, 0.75, 0.25)),
+                            rx=dataclasses.replace(_link(0.18, 0.0).rx,
+                                                   mlsd=MlsdConfig(kind="sliding")))
+    with pytest.raises(ValueError, match="sliding"):
+        dataclasses.replace(_link(0.18, 0.0, n_sym=1000),
+                            pr=PrConfig(target=(1.0, 1.2, 0.7, 0.25)),
                             rx=dataclasses.replace(_link(0.18, 0.0).rx,
                                                    mlsd=MlsdConfig(kind="sliding")))
     # viterbi is the detector for it, and a two-cursor target stays allowed

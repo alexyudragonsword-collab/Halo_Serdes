@@ -66,7 +66,7 @@
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
    30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、913 个测试全通过、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、935 个测试全通过、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -107,8 +107,9 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
   Rx 侧解码,三个引擎(时域/静态/统计入口)端到端一致,BER 按用户符号计分;
   孤立错误精确翻倍(1+D 解码的已知代价),换取 DFE 错误突发被截断。
 - ✅ **Duobinary / PR 信道整形** —— 已建模(预编码 ≠ PR 整形:前者是映射,后者有意引入受控 ISI 并配匹配的检测器):
-  收端 FFE 对 1 + aD / 1 + aD + bD² 目标均衡 + Viterbi(a、b 可 MMSE 选或 LMS 跟踪,示例 36 / 38),发端 1 + aD 整形
-  (示例 37);统计引擎建了逐符号判决。224G LR 上收端两光标目标比 delta + Viterbi 多 7.3 dB reach(示例 38)
+  收端 FFE 对 1 + aD / 1 + aD + bD² / 1 + aD + bD² + cD³ 目标均衡 + Viterbi(受控光标可 MMSE 选或 LMS 跟踪,示例 36 / 38),
+  发端 1 + aD 整形(示例 37);统计引擎建了逐符号判决。224G LR 上收端两光标目标比 delta + Viterbi 多 7.3 dB reach,
+  第三个受控光标再多约 0.3 dB(示例 38)
 - **GUI** —— 纯脚本/库,无交互界面(设计取向,非缺陷)
 - ✅ **多 lane 串扰系统级** —— **本轮补齐**(`aggressor_bank`/`icn_rms`,见上);单 lane 数据仍为主
 
@@ -151,5 +152,5 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 913 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 935 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。
