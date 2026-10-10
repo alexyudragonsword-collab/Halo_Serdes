@@ -18,10 +18,11 @@
 //         wacc_f[i] -= rnd(e * x[k-i], SH_F); wacc_d[d] += rnd(e * levels[dec[s-1-d]], SH_D)
 //         (rnd: <<< for SH >= 0, else rounding add + >>>), saturated to the
 //         weight range G bits finer; the weights are wacc >>> G
-//   PR    (PR_MODE 1) ctl = rnd(a L[xl[s-1]] + b L[xl[s-2]], -PFL), slice v - ctl,
+//   PR    (PR_MODE 1) ctl = rnd(a L[xl[s-1]] + b L[xl[s-2]] + c L[xl[s-3]], -PFL)
+//         (b for NT >= 3, c for NT 4), slice v - ctl,
 //         the DFE starts NT symbols back on the line-symbol estimates xl,
-//         a / b adapted by LMS (LMS_A) on accumulators G bits finer, clipped
-//         to [0, A_MAX] / [B_LO, B_HI]; (PR_MODE 2, precoded 1 + D) slice the
+//         a / b / c adapted by LMS (LMS_A) on accumulators G bits finer, clipped
+//         to [0, A_MAX] / [B_LO, B_HI] / [C_LO, C_HI]; (PR_MODE 2, precoded 1 + D) slice the
 //         composite levels pr_lv to q, decide (q - dec[s-1]) mod NL, xl =
 //         clip(q - xl[s-1]); the PD reads v - ctl when PD_FFE
 //   MM PD on symbol s-1: x1 * (sign x2 - sign x0), on FFE outputs (PD_FFE) or
@@ -66,7 +67,7 @@ module adc_dsp_loop;
     longint wacc_d [ND];
     longint levels [NL];
     longint pr_lv  [NPL];
-    longint ab     [2];           // a, b in; adapted a, b out
+    longint ab     [3];           // a, b, c in; adapted a, b, c out
     longint xl     [N];
     longint r_out  [N];
     longint pi_out [N];
@@ -100,7 +101,7 @@ module adc_dsp_loop;
 
     task automatic run();
         longint acc, fb, v, dd, bd, x0, x1, x2, a0, a2, pd, c, e;
-        longint prev, prev2, ctl, u, xc, acc_a, acc_b;
+        longint prev, prev2, prev3, ctl, u, xc, acc_a, acc_b, acc_c;
         int q, nt;
         bit training;
         longint ph, integ, corr, pd_acc, pd_n, qi;
@@ -114,6 +115,7 @@ module adc_dsp_loop;
         for (int d = 0; d < ND; d++) wacc_d[d] = w_dfe[d] <<< G;
         acc_a = ab[0] <<< G;
         acc_b = ab[1] <<< G;
+        acc_c = ab[2] <<< G;
         nt = (PR_MODE > 0) ? NT : 1;
         for (int l = 0; l < LANES; l++) begin co[l] = 0; cg[l] = longint'(1) <<< CAL_B; end
         cpm = CAL_PM0;
@@ -164,11 +166,13 @@ module adc_dsp_loop;
                 if (v > LIM_HI) v = LIM_HI;
                 else if (v < LIM_LO) v = LIM_LO;
                 v_out[s] = v;
-                prev = 0; prev2 = 0; ctl = 0;
+                prev = 0; prev2 = 0; prev3 = 0; ctl = 0;
                 if (PR_MODE > 0) begin
                     if (s >= 1) prev = levels[xl[s - 1]];
-                    if (nt == 3 && s >= 2) prev2 = levels[xl[s - 2]];
-                    ctl = rnd((acc_a >>> G) * prev + (acc_b >>> G) * prev2, -PFL);
+                    if (nt >= 3 && s >= 2) prev2 = levels[xl[s - 2]];
+                    if (nt == 4 && s >= 3) prev3 = levels[xl[s - 3]];
+                    ctl = rnd((acc_a >>> G) * prev + (acc_b >>> G) * prev2
+                              + (acc_c >>> G) * prev3, -PFL);
                 end
                 r_out[s] = v - ctl;
                 q = 0;
@@ -213,11 +217,17 @@ module adc_dsp_loop;
                             if (acc_a < 0) acc_a = 0;
                             else if (acc_a > (A_MAX <<< G) + (longint'(1) <<< G) - 1)
                                 acc_a = (A_MAX <<< G) + (longint'(1) <<< G) - 1;
-                            if (nt == 3) begin
+                            if (nt >= 3) begin
                                 acc_b = acc_b + rnd(e * prev2, SH_A);
                                 if (acc_b < (B_LO <<< G)) acc_b = B_LO <<< G;
                                 else if (acc_b > (B_HI <<< G) + (longint'(1) <<< G) - 1)
                                     acc_b = (B_HI <<< G) + (longint'(1) <<< G) - 1;
+                            end
+                            if (nt == 4) begin
+                                acc_c = acc_c + rnd(e * prev3, SH_A);
+                                if (acc_c < (C_LO <<< G)) acc_c = C_LO <<< G;
+                                else if (acc_c > (C_HI <<< G) + (longint'(1) <<< G) - 1)
+                                    acc_c = (C_HI <<< G) + (longint'(1) <<< G) - 1;
                             end
                         end
                     end
@@ -281,5 +291,6 @@ module adc_dsp_loop;
         end
         ab[0] = acc_a >>> G;
         ab[1] = acc_b >>> G;
+        ab[2] = acc_c >>> G;
     endtask
 endmodule

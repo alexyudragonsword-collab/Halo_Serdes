@@ -9,7 +9,8 @@
    recorded ADC words, PI codes, slicer values and decisions plus
    loop_dims.svh (dsp/fixed_loop.dump_loop_vectors); then the same loop with
    a partial-response target -- 1 + aD + bD^2 with a and b adapted, into
-   <out>/pr, and precoded 1 + D on the composite slicer, into <out>/pre.
+   <out>/pr, 1 + aD + bD^2 + cD^3 with a, b and c adapted, into <out>/pr4,
+   and precoded 1 + D on the composite slicer, into <out>/pre.
 3. The sliding-detector MLSD (dsp/fixed_mlsd): slicer words of a channel
    with a strong residual postcursor, so the detector has errors to correct
    (an MMSE FFE leaves the loop above none), with a non-zero metric shift,
@@ -118,6 +119,7 @@ print(f"wrote calibrated loop vectors to {out / 'cal'}  (gains "
       f"/ 2^{int(cal_fx['loop'].cal[2])}, SER {cal_res.ser:.2e})")
 
 for sub, extra in (("pr", dict(pr=PrConfig(target=(1.0, 0.6, 0.2), adapt="lms", mu=1e-2))),
+                   ("pr4", dict(pr=PrConfig(target=(1.0, 0.6, 0.2, 0.1), adapt="lms", mu=1e-2))),
                    ("pre", dict(pr=PrConfig(target=(1.0, 1.0)), precode=True))):
     pr_cfg = dataclasses.replace(
         loop_cfg, rx=dataclasses.replace(loop_cfg.rx, mlsd=MlsdConfig(kind="viterbi", memory=1)),
@@ -128,7 +130,7 @@ for sub, extra in (("pr", dict(pr=PrConfig(target=(1.0, 0.6, 0.2), adapt="lms", 
                             pr_fx["record"]["ref"][:3000])
     dump_loop_vectors(out / sub, pr_art)
     print(f"wrote PR loop vectors to {out / sub}  (mode {int(pr_fx['loop'].lp[11])}, "
-          f"a/b {pr_art['ab'].tolist()} -> {pr_art['ab_end'].tolist()}, SER {pr_res.ser:.2e})")
+          f"a/b/c {pr_art['ab'].tolist()} -> {pr_art['ab_end'].tolist()}, SER {pr_res.ser:.2e})")
 
 # --- 3. the sliding-detector MLSD on a strong residual postcursor ---
 rng = np.random.default_rng(11)

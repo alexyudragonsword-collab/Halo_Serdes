@@ -103,7 +103,7 @@ def _reference(xin, p):
 
     L = [int(x) for x in p["levels"]]
     mode, nt = p["pr_mode"], (p["pr_nt"] if p["pr_mode"] else 1)
-    a_acc, b_acc = p["a"] << g, p["b"] << g
+    a_acc, b_acc, c_acc = p["a"] << g, p["b"] << g, p["c"] << g
 
     def nearest(x, lv):
         return min(range(len(lv)), key=lambda m: (abs(x - int(lv[m])), m))
@@ -119,8 +119,10 @@ def _reference(xin, p):
         v = min(hi, max(lo, acc - rnd(fb, p["dfe_shift"])))
         vout.append(v)
         prev = L[xl[s - 1]] if mode and s >= 1 else 0
-        prev2 = L[xl[s - 2]] if mode and nt == 3 and s >= 2 else 0
-        ctl = rnd((a_acc >> g) * prev + (b_acc >> g) * prev2, p["pfl"]) if mode else 0
+        prev2 = L[xl[s - 2]] if mode and nt >= 3 and s >= 2 else 0
+        prev3 = L[xl[s - 3]] if mode and nt == 4 and s >= 3 else 0
+        ctl = (rnd((a_acc >> g) * prev + (b_acc >> g) * prev2 + (c_acc >> g) * prev3, p["pfl"])
+               if mode else 0)
         rout.append(v - ctl)
         q = nearest(v, p["pr_lv"]) if mode == 2 else 0
         best = (q - (dec[s - 1] if s else 0)) % len(L) if mode == 2 else nearest(v - ctl, L)
@@ -141,10 +143,14 @@ def _reference(xin, p):
                 if p["lms_a"] and mode == 1:
                     a_acc = max(0, min((p["a_max"] << g) + (1 << g) - 1,
                                        a_acc + rnd(e * prev, -p["sh_a"])))
-                    if nt == 3:
+                    if nt >= 3:
                         b_acc = max(-(1 << p["pfl"]) << g,
-                                    min(((1 << p["pfl"]) << g) + (1 << g) - 1,
+                                    min((p["b_max"] << g) + (1 << g) - 1,
                                         b_acc + rnd(e * prev2, -p["sh_a"])))
+                    if nt == 4:
+                        c_acc = max(-(1 << p["pfl"]) << g,
+                                    min(((1 << p["pfl"]) << g) + (1 << g) - 1,
+                                        c_acc + rnd(e * prev3, -p["sh_a"])))
             if p["lms_f"]:
                 wacc_f = [clip_acc(a - rnd(e * xin[k - i], -p["sh_f"]), *p["lim"])
                           if k - i >= 0 else a for i, a in enumerate(wacc_f)]
@@ -176,10 +182,10 @@ def _reference(xin, p):
         ph += corr >> int(np.log2(p["lanes"]))
     return (np.array(pis), np.array(dec), np.array(vout),
             np.array([a >> g for a in wacc_f]), np.array([a >> g for a in wacc_d]),
-            np.array([a_acc >> g, b_acc >> g]))
+            np.array([a_acc >> g, b_acc >> g, c_acc >> g]))
 
 
-@pytest.mark.parametrize("pr", ["delta", "pr2", "pr3", "precoded"])
+@pytest.mark.parametrize("pr", ["delta", "pr2", "pr3", "pr4", "precoded"])
 @pytest.mark.parametrize("seed", range(4))
 def test_digital_back_end_matches_an_independent_reference(seed, pr):
     rng = np.random.default_rng(seed)
@@ -194,12 +200,13 @@ def test_digital_back_end_matches_an_independent_reference(seed, pr):
          "lim": (-512, 511)}
     xin = 2 * rng.integers(-128, 128, 3_000) + 1
     p["ref"] = rng.integers(-1, 4, xin.size)
-    mode = {"delta": 0, "pr2": 1, "pr3": 1, "precoded": 2}[pr]
-    p.update(pr_mode=mode, pr_nt=3 if pr == "pr3" else 2, pfl=8,
+    mode = {"delta": 0, "pr2": 1, "pr3": 1, "pr4": 1, "precoded": 2}[pr]
+    p.update(pr_mode=mode, pr_nt={"pr3": 3, "pr4": 4}.get(pr, 2), pfl=8,
              a=int(rng.integers(100, 256)) if mode == 1 else (256 if mode == 2 else 0),
-             b=int(rng.integers(-60, 60)) if pr == "pr3" else 0,
+             b=int(rng.integers(-60, 60)) if pr in ("pr3", "pr4") else 0,
+             c=int(rng.integers(-40, 40)) if pr == "pr4" else 0,
              lms_a=int(mode == 1 and seed % 2 == 0), sh_a=-int(rng.integers(4, 9)),
-             a_max=512 if pr == "pr3" else 256,
+             a_max={"pr3": 512, "pr4": 768}.get(pr, 256), b_max=768 if pr == "pr4" else 256,
              pr_lv=np.array([-1200, -800, -400, 0, 400, 800, 1200]))
     fl = FixedLoop(wf=p["wf"].astype(np.int64), wd=p["wd"].astype(np.int64),
                    ffe_shift=p["ffe_shift"], dfe_shift=8, levels_out=p["levels"],
@@ -210,9 +217,10 @@ def test_digital_back_end_matches_an_independent_reference(seed, pr):
                    lp=np.array([p["train"], p["adapt"], int(p["lms_f"]), p["sh_f"],
                                 int(p["lms_d"]), p["sh_d"], p["g"], -512, 511, -512, 511,
                                 mode, p["pr_nt"] if mode else 1, p["pfl"], p["lms_a"],
-                                p["sh_a"], p["a_max"], -256, 256], dtype=np.int64),
+                                p["sh_a"], p["a_max"], -256, p["b_max"], -256, 256],
+                               dtype=np.int64),
                    pr_lv=p["pr_lv"].astype(np.int64),
-                   pr_ab=np.array([p["a"], p["b"]], dtype=np.int64))
+                   pr_ab=np.array([p["a"], p["b"], p["c"]], dtype=np.int64))
     got = replay_digital(fl, xin, p["ref"])
     pi, dec, vout, wf, wd, ab = _reference(xin, p)
     assert np.array_equal(got["ab"], ab)
@@ -293,6 +301,7 @@ def test_wide_words_are_the_float_receiver(monkeypatch):
 _PR_CASES = {
     "pr_lms": dict(pr=PrConfig(target=(1.0, 0.75), adapt="lms", mu=2e-2)),
     "pr3": dict(pr=PrConfig(target=(1.0, 0.6, 0.2))),
+    "pr4": dict(pr=PrConfig(target=(1.0, 0.6, 0.2, 0.1))),
     "precoded": dict(pr=PrConfig(target=(1.0, 1.0)), precode=True),
 }
 
@@ -300,7 +309,8 @@ _PR_CASES = {
 @pytest.mark.parametrize("case", sorted(_PR_CASES))
 def test_wide_words_are_the_float_pr_receiver(monkeypatch, case):
     """The same with a partial-response target: subtracting the controlled
-    cursor (two and three cursors, a adapted) and the precoded composite slicer."""
+    cursors (two, three and four cursors, a adapted) and the precoded
+    composite slicer."""
     cfg = _cfg(8_000, ffe_weight=QFormat(32, 26), dfe_weight=QFormat(32, 26),
                pi_bits=16, phase_frac_bits=24)
     cfg = dataclasses.replace(cfg, rx=dataclasses.replace(
@@ -313,7 +323,7 @@ def test_wide_words_are_the_float_pr_receiver(monkeypatch, case):
     train, settle = res.extras["train_end"], res.extras["settle"]
     fl = build_fixed_loop(cfg, res.extras["w_ffe0"], res.extras["w_dfe0"], res.extras["levels"],
                           adc.q_step, out_bits=44, train_len=train, adapt_start=settle,
-                          pr_mode=pr_mode, pr_nt=nt, alpha=fs0[4], beta=fs0[5],
+                          pr_mode=pr_mode, pr_nt=nt, alpha=fs0[4], beta=fs0[5], gamma=fs0[6],
                           pr_levels=pr_levels, mu_alpha=mu_a)
     noise, ref, rx_clk = P[7], P[19], P[22]
     fx = run_fixed_loop(fl, cap["y"], cfg.osr, cap["pos0"], run.n_symbols, adc, noise, rx_clk,
@@ -325,13 +335,14 @@ def test_wide_words_are_the_float_pr_receiver(monkeypatch, case):
     assert (mu_a_eq > 0) == (case == "pr_lms")
     n = run.n_symbols
     ab_q = fl.pr_ab * 2.0 ** -dfl
-    a_out = np.zeros(2)
+    a_out = np.zeros(3)
     fl_out = adc_rx(
         cap["y"], cfg.osr, cap["pos0"], n, levels_q, adc.n_lanes,
         adc.offsets, adc.gains, adc.skews, adc.q_step, adc.code_max, noise,
         fl.wf * 2.0 ** -ffl, fl.n_pre, mu_f, fl.wd * 2.0 ** -dfl, mu_d, kp, ki, clamp, pd_off,
         fl.pd_ffe, fl.lat, ref, train, settle, rx_clk, ab_q[0], pr_mode,
-        fl.pr_lv * fl.out_lsb if pr_mode == 2 else np.zeros(1), mu_a_eq, a_out, ab_q[1], nt)
+        fl.pr_lv * fl.out_lsb if pr_mode == 2 else np.zeros(1), mu_a_eq, a_out, ab_q[1], nt,
+        ab_q[2])
     m = min(fx["phase"].size, fl_out[2].size)
     assert np.max(np.abs(fx["phase"][:m] - fl_out[2][:m])) < 1e-3 * cfg.osr
     nd = fx["n_dec"]

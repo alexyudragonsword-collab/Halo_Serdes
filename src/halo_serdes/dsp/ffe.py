@@ -102,9 +102,10 @@ def mmse_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
 def mmse_pr_target(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
                    noise_var: float = 0.0, symbol_power: float = 1.0,
                    n_target: int = 2) -> tuple[float, ...]:
-    """The monic target (1, a[, b]) that minimises the FFE's mean-square
+    """The monic target (1, a[, b[, c]]) that minimises the FFE's mean-square
     error, main cursor held at 1; a clipped to [0, 1] (to [0, 2] with b, the
-    EPR4 family 1 + 2D + D^2 included), b to [-1, 1].
+    EPR4 family 1 + 2D + D^2 included), b to [-1, 1]; with c as well (four
+    cursors, up to E2PR4's (1 + D)^3) a to [0, 3], b to [-1, 3], c to [-1, 1].
 
     With the FFE optimal for each target d, the residual is
     J(d) = d' Q d, Q = P I - P^2 M (P M'M + s2 I)^-1 M' (P the symbol power,
@@ -125,8 +126,8 @@ def mmse_pr_target(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
         tail = np.linalg.solve(q[1:, 1:], -q[1:, 0])
     except np.linalg.LinAlgError:
         return (1.0,) + (0.0,) * (n - 1)
-    lo = np.array([0.0, -1.0])[: n - 1]
-    hi = np.array([1.0, 1.0] if n == 2 else [2.0, 1.0])[: n - 1]
+    lo = np.array([0.0, -1.0, -1.0])[: n - 1]
+    hi = np.array({2: [1.0], 3: [2.0, 1.0]}.get(n, [3.0, 3.0, 1.0]))[: n - 1]
     return (1.0,) + tuple(float(x) for x in np.clip(tail, lo, hi))
 
 

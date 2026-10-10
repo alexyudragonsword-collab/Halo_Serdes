@@ -207,7 +207,7 @@ class Score:
 def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
           y_slicer: np.ndarray, levels: np.ndarray, line_idx: np.ndarray,
           user_idx: np.ndarray, n_run: int, warmup: int,
-          pr_alpha: float = 0.0, pr_beta: float = 0.0) -> Score:
+          pr_alpha: float = 0.0, pr_beta: float = 0.0, pr_gamma: float = 0.0) -> Score:
     """Score one receiver's decisions.
 
     Parameters
@@ -237,6 +237,8 @@ def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
         against that composite.
     pr_beta
         The second controlled cursor of a 1 + aD + bD^2 target, likewise.
+    pr_gamma
+        The third, of a 1 + aD + bD^2 + cD^3 target, likewise.
     """
     dec_c = user_decisions(cfg, dec)[warmup:n_run]
     off = find_slips(dec_c, user_idx, warmup)
@@ -271,7 +273,7 @@ def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
 
     if j is None:
         ideal = levels[line_idx[warmup:n_run]]
-        for lag, c in ((1, pr_alpha), (2, pr_beta)):
+        for lag, c in ((1, pr_alpha), (2, pr_beta), (3, pr_gamma)):
             if c:
                 prev = line_idx[max(warmup - lag, 0):n_run - lag]
                 if warmup < lag:
@@ -284,7 +286,7 @@ def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
     else:
         jk = j[ok]
         ideal = levels[line_idx[jk]]
-        for lag, c in ((1, pr_alpha), (2, pr_beta)):
+        for lag, c in ((1, pr_alpha), (2, pr_beta), (3, pr_gamma)):
             if c:
                 ideal = ideal + c * levels[line_idx[np.maximum(jk - lag, 0)]]
         snr_db = slicer_snr_db(y_slicer[warmup:n_run][ok], ideal)
