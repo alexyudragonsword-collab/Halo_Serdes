@@ -891,6 +891,40 @@ def test_lms_four_cursor_target_tracks_the_mmse_start():
     assert tracked.ber.ber < 1.5 * fixed.ber.ber + 2e-5, (tracked.ber.ber, fixed.ber.ber)
 
 
+@needs_jit
+def test_statistical_engine_warns_where_the_pr_decisions_load_the_cdr():
+    """A strong target (1, 1.4, 1.0, 0.4): at 2.2 mV the per-symbol decisions
+    err 1 % of the time and both engines agree; at 3 mV they err ~8 % and,
+    each wrong one leaving c_k times its error in the residual the MM CDR
+    reads, the time engine's loop cycle-slips (BER 0.16 against this
+    engine's 3e-3). With the CDR frozen the two agree again (0.71x), so it
+    is the loop, not the LMS. The statistical engine reports the load and
+    warns past 0.08 (the measured slips started at 0.09-0.14)."""
+    import warnings
+
+    def both(noise, n_sym):
+        cfg = dataclasses.replace(_link(0.26, 0.5, n_sym=n_sym, noise=noise, enob=None),
+                                  pr=PrConfig(target=(1.0, 1.4, 1.0, 0.4)))
+        cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig(
+            kind="viterbi", memory=1)))
+        cm = ChannelModel.from_config(cfg)
+        mc = run_time_link(cfg, channel=cm)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            st = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+        warned = any("loop load" in str(w.message) for w in caught)
+        return mc, st, warned
+
+    mc, st, warned = both(0.0022, 300_000)
+    assert mc.extras["cycle_slips"] == 0 and not warned
+    assert st.extras["pr_loop_load"] < 0.08
+    assert 0.5 < st.ber / mc.ber.ber < 2.0
+    mc, st, warned = both(0.0030, 300_000)
+    assert mc.extras["cycle_slips"] > 0 and warned
+    assert st.extras["pr_loop_load"] > 0.09
+    assert st.ber / mc.ber.ber < 0.1
+
+
 def test_sliding_detector_is_refused_under_a_three_cursor_target():
     """It models one postcursor; the second controlled cursor would read as
     error and flip correct decisions."""
