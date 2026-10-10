@@ -1,10 +1,14 @@
 """Phase 5 deliverable (1/2): MLSD gain and RS-FEC on a hard PAM4 link.
 
 - runs the ADC-based RX on a channel with deliberate residual ISI (short FFE),
-  then applies Viterbi MLSE over the residual cursors -> quantified gain;
+  then the engine's Viterbi MLSE (``rx.mlsd``, memory 1 and 2) over the
+  residual cursors -> quantified gain, every scored symbol counted (until
+  2026-10-09 an offline Viterbi here saw only the 20k symbols the engine
+  keeps in ``y_slicer``);
 - KP4/KR4 pre/post-FEC projection + real codec spot check.
 """
 
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -16,10 +20,8 @@ sys.path.insert(0, str(REPO / "src"))
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     AdcConfig, CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig,
-    RxConfig, SimConfig, TxConfig,
+    MlsdConfig, RxConfig, SimConfig, TxConfig,
 )
-from halo_serdes.core.prbs import symbol_checker  # noqa: E402
-from halo_serdes.dsp import viterbi_mlsd  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
 from halo_serdes.fec import pre_to_post_fec_ber, rs_kp4  # noqa: E402
 
@@ -48,9 +50,9 @@ print(" ", res.summary())
 levels = res.extras["levels"]
 warm = res.extras["warmup"]
 
-# residual channel estimate via LMMSE fit y[k] ~ sum_i c_i * L[ref[k-i]]
+# residual channel estimate via LMMSE fit y[k] ~ sum_i c_i * L[ref[k-i]], on
+# the slicer samples the engine keeps (20k: plenty for three numbers)
 y = res.y_slicer
-from halo_serdes.dsp.kernels import slice_nearest  # noqa: E402
 from halo_serdes.engine.static_link import make_pattern  # noqa: E402
 
 sym_all = make_pattern(cfg)
@@ -62,12 +64,12 @@ print(f"  residual channel fit: main={coef[0]:.4f}, "
       f"h1={coef[1]:.4f} ({coef[1] / coef[0] * 100:.0f}%), "
       f"h2={coef[2]:.4f} ({coef[2] / coef[0] * 100:.0f}%)")
 
-dec_sl = slice_nearest(y, levels)
-dec_m1 = viterbi_mlsd(y.astype(np.float64), levels.astype(np.float64), coef[:2])
-dec_m2 = viterbi_mlsd(y.astype(np.float64), levels.astype(np.float64), coef[:3])
-ber_base = symbol_checker(ref, dec_sl)
-ber_m1 = symbol_checker(ref, dec_m1)
-ber_m2 = symbol_checker(ref, dec_m2)
+# the same link with the engine's Viterbi behind the slicer (the slicer's own
+# decisions, and so the baseline, do not change)
+ber_base = res.ber
+ber_m = {m: run_time_link(dataclasses.replace(cfg, rx=dataclasses.replace(
+    cfg.rx, mlsd=MlsdConfig(kind="viterbi", memory=m)))).ber for m in (1, 2)}
+ber_m1, ber_m2 = ber_m[1], ber_m[2]
 print(f"  slicer          BER = {ber_base.ber:.3e}")
 print(f"  MLSE (memory 1) BER = {ber_m1.ber:.3e}  "
       f"(gain {ber_base.ber / max(ber_m1.ber, 1e-12):.1f}x)")

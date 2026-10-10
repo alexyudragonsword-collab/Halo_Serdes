@@ -143,9 +143,9 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 | **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.3 dB** | 网格 ×4(256 状态)/ trellis ×4 |
 
 - **MLSD 只拿回短 FFE 留下的 ISI**(示例 18):21 抽头 LMS FFE 收敛到 MMSE,残余光标 ≤ 0.002,MLSD memory-2 在每个损耗都是 1.0×;
-  3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 从 −28.8 dB 起拿回 1.9×、−33.3 dB 处 4.4× —— 但 3 抽头 + MLSD 仍不如 21 抽头 FFE 单独用。
+  3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 在 −27.3…−33.3 dB 拿回 2.4–4.3×(符号错,全程计数;此前只数 2 万符号时记 1.9–4.4×) —— 但 3 抽头 + MLSD 仍不如 21 抽头 FFE 单独用。
   要 MLSD 真加 reach,FFE 得均衡到部分响应目标(1+αD)而不是 delta —— 见下一条。 / MLSD only recovers what a
-  short FFE leaves: 1.0× behind a 21-tap MMSE FFE, 1.9–4.4× behind a 3-tap one, which still loses to the 21-tap FFE alone.
+  short FFE leaves: 1.0× behind a 21-tap MMSE FFE, 2.4–4.3× behind a 3-tap one, which still loses to the 21-tap FFE alone.
 - **收端 PR 整形把 MLSD 变成 reach**(示例 36,2026-10-03):同一 21 抽头 FFE 均衡到 1+aD、memory-2 Viterbi 解 a,reach 从对照
   (delta 目标 + Viterbi)31.3 dB 到 a = 0.25 / 0.5 / 0.75 / 1 的 33.6 / 35.6 / **36.3** / 36.1 dB;−33.3 dB 处 BER 1.7e-3 → 2.5e-6。
   delta 目标的 FFE 把噪声放大花掉了,整形后由网格收回。与 FEC / ADC 杠杆是否可叠加未量。 / RX partial response turns MLSD into reach:
@@ -158,9 +158,9 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
   越过事先定的 0.5 dB 门槛;同 256 状态(四光标 + memory 1)就拿得到。尚未实现。 / A third controlled cursor is worth
   +0.6-0.7 dB on this link (baseband MC calibrated to example 38, three seeds; 0.5 dB before example 38's reach read-out was
   fixed), past the 0.5 dB bar set beforehand, even at equal trellis size; not built, to be decided.
-- 21 抽头 FFE:到 −28.8 dB 零误码,−30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
+- 21 抽头 FFE:到 −27.3 dB 零误码(−28.8 dB 处 40 万符号里 6 个错;2026-10-09 前只数 2 万符号,记为到 −28.8 dB 零误码),−28.8 / −30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
-  error-free to −28.8 dB and memory-2 MLSD matches it at −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
+  error-free to −27.3 dB and memory-2 MLSD matches it at −28.8 / −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
 - **深 LR 主要是 SNR 受限**——加 DFE + 更深 MLSD 多 1.7 dB(31.3 → 33.0 dB),ADC 采样质量多 5.5 dB(→ 38.5 dB)。 / Deep LR is mostly SNR-limited; DSP depth buys 1.7 dB, ADC quality 5.5 dB.
 - **级联内码**把可容忍 pre-FEC BER 从 2.2e-4 抬到 ~7e-3(31 倍;2026-10-08 复核更正:原记 2.2e-5 / 300 倍),reach 从 33.0 到 36.3 dB(BCH(255,215);此前 29 → 35.5 dB)。 / Concat inner code raises tolerable pre-FEC 31×; reach 33.0 → 36.3 dB.
 

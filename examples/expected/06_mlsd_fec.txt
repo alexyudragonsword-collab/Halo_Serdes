@@ -1,9 +1,9 @@
 == baseline (FFE only, no DFE): residual ISI left on purpose ==
   n=293976  BER=7.995e-02 (47007/587952)  SER=1.599e-01  slicer SNR=9.2 dB
   residual channel fit: main=1.0000, h1=0.2184 (22%), h2=0.0625 (6%)
-  slicer          BER = 8.030e-02
-  MLSE (memory 1) BER = 4.070e-02  (gain 2.0x)
-  MLSE (memory 2) BER = 3.572e-02  (gain 2.2x)
+  slicer          BER = 7.995e-02
+  MLSE (memory 1) BER = 3.763e-02  (gain 2.1x)
+  MLSE (memory 2) BER = 3.349e-02  (gain 2.4x)
 == KP4 / KR4 projection from pre-FEC BER ==
   pre-FEC 1.0e-03  ->  post KP4 7.15e-07   post KR4 3.75e-04
   pre-FEC 3.0e-04  ->  post KP4 1.00e-13   post KR4 5.45e-07
@@ -11,4 +11,4 @@
   pre-FEC 2.4e-04  ->  post KP4 3.81e-15   post KR4 1.20e-07
   codec: 15 symbol errors -> corrected  [t=15, as expected]
   codec: 40 symbol errors -> uncorrectable (flagged)  [t=15, as expected]
-  note: this demo link's pre-FEC BER (3.6e-02) is far above the KP4 waterfall (~2.4e-4) — expected symbol errors/frame = 166 >> t
+  note: this demo link's pre-FEC BER (3.3e-02) is far above the KP4 waterfall (~2.4e-4) — expected symbol errors/frame = 157 >> t
