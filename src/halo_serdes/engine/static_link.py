@@ -172,7 +172,9 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     ffe_cfg = cfg.rx.ffe
     n_taps = ffe_cfg.n_pre + 1 + ffe_cfg.n_post
     noise_var = cfg.rx.noise_rms ** 2
-    w_ffe = mmse_ffe(cursors, n_pre_c, n_taps, ffe_cfg.n_pre, noise_var=noise_var)
+    from .statistical import tx_noise_covariance
+    tx_cov = tx_noise_covariance(tx_pipe, h_chain * vga.gain, cfg.dt, osr, n_taps)
+    w_ffe = mmse_ffe(cursors, n_pre_c, n_taps, ffe_cfg.n_pre, noise_var=noise_var, noise_cov=tx_cov)
     y_ffe = apply_ffe(y_baud, w_ffe, ffe_cfg.n_pre)
 
     # --- static DFE from residual postcursors (serdespy 3_ffe_dfe recipe) ---

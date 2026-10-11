@@ -452,6 +452,25 @@ def _dac_cursors(h: np.ndarray, dt: float, osr: int) -> np.ndarray:
     return baud_samples(p, osr, peak % osr)
 
 
+def tx_noise_covariance(tx_pipe, h: np.ndarray, dt: float, osr: int,
+                        n_taps: int) -> np.ndarray | None:
+    """Covariance over an FFE's ``n_taps`` inputs of the transmitter's own
+    noise (``tx.noise_rms``), white per UI at the DAC output and coloured by
+    everything up to the FFE (``h``: channel, CTLE, VGA, the optical path;
+    the driver pole is added here): sigma^2 times the autocorrelation of the
+    DAC-to-FFE symbol response, as a Toeplitz matrix. None without it. The
+    DAC's quantisation is left out on purpose -- the start-up solves of
+    links with a DAC stay what they were."""
+    if tx_pipe.noise_rms == 0.0:
+        return None
+    drv = tx_pipe.after_dac_response(osr)
+    d = _dac_cursors(h if drv is None else np.convolve(h, drv), dt, osr)
+    acf = np.correlate(d, d, "full")[d.size - 1:]
+    acf = np.pad(acf, (0, max(0, n_taps - acf.size)))[:n_taps]
+    lag = np.abs(np.subtract.outer(np.arange(n_taps), np.arange(n_taps)))
+    return tx_pipe.noise_rms ** 2 * acf[lag]
+
+
 def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> float:
     """sigma at the slicer of a white per-UI error of ``sigma_q`` added at the
     DAC output: sqrt(sum_k p_k^2) sigma_q with p_k the symbol response from the

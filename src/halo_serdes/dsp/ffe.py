@@ -80,12 +80,15 @@ def zf_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
 
 
 def mmse_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
-             noise_var: float = 0.0, normalize: bool = True, target=None) -> np.ndarray:
+             noise_var: float = 0.0, normalize: bool = True, target=None,
+             noise_cov: np.ndarray | None = None) -> np.ndarray:
     """Regularized MMSE FFE over the full ISI support.
 
     Minimizes ||M w - d||^2 + noise_var * ||w||^2 with d a delta at the main
     output cursor, or ``target`` from there on. noise_var = 0 gives the
-    least-squares ZF solution.
+    least-squares ZF solution. ``noise_cov`` (n_taps x n_taps) adds noise
+    that is not white at the FFE input -- noise from ahead of the channel,
+    coloured by it -- as w' C w, on the same scale as ``noise_var``.
     """
     M = _conv_matrix(cursors, n_taps)
     d = np.zeros(M.shape[0])
@@ -93,6 +96,8 @@ def mmse_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
     n = min(t.size, d.size - (c_pre + tap_pre))
     d[c_pre + tap_pre: c_pre + tap_pre + n] = t[:n]
     A = M.T @ M + noise_var * np.eye(n_taps)
+    if noise_cov is not None:
+        A = A + noise_cov
     w = np.linalg.solve(A, M.T @ d)
     if normalize:
         w = w / np.abs(w).sum()
@@ -101,7 +106,7 @@ def mmse_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
 
 def mmse_pr_target(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
                    noise_var: float = 0.0, symbol_power: float = 1.0,
-                   n_target: int = 2) -> tuple[float, ...]:
+                   n_target: int = 2, noise_cov: np.ndarray | None = None) -> tuple[float, ...]:
     """The monic target (1, a[, b[, c]]) that minimises the FFE's mean-square
     error, main cursor held at 1; a clipped to [0, 1] (to [0, 2] with b, the
     EPR4 family 1 + 2D + D^2 included), b to [-1, 1]; with c as well (four
@@ -112,10 +117,15 @@ def mmse_pr_target(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
     s2 the noise variance), a quadratic form; with d[0] = 1 fixed its minimum
     over the tail t solves Q_tt t = -Q_t0. One solve, the same one as
     ``mmse_ffe``, and the point an LMS adapting the tail with the FFE
-    converges to.
+    converges to. ``noise_cov`` adds coloured noise at the FFE input (as in
+    ``mmse_ffe``): noise shaped like the signal makes a controlled cursor
+    cost noise colour the sequence detector's metric does not expect, and
+    the solve sees that.
     """
     M = _conv_matrix(cursors, n_taps)
     A = symbol_power * (M.T @ M) + noise_var * np.eye(n_taps)
+    if noise_cov is not None:
+        A = A + noise_cov
     m0 = c_pre + tap_pre
     n = min(n_target, M.shape[0] - m0)
     if n < 2:

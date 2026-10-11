@@ -575,21 +575,27 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     pr = cfg.pr
     n_t = len(pr.target)
     target = tuple(pr.target) if pr.active else None
+    # the transmitter's own noise reaches the FFE coloured by the channel, not
+    # white: the start-up solves take it as a covariance (None without it)
+    from .statistical import tx_noise_covariance
+    tx_cov = tx_noise_covariance(tx_pipe, h, cfg.dt, osr, n_taps)
     if pr.active and pr.adapt != "none":
         # the monic MMSE target for this pulse, against the noise the FFE
-        # sees: the receiver's and the ADC's (ENOB, or bare quantisation)
+        # sees: the receiver's and the ADC's (ENOB, or bare quantisation),
+        # and the transmitter's
         acfg = cfg.rx.adc
         bits = acfg.enob if acfg.enob is not None else acfg.n_bits
         adc_var = acfg.fullscale ** 2 / 12.0 * 2.0 ** (-2.0 * bits)
         target = mmse_pr_target(cursors, n_pre_c, n_taps, fcfg.n_pre,
                                 noise_var=cfg.rx.noise_rms ** 2 + adc_var,
-                                symbol_power=float(np.mean(_levels(cfg) ** 2)), n_target=n_t)
+                                symbol_power=float(np.mean(_levels(cfg) ** 2)), n_target=n_t,
+                                noise_cov=tx_cov)
         target = target + (0.0,) * (n_t - len(target))
     alpha = target[1] if pr.active else 0.0
     beta = target[2] if (pr.active and n_t >= 3) else 0.0
     gamma = target[3] if (pr.active and n_t == 4) else 0.0
     w_ffe0 = mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
-                      noise_var=cfg.rx.noise_rms ** 2, target=target)
+                      noise_var=cfg.rx.noise_rms ** 2, target=target, noise_cov=tx_cov)
     eq_cursors, eq_pre = equalized_cursors(cursors, w_ffe0, n_pre_c, fcfg.n_pre)
     main = eq_cursors[eq_pre]
     n_dfe = cfg.rx.dfe.n_taps
