@@ -755,6 +755,8 @@ r.sndr_db, r.rlm, r.dac_clipped
   一样整形 —— 与收端噪声(RIN、PD / TIA、`rx.noise_rms`,在带宽限制之后)正相反。独立随机流(`[sim.seed, 0x7E5]`),开它不挪
   任何别的抽取;`noise_rms: 0` 逐位等于没有这个字段。统计引擎把它与 DAC 的 σ_q 合并,经 DAC → 判决器的响应到 RX;有序列检测器 +
   PR 目标时,联合界的噪声自相关按两份方差加权:收端那份取自 FFE 抽头,发端那份是 DAC → 判决器逐 UI 响应的自相关。
+  收端的起始求解(`pr.adapt: mmse` 的目标、LMS 的起点、起始 MMSE FFE;时域与静态引擎)把它当作 FFE 输入处的有色噪声
+  (σ² × DAC → FFE 逐 UI 响应的自相关,Toeplitz)计入;DAC 的量化不计入,带 DAC 的链路起始解照旧。
   TX SNDR(`tx_report`)与光 TDECQ 都含它;`front_end_waveform(with_noise=False)` 不含。DCD 按含噪的相邻值判沿,
   噪声造成的伪沿两侧只差噪声那么一点,移动它对波形的影响可忽略。
 - **COM 不含 DAC / 驱动器**:`analysis/com.py` 与 `NativeCom` 用 802.3 的参考发端。
