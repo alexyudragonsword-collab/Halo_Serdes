@@ -713,15 +713,26 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         fixed["mlsd"] = {"detector": fsd, "dec": dec}
     elif fixed is not None and cfg.rx.mlsd.kind == "viterbi":
         # the bit-true Viterbi on the loop's slicer words (dsp/fixed_viterbi.py),
-        # over the trellis the float one would use
-        from ..dsp.fixed_viterbi import build_fixed_viterbi, run_fixed_viterbi
+        # over the trellis the float one would use -- reduced to K states'
+        # worth of symbols when mlsd.state_memory says so
+        from ..dsp.fixed_viterbi import (
+            build_fixed_dfse,
+            build_fixed_viterbi,
+            run_fixed_dfse,
+            run_fixed_viterbi,
+        )
 
         fl, rec = fixed["loop"], fixed["record"]
         cursors = np.concatenate([[1.0] if head is None else np.asarray(head, dtype=float),
                                   np.asarray(resid_ratios, dtype=float)])
+        k_state = cfg.rx.mlsd.state_memory
         if not np.all(np.abs(cursors[1:]) < 1e-9):
-            fvd = build_fixed_viterbi(cfg, cursors, fl.levels_out, fl.out_bits)
-            dec = run_fixed_viterbi(fvd, rec["v_out"][:n_run], fl.levels_out.size)
+            if k_state is not None and k_state < cursors.size - 1:
+                fvd = build_fixed_dfse(cfg, cursors, fl.levels_out, fl.out_bits, k_state)
+                dec = run_fixed_dfse(fvd, rec["v_out"][:n_run], fl.levels_out.size)
+            else:
+                fvd = build_fixed_viterbi(cfg, cursors, fl.levels_out, fl.out_bits)
+                dec = run_fixed_viterbi(fvd, rec["v_out"][:n_run], fl.levels_out.size)
             fixed["mlsd"] = {"detector": fvd, "dec": dec}
     else:
         dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios, head)

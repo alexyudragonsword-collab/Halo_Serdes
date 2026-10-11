@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Generate golden vectors, build the SV models + testbenches, and run the
 # bit-exact lockstep checks: the FFE + DFE + slicer datapath, the whole back
-# end with its CDR loop, the sliding-detector MLSD and the Viterbi MLSD.
+# end with its CDR loop, the sliding-detector MLSD, the Viterbi MLSD and its
+# reduced-state (DFSE) form.
 # Requires iverilog (apt install iverilog).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -18,3 +19,5 @@ iverilog -g2012 -o /tmp/mlsd_lockstep.vvp -I "$VEC" sliding_mlsd.sv tb_sliding_m
 vvp /tmp/mlsd_lockstep.vvp +vecdir="$VEC"
 iverilog -g2012 -o /tmp/vit_lockstep.vvp -I "$VEC" viterbi_mlsd.sv tb_viterbi_mlsd.sv
 vvp /tmp/vit_lockstep.vvp +vecdir="$VEC"
+iverilog -g2012 -o /tmp/dfse_lockstep.vvp -I "$VEC" dfse_mlsd.sv tb_dfse_mlsd.sv
+vvp /tmp/dfse_lockstep.vvp +vecdir="$VEC"

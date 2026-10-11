@@ -71,10 +71,10 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 编码 | `fec/` | RS-KP4/KR4 + pre/post-FEC 换算、级联内码模型 |
 | 接口 | `io/` | IBIS-AMI(真实 C ABI 执行编译模型 / pyibisami 厂商模型)、COM 适配器 |
 | 界面 | `halo_serdes_gui/` | 17 标签页 Plotly Dash 工作台 + Windows 桌面打包 |
-| 硬件 | `rtl/` | FFE+DFE+slicer 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
+| 硬件 | `rtl/` | FFE+DFE+slicer、带 CDR 的数字后端、sliding / Viterbi / 降状态(DFSE)MLSD 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**(2026-10-03):核心库 ~9.8k 行 / 应用层与 GUI ~4.2k 行 / 测试 ~7.3k 行 / 示例 ~4.4k 行;
-**996 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**1009 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
 **43 个编号示例**(`examples/00`–`42`)。
 
 ## 路线图

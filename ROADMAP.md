@@ -63,11 +63,10 @@ AMI GetWave 记入下方「边界」。)
   `rx.mlsd.state_memory`(DFSE),两光标目标 16 状态拿到 256 状态的 reach,示例 42,`cairn/DSP发端与PR.md` §18。)剩余:CPO 相对 LPO
   省下的那部分(驱动主机走线、模块自身开销)不在模型里,两者同价。
 
-### 12. 降状态检测的定点与 RTL
-`rx.mlsd.state_memory` < 网格长度只有浮点版:bit-true 检测器(`dsp/fixed_viterbi.py`)与 `rtl/viterbi_mlsd.sv` 把全网格做成期望值表,
-没有逐路径的尾部寄存器与反馈,定点模式下配置拒绝(`LinkConfig` 校验)。要做:每状态 L − K 个符号的尾部寄存器随加比选搬移、
-期望值改为"表 + 逐状态反馈和",定点与 SV 逐位对照。另:降状态网格在残余 ISI 大的链路(短 FFE)上的代价没量过,
-示例 42 的 21 抽头 FFE 在目标之外几乎不留 ISI。
+### 12. 降状态网格在短 FFE 上的代价
+(2026-10-11 已做:降状态检测的定点与 RTL —— `dsp/fixed_viterbi.py` 的 `run_fixed_dfse` 与 `rtl/dfse_mlsd.sv`,lockstep 逐位通过,
+定点模式不再拒绝 K < L;`cairn/DSP发端与PR.md` §18。)剩余:降状态网格在残余 ISI 大的链路(短 FFE)上的代价没量过,
+示例 42 的 21 抽头 FFE 在目标之外几乎不留 ISI,"网格只需要目标的受控光标"可能只在长 FFE 下成立。
 
 ### 10. 测试与文档的长尾
 - (2026-10-08 已做:GUI docstring 37% → 100%、app 层 57% → 88%(按函数 / 类 / 模块计,含私有;原记的 28% 口径不明,

@@ -777,16 +777,12 @@ class LinkConfig:
                  "rx.mlsd.kind='sliding' with a three- or four-cursor pr.target: the sliding "
                  "detector models one postcursor; use rx.mlsd.kind='viterbi'")
         # a reduced trellis keeps K of the L = len(pr.target) - 1 + memory
-        # trellis cursors in its states; the bit-true detector (and its RTL
-        # twin) holds the full trellis as a table and has no per-survivor feedback
+        # trellis cursors in its states
         k_state = self.rx.mlsd.state_memory
         l_trellis = len(self.pr.target) - 1 + self.rx.mlsd.memory
         _require(k_state is None or k_state <= l_trellis,
                  f"rx.mlsd.state_memory={k_state} is more than the trellis's {l_trellis} cursors "
                  f"(len(pr.target) - 1 + mlsd.memory)")
-        _require(k_state is None or k_state == l_trellis or self.numeric.mode != "fixed",
-                 "rx.mlsd.state_memory below the trellis length with numeric.mode='fixed': the "
-                 "bit-true Viterbi runs the full trellis only")
         # NOTE: a touchstone channel with no file is intentionally allowed here
         # — LinkConfig() defaults to it, and ChannelModel.from_config raises a
         # precise error at load time if it is actually used.

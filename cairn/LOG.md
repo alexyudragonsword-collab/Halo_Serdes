@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-11 · 降状态检测的定点与 RTL(feat/fixed-dfse,ROADMAP P3 #12)
+
+- 新:bit-true DFSE(`fixed_viterbi.run_fixed_dfse`)与 `rtl/dfse_mlsd.sv`。期望字 = 状态部分未舍入表 + 反馈份额,统一舍入一次 ——
+  K = L 时等于全网格表、逐判决相同。定点模式不再拒绝 K < L。
+- 验证:与独立参考(逐路径整段符号序列)在随机移位 / 饱和下逐判决相同;输入精确时等于浮点 DFSE;引擎定点误码数与浮点 3σ 内;
+  SV lockstep(K = 1、4 状态、反馈 2 个光标、3000 符号)逐位通过,改一个金标即 FAIL。ROADMAP #12 剩"短 FFE 上的代价"。
+- 测试 996 → 1009(+13);全量 1009 passed / 1 skipped,`run_lockstep.sh` 九段全 PASS,引擎指纹 819 值逐位不变,本地 Cython 编译改过的
+  3 个模块通过。Android(f66bb97,含全部 `src/` 改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包
+  三个 job 通过(pyinstaller 3 / nuitka 89 / onefile 113 分钟);eca39e2 上测试矩阵、RTL lockstep 全绿。
+- 上一条(#67)的 CI:Android(a49d9fd,含全部 `src/` 改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;
+  桌面打包 pyinstaller 3 / nuitka 68 / onefile 88 分钟通过(onefile 在合并之后完成)。b2fa979 上测试矩阵、examples-full 全绿。
+
 ## 2026-10-11 · 降状态序列检测 DFSE(feat/reduced-state-mlsd,接功耗模型的结论)
 
 - 新:`rx.mlsd.state_memory` = K,网格状态只记最近 K 个符号,其余光标按各幸存路径的判决反馈;不设 / K = L 逐判决等于全网格。
