@@ -12,7 +12,9 @@
   噪声在发端,带宽 12 vs 22 GHz 只差 1.1 dB,收端 PR −0.5…−2.3 dB、发端 −3.0…−5.7 dB。两种情形发端 PR 都不占优;
   光 duobinary 的收益由收端 PR 拿到,发端该做预加重。ROADMAP P3 #8 清空。
 - 坑:第一版拿 4 bit DAC 量化当发端噪声,误差有界、统计按高斯,读数失真(收端 PR 代价 5.5 dB 对高斯下 1.5–2.3)。
-- 测试 941 → 950(全量 950 passed / 1 skipped,JIT + iverilog);本地 Cython 编译改过的 5 个模块通过。详见 `cairn/DSP发端与PR.md` §16。
+- 测试 941 → 950(全量 950 passed / 1 skipped,JIT + iverilog);本地 Cython 编译改过的 5 个模块通过。
+  Android(ff0ccf6,含全部 `src/` 改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包三个 job 通过
+  (nuitka 113 / onefile 89 分钟);e7447f8 上测试矩阵、examples-full 全绿。详见 `cairn/DSP发端与PR.md` §16。
 
 ## 2026-10-10 · 推导数登记补全 + `example_drift.py candidates`(tools/derived-coverage,ROADMAP P3 #10)
 
