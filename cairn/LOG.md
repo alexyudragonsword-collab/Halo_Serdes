@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-11 · MMSE 起始解计入发端噪声(feat/mmse-tx-noise)
+
+- 问题(示例 40 量到):`pr.adapt: mmse` 的起始解只看 FFE 输入处的白噪声,发端噪声为主时选 a = 0.98(12 GHz)/ 0.26(22 GHz),
+  正确答案是 delta(噪声与信号同形时 MSE ∝ 1 + a²);`adapt: lms` 从那里几乎不动(0.980 → 0.981)。
+- 改:`mmse_ffe` / `mmse_pr_target` 加 `noise_cov`;时域 ADC 收端与静态引擎的起始求解传入 σ²(`tx.noise_rms`)× DAC → FFE 逐 UI
+  响应的自相关(Toeplitz)。DAC 量化不计入;无 `tx.noise_rms` 时逐位不变(819 值指纹)。
+- 数:MMSE / LMS 选回 a ≈ 0,容忍的发端噪声 36.7 → 42.8 mV、45.6 → 48.2 mV,与对照相同;40 mV 时 BER 5.5e-4 → 1.0e-4。
+  示例 40 重跑,发端 PR 两行小移(LMS 起点变了)。更正 §16 的"仍选 a ≈ 0.38"(那是 DAC 量化试验的值)。坑:自适应不会替你修起始解。
+- 测试 950 → 952(全量 952 passed / 1 skipped);本地 Cython 编译改过的 4 个模块通过。详见 `cairn/DSP发端与PR.md` §17。
+
 ## 2026-10-11 · 光 duobinary:发端噪声 + 带宽受限调制器上 PR 放哪(study/tx-pr-optical,ROADMAP P3 #8 余项)
 
 - 新:`tx.noise_rms`(DAC 输出处每 UI 白噪,调制器带宽之前,独立随机流 `[seed, 0x7E5]`;关着逐位不变,819 值指纹)。
