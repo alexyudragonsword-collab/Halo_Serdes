@@ -346,17 +346,29 @@ class MlsdConfig:
     memoryless slicer got wrong. ``sliding`` is DragonPHY's low-cost error-event
     detector; ``viterbi`` is full MLSE over ``memory`` residual postcursors
     (states = n_levels**memory, so keep it small).
+
+    The Viterbi trellis spans L = len(pr.target) - 1 + memory cursors after
+    the main one. ``state_memory`` = K < L makes it a reduced-state one
+    (decision-feedback sequence estimation, Duel-Hallen & Heegard 1989): a
+    state holds the last K symbols (n_levels**K states) and the trellis's
+    other L - K cursors are cancelled with each survivor's own earlier
+    decisions. None is K = L, the full trellis.
     """
 
     kind: Literal["none", "sliding", "viterbi"] = "none"
     memory: int = 1                     # residual postcursors in the trellis
     seq_len: int = 4                    # sliding-detector squared-error window
     margin: float = 0.0                 # sliding-detector acceptance margin
+    state_memory: Optional[int] = None  # Viterbi: symbols a state holds (None = all)
 
     def __post_init__(self):
         _require_in(self.kind, {"none", "sliding", "viterbi"}, "mlsd.kind")
         _require(self.memory >= 1,
                  f"mlsd.memory must be >= 1, got {self.memory}")
+        _require(self.state_memory is None or self.state_memory >= 1,
+                 f"mlsd.state_memory must be >= 1 when set, got {self.state_memory}")
+        _require(self.state_memory is None or self.kind == "viterbi",
+                 f"mlsd.state_memory reduces a Viterbi trellis; rx.mlsd.kind is {self.kind!r}")
         _require(self.seq_len >= 2,
                  f"mlsd.seq_len must be >= 2, got {self.seq_len}")
         _require(self.margin >= 0,
@@ -764,6 +776,17 @@ class LinkConfig:
         _require(not (self.rx.mlsd.kind == "sliding" and len(self.pr.target) > 2),
                  "rx.mlsd.kind='sliding' with a three- or four-cursor pr.target: the sliding "
                  "detector models one postcursor; use rx.mlsd.kind='viterbi'")
+        # a reduced trellis keeps K of the L = len(pr.target) - 1 + memory
+        # trellis cursors in its states; the bit-true detector (and its RTL
+        # twin) holds the full trellis as a table and has no per-survivor feedback
+        k_state = self.rx.mlsd.state_memory
+        l_trellis = len(self.pr.target) - 1 + self.rx.mlsd.memory
+        _require(k_state is None or k_state <= l_trellis,
+                 f"rx.mlsd.state_memory={k_state} is more than the trellis's {l_trellis} cursors "
+                 f"(len(pr.target) - 1 + mlsd.memory)")
+        _require(k_state is None or k_state == l_trellis or self.numeric.mode != "fixed",
+                 "rx.mlsd.state_memory below the trellis length with numeric.mode='fixed': the "
+                 "bit-true Viterbi runs the full trellis only")
         # NOTE: a touchstone channel with no file is intentionally allowed here
         # — LinkConfig() defaults to it, and ChannelModel.from_config raises a
         # precise error at load time if it is actually used.

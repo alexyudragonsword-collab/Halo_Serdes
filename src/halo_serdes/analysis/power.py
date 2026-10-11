@@ -158,16 +158,29 @@ def adc_power(fs: float, enob: float, k: PowerCoefficients) -> float:
     return fs / 2.0 * 10.0 ** ((sndr - k.adc_fom_schreier_db) / 10.0)
 
 
-def trellis_states(cfg: LinkConfig, rx: RxConfig | None = None) -> int:
-    """States of the Viterbi trellis the receiver runs: N ** L with L the
-    controlled cursors after the main one plus the residual memory (the
-    engine's trellis, ``engine/timedomain.py`` ``_mlsd_post_detect``); 0
-    without a Viterbi detector."""
+def trellis_length(cfg: LinkConfig, rx: RxConfig | None = None) -> int:
+    """Cursors after the main one the Viterbi trellis spans: the controlled
+    ones plus the residual memory (``engine/timedomain.py``
+    ``_mlsd_post_detect``); 0 without a Viterbi detector."""
     rx = cfg.rx if rx is None else rx
     if rx.mlsd.kind != "viterbi":
         return 0
-    n = 2 ** cfg.bits_per_symbol
-    return n ** (len(cfg.pr.target) - 1 + rx.mlsd.memory)
+    return len(cfg.pr.target) - 1 + rx.mlsd.memory
+
+
+def trellis_states(cfg: LinkConfig, rx: RxConfig | None = None) -> int:
+    """States of the Viterbi trellis the receiver runs: N ** K, K the
+    ``mlsd.state_memory`` of a reduced-state one or else the trellis length;
+    0 without a Viterbi detector."""
+    rx = cfg.rx if rx is None else rx
+    if rx.mlsd.kind != "viterbi":
+        return 0
+    return (2 ** cfg.bits_per_symbol) ** _state_memory(cfg, rx)
+
+
+def _state_memory(cfg: LinkConfig, rx: RxConfig) -> int:
+    n_len = trellis_length(cfg, rx)
+    return n_len if rx.mlsd.state_memory is None else min(rx.mlsd.state_memory, n_len)
 
 
 # ------------------------------------------------------------------- blocks
@@ -178,13 +191,17 @@ def _sequence_detector(cfg: LinkConfig, rx: RxConfig, slicer_bits: int, baud: fl
     if rx.mlsd.kind == "viterbi":
         s = trellis_states(cfg, rx)
         branches = s * n
-        n_cursors = len(cfg.pr.target) + rx.mlsd.memory
+        n_len = trellis_length(cfg, rx)
+        fed_back = n_len - _state_memory(cfg, rx)           # cursors a reduced trellis feeds back
         # y times each cursor once, the per-branch metric from those shared
         # partial products (two adds), add-compare-select (one add per
-        # branch, N - 1 compares per state)
-        e = (n_cursors * mult_energy(slicer_bits, cfg.numeric.ffe_weight.wl, k)
-             + (3 * branches + s * (n - 1)) * add_energy(k.metric_bits, k))
-        return [PowerBlock(name, e * baud, f"Viterbi {s} states")]
+        # branch, N - 1 compares per state); a reduced-state trellis adds,
+        # per state, its survivor's fed-back cursors (cursor x level from a
+        # table, one add each)
+        e = ((n_len + 1) * mult_energy(slicer_bits, cfg.numeric.ffe_weight.wl, k)
+             + (3 * branches + s * (n - 1) + s * fed_back) * add_energy(k.metric_bits, k))
+        note = f"Viterbi {s} states" + (f", {fed_back} cursors fed back" if fed_back else "")
+        return [PowerBlock(name, e * baud, note)]
     if rx.mlsd.kind == "sliding":
         # no-error and two flip hypotheses, a squared error each over the window
         ops = 3 * rx.mlsd.seq_len

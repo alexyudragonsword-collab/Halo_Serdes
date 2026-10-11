@@ -184,7 +184,8 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
                     precoded: bool, max_len: int = 12,
                     snr: float | None = None,
                     families: tuple[str, ...] = ("alternating",),
-                    n_samples: int = 1000, seed: int = 0) -> list[tuple[float, float]]:
+                    n_samples: int = 1000, seed: int = 0,
+                    state_memory: int | None = None) -> list[tuple[float, float]]:
     """(distance gain, weight) per error event of a sequence detector on a
     partial-response target, for a union bound.
 
@@ -234,6 +235,12 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     controlled cursor after the first (b or c < 0) a run of same-sign errors is
     pulled close by it, where for a non-negative target it lies far.
     ``n_samples`` per event and ``seed`` fix the sampling (deterministic).
+
+    ``state_memory`` K: a reduced-state (DFSE) trellis compares two paths only
+    until they merge, K symbols after the event's last error, so an event of
+    n symbols counts the first n + K samples of its difference
+    (``dsp.mlsd.mlse_min_distance_sq``); the survivors' feedback errors are
+    not in it.
     """
     from scipy.special import ndtr, ndtri
 
@@ -267,6 +274,8 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     d = np.zeros((pat.size, size))
     for i in range(pat.size):
         dd = np.convolve(sign[i] * pats[pat[i]], h)
+        if state_memory is not None:
+            dd = dd[:pats[pat[i]].size + state_memory]
         d[i, nb + start[i]: nb + start[i] + dd.size] = dd
     s = np.sqrt(np.maximum(np.einsum("ij,jk,ik->i", d, r_mat, d), 1e-300))
     g = np.einsum("ij,ij->i", d, d) / s
@@ -617,6 +626,11 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     n_dfe = cfg.rx.dfe.n_taps
     n_t = len(cfg.pr.target)
     mlsd_mem = cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none" else 0
+    # a reduced-state trellis (mlsd.state_memory < its length) is scored by
+    # the distance its paths accrue before they merge
+    k_state = cfg.rx.mlsd.state_memory
+    if k_state is not None and k_state >= n_t - 1 + mlsd_mem:
+        k_state = None
 
     # phase axis: one UI centered on the pulse peak
     phi_offsets = np.arange(osr) - osr // 2
@@ -717,7 +731,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             isi = np.asarray(isi_list)
             if res or pr_active:
                 g = np.sqrt(mlse_min_distance_sq(
-                    np.concatenate([head, np.asarray(res)])))
+                    np.concatenate([head, np.asarray(res)]), state_memory=k_state))
                 g_mlsd = max(g, 1e-12)
         # error events the per-level sum runs over: one, unless a sequence
         # detector works a partial-response target (pr_error_events)
@@ -727,11 +741,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             fams = (("alternating", "constant") if min(cfg.pr.target[2:], default=0.0) < 0.0
                     else ("alternating",))
             cur = np.concatenate([head, np.asarray(res)])
-            events = pr_error_events(cur, noise_acf, n_levels, cfg.precode, families=fams)
+            events = pr_error_events(cur, noise_acf, n_levels, cfg.precode, families=fams,
+                                     state_memory=k_state)
             if noise_sigma > 0:
                 if union_ratio is None:
                     union = pr_error_events(cur, noise_acf, n_levels, cfg.precode,
-                                            snr=half_gap / noise_sigma, families=fams)
+                                            snr=half_gap / noise_sigma, families=fams,
+                                            state_memory=k_state)
                     union_ratio = [u[1] / e[1] if e[1] > 0 else 0.0
                                    for u, e in zip(union, events)]
                 events = [(g_e, w_e * r) for (g_e, w_e), r in zip(events, union_ratio)]
