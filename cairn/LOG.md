@@ -13,7 +13,9 @@
   同到 64 状态收端 PR 比 DSP 深度划算;retimed / LPO 1.53–1.75。不确定:ENOB +1 的代价(Walden / Schreier 差一个数量级,且 ENOB 7.5
   @ 112 GS/s 无已发表器件);LPO 与 CPO 在模型里同价。更正 SUMMARY 杠杆表"N² 状态"(实为 N³ = 64)。详见 `cairn/功耗建模.md`。
 - 测试 952 → 978(`tests/test_power.py` 24 项,`test_examples_api` 对示例 41 参数化 2 项;全量 978 passed / 1 skipped);
-  本地 Cython 编译 `analysis/power.py` 通过;引擎指纹 819 值逐位不变。
+  本地 Cython 编译 `analysis/power.py` 通过;引擎指纹 819 值逐位不变。Android(ba09502,含全部 `src/` 改动)API 34 / 35 / 编译版
+  instrumented 各 34 tests、0 failures;桌面打包三个 job 通过(pyinstaller 3 / nuitka 83 / onefile 122 分钟);b4a5d8f 上测试矩阵、
+  examples-full 全绿。
 
 ## 2026-10-11 · MMSE 起始解计入发端噪声(feat/mmse-tx-noise)
 
