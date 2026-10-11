@@ -39,6 +39,15 @@ shifted and saturated squared-error branch metrics, minimum-subtracted path
 metrics, add-compare-select in a fixed order, full traceback. Vectors: PAM4
 through 1 + 0.6D + 0.2D^2, 16 states.
 
+The fifth covers its **reduced-state form** (decision-feedback sequence
+estimation; `dfse_mlsd.sv` against `halo_serdes.dsp.fixed_viterbi`,
+`rx.mlsd.state_memory`): a state holds the last K symbols and a tail
+register the survivor's next L - K decisions, carried with it through
+add-compare-select; the expected word is the unrounded state part from a
+table plus each fed-back cursor's unrounded share per level, rounded once.
+Vectors: PAM4 through 1 + 0.6D + 0.3D^2 + 0.1D^3 with K = 1, 4 states and
+two cursors fed back.
+
 ## Files
 
 | file | role |
@@ -50,6 +59,7 @@ through 1 + 0.6D + 0.2D^2, 16 states.
 | `tb_adc_dsp_loop.sv` | loads the closed-loop record, runs the loop, asserts every PI code / slicer value / decision. |
 | `sliding_mlsd.sv` / `tb_sliding_mlsd.sv` | the sliding-detector MLSD and its testbench (`fixed_mlsd._sliding_fixed_py`). |
 | `viterbi_mlsd.sv` / `tb_viterbi_mlsd.sv` | the Viterbi MLSD and its testbench (`fixed_viterbi._viterbi_fixed_py`). |
+| `dfse_mlsd.sv` / `tb_dfse_mlsd.sv` | the reduced-state Viterbi (DFSE) and its testbench (`fixed_viterbi._dfse_fixed_py`). |
 | `run_lockstep.sh` | generate → `iverilog` compile → `vvp` run, all checks. |
 
 ## Run
@@ -61,6 +71,7 @@ bash rtl/run_lockstep.sh
 # -> LOOP LOCKSTEP PASS  n=3000  errors=0
 # -> MLSD LOCKSTEP PASS  n=4000  flips=81  errors=0
 # -> VITERBI LOCKSTEP PASS  n=3000  states=16  errors=0
+# -> DFSE LOCKSTEP PASS  n=3000  states=4  fed back=2  errors=0
 ```
 
 `tests/test_rtl_lockstep.py` runs the same flow (skipped if `iverilog` is

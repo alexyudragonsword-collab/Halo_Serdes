@@ -18,6 +18,10 @@
 4. The Viterbi MLSD (dsp/fixed_viterbi): PAM4 through 1 + 0.6D + 0.2D^2
    (16 states), with a metric shift and a narrow saturating metric, dumped
    with vit_dims.svh.
+5. The reduced-state Viterbi (DFSE, dsp/fixed_viterbi): PAM4 through
+   1 + 0.6D + 0.3D^2 + 0.1D^3 with the state holding one symbol (4 states,
+   two cursors fed back per survivor), same metric shift and saturation,
+   dumped with dfse_dims.svh.
 
     python rtl/gen_vectors.py [out_dir]   (default: rtl/vectors)
 """
@@ -45,7 +49,8 @@ from halo_serdes.dsp.fixed_mlsd import (  # noqa: E402
     FixedSliding, dump_mlsd_vectors, run_fixed_sliding,
 )
 from halo_serdes.dsp.fixed_viterbi import (  # noqa: E402
-    FixedViterbi, dump_viterbi_vectors, expected_table, run_fixed_viterbi,
+    FixedDfse, FixedViterbi, dfse_tables, dump_dfse_vectors, dump_viterbi_vectors,
+    expected_table, run_fixed_dfse, run_fixed_viterbi,
 )
 from halo_serdes.engine import run_time_link  # noqa: E402
 
@@ -164,3 +169,19 @@ dec_v = run_fixed_viterbi(fvd, y, 4)
 dump_viterbi_vectors(out, fvd, y, 4, dec_v)
 print(f"wrote Viterbi vectors to {out}  (N={y.size}, {fvd.expected.shape[0]} states, "
       f"errors {int(np.sum(dec_v != sym))})")
+
+# --- 5. the reduced-state Viterbi (DFSE): one symbol per state, two fed back ---
+rng = np.random.default_rng(13)
+c_int = np.array([256, 154, 77, 26], dtype=np.int64)          # 1 + 0.6D + 0.3D^2 + 0.1D^3
+sym = rng.integers(0, 4, 3000)
+y = np.zeros(sym.size, dtype=np.int64)
+for i, c in enumerate(c_int):
+    y[i:] += (c * levels[sym[: sym.size - i]] + 128) >> 8
+y += np.round(rng.normal(scale=150.0, size=y.size)).astype(np.int64)
+acc, fbt = dfse_tables(c_int, levels, 1)
+fds = FixedDfse(cursors=c_int, c_fl=8, state_memory=1, acc=acc, fbt=fbt,
+                sq_shift=3, metric_max=(1 << 20) - 1)
+dec_d = run_fixed_dfse(fds, y, 4)
+dump_dfse_vectors(out, fds, y, 4, dec_d)
+print(f"wrote DFSE vectors to {out}  (N={y.size}, {acc.shape[0]} states, "
+      f"{fbt.shape[0]} fed back, errors {int(np.sum(dec_d != sym))})")

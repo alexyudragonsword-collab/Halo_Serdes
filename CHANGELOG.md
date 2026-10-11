@@ -6,6 +6,22 @@
 
 ---
 
+## [未发布] — 降状态检测的定点与 RTL(bit-true DFSE + `rtl/dfse_mlsd.sv`)
+
+### 新增
+- `dsp/fixed_viterbi.py`:`_dfse_fixed_py` / `dfse_fixed_kernel`(numba)、`FixedDfse`、`dfse_tables`、`build_fixed_dfse`、
+  `run_fixed_dfse`、`dump_dfse_vectors`。期望字 = rnd(状态部分的未舍入表 + 各反馈光标按电平的未舍入份额, c_fl),只舍入一次,
+  所以 K = L 时就是全网格的期望字表、决定逐个相同;加比选、饱和、重归一与回溯同全网格内核,尾部寄存器随获胜路径搬移。
+- `rtl/dfse_mlsd.sv` / `tb_dfse_mlsd.sv`:独立的 SV 实现;`rtl/gen_vectors.py` 第 5 段(1 + 0.6D + 0.3D² + 0.1D³、K = 1、4 状态、
+  反馈 2 个光标、3000 符号),`run_lockstep.sh` 与 CI `rtl-lockstep` 多一段,`tests/test_rtl_lockstep.py` 加一项(含改一个金标即 FAIL)。
+
+### 变更
+- `numeric.mode: fixed` 与 `rx.mlsd.state_memory` < 网格长度不再被配置拒绝,引擎定点模式跑 bit-true DFSE。
+
+### 测试
+- +13:`tests/test_fixed_viterbi.py` 12 项(K = L 等于定点 Viterbi、输入精确时等于浮点 DFSE、独立参考 4 种移位 / 饱和、JIT = Python、
+  引擎定点模式与浮点误码数 3σ 内),`tests/test_rtl_lockstep.py` 1 项。
+
 ## [未发布] — 降状态序列检测(DFSE,`rx.mlsd.state_memory`;示例 42)
 
 ### 新增
