@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**978 项测试**、双引擎(时域 + StatEye 统计)、42 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **978 tests**, dual engines (time-domain + StatEye), 42 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**996 项测试**、双引擎(时域 + StatEye 统计)、43 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **996 tests**, dual engines (time-domain + StatEye), 43 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -140,10 +140,10 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 | **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+5.5 dB** | ADC 功耗 ×2(Walden,+3.17 pJ/b)到 ×4(Schreier);112 GS/s 下 ENOB 7.5 超出已发表的 ADC / ADC power ×2-4, beyond any published 112 GS/s ADC |
 | **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.3 dB** | 开销 6%→24%(解码器功耗未建)/ overhead |
 | **收端 PR 整形**(FFE 均衡到 1+0.75D,Viterbi 解受控光标)/ RX partial response | **+5.0 dB** | Viterbi 网格 16 → 64 状态,+2.39 pJ/b / trellis 16 → 64 states |
-| **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.3 dB** | 网格 ×4(256 状态),再 +9.48 pJ/b / trellis ×4, +9.48 pJ/b |
-| 三个受控光标(1 + aD + bD² + cD³,memory 1)/ three controlled cursors | +7.6 dB | 同 256 状态,比两个只多 0.3 dB,同价 / same 256 states, same cost |
+| **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.3 dB** | 网格 ×4(256 状态),再 +9.48 pJ/b;降状态 16 状态 reach 不变、Viterbi 1.02 pJ/b(示例 42)/ trellis ×4, +9.48 pJ/b; 16 reduced states keep the reach at 1.02 pJ/b |
+| 三个受控光标(1 + aD + bD² + cD³,memory 1)/ three controlled cursors | +7.6 dB | 同 256 状态,比两个只多 0.3 dB,同价;降到 64 状态 reach 不变 / same 256 states, same cost; 64 reduced states keep it |
 
-代价列的 pJ/b 是示例 41 的估计(`analysis/power.py`,系数全是公开数据的估计,只读比值;`cairn/功耗建模.md`),DSP 深度与收端 PR 相对 21 抽头 FFE + memory-2 Viterbi(16 状态)的对照,ADC 相对同一 DSP 的 ENOB 6.5,两个受控光标相对一个。两个规律不随系数变:同样走到 64 状态,收端 PR 换 +5.0 dB、DSP 深度只换 +1.7 dB;每多一个受控光标网格 ×4,第二个光标的 +2.3 dB 要 +9.48 pJ/b —— 256 状态只算运算就超过已发表 224G 收端总量(1.41 pJ/b)。ADC 杠杆的代价最不确定(Walden 下 +3.17、Schreier 146 dB 下 +23.12 pJ/b)。 / The pJ/b are example 41's estimates (public-figure coefficients; read ratios). Two patterns hold across the coefficient ranges: at the same 64 states receive PR buys +5.0 dB and DSP depth +1.7 dB; each controlled cursor multiplies the trellis by 4, and the second one's +2.3 dB costs +9.48 pJ/b.
+代价列的 pJ/b 是示例 41 的估计(`analysis/power.py`,系数全是公开数据的估计,只读比值;`cairn/功耗建模.md`),DSP 深度与收端 PR 相对 21 抽头 FFE + memory-2 Viterbi(16 状态)的对照,ADC 相对同一 DSP 的 ENOB 6.5,两个受控光标相对一个。两个规律不随系数变:同样走到 64 状态,收端 PR 换 +5.0 dB、DSP 深度只换 +1.7 dB;每多一个受控光标网格 ×4,第二个光标的 +2.3 dB 要 +9.48 pJ/b —— 256 状态只算运算就超过已发表 224G 收端总量(1.41 pJ/b) —— 但网格只需要目标的受控光标:降状态网格(DFSE)16 状态拿到同样的 reach(示例 42)。ADC 杠杆的代价最不确定(Walden 下 +3.17、Schreier 146 dB 下 +23.12 pJ/b)。 / The pJ/b are example 41's estimates (public-figure coefficients; read ratios). Two patterns hold across the coefficient ranges: at the same 64 states receive PR buys +5.0 dB and DSP depth +1.7 dB; each controlled cursor multiplies the trellis by 4, and the second one's +2.3 dB costs +9.48 pJ/b.
 
 (2026-10-11 更正:收端 PR 一行的代价原写"Viterbi 网格(N² 状态)"。1 + aD 加 memory 2 的网格是 N³ = 64 状态,对照(delta 目标 + memory 2)才是 N² = 16。 / Corrected: the receive-PR trellis is N³ = 64 states, not N²; the control is N² = 16.)
 
@@ -169,6 +169,7 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
   MC 不建的 CDR / LMS 对更强的目标反作用更重。实现保留(旧配置的数一个不变),不作推荐配置。 / A third controlled cursor
   measures +0.34 dB (38.94 vs 38.60 dB; +0.2-0.5 dB over four seeds), under the 0.5 dB bar; the baseband MC's +0.6-0.7 dB
   estimate was about twice the measurement. Built, not recommended.
+- **网格只需要目标的受控光标**(示例 42,2026-10-11):降状态网格(`rx.mlsd.state_memory`,DFSE —— 状态只记最近 K 个符号,其余光标按各幸存路径的判决反馈)在示例 38 的链路上,K = 受控光标数时 reach 与全网格逐点相同:1 + aD 4 状态 = 64 状态(36.33 dB),1 + aD + bD² 16 状态 = 256 状态(38.60 dB),三光标 64 状态 = 256 状态(38.94 dB);两光标只留 4 状态 37.75 dB。两光标目标的收端估计 17.68 → 5.97 pJ/b。 / The trellis needs only the target's controlled cursors: a reduced-state trellis (DFSE) with K = the controlled cursors matches the full one point for point -- 16 states hold the two-cursor target's 38.60 dB that took 256, the receiver estimate dropping from 17.68 to 5.97 pJ/b.
 - 21 抽头 FFE:到 −27.3 dB 零误码(−28.8 dB 处 40 万符号里 6 个错;2026-10-09 前只数 2 万符号,记为到 −28.8 dB 零误码),−28.8 / −30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is
   error-free to −27.3 dB and memory-2 MLSD matches it at −28.8 / −30 / −33 dB. The old "29× at −27 dB" was measured with the CDR off the peak.
@@ -304,4 +305,4 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 978 项测试 · 双引擎 · 42 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 996 项测试 · 双引擎 · 43 个实验脚本*

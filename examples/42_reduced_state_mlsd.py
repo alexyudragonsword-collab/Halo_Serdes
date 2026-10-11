@@ -128,7 +128,8 @@ full_of = {"1 + aD": "1 + aD, full", "1 + aD + bD^2": "1 + aD + bD^2, full",
            "+ cD^3 (memory 1)": "+ cD^3 (memory 1), full"}
 for name in CASES:
     ref = full_of[name.split(",")[0]]
-    print(f"  {name:<26} {states[name]:6d}   {reach[name]:8.2f}   {reach[name] - reach[ref]:+6.2f}"
+    gain = round(reach[name] - reach[ref], 2) + 0.0       # no "-0.00" for a 1e-3 dB difference
+    print(f"  {name:<26} {states[name]:6d}   {reach[name]:8.2f}   {gain:+6.2f}"
           f"   {pj[name][0]:10.2f}       {pj[name][1]:10.2f}")
 
 # direction, as measured (cairn/DSP发端与PR.md §18)
