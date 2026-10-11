@@ -1,0 +1,26 @@
+224 Gb/s PAM4 LR, 21-tap LMS FFE + Viterbi, MMSE targets: full and reduced-state trellises
+reach: post-KP4 1e-15 <=> pre-FEC BER <= 2.19e-04
+  1 + aD, full               27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 2.5e-06 36.4dB: 2.4e-04 39.4dB: 4.2e-03 42.4dB: 2.4e-02 45.5dB: 8.4e-02  [~s]
+                             34.9dB: 2.0e-05 35.6dB: 3.9e-05 36.0dB: 1.2e-04  (refined)
+  1 + aD, K = 1              27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 2.5e-06 36.4dB: 2.4e-04 39.4dB: 4.3e-03 42.4dB: 2.4e-02 45.5dB: 8.5e-02  [~s]
+                             34.9dB: 2.0e-05 35.6dB: 3.9e-05 36.0dB: 1.3e-04  (refined)
+  1 + aD + bD^2, full        27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 6.3e-07 36.4dB: 1.8e-05 39.4dB: 5.2e-04 42.4dB: 8.0e-03 45.5dB: 1.8e-01  [~s]
+                             37.9dB: 1.1e-04 38.3dB: 1.3e-04 38.6dB: 2.3e-04  (refined)
+  1 + aD + bD^2, K = 2       27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 6.3e-07 36.4dB: 1.8e-05 39.4dB: 5.2e-04 42.4dB: 8.0e-03 45.5dB: 1.8e-01  [~s]
+                             37.9dB: 1.1e-04 38.3dB: 1.3e-04 38.6dB: 2.3e-04  (refined)
+  1 + aD + bD^2, K = 1       27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 6.3e-07 36.4dB: 4.1e-05 39.4dB: 1.2e-03 42.4dB: 1.4e-02 45.5dB: 1.9e-01  [~s]
+                             37.1dB: 1.1e-04 37.5dB: 1.6e-04 37.9dB: 2.6e-04  (refined)
+  + cD^3 (memory 1), full    27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 6.3e-07 36.4dB: 1.8e-05 39.4dB: 3.7e-04 42.4dB: 9.5e-02 45.5dB: 2.0e-01  [~s]
+                             37.9dB: 7.4e-05 38.6dB: 1.8e-04 39.0dB: 2.3e-04  (refined)
+  + cD^3 (memory 1), K = 3   27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 6.3e-07 36.4dB: 1.8e-05 39.4dB: 3.7e-04 42.4dB: 9.5e-02 45.5dB: 2.0e-01  [~s]
+                             37.9dB: 7.4e-05 38.6dB: 1.7e-04 39.0dB: 2.3e-04  (refined)
+
+summary                     states   reach [dB]  vs full   Viterbi [pJ/b]  receiver [pJ/b]
+  1 + aD, full                   64      36.33    +0.00         3.26             8.20
+  1 + aD, K = 1                   4      36.33    +0.00         0.33             5.28
+  1 + aD + bD^2, full           256      38.60    +0.00        12.73            17.68
+  1 + aD + bD^2, K = 2           16      38.60    +0.00         1.02             5.97
+  1 + aD + bD^2, K = 1            4      37.75    -0.85         0.37             5.32
+  + cD^3 (memory 1), full       256      38.94    +0.00        12.73            17.68
+  + cD^3 (memory 1), K = 3       64      38.94    +0.00         3.49             8.44
+wrote examples/output/42_reduced_state_mlsd.png
