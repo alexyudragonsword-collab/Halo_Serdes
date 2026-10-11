@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-11 · 光 duobinary:发端噪声 + 带宽受限调制器上 PR 放哪(study/tx-pr-optical,ROADMAP P3 #8 余项)
+
+- 新:`tx.noise_rms`(DAC 输出处每 UI 白噪,调制器带宽之前,独立随机流 `[seed, 0x7E5]`;关着逐位不变,819 值指纹)。
+  统计引擎把它与 DAC σ_q 合并,PR 联合界的噪声自相关加发端那份的颜色(只用 FFE 抽头时收端 PR 0.22–0.48×、发端 a = 0.5 2.9×,
+  加后 0.52–1.88×)。`tx_report` 参考发端改为无噪声(原来同一份噪声做差抵消)。
+- 示例 40(VCSEL f_r 当带宽限制):噪声在调制器后,需要的 f_r 对照 14.23 / 收端 PR 11.94 / 发端 PR 16.74–17.36 GHz;
+  噪声在发端,带宽 12 vs 22 GHz 只差 1.1 dB,收端 PR −0.5…−2.3 dB、发端 −3.0…−5.7 dB。两种情形发端 PR 都不占优;
+  光 duobinary 的收益由收端 PR 拿到,发端该做预加重。ROADMAP P3 #8 清空。
+- 坑:第一版拿 4 bit DAC 量化当发端噪声,误差有界、统计按高斯,读数失真(收端 PR 代价 5.5 dB 对高斯下 1.5–2.3)。
+- 测试 941 → 950(全量 950 passed / 1 skipped,JIT + iverilog);本地 Cython 编译改过的 5 个模块通过。
+  Android(ff0ccf6,含全部 `src/` 改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包三个 job 通过
+  (nuitka 113 / onefile 89 分钟);e7447f8 上测试矩阵、examples-full 全绿。详见 `cairn/DSP发端与PR.md` §16。
+
 ## 2026-10-10 · 推导数登记补全 + `example_drift.py candidates`(tools/derived-coverage,ROADMAP P3 #10)
 
 - 扫法:先按"段落引用某示例、该示例不打印、未登记"扫(217 行、493 个数,几乎全是配置 / 历史 / 理论值,噪声太大);

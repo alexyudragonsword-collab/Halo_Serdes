@@ -82,6 +82,8 @@ def test_prose_of_an_example_is_its_docstrings_and_comments(drift):
 def test_citations(drift):
     assert drift._cited("示例 36 / 38 与 examples/05、`32_lpo_vs_cpo.py`;example 12 and 14") == \
         {"36", "38", "05", "32", "12", "14"}
+    # a count after the list is not another example
+    assert drift._cited("实测(示例 38,40 万符号)") == {"38"}
 
 
 def _repo(tmp_path, text):

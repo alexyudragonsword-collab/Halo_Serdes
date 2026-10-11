@@ -87,8 +87,9 @@ _DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _SUP = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺", "0123456789-+")
 _SCI_SUP = re.compile(r"(\d(?:\.\d+)?)\s*[×x]\s*10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)")
 _POW_SUP = re.compile(r"(?<![\w.])10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)")
-# "示例 36 / 38", "examples/32", "example 05 and 39", "32_lpo_vs_cpo.py"
-_CITE = re.compile(r"(?:示例|[Ee]xamples?/?|\bex)\s*(\d{2})((?:\s*(?:/|、|,|，|和|与|and|or|或)\s*\d{2}\b)*)")
+# "示例 36 / 38", "examples/32", "example 05 and 39", "32_lpo_vs_cpo.py" (but
+# not the "40" of "示例 38,40 万符号": a count, not a second example)
+_CITE = re.compile(r"(?:示例|[Ee]xamples?/?|\bex)\s*(\d{2})((?:\s*(?:/|、|,|，|和|与|and|or|或)\s*\d{2}\b(?!\s*万))*)")
 _CITE_FILE = re.compile(r"\b(\d{2})_[a-z]\w*\.py\b")
 _HEADING = re.compile(r"^\s*(?:#{1,6}\s|<h[1-6]\b|<section\b)")
 _TAG = re.compile(r"<[^>]+>")

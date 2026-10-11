@@ -219,6 +219,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("tx.dac_fs", "DAC full scale [V pp] (empty = FFE peak)", "opt_float"),
         _f("tx.dac_thermo_msbs", "DAC thermometer MSBs", "int"),
         _f("tx.dac_unit_sigma", "DAC unit mismatch sigma [LSB]", "float"),
+        _f("tx.noise_rms", "Tx noise RMS per UI [V]", "float"),
         _f("tx.drv_nl", "Driver nonlinearity", "enum", options=["none", "curve", "tanh", "cubic"]),
         _f("tx.drv_compression", "Driver compression c (curve)", "float"),
         _f("tx.drv_p1db_v", "Driver P1dB [V] (tanh)", "opt_float"),

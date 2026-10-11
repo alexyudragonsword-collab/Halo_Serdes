@@ -50,7 +50,7 @@ def front_end_waveform(cfg: LinkConfig, channel: ChannelModel | None = None,
     rng = np.random.default_rng(cfg.sim.seed if seed is None else seed)
     symbols = make_pattern(cfg)
     tx_pipe = TxPipeline.from_config(cfg)
-    tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(symbols), rng)
+    tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(symbols, noise=with_noise), rng)
 
     h = front_end_impulse(cfg, channel, include_ctle=include_ctle)
     rx_y = fft_filter(tx_wave.y, h)

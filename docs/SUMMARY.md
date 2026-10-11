@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**941 项测试**、双引擎(时域 + StatEye 统计)、40 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **941 tests**, dual engines (time-domain + StatEye), 40 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**950 项测试**、双引擎(时域 + StatEye 统计)、41 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **950 tests**, dual engines (time-domain + StatEye), 41 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -154,6 +154,11 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 - **同样的 1+aD 放到发端反而亏**(示例 37):峰值不变时 reach ≈ 无 PR − 20·log10(1 + a)(a = 0.25 / 0.5 / 0.75:29.8 / 27.6 / 26.6 dB,预测 29.4 / 27.8 / 26.5)。
   线性链路、噪声在收端,收端 FFE 照样要把信道均衡到 delta,发端整形只交出峰值。PR 的位置在收端。 / The same 1+aD in the Tx
   loses: peak-limited, reach ≈ no-PR − 20 log10(1 + a); the receive FFE still inverts the channel to a delta.
+- **光 duobinary:PR 仍在收端**(示例 40,2026-10-11):VCSEL 的 f_r 当带宽限制、噪声在调制器后(RIN、PD / TIA)时,收端 PR 让需要的
+  f_r 从 14.23 降到 11.94 GHz,发端 PR 要 16.74–17.36 GHz;噪声放进发端(`tx.noise_rms`,调制器带宽之前)时带宽几乎不扣分、PR 都不赚,
+  发端 PR 少 3.0–5.7 dB 噪声容限。调制器的低通本身就是 1 + D,发端该做的是预加重。 / Optical duobinary still belongs in the
+  receiver: with the VCSEL as the band limit and the noise after it, receive PR lowers the f_r needed from 14.23 to 11.94 GHz while
+  transmit PR needs 16.74-17.36 GHz; with the noise in the transmitter no PR helps and transmit PR loses 3.0-5.7 dB.
 - **第三个受控光标实测 +0.34 dB,不到门槛**(示例 38,2026-10-10 实现):四光标目标 memory 1(与三光标 + memory 2 同为 256 状态)
   reach 38.94 dB,memory 2(1024 状态)38.97 dB,三光标 38.60 dB;换三个种子 +0.18 / +0.31 / +0.48 dB,四个种子都低于事先定的
   0.5 dB 门槛。更正此前的估计:基带 MC(`tools/pr_target_length.py`)折算后估 +0.6–0.7 dB 并据此越过门槛,实测约其一半 ——
@@ -293,4 +298,4 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 941 项测试 · 双引擎 · 40 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 950 项测试 · 双引擎 · 41 个实验脚本*

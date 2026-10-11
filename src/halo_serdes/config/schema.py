@@ -166,6 +166,11 @@ class TxConfig:
     drv_compression: float = 0.0           # c of core.static_curve (= optical li_compression)
     drv_p1db_v: Optional[float] = None     # tanh: input amplitude at 1 dB compression [V]
     drv_oip3_v: Optional[float] = None     # cubic: output IP3 amplitude [V]
+    # white noise per UI at the DAC output [V rms] -- the driver's and DAC's
+    # thermal noise, ahead of the driver pole and (optical) the modulator's
+    # band limit, so everything downstream shapes it as it shapes the signal;
+    # its own random stream, so it moves no other draw. 0 = off.
+    noise_rms: float = 0.0
     # Edge timing lives on the clock. The four jitter fields that used to sit
     # here (rj_ui, sj_ui, sj_freq, dcd_ui) moved into ClockConfig when a clock
     # became something that could be a PLL profile rather than three numbers;
@@ -206,6 +211,7 @@ class TxConfig:
                  "tx.drv_nl='tanh' needs tx.drv_p1db_v")
         _require(self.drv_nl != "cubic" or self.drv_oip3_v is not None,
                  "tx.drv_nl='cubic' needs tx.drv_oip3_v")
+        _require(self.noise_rms >= 0.0, f"tx.noise_rms must be >= 0, got {self.noise_rms}")
 
 
 @dataclass(frozen=True)

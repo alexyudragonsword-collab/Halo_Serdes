@@ -58,9 +58,12 @@ def measured_rlm(wave, symbols: np.ndarray, osr: int, *, phase: int | None = Non
 
 
 def reference_tx(cfg: LinkConfig) -> LinkConfig:
-    """The same link with an ideal DAC and a linear driver."""
+    """The same link with an ideal DAC, a linear driver and no Tx noise (the
+    noise is part of what the SNDR measures: left in, the reference would
+    draw the same noise and the difference would cancel it)."""
     tx = dataclasses.replace(cfg.tx, dac_bits=None, dac_fs=None, dac_thermo_msbs=0,
-                             dac_unit_sigma=0.0, drv_nl="none", drv_compression=0.0)
+                             dac_unit_sigma=0.0, drv_nl="none", drv_compression=0.0,
+                             noise_rms=0.0)
     return dataclasses.replace(cfg, tx=tx)
 
 
