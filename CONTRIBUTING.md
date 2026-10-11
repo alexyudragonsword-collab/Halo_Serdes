@@ -38,7 +38,7 @@ HALO_NO_JIT=1 pytest -q       # 纯 Python 内核:铁律 4,结果必须一致
 | 引擎、内核、DSP、配置 —— 任何本不该改数的改动 | 在基线提交上 `python tools/fingerprint.py record before.json`,改完 `record after.json`,再 `compare before.json after.json`。重构必须逐位相同;修复只许动它解释得了的数,并在 PR 里列出。工具列出的报错条目要逐个看:两边报同样的错也算"相同" |
 | 定点数据通路或 `rtl/` | `bash rtl/run_lockstep.sh`(要 iverilog;没有 iverilog 时 `tests/test_rtl_lockstep.py` 会跳过,不算通过) |
 | 示例、结果字段、配置字段名 | `python tools/run_examples.py --smoke` |
-| 可能改示例输出数字的改动(库、示例、`configs/`、`data/`) | 全尺寸跑 `python tools/run_examples.py --jobs 4 --save new/`(只动了几个示例时按编号只跑那几个),再 `python tools/example_drift.py compare new/`:列出变了的输出行,以及文档里仍引用旧值的行。改完文档后 `accept new/` 刷新 `examples/expected/`,与改动放在同一个 PR。CI 的 `examples-full` 做同样的比对。文档里由输出推导的数(两个输出之差、各行之和、一列的范围)登记在 `examples/derived.yaml`:`compare` 用新输出重算并列出不再成立的引用,`python tools/example_drift.py derived` 与测试套件按 `examples/expected/` 检查每一处;新写一个示例不直接打印的数时,在那里登记一条 |
+| 可能改示例输出数字的改动(库、示例、`configs/`、`data/`) | 全尺寸跑 `python tools/run_examples.py --jobs 4 --save new/`(只动了几个示例时按编号只跑那几个),再 `python tools/example_drift.py compare new/`:列出变了的输出行,以及文档里仍引用旧值的行。改完文档后 `accept new/` 刷新 `examples/expected/`,与改动放在同一个 PR。CI 的 `examples-full` 做同样的比对。文档里由输出推导的数(两个输出之差、各行之和、一列的范围)登记在 `examples/derived.yaml`:`compare` 用新输出重算并列出不再成立的引用,`python tools/example_drift.py derived` 与测试套件按 `examples/expected/` 检查每一处;新写一个示例不直接打印的数时,在那里登记一条(`python tools/example_drift.py candidates 改过的文档` 列出比较措辞里没登记的数,供核对) |
 | `src/halo_serdes/vendor/` | 不要原地改;从上游重新拷贝,跑 `python tools/vendor_check.py --fail-on-skip --siblings pll_simulator=<上游检出>`(没有上游检出时文件被跳过,不算通过;约定见该目录的 `__init__.py`) |
 | 共用层 `src/halo_serdes/`、`src/halo_serdes_app/` | Android 与桌面打包会被 CI 触发,见下面"两端验证" |
 

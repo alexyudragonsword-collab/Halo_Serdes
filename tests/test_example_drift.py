@@ -153,6 +153,8 @@ def test_derived_expressions_are_arithmetic_only(drift):
     assert round(drift.evaluate("b - a", env), 6) == 3.0
     assert round(float(drift.evaluate("min(x - y)", env)), 6) == 0.09
     assert drift.evaluate("x[-1]", env) == 1.49
+    # the largest of several operands ("TX PR within 0.4 dB of its prediction")
+    assert round(float(drift.evaluate("max(abs(a - b), x[0] - y[0])", env)), 6) == 3.0
     for bad in ("__import__('os')", "a.real", "open('f')", "[a, b]", "a if b else 0"):
         with pytest.raises(ValueError):
             drift.evaluate(bad, env)
@@ -215,3 +217,26 @@ def test_compare_lists_derived_quotes_gone_stale(drift, tmp_path, capsys):
     assert "derived: levers: docs/A.md:1  '3.0'  (now 3.2)" in out
     assert "derived: levers: docs/A.md:1  '33.2'  (now 33)" in out
     assert "2 derived quote(s) no longer hold" in out
+
+
+def test_candidates_are_stated_comparisons_no_cited_example_prints(drift, tmp_path, capsys):
+    # line 1 is registered; line 3 states two numbers example 21 does not print
+    # (the bare -18.2 dB is a loss, not a comparison); line 5's +9.5 dB is printed
+    # and its 0.4 dB rounds from a printed 0.42, so only --strict lists it;
+    # the last line's section cites no example
+    repo = _repo(tmp_path / "repo", "示例 21:FEC 多 3.0 dB(33.2 → 36.2)。\n\n"
+                                    "示例 21:ADC 再加 1.7 dB,比值 1.5×,损耗 −18.2 dB。\n\n"
+                                    "示例 21:reach +9.5 dB,多 0.4 dB。\n\n"
+                                    "# 别处\n\n多 2.2 dB。\n")
+    (repo / "examples").mkdir()
+    (repo / "examples" / "derived.yaml").write_text(DERIVED_YAML, encoding="utf-8")
+    exp = tmp_path / "exp"
+    exp.mkdir()
+    (exp / "21_full.txt").write_text(OUT21)
+    assert drift.candidates(repo, exp) == [("docs/A.md", 3, ["再加 1.7 dB", "1.5×"], ["21"])]
+    assert drift.candidates(repo, exp, strict=True) == [
+        ("docs/A.md", 3, ["再加 1.7 dB", "1.5×"], ["21"]), ("docs/A.md", 5, ["多 0.4 dB"], ["21"])]
+    assert drift.candidates(repo, exp, docs=["docs/B.md"]) == []
+    # the command, on this repository
+    assert drift.main(["candidates", "README.md"]) == 0
+    assert "line(s) to read" in capsys.readouterr().out

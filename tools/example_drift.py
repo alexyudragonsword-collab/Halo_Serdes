@@ -37,9 +37,12 @@ registered in ``examples/derived.yaml``: where each operand is printed, and
 the doc text that quotes the result. ``compare`` re-derives them from the new
 outputs and lists the quotes that went stale; ``derived`` (and the test suite)
 checks every registered quote against ``examples/expected/``, so an ``accept``
-that leaves one behind fails the tests. CI's ``examples-full`` workflow runs
-the comparison on every change to the library or the examples, and weekly
-(dependency updates move numbers too).
+that leaves one behind fails the tests. An unregistered one stays invisible;
+``candidates`` lists the doc lines that state a difference or a ratio ("多
+2.3 dB", "1.5×") no cited example prints, to be read and registered (most of
+what it lists is history or a separate measurement). CI's ``examples-full``
+workflow runs the comparison on every change to the library or the examples,
+and weekly (dependency updates move numbers too).
 
 Timings (``[3.2s]``, ``in 33s``) are not seeded and depend on the machine,
 and the figures are written under the checkout's absolute path; both are
@@ -301,7 +304,8 @@ def stale(change: Change, index: DocIndex) -> list[tuple[DocNumber, str, str | N
 # ``after`` the first line below the one line that pattern matches. With
 # ``each`` the operand is every match of that pattern within the line (a list:
 # ``x[0]``, ``x[-1]``, ``min(x - y)``). In a quote, ``{expr}`` is an arithmetic
-# expression over the operands (+ - * /, min, max, abs, sum, log10, indexing),
+# expression over the operands (+ - * /, min, max, abs, sum, log10, indexing;
+# ``max(a - b, c - d)`` takes the largest of several),
 # ``{*}`` any number, and ``{expr |upper}`` / ``{expr |lower}`` a quote that
 # bounds the value ("under 1 dB") instead of rounding it. Whitespace matches
 # loosely and HTML tags are ignored on both sides; every place the text occurs
@@ -368,8 +372,9 @@ def evaluate(expr: str, env: dict):
         if isinstance(n, ast.Subscript):
             return ev(n.value)[int(ev(n.slice))]
         if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in _FUNCS
-                and len(n.args) == 1 and not n.keywords):
-            return _FUNCS[n.func.id](ev(n.args[0]))
+                and n.args and not n.keywords):
+            args = [ev(a) for a in n.args]
+            return _FUNCS[n.func.id](args[0] if len(args) == 1 else np.array(args))
         raise ValueError(f"not allowed in a derived expression: {ast.unparse(n)!r}")
     return ev(ast.parse(expr, mode="eval").body)
 
@@ -481,6 +486,61 @@ def report_derived(outputs: dict[str, str], repo: Path = REPO, entries=None, out
     return len(bad) + len(broken)
 
 
+# A number stated as a comparison: "多 2.3 dB", "差 0.03 dB", "+0.34 dB",
+# "+81 m", "1.5×", "31 倍" (after _plain, so "−" is already "-"). A bare
+# "-18.2 dB" is left out: in these docs that is a loss or a level (RIN, SNR).
+_COMPARE = re.compile(
+    r"(?:多|差|省|掉|亏|赚|高出?|低|再加|相差|代价|buys?|more|apart|gains?|costs?|saves?|penalty|better|worse)"
+    r"\s*(?:约|~|≈)?\s*[+-]?(\d+(?:\.\d+)?)\s*(?:dB|m\b|倍|×|x\b)"
+    r"|(?<![\w.])\+(\d+(?:\.\d+)?)\s*(?:dB|m\b)"
+    r"|(?<![\w.])(\d+(?:\.\d+)?)\s*(?:×|倍)", re.I)
+
+
+def candidates(repo: Path = REPO, expected: Path = EXPECTED, docs=(), strict: bool = False):
+    """Doc lines stating a difference or a ratio ("多 2.3 dB", "+0.34 dB",
+    "1.5×") that no example they cite prints, on lines no quote in
+    ``examples/derived.yaml`` covers: a list of (doc, line, phrases, examples).
+    Unregistered derived numbers are among them; most of the rest are history,
+    separate measurements and settings, which only reading tells apart. A
+    printed number that rounds to the quote by chance hides it ("约 0.3 dB"
+    beside a printed 0.30); ``strict`` wants the quoted digits printed as they
+    are, at the price of listing every rounded quote too."""
+    by_ex = {name[:2]: text for name, text in _outputs(expected).items()}
+    printed = {ex: [float(t) for t in NUM.findall(text)] for ex, text in by_ex.items()}
+    covered, flat = set(), {}
+    for e in load_derived(repo / DERIVED.relative_to(REPO)):
+        for q in e.quotes:
+            doc = q["doc"]
+            if doc not in flat:
+                raw = (repo / doc).read_text(encoding="utf-8").splitlines() if (repo / doc).exists() else []
+                flat[doc] = [_flat(ln) if len(ln) < 3000 else "" for ln in raw]  # skip inlined figures
+            rx, _ = _quote_pattern(q["text"])
+            covered.update((doc, i) for i, ln in enumerate(flat[doc], 1) if rx.search(ln))
+    cites = {}
+    for d in all_doc_numbers(repo):
+        if not docs or d.path in docs:
+            cites[(d.path, d.lineno)] = (d.block or d.section) & by_ex.keys()
+    texts, out = {}, []
+    for (doc, ln), exs in sorted(cites.items()):
+        if not exs or (doc, ln) in covered:
+            continue
+        if doc not in texts:
+            src = (repo / doc).read_text(encoding="utf-8")
+            texts[doc] = _prose_lines(src) if doc.endswith(".py") else src.splitlines()
+        phrases = []
+        for m in _COMPARE.finditer(_plain(texts[doc][ln - 1])):
+            tok = next(g for g in m.groups() if g)
+            if strict:
+                seen = any(re.search(rf"(?<![\d.]){re.escape(tok)}(?!\d)", by_ex[e]) for e in exs)
+            else:
+                seen = any(rounds_to(tok, v) for e in exs for v in printed[e])
+            if not seen:
+                phrases.append(m.group(0).strip())
+        if phrases:
+            out.append((doc, ln, phrases, sorted(exs)))
+    return out
+
+
 def compare(expected: Path, new: Path, repo: Path = REPO, out=None) -> int:
     """Print what moved and where the docs quote it; 1 if anything differs.
     Only the examples in ``new`` are compared, so a run of a few is enough to
@@ -560,7 +620,19 @@ def main(argv=None) -> int:
     d = sub.add_parser("derived", help="check every quote in examples/derived.yaml; exit 1 on any that fails")
     d.add_argument("outputs", type=Path, nargs="?", default=EXPECTED,
                    help="outputs to derive from (default: the expected ones)")
+    k = sub.add_parser("candidates", help="list stated differences / ratios that no cited example prints "
+                                          "and no registered quote covers (to read, not to gate)")
+    k.add_argument("docs", nargs="*", help="repo-relative documents (default: all)")
+    k.add_argument("--strict", action="store_true",
+                   help="a quote counts as printed only digit for digit, not by rounding")
     args = ap.parse_args(argv)
+    if args.cmd == "candidates":
+        found = candidates(REPO, EXPECTED, args.docs, args.strict)
+        for doc, ln, phrases, exs in found:
+            print(f"{doc}:{ln}  {' | '.join(phrases)}   (cites {', '.join(exs)})")
+        print(f"{len(found)} line(s) to read: register the derived numbers among them in "
+              f"{DERIVED.relative_to(REPO).as_posix()}")
+        return 0
     if args.cmd == "compare":
         return compare(args.expected, args.new)
     if args.cmd == "derived":
