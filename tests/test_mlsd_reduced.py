@@ -137,12 +137,8 @@ def test_config_refuses_what_it_cannot_run():
         LinkConfig(modulation="pam4", rx=rx, pr=PrConfig(target=(1.0, 0.5)))
     LinkConfig(modulation="pam4", rx=rx, pr=PrConfig(target=(1.0, 0.5, 0.0)))   # L = 4
     rx2 = dc.replace(rx, mlsd=MlsdConfig(kind="viterbi", memory=2, state_memory=2))
-    with pytest.raises(ValueError, match="bit-true"):
-        LinkConfig(modulation="pam4", rx=rx2, pr=PrConfig(target=(1.0, 0.5)),
-                   numeric=NumericConfig(mode="fixed"))
-    rx3 = dc.replace(rx, mlsd=MlsdConfig(kind="viterbi", memory=2, state_memory=3))
-    LinkConfig(modulation="pam4", rx=rx3, pr=PrConfig(target=(1.0, 0.5)),
-               numeric=NumericConfig(mode="fixed"))                        # K = L: the full trellis
+    LinkConfig(modulation="pam4", rx=rx2, pr=PrConfig(target=(1.0, 0.5)),
+               numeric=NumericConfig(mode="fixed"))                        # bit-true DFSE (fixed_viterbi)
 
 
 def test_power_model_prices_the_reduced_trellis():
