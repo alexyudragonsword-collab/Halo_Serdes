@@ -66,7 +66,7 @@
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
    30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、952 个测试全通过、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、976 个测试全通过、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -79,7 +79,7 @@
 (`engine/cascade.py`,示例 33 LPO / retimed / CPO 同台);E/O 大信号曲线(VCSEL L-I / EAM,统计引擎按邻符号图样建了它对 ISI 的
 弯折,压缩 0…0.5 时两引擎 0.86–1.28×)与 802.3 TDECQ(`analysis/tdecq.py`,示例 34)。
 LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极管噪声之前才有用)。
-**未做**:功耗(802.3dj TDECQ 的 1 抽头 DFE 已建)。三个参考库都没有光路。
+功耗(2026-10-11 已做,估计口径):`analysis/power.py` 按模块给 pJ/bit —— ADC 按 FOM、数字 FFE / DFE / Viterbi 按运算次数、比较器、光模块、重定时器;系数全是公开数据的估计,与已发表总量差在 2 倍内,只读比值(示例 41:retimed 减 LPO 8.51 pJ/b,实测模块之差 7.4–8.5);LPO 与 CPO 在模型里同价,CPO 省下的那部分不在模型里。(802.3dj TDECQ 的 1 抽头 DFE 已建。)三个参考库都没有光路。
 
 **相对 PyBERT**
 
@@ -152,5 +152,5 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 952 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 976 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。

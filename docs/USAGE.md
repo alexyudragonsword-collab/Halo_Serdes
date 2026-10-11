@@ -29,6 +29,7 @@
 17. [DSP 发端:DAC 与驱动器压缩](#17-dsp-发端dac-与驱动器压缩)
 18. [接收端部分响应(PR)整形](#18-接收端部分响应pr整形)
 19. [TI-ADC 校准(后台 / 前台)](#19-ti-adc-校准后台--前台)
+20. [功耗估计(pJ/bit)](#20-功耗估计pjbit)
 
 ---
 
@@ -391,7 +392,7 @@ mask = jtol_mask(freqs)         # 通用合规模板
 rx:
   mlsd:
     kind: viterbi      # none | sliding | viterbi
-    memory: 2          # 网格里的残余后光标数(状态数 = n_levels^memory)
+    memory: 2          # 网格里的残余后光标数(状态数 = n_levels^(memory + PR 受控光标数))
     seq_len: 4         # sliding 的平方误差窗
 precode: true          # 1/(1+D) mod-N 预编码
 ```
@@ -914,3 +915,31 @@ rx:
   没有噪声时常数输入每次转换都得同一个码,再多次也只是同一个数 —— 残差停在量化误差 q/√12(这里 0.68 mV),
   反而不如后台(数据本身在量化器上是"抖动"的)。前台测量要越过 q/√12,需要抖动(噪声或注入)。
 - 统计引擎本来就不建 lane 失配,校准对它无影响。
+
+## 20. 功耗估计(pJ/bit)
+
+`analysis/power.py` 按模块给一条链路方向的功耗,只读配置、不跑仿真。**系数全是公开数据的估计**(出处、区间与推导见
+`cairn/功耗建模.md`),所以读**比值**:两种收端、ADC 分辨率、PR 目标长度、LPO / CPO / retimed 之间谁贵多少,不是绝对预算。
+
+```python
+from halo_serdes.analysis.power import PowerCoefficients, power_report, trellis_states
+
+r = power_report(cfg)                    # 默认系数
+print(r.table())                         # 逐块 mW 与 pJ/b
+r.pj("host.rx")                          # 收端合计 pJ/b;"host.rx.adc" / "host.rx.mlsd" / "optics" / "retimer" 同理
+trellis_states(cfg)                      # Viterbi 状态数 = N^(len(pr.target) - 1 + mlsd.memory)
+
+import dataclasses                       # 换系数做敏感度:FOM、Schreier 定律、数字开销……
+k = dataclasses.replace(PowerCoefficients(), adc_fom="schreier", digital_overhead=3.0)
+power_report(cfg, k).pj_per_bit
+```
+
+- **算什么**:发端每 bit 一个总量(有 `tx.dac_bits` 时加数字 FIR);两种收端共用的前端 / 时钟 / CDR 用同一个系数(比较时抵消);
+  混合信号的比较器(数据 N − 1,tap1 展开 × N,加误差、边沿比较器)与模拟 DFE 抽头;ADC 按 Walden(每 bit ×2)或 Schreier(×4)
+  定律,`adc.enob` 未设时按 `n_bits` 计价(理想量化器的功耗没有意义,备注里会写);数字 FFE / DFE / Viterbi 按运算次数 ×
+  Horowitz 45 nm 能耗 × DeepScaleTool 的 45 → 7 nm 缩放;有光路加一个光模块总量,`retimer: both` 加两对收发。
+- **不算什么**:数字块只算运算(寄存器、时钟树、并行展开、LMS、幸存路径存储不算,是下限);每 bit 能耗与符号率无关(假设);
+  CPO 与 LPO 在模型里同价(拓扑只改电段损耗,CPO 省下的驱动走线与模块开销不在模型里)。
+- **示例** `examples/41_power_budget.py`:与已发表总量核对(112 Gb/s 收发器 4.23 vs 4.63 pJ/b,retimed 减 LPO 8.51 vs 实测 7.4–8.5),
+  示例 07 的两种收端(混合信号 1.60、ADC 4.81 pJ/b),224G LR 杠杆(Viterbi 每多一个受控光标 ×3.76 / ×3.91),
+  示例 33 的三种拓扑,以及每个结论在系数区间两端是否还成立。

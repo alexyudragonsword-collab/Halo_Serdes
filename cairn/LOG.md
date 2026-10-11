@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-11 · 功耗估计(feat/power-model,ROADMAP P3 #11 余项"功耗")
+
+- 新:`analysis/power.py` 按模块给 pJ/bit(发端 / 两种收端共用块按每 bit 总量,混合信号比较器与模拟 DFE,ADC 按 Walden / Schreier FOM,
+  数字 FFE / DFE / Viterbi 按运算次数,光模块与重定时器);只读配置,不动引擎。系数全是公开数据的估计:Murmann ADC 调查表(中位数
+  70 fJ / 146 dB)、Horowitz 45 nm、DeepScaleTool 45 → 7 nm 能耗比 0.175(用户上传的 .xlsm,只读宏源码未执行)、已发表收发器与实测 800G 模块。
+- 核对:112G 收发器 4.23 vs 4.63 pJ/b;224G 收端 2.44 vs 1.41;retimed 减 LPO 8.51 vs 实测 7.4–8.5。示例 41 + 示例 07 换掉旧代理。
+- 结论(系数取到区间两端仍成立):ADC 收端是混合信号的 2.01–5.85×;Viterbi 每多一个受控光标 ×3.76 / ×3.91,第二个光标 +9.48 pJ/b;
+  同到 64 状态收端 PR 比 DSP 深度划算;retimed / LPO 1.53–1.75。不确定:ENOB +1 的代价(Walden / Schreier 差一个数量级,且 ENOB 7.5
+  @ 112 GS/s 无已发表器件);LPO 与 CPO 在模型里同价。更正 SUMMARY 杠杆表"N² 状态"(实为 N³ = 64)。详见 `cairn/功耗建模.md`。
+- 测试 952 → 976(+24,`tests/test_power.py`);本地 Cython 编译 `analysis/power.py` 通过。
+
 ## 2026-10-11 · MMSE 起始解计入发端噪声(feat/mmse-tx-noise)
 
 - 问题(示例 40 量到):`pr.adapt: mmse` 的起始解只看 FFE 输入处的白噪声,发端噪声为主时选 a = 0.98(12 GHz)/ 0.26(22 GHz),

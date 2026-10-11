@@ -186,7 +186,6 @@ for label, key in parts:
     bottom = [b + x for b, x in zip(bottom, vals)]
 axes[0].set_xticks(range(len(labels)), labels, rotation=30, ha="right", fontsize=7)
 axes[0].set(ylabel="receiver [pJ/b]", title="224G LR receivers (estimate)")
-axes[0].set_yscale("log")
 axes[0].legend(fontsize=8)
 bottom = [0.0] * len(TOPOS)
 for label, key in (("host TX + RX", "host"), ("optics", "optics"), ("retimers", "retimer")):

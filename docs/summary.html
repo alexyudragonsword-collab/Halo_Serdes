@@ -169,7 +169,7 @@ footer .repo{font-family:"SF Mono",monospace;color:var(--ink2)}
     </section>
 <section><div class="chap"><span class="no mono">01</span>
       <h2><span class="zh">框架:六个阶段</span><span class="en">The framework: six phases</span></h2></div>
-      <p class="lead"><span class="zh">从空仓库到完整框架,分六个阶段交付,每阶段都有闭式解 / 黄金数据对照的验证。约 25,700 行 Python、952 项测试、双引擎(时域 + StatEye 统计)。</span><span class="en">From an empty repo to a complete framework in six verified phases (closed-form / golden-data checks throughout). ~25,700 lines of Python, 952 tests, dual engines (time-domain + StatEye statistical).</span></p>
+      <p class="lead"><span class="zh">从空仓库到完整框架,分六个阶段交付,每阶段都有闭式解 / 黄金数据对照的验证。约 25,700 行 Python、976 项测试、双引擎(时域 + StatEye 统计)。</span><span class="en">From an empty repo to a complete framework in six verified phases (closed-form / golden-data checks throughout). ~25,700 lines of Python, 976 tests, dual engines (time-domain + StatEye statistical).</span></p>
       <div class="twrap"><table>
         <thead><tr><th><span class="zh">阶段</span><span class="en">Phase</span></th><th><span class="zh">内容</span><span class="en">Content</span></th><th><span class="zh">关键验证</span><span class="en">Key check</span></th></tr></thead>
         <tbody>
@@ -301,10 +301,10 @@ footer .repo{font-family:"SF Mono",monospace;color:var(--ink2)}
       <div class="twrap"><table>
         <thead><tr><th><span class="zh">里程碑</span><span class="en">Milestone</span></th><th class="num">reach</th><th><span class="zh">手段</span><span class="en">means</span></th><th><span class="zh">代价</span><span class="en">cost</span></th></tr></thead>
         <tbody>
-        <tr><td><span class="zh">基线 ADC-DSP</span><span class="en">Baseline ADC-DSP</span></td><td class="num dbcell">18 dB</td><td><span class="zh">FFE + 1-tap DFE</span><span class="en">FFE + 1-tap DFE</span></td><td><span class="zh">DSP 面积/功耗</span><span class="en">DSP area/power</span></td></tr>
+        <tr><td><span class="zh">基线 ADC-DSP</span><span class="en">Baseline ADC-DSP</span></td><td class="num dbcell">18 dB</td><td><span class="zh">FFE + 1-tap DFE</span><span class="en">FFE + 1-tap DFE</span></td><td><span class="zh">15 + 1 抽头 ADC 收端估 4.81 pJ/b,ADC 占 3.17(示例 07 / 41)</span><span class="en">15 + 1 tap ADC receiver est. 4.81 pJ/b, ADC 3.17 (examples 07 / 41)</span></td></tr>
         <tr><td><span class="zh">深 LR 上的 FFE(+ MLSD)</span><span class="en">FFE (+ MLSD) at deep LR</span></td><td class="num dbcell">31 dB</td><td><span class="zh">长 FFE;MLSD 在本扫描无增益</span><span class="en">long FFE; MLSD gains nothing here</span></td><td><span class="zh">DSP 面积/功耗</span><span class="en">DSP area/power</span></td></tr>
-        <tr><td><span class="zh">+ DFE + 更深 MLSD</span><span class="en">+ DFE + deeper MLSD</span></td><td class="num dbcell">33 dB</td><td><span class="zh">DSP 深度(+1.7 dB)</span><span class="en">DSP depth (+1.7 dB)</span></td><td><span class="zh">收益递减</span><span class="en">diminishing</span></td></tr>
-        <tr><td><span class="zh">+ 更好 ADC 或 级联 FEC</span><span class="en">+ better ADC or concat FEC</span></td><td class="num dbcell">36 / 38.5 dB</td><td><span class="zh">单杠杆 +3.3(FEC)/ +5.5 dB(ADC)</span><span class="en">single lever +3.3 (FEC) / +5.5 dB (ADC)</span></td><td><span class="zh">ADC 功耗 / FEC 开销</span><span class="en">ADC power / FEC overhead</span></td></tr>
+        <tr><td><span class="zh">+ DFE + 更深 MLSD</span><span class="en">+ DFE + deeper MLSD</span></td><td class="num dbcell">33 dB</td><td><span class="zh">DSP 深度(+1.7 dB)</span><span class="en">DSP depth (+1.7 dB)</span></td><td><span class="zh">收益递减;+2.17 pJ/b(16 → 64 状态)</span><span class="en">diminishing; +2.17 pJ/b (16 → 64 states)</span></td></tr>
+        <tr><td><span class="zh">+ 更好 ADC 或 级联 FEC</span><span class="en">+ better ADC or concat FEC</span></td><td class="num dbcell">36 / 38.5 dB</td><td><span class="zh">单杠杆 +3.3(FEC)/ +5.5 dB(ADC)</span><span class="en">single lever +3.3 (FEC) / +5.5 dB (ADC)</span></td><td><span class="zh">ADC 功耗 ×2–4 / FEC 开销</span><span class="en">ADC power ×2–4 / FEC overhead</span></td></tr>
         <tr class="hl"><td><span class="zh">+ 两者全上</span><span class="en">+ both</span></td><td class="num dbcell">43 dB</td><td><span class="zh">全栈 +9.8 dB</span><span class="en">full stack +9.8 dB</span></td><td><span class="zh">功耗 + 开销叠加</span><span class="en">power + overhead</span></td></tr>
         </tbody>
       </table></div>
@@ -322,7 +322,7 @@ footer .repo{font-family:"SF Mono",monospace;color:var(--ink2)}
 </main>
 <footer>
       <div><span class="zh">Halo_Serdes · 系统行为级高速 SerDes 仿真框架</span><span class="en">Halo_Serdes · behavioral high-speed SerDes simulation framework</span></div>
-      <div style="margin-top:6px"><span class="zh">约 25,700 行 Python · 952 项测试 · 双引擎(时域 + StatEye)· 41 个实验脚本</span><span class="en">~25,700 lines · 952 tests · dual engines (time-domain + StatEye) · 41 example scripts</span></div>
+      <div style="margin-top:6px"><span class="zh">约 25,700 行 Python · 976 项测试 · 双引擎(时域 + StatEye)· 42 个实验脚本</span><span class="en">~25,700 lines · 976 tests · dual engines (time-domain + StatEye) · 42 example scripts</span></div>
       <div class="repo" style="margin-top:10px">branch: claude/analyze-three-repos-2iys2n</div>
     </footer>
 <script>

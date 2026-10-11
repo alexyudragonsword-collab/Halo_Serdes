@@ -42,7 +42,7 @@ print(run_time_link(cfg).summary())     # BER / SER / slicer SNR
 
 ## 图形界面 GUI
 
-一个专业的 Plotly Dash 工作台,把 41 个示例脚本的全部分析能力变成交互式操作
+一个专业的 Plotly Dash 工作台,把 42 个示例脚本的全部分析能力变成交互式操作
 (单次链路、双引擎交叉校验、眼图/浴盆、CTLE、自适应/CDR 动态、ADC 逐 lane、抖动预算、
 reach 扫描、FEC、串扰、AMI/COM、定点),共 17 个能力标签页。界面不新增任何仿真逻辑,
 只驱动现有引擎并渲染结果。详见 [`docs/GUI.md`](docs/GUI.md);
@@ -67,15 +67,15 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 时钟 | `cdr/` | bang-bang 与 Mueller-Müller CDR(二阶环、环路延迟、相位钳位) |
 | 光互联 | `optical/` + `LinkConfig.topology` | **LPO / CPO / retimed,阶段 1–3**:电段 A → E/O(VCSEL 二阶 / EML 单极点)→ 光纤(OM4 模式带宽 / SMF 色散+啁啾)→ O/E(PD+TIA)→ 电段 B 作为级联 H(f) 进信道;散粒 + RIN + TIA 噪声随每个 PAM4 电平的光功率变化,两个引擎共用一个噪声对象(`examples/32`);重定时串联(`engine/cascade.py`,`examples/33`);L-I / EAM 大信号曲线与 802.3 TDECQ(`analysis/tdecq.py`,`examples/34`) |
 | 引擎 | `engine/` | 时域 MC、StatEye 统计(PDF 卷积外推 1e-15)、静态快评、Tx-FIR 背channel 训练 |
-| 分析 | `analysis/` | 眼图/浴盆、三层抖动分解、JTOL、IEEE 802.3 COM(93A/178A)、波形重建 |
+| 分析 | `analysis/` | 眼图/浴盆、三层抖动分解、JTOL、IEEE 802.3 COM(93A/178A)、波形重建;**按模块的功耗估计**(`analysis/power.py`:ADC 按 Walden / Schreier FOM、FFE / DFE / Viterbi 按运算次数、比较器、光模块与重定时器,pJ/bit;系数是公开数据的估计,读比值,`examples/41`) |
 | 编码 | `fec/` | RS-KP4/KR4 + pre/post-FEC 换算、级联内码模型 |
 | 接口 | `io/` | IBIS-AMI(真实 C ABI 执行编译模型 / pyibisami 厂商模型)、COM 适配器 |
 | 界面 | `halo_serdes_gui/` | 17 标签页 Plotly Dash 工作台 + Windows 桌面打包 |
 | 硬件 | `rtl/` | FFE+DFE+slicer 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**(2026-10-03):核心库 ~9.8k 行 / 应用层与 GUI ~4.2k 行 / 测试 ~7.3k 行 / 示例 ~4.4k 行;
-**952 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
-**41 个编号示例**(`examples/00`–`40`)。
+**976 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**42 个编号示例**(`examples/00`–`41`)。
 
 ## 路线图
 
