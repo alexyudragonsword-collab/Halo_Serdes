@@ -19,7 +19,7 @@
   8.51 vs 实测 7.4–8.5)、示例 07 的两种收端(1.60 vs 4.81 pJ/b)、224G LR 杠杆(每多一个受控光标 Viterbi ×3.76 / ×3.91,
   第一个 +2.39、第二个 +9.48 pJ/b)、示例 33 的三种拓扑(LPO 13.25、retimed 21.76;LPO 与 CPO 在模型里同价),以及每个比较在
   系数区间两端是否成立。
-- 测试 +24(`tests/test_power.py`:Walden / Schreier 复现调查表一行、每 bit ×2 / ×4、FFE 线性、网格状态数、展开 tap1、
+- 测试 +26(`test_examples_api` 对示例 41 参数化 2 项;`tests/test_power.py` 24 项:Walden / Schreier 复现调查表一行、每 bit ×2 / ×4、FFE 线性、网格状态数、展开 tap1、
   两种架构共用块同价、retimed = LPO + 两对收发)。
 
 ### 变更

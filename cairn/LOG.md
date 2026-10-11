@@ -12,7 +12,8 @@
 - 结论(系数取到区间两端仍成立):ADC 收端是混合信号的 2.01–5.85×;Viterbi 每多一个受控光标 ×3.76 / ×3.91,第二个光标 +9.48 pJ/b;
   同到 64 状态收端 PR 比 DSP 深度划算;retimed / LPO 1.53–1.75。不确定:ENOB +1 的代价(Walden / Schreier 差一个数量级,且 ENOB 7.5
   @ 112 GS/s 无已发表器件);LPO 与 CPO 在模型里同价。更正 SUMMARY 杠杆表"N² 状态"(实为 N³ = 64)。详见 `cairn/功耗建模.md`。
-- 测试 952 → 976(+24,`tests/test_power.py`);本地 Cython 编译 `analysis/power.py` 通过。
+- 测试 952 → 978(`tests/test_power.py` 24 项,`test_examples_api` 对示例 41 参数化 2 项;全量 978 passed / 1 skipped);
+  本地 Cython 编译 `analysis/power.py` 通过;引擎指纹 819 值逐位不变。
 
 ## 2026-10-11 · MMSE 起始解计入发端噪声(feat/mmse-tx-noise)
 
