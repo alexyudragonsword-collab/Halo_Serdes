@@ -50,8 +50,8 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 
 ## 01 · 框架:六个阶段 / The framework: six phases
 
-约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**952 项测试**、双引擎(时域 + StatEye 统计)、41 个实验脚本(2026-10-03 计)。
-~25,700 lines of Python, **952 tests**, dual engines (time-domain + StatEye), 41 example scripts (as of 2026-10-03).
+约 25,700 行 Python(核心库 9.8k / 应用层与 GUI 4.2k / 测试 7.3k / 示例 4.4k)、**978 项测试**、双引擎(时域 + StatEye 统计)、42 个实验脚本(2026-10-03 计)。
+~25,700 lines of Python, **978 tests**, dual engines (time-domain + StatEye), 42 example scripts (as of 2026-10-03).
 
 | Phase | 内容 / Content | 关键验证 / Key check |
 |---|---|---|
@@ -136,12 +136,16 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 
 | 杠杆 / Lever | 增益 / Gain | 代价 / Cost |
 |---|---|---|
-| DSP 深度(DFE + 更深 MLSD)/ DSP depth | +1.7 dB | 收益递减 / diminishing |
-| **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+5.5 dB** | ADC 功耗 / power |
-| **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.3 dB** | 开销 6%→24% / overhead |
-| **收端 PR 整形**(FFE 均衡到 1+0.75D,Viterbi 解受控光标)/ RX partial response | **+5.0 dB** | Viterbi 网格(N² 状态)/ trellis |
-| **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.3 dB** | 网格 ×4(256 状态)/ trellis ×4 |
-| 三个受控光标(1 + aD + bD² + cD³,memory 1)/ three controlled cursors | +7.6 dB | 同 256 状态,比两个只多 0.3 dB / same 256 states |
+| DSP 深度(DFE + 更深 MLSD)/ DSP depth | +1.7 dB | 收益递减;16 → 64 状态 + 8 抽头 DFE,+2.17 pJ/b / diminishing; +2.17 pJ/b |
+| **ADC 质量**(ENOB 6.5→7.5,噪声减半)/ ADC quality | **+5.5 dB** | ADC 功耗 ×2(Walden,+3.17 pJ/b)到 ×4(Schreier);112 GS/s 下 ENOB 7.5 超出已发表的 ADC / ADC power ×2-4, beyond any published 112 GS/s ADC |
+| **级联 FEC**(内码抬高可容忍 pre-FEC)/ concat FEC | **+3.3 dB** | 开销 6%→24%(解码器功耗未建)/ overhead |
+| **收端 PR 整形**(FFE 均衡到 1+0.75D,Viterbi 解受控光标)/ RX partial response | **+5.0 dB** | Viterbi 网格 16 → 64 状态,+2.39 pJ/b / trellis 16 → 64 states |
+| **两个受控光标**(1 + aD + bD²,收端 MMSE 选目标)/ two controlled cursors | **+7.3 dB** | 网格 ×4(256 状态),再 +9.48 pJ/b / trellis ×4, +9.48 pJ/b |
+| 三个受控光标(1 + aD + bD² + cD³,memory 1)/ three controlled cursors | +7.6 dB | 同 256 状态,比两个只多 0.3 dB,同价 / same 256 states, same cost |
+
+代价列的 pJ/b 是示例 41 的估计(`analysis/power.py`,系数全是公开数据的估计,只读比值;`cairn/功耗建模.md`),DSP 深度与收端 PR 相对 21 抽头 FFE + memory-2 Viterbi(16 状态)的对照,ADC 相对同一 DSP 的 ENOB 6.5,两个受控光标相对一个。两个规律不随系数变:同样走到 64 状态,收端 PR 换 +5.0 dB、DSP 深度只换 +1.7 dB;每多一个受控光标网格 ×4,第二个光标的 +2.3 dB 要 +9.48 pJ/b —— 256 状态只算运算就超过已发表 224G 收端总量(1.41 pJ/b)。ADC 杠杆的代价最不确定(Walden 下 +3.17、Schreier 146 dB 下 +23.12 pJ/b)。 / The pJ/b are example 41's estimates (public-figure coefficients; read ratios). Two patterns hold across the coefficient ranges: at the same 64 states receive PR buys +5.0 dB and DSP depth +1.7 dB; each controlled cursor multiplies the trellis by 4, and the second one's +2.3 dB costs +9.48 pJ/b.
+
+(2026-10-11 更正:收端 PR 一行的代价原写"Viterbi 网格(N² 状态)"。1 + aD 加 memory 2 的网格是 N³ = 64 状态,对照(delta 目标 + memory 2)才是 N² = 16。 / Corrected: the receive-PR trellis is N³ = 64 states, not N²; the control is N² = 16.)
 
 - **MLSD 只拿回短 FFE 留下的 ISI**(示例 18):21 抽头 LMS FFE 收敛到 MMSE,残余光标 ≤ 0.002,MLSD memory-2 在每个损耗都是 1.0×;
   3 抽头 FFE 留下 h2 ≈ −0.05…−0.11,MLSD 在 −27.3…−33.3 dB 拿回 2.4–4.3×(符号错,全程计数;此前只数 2 万符号时记 1.9–4.4×) —— 但 3 抽头 + MLSD 仍不如 21 抽头 FFE 单独用。
@@ -231,6 +235,8 @@ a DSP-retimed module decides and re-transmits at ingress and egress, so the link
 > changes how clean the signal is and the other how dirty it may be), all three here move the SNR of the same segment;
 > past 300 m the OM4 modal bandwidth (15.7 GHz) is the wall.
 
+**三种切法各花多少 / What each cut costs**(示例 41,每链路方向,ADC 按 ENOB 5.5 计价;系数是公开数据的估计,只读比值):LPO 13.25、DSP retimed 21.76 pJ/b,重定时器那份 8.51 pJ/b 与实测 800G 模块 retimed 减 LPO 的 7.4–8.5 对得上;系数取到区间两端 retimed / LPO 1.53–1.75。重定时换的 +128 m(示例 33)要这 8.51 pJ/b。**LPO 与 CPO 在模型里同价** —— 拓扑只改电段损耗,CPO 省下的驱动走线与模块开销不在模型里(厂商口径 CPO 约 5 vs LPO 约 9 pJ/b)。 / Per link direction (example 41, estimated coefficients): LPO 13.25 and DSP-retimed 21.76 pJ/b; the retimers' 8.51 pJ/b matches the 7.4-8.5 measured between retimed and LPO 800G modules. LPO and CPO price the same in the model: what CPO saves is outside it.
+
 **均衡放在哪里比放多少重要 / Where the equaliser sits matters more than how much**(示例 32 第 3 问,100 m 处 OMA 裕度):
 光电二极管噪声是分界线。噪声之前的 host Tx FFE 与 LPO 模块驱动器 CTLE 都在加噪声前抵消段 A,16 dB 段从关不上到 5.52(FFE)/ 7.88 dB
 (FFE + 驱动器 6 dB);噪声之后的 TIA CTLE 把噪声一起抬,一律小亏(5.52 → 5.30 dB)。示例 32 原来"CPO 多 3.1 dB"是两边都不做发端
@@ -279,10 +285,10 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 
 | 里程碑 / Milestone | reach | 手段 / means | 代价 / cost |
 |---|---|---|---|
-| 基线 ADC-DSP | 18 dB | FFE + 1-tap DFE | DSP 面积/功耗 |
+| 基线 ADC-DSP | 18 dB | FFE + 1-tap DFE | 15 + 1 抽头 ADC 收端估 4.81 pJ/b,ADC 占 3.17(示例 07 / 41) |
 | 深 LR 上的 FFE(+ MLSD) | 31 dB | 长 FFE;MLSD 在本扫描无增益 | DSP 面积/功耗 |
-| + DFE + 更深 MLSD | 33 dB | DSP 深度(+1.7 dB) | 收益递减 |
-| + 级联 FEC / 更好 ADC | 36 / 38.5 dB | 单杠杆 +3.3 / +5.5 dB | FEC 开销 / ADC 功耗 |
+| + DFE + 更深 MLSD | 33 dB | DSP 深度(+1.7 dB) | 收益递减;+2.17 pJ/b(16 → 64 状态) |
+| + 级联 FEC / 更好 ADC | 36 / 38.5 dB | 单杠杆 +3.3 / +5.5 dB | FEC 开销 / ADC 功耗 ×2–4 |
 | **+ 两者全上** | **43 dB** | 全栈 +9.8 dB | 功耗 + 开销叠加 |
 
 > **核心论点 / The thesis**：深 LR 是全栈问题,没有单一杠杆能到。每个杠杆单独到顶都会撞上各自的墙——DSP 撞 SNR 墙、FEC 撞 pre-FEC 悬崖、ADC 撞功耗。只有正交组合(ADC 质量 × DSP × FEC)才能从 33 dB 推到 43 dB。这套框架的价值是把每个杠杆的 dB 贡献与代价量化摆出来——给的是一张权衡表,而非一个是非题。
@@ -298,4 +304,4 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 
 ---
 
-*Halo_Serdes · 约 25,700 行 Python · 952 项测试 · 双引擎 · 41 个实验脚本*
+*Halo_Serdes · 约 25,700 行 Python · 978 项测试 · 双引擎 · 42 个实验脚本*

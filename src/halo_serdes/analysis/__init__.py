@@ -11,6 +11,7 @@ from .jitter import (
 from .com import ComParams, ComResult93a, compute_com
 from .jtol import JtolResult, jitter_tolerance, jtol_mask
 from .metrics import ber_confidence, nrz_ber_awgn, pam4_ser_awgn, qfunc, qfunc_inv, slicer_snr_db
+from .power import PowerCoefficients, PowerReport, power_report, trellis_states
 
 __all__ = [
     "eye_density", "plot_eye",
@@ -19,4 +20,5 @@ __all__ = [
     "pattern_period", "stage_jitter_budget", "format_jitter_budget",
     "JtolResult", "jitter_tolerance", "jtol_mask",
     "ComParams", "ComResult93a", "compute_com",
+    "PowerCoefficients", "PowerReport", "power_report", "trellis_states",
 ]

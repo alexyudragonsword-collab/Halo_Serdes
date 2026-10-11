@@ -6,6 +6,29 @@
 
 ---
 
+## [未发布] — 功耗估计(pJ/bit,估计口径;示例 41)
+
+### 新增
+- `analysis/power.py`:按模块给一条链路方向的功耗,只读配置。发端与两种收端共用的前端 / 时钟按每 bit 总量(两种架构同一个系数);
+  混合信号的比较器(tap1 展开 × N)与模拟 DFE 抽头;ADC 按 Walden 或 Schreier FOM(`enob` 未设按 `n_bits` 计价并注明);
+  数字 FFE / DFE / Viterbi 按运算次数 × Horowitz 45 nm 能耗 × DeepScaleTool 的 45 → 7 nm 能耗比 0.175;Viterbi 状态数
+  N^(len(pr.target) − 1 + mlsd.memory) 与引擎网格一致(`trellis_states`);光路一个模块总量,`retimer: both` 加两对收发。
+  **系数全是公开数据的估计**(Murmann ADC 调查表、Horowitz、DeepScaleTool、已发表收发器与实测 800G 模块;出处表在
+  `cairn/功耗建模.md`),只读比值。数字块只算运算,是下限。
+- `examples/41_power_budget.py`:与已发表总量核对(112 Gb/s 收发器 4.23 vs 4.63 pJ/b;224 Gb/s 收端 2.44 vs 1.41;retimed 减 LPO
+  8.51 vs 实测 7.4–8.5)、示例 07 的两种收端(1.60 vs 4.81 pJ/b)、224G LR 杠杆(每多一个受控光标 Viterbi ×3.76 / ×3.91,
+  第一个 +2.39、第二个 +9.48 pJ/b)、示例 33 的三种拓扑(LPO 13.25、retimed 21.76;LPO 与 CPO 在模型里同价),以及每个比较在
+  系数区间两端是否成立。
+- 测试 +26(`test_examples_api` 对示例 41 参数化 2 项;`tests/test_power.py` 24 项:Walden / Schreier 复现调查表一行、每 bit ×2 / ×4、FFE 线性、网格状态数、展开 tap1、
+  两种架构共用块同价、retimed = LPO + 两对收发)。
+
+### 变更
+- 示例 07 的"乘法数 × 位宽"代理(混合信号记 0)换成本模型的收端 pJ/b:混合信号 1.60、ADC 4.81(3.01×)。
+
+### 修正
+- `docs/SUMMARY.md` 杠杆表把收端 PR(1 + aD + memory 2)的网格写成"N² 状态",实为 N³ = 64,对照才是 N² = 16;同表代价列补了 pJ/b。
+  USAGE 的 `mlsd.memory` 注释改为状态数 = n_levels^(memory + PR 受控光标数)。
+
 ## [未发布] — MMSE 起始解计入发端噪声
 
 ### 修正

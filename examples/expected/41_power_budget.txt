@@ -1,0 +1,44 @@
+Power model (analysis/power.py): coefficients are public-figure estimates; read ratios
+
+== 1. checks against published totals
+  112 Gb/s DSP transceiver (56 GBd, ENOB 5.5, 15-tap FFE + 1-tap DFE): model 4.23 pJ/b, published 4.63 (5 nm)
+  224 Gb/s ADC receiver (112 GBd, ENOB 4.5, 15-tap FFE + 1-tap DFE): model 2.44 pJ/b, published 1.41
+  retimed minus LPO (53.125 GBd, two retimers, ENOB 5.5, 17-tap FFE): model 8.51 pJ/b, measured 800G modules 7.4-8.5
+
+== 2. receivers of example 07 (106.25 GBd PAM4), pJ/b
+  receiver                            common comparators         dfe         adc         ffe  receiver
+  mixed-signal (3-tap DFE)              1.20        0.25        0.15        0.00        0.00      1.60
+  mixed-signal, tap 1 unrolled          1.20        0.70        0.10        0.00        0.00      2.00
+  ADC (ENOB 6.5, 15+1 taps)             1.20        0.00        0.04        3.17        0.40      4.81
+  ADC receiver / mixed-signal receiver: 3.01x (the ADC alone 3.17 pJ/b)
+
+== 3. 224G LR receivers (112 GBd PAM4), pJ/b
+  receiver                                   states     ADC  FFE+DFE  Viterbi  receiver  vs first
+  FFE21 + Viterbi mem2 (ex 19, 36 control)       16    3.17     0.58     0.87      5.81     +0.00
+  FFE11 + DFE8 + Viterbi mem3 (ex 19, 21)        64    3.17     0.36     3.26      7.98     +2.17
+  same, ADC ENOB 7.5 (ex 19, 21)                 64    6.34     0.36     3.26     11.15     +5.33
+  RX PR 1 + aD, mem2 (ex 36)                     64    3.17     0.58     3.26      8.20     +2.39
+  1 + aD + bD^2, mem2 (ex 38)                   256    3.17     0.58    12.73     17.68    +11.87
+  + cD^3, mem1 (ex 38)                          256    3.17     0.58    12.73     17.68    +11.87
+  + cD^3, mem2 (ex 38)                         1024    3.17     0.58    50.56     55.51    +49.69
+  Viterbi per controlled cursor: x3.76 (16 -> 64 states), x3.91 (64 -> 256)
+
+== 4. example 33's links (53.125 GBd PAM4, ADC ENOB 5.5), per link direction, pJ/b
+  topology        host TX+RX   optics  retimers    total
+  LPO                   4.25     9.00      0.00    13.25
+  CPO                   4.25     9.00      0.00    13.25
+  DSP retimed           4.25     9.00      8.51    21.76
+  LPO and CPO price the same here: the model has no term for what CPO removes (driving the host trace, the module's own overhead)
+
+== 5. sensitivity: the same comparisons at the ends of each coefficient's range
+  coefficients            ADC/MS   ENOB+1  PR 16->64  64->256  ret-LPO  ret/LPO
+  default                   3.01    +3.17      +2.39    +9.48    +8.51     1.64
+  ADC FOM 38 fJ             2.10    +1.72      +2.39    +9.48    +7.06     1.56
+  ADC FOM 120 fJ            4.42    +5.43      +2.39    +9.48   +10.77     1.75
+  ADC Schreier 146 dB       5.85   +23.12      +2.39    +9.48    +9.19     1.68
+  ADC Schreier 151 dB       2.55    +7.31      +2.39    +9.48    +6.56     1.53
+  digital x0.5              2.87    +3.17      +1.19    +4.74    +8.04     1.62
+  digital x3                3.57    +3.17      +7.17   +28.43   +10.38     1.73
+  comparator x3             2.01    +3.17      +2.39    +9.48    +8.51     1.64
+  RX common 0.57 pJ/b       4.31    +3.17      +2.39    +9.48    +7.25     1.57
+wrote examples/output/41_power_budget.png

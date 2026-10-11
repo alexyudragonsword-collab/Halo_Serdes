@@ -45,6 +45,10 @@
     - {doc: examples/19_deep_lr_limit.py, text: "buys ~{adc - dfe} dB of reach with the SAME DSP ({ffe} -> {dfe} dB from DSP depth"}
     - {doc: examples/19_deep_lr_limit.py, text: "{dfe} -> {adc} dB from the ADC"}
     - {doc: examples/21_full_stack_lr.py, text: "the ADC lever (~+{adc - dfe} dB)"}
+    - {doc: cairn/功耗建模.md, text: "+{adc - dfe} dB 的 ADC 杠杆的代价是外推"}
+    - {doc: cairn/功耗建模.md, text: "示例 19 的 DFE8 + memory 3 花 +2.17 pJ/b 换 +{dfe - ffe} dB"}
+    - {doc: docs/SUMMARY.md, text: "收端 PR 换 +5.0 dB、DSP 深度只换 +{dfe - ffe} dB"}
+    - {doc: docs/SUMMARY.md, text: "receive PR buys +5.0 dB and DSP depth +{dfe - ffe} dB"}
 
 - name: ex20 concatenated-FEC lever (KP4 alone vs + BCH(255,215) inner code)
   values:
@@ -151,6 +155,9 @@
     - {doc: cairn/DSP发端与PR.md, text: "memory 1 与 2 差 {c4m2 - c4m1} dB,也与 §12 相符"}
     - {doc: cairn/engineering-pitfalls.md, text: '示例 38 的"再加 {adbd - ad} dB"所在段'}
     - {doc: cairn/engineering-pitfalls.md, text: '("约 {c4m1 - adbd} dB"对上了目标光标 0.30)'}
+    - {doc: cairn/功耗建模.md, text: "第二个(示例 38,再 +{adbd - ad} dB)+9.48 pJ/b"}
+    - {doc: docs/SUMMARY.md, text: "第二个光标的 +{adbd - ad} dB 要 +9.48 pJ/b"}
+    - {doc: docs/SUMMARY.md, text: "the second one's +{adbd - ad} dB costs +9.48 pJ/b"}
 
 - name: ex37 TX PR against its peak-cost prediction (control reach - 20 log10(1 + a))
   values:

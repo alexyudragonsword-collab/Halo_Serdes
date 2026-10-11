@@ -7,10 +7,11 @@ architectures on identical Tx/channel/noise conditions:
 - ADC-based: light CTLE + 8b/16-lane TI-ADC + 15-tap FFE + 1-tap DFE + MM-CDR
   (802.3dj reference receiver configuration).
 
-Reports slicer SNR, SER, pre/post-FEC BER, and the power/complexity proxy
-(taps x bit width). The expected physics: mixed-signal collapses between
-10 and 15 dB of Nyquist loss while ADC/DSP keeps working — the reason the industry
-moved to ADC-based architectures at 224G.
+Reports slicer SNR, SER, pre/post-FEC BER, and each receiver's power estimate
+(``analysis/power.py``; example 41 breaks it down and checks it). The expected
+physics: mixed-signal collapses between 10 and 15 dB of Nyquist loss while
+ADC/DSP keeps working — the reason the industry moved to ADC-based
+architectures at 224G, at about 2.7x the receiver power by that estimate.
 """
 
 import sys
@@ -24,6 +25,7 @@ import matplotlib.pyplot as plt
 REPO = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
+from halo_serdes.analysis.power import power_report  # noqa: E402
 from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
@@ -63,14 +65,6 @@ def channel_cfg(length_m: float) -> ChannelConfig:
                          r_skin=1.8e-3, loss_tangent=0.010, n_freq=8192)
 
 
-def power_proxy(rx: RxConfig) -> int:
-    """Complexity proxy: DSP multiplies x bit width (0 for analog taps)."""
-    if rx.arch == "adc_dsp":
-        n_ffe = rx.ffe.n_pre + 1 + rx.ffe.n_post
-        return n_ffe * 10 * rx.adc.n_bits // 8 + rx.dfe.n_taps * 10
-    return 0  # analog CTLE+DFE: no digital multiplies (different power axis)
-
-
 lengths = [0.04, 0.08, 0.12, 0.16, 0.20]
 rows = []
 for L in lengths:
@@ -95,8 +89,10 @@ for L in lengths:
           f"| ADC: SNR {adc.slicer_snr_db:5.1f} dB SER {adc.ser:.2e}")
 
 print()
-print(f"power/complexity proxy (digital multiplies x bits): "
-      f"MS = {power_proxy(MS_RX)}, ADC = {power_proxy(ADC_RX)}")
+pj = {name: power_report(LinkConfig(modulation="pam4", symbol_rate=RATE, rx=rx)).pj("host.rx")
+      for name, rx in (("MS", MS_RX), ("ADC", ADC_RX))}
+print(f"receiver power estimate (analysis/power.py, public-figure coefficients; read the ratio): "
+      f"MS {pj['MS']:.2f} pJ/b, ADC {pj['ADC']:.2f} pJ/b ({pj['ADC'] / pj['MS']:.2f}x)")
 print("post-FEC (KP4) projection at the deepest common operating point:")
 for name in ("ms", "adc"):
     pre = max(rows[-2][name].ber.ber, 1e-7)
