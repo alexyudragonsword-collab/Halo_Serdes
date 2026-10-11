@@ -6,6 +6,19 @@
 
 ---
 
+## [未发布] — MMSE 起始解计入发端噪声
+
+### 修正
+- 收端的起始求解(`pr.adapt: mmse` 的目标、`lms` 的起点、起始 MMSE FFE;时域 ADC 收端与静态引擎)原来只看 FFE 输入处的白噪声
+  (收端 + ADC)。`tx.noise_rms` 到 FFE 时经信道着色、与信号同形,这时最优目标是 delta;旧解在示例 40 的 12 / 22 GHz 链路上选
+  a = 0.98 / 0.26,`adapt: lms` 从那里几乎不动(0.980 → 0.981)。现在按 σ² × DAC → FFE 逐 UI 响应的自相关(Toeplitz)计入:
+  选回 a ≈ 0,容忍的发端噪声 36.7 → 42.8 mV(12 GHz)、45.6 → 48.2 mV(22 GHz),与对照相同;40 mV 时 BER 5.5e-4 → 1.0e-4。
+  DAC 量化不计入(带 DAC 的链路起始解照旧);没有 `tx.noise_rms` 时逐位不变(819 值指纹)。
+- `mmse_ffe` / `mmse_pr_target` 加可选的 `noise_cov`;`statistical.tx_noise_covariance`。
+- 示例 40 重跑:MMSE 行如上;发端 PR 两行的 22 GHz / a = 1 列小移(LMS 起点变了),发端 PR 亏 3.0–5.8 dB。
+- 更正 `cairn/DSP发端与PR.md` §16 的"MMSE 仍选 a ≈ 0.38":那是 DAC 量化试验里的值。
+- 测试 +2(`tests/test_tx_noise.py`)。
+
 ## [未发布] — 光 duobinary:发端噪声 `tx.noise_rms`,带宽受限调制器上 PR 放哪(示例 40)
 
 ### 新增

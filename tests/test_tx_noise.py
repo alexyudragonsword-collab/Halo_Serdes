@@ -95,3 +95,40 @@ def test_tx_sndr_counts_the_transmitter_noise():
     cfg = LinkConfig(modulation="pam4", tx=TxConfig(noise_rms=sigma), sim=SimConfig(n_symbols=40_000))
     expect = 10 * np.log10((5 / 36) / sigma ** 2)
     assert abs(tx_report(cfg).sndr_db - expect) < 0.5, (tx_report(cfg).sndr_db, expect)
+
+
+def test_mmse_target_with_noise_shaped_like_the_signal_is_a_delta():
+    """All the noise ahead of the channel: the equalised MSE is P sigma^2 /
+    (P + sigma^2) |d|^2, smallest for the monic target with no controlled
+    cursor; the same noise taken as white at the FFE input picks a sizeable
+    a. ``noise_cov=None`` is the solve it always was."""
+    from scipy.linalg import toeplitz
+
+    from halo_serdes.dsp.ffe import mmse_ffe, mmse_pr_target
+
+    c = np.array([0.04, 1.0, 0.62, 0.31, 0.14, 0.06, 0.02])
+    c_pre, n_taps, tap_pre, ps, s2 = 1, 15, 4, 5 / 9, 0.02
+    acf = np.correlate(c, c, "full")[c.size - 1:]
+    cov = s2 * toeplitz(np.pad(acf, (0, n_taps - acf.size)))
+    shaped = mmse_pr_target(c, c_pre, n_taps, tap_pre, noise_var=1e-9, symbol_power=ps, noise_cov=cov)
+    white = mmse_pr_target(c, c_pre, n_taps, tap_pre, noise_var=s2 * acf[0], symbol_power=ps)
+    assert shaped[1] < 0.05 < 0.3 < white[1], (shaped, white)
+    assert np.array_equal(mmse_ffe(c, c_pre, n_taps, tap_pre, 1e-3),
+                          mmse_ffe(c, c_pre, n_taps, tap_pre, 1e-3, noise_cov=None))
+
+
+def test_tx_noise_covariance_is_the_coloured_noise_at_the_ffe_input():
+    from halo_serdes.channel import ChannelModel
+    from halo_serdes.engine.statistical import _dac_cursors, tx_noise_covariance
+
+    cfg = _optical(12e9, 0.03)
+    h = ChannelModel.from_config(cfg).response_set(cfg.dt).h.y
+    pipe = TxPipeline.from_config(cfg)
+    cov = tx_noise_covariance(pipe, h, cfg.dt, cfg.osr, 17)
+    d = _dac_cursors(h, cfg.dt, cfg.osr)
+    assert cov.shape == (17, 17) and np.allclose(cov, cov.T)
+    assert cov[0, 0] == pytest.approx(0.03 ** 2 * np.sum(d ** 2))
+    assert cov[0, 1] > 0.0                      # a low-pass colours it: neighbours correlate
+    assert np.min(np.linalg.eigvalsh(cov)) > -1e-12 * cov[0, 0]
+    quiet = TxPipeline.from_config(_optical(12e9, 0.0))
+    assert tx_noise_covariance(quiet, h, cfg.dt, cfg.osr, 17) is None

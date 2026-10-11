@@ -755,6 +755,8 @@ r.sndr_db, r.rlm, r.dac_clipped
   一样整形 —— 与收端噪声(RIN、PD / TIA、`rx.noise_rms`,在带宽限制之后)正相反。独立随机流(`[sim.seed, 0x7E5]`),开它不挪
   任何别的抽取;`noise_rms: 0` 逐位等于没有这个字段。统计引擎把它与 DAC 的 σ_q 合并,经 DAC → 判决器的响应到 RX;有序列检测器 +
   PR 目标时,联合界的噪声自相关按两份方差加权:收端那份取自 FFE 抽头,发端那份是 DAC → 判决器逐 UI 响应的自相关。
+  收端的起始求解(`pr.adapt: mmse` 的目标、LMS 的起点、起始 MMSE FFE;时域与静态引擎)把它当作 FFE 输入处的有色噪声
+  (σ² × DAC → FFE 逐 UI 响应的自相关,Toeplitz)计入;DAC 的量化不计入,带 DAC 的链路起始解照旧。
   TX SNDR(`tx_report`)与光 TDECQ 都含它;`front_end_waveform(with_noise=False)` 不含。DCD 按含噪的相邻值判沿,
   噪声造成的伪沿两侧只差噪声那么一点,移动它对波形的影响可忽略。
 - **COM 不含 DAC / 驱动器**:`analysis/com.py` 与 `NativeCom` 用 802.3 的参考发端。
@@ -815,7 +817,7 @@ precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 �
 **光 duobinary(发端带宽受限)**:调制器自身的低通就是 1 + D 滤波器,发端只需预编码 —— 在这里就是收端 PR(a ≈ 1,可配预编码),
 不是 `at: tx`。示例 `examples/40_pr_optical_duobinary.py`(VCSEL 的 f_r 当带宽限制):噪声在调制器后(RIN、PD / TIA)时收端 PR
 让需要的 f_r 从 14.23 降到 11.94 GHz,发端 PR 要 16.74–17.36 GHz;噪声在发端(`tx.noise_rms`,调制器带宽之前)时带宽限制几乎
-不扣分,PR 都不赚(收端 −0.5…−2.3 dB、发端 −3.0…−5.7 dB 噪声容限)。发端该做的是预加重(host Tx FFE),不是整形。
+不扣分,PR 都不赚(固定 a = 1 的收端 −1.5…−2.3 dB,MMSE 选 a 时选回 delta、持平,发端 −3.0…−5.8 dB 噪声容限)。发端该做的是预加重(host Tx FFE),不是整形。
 
 ---
 
