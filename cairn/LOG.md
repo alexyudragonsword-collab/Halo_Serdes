@@ -11,7 +11,9 @@
   响应的自相关(Toeplitz)。DAC 量化不计入;无 `tx.noise_rms` 时逐位不变(819 值指纹)。
 - 数:MMSE / LMS 选回 a ≈ 0,容忍的发端噪声 36.7 → 42.8 mV、45.6 → 48.2 mV,与对照相同;40 mV 时 BER 5.5e-4 → 1.0e-4。
   示例 40 重跑,发端 PR 两行小移(LMS 起点变了)。更正 §16 的"仍选 a ≈ 0.38"(那是 DAC 量化试验的值)。坑:自适应不会替你修起始解。
-- 测试 950 → 952(全量 952 passed / 1 skipped);本地 Cython 编译改过的 4 个模块通过。详见 `cairn/DSP发端与PR.md` §17。
+- 测试 950 → 952(全量 952 passed / 1 skipped);本地 Cython 编译改过的 4 个模块通过。Android(76b880c,含全部 `src/` 改动)
+  API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包三个 job 通过(nuitka 113 / onefile 121 分钟);b45c6bf 上
+  测试矩阵、examples-full 全绿。详见 `cairn/DSP发端与PR.md` §17。
 
 ## 2026-10-11 · 光 duobinary:发端噪声 + 带宽受限调制器上 PR 放哪(study/tx-pr-optical,ROADMAP P3 #8 余项)
 
