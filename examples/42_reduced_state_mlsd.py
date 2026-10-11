@@ -169,6 +169,10 @@ for name in SHORT_CASES:
     gain = round(reach[name] - reach[ref], 2) + 0.0
     print(f"  {name:<26} {states[name]:6d}   {reach[name]:8.2f}   {gain:+6.2f}   {pj[name][0]:10.2f}")
 
+# a 3-tap FFE leaves the 4-state trellis within a refinement step of the full one
+assert abs(reach["delta, memory 3, K = 1"] - reach["delta, memory 3, full"]) < 0.4, reach
+assert abs(reach["1 + aD, memory 2, K = 1"] - reach["1 + aD, memory 2, full"]) < 0.4, reach
+
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.8))
 for name, style in zip(CASES, ("o-C0", "o:C0", "^-C3", "^--C3", "^:C3", "D-C1", "D--C1")):
