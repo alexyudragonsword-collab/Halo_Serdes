@@ -2,7 +2,7 @@
 
 Symbol domain (one value per UI)::
 
-    levels -> [PR filter] -> FFE -> [DAC]
+    levels -> [PR filter] -> FFE -> [DAC] -> [noise]
 
 then the single explicit domain change, a zero-order hold that places every
 edge where the Tx clock puts it, and the waveform domain::
@@ -20,6 +20,12 @@ before the FFE and the DAC, so a transmit-side 1+aD target is what the DAC
 has to resolve (its extra levels cost DAC range). It is scaled by 1/(1+a):
 the composite peak equals the unshaped one, so the DAC and driver span what
 they spanned before and the level spacing pays for the extra levels.
+
+The transmitter's own noise (``tx.noise_rms``) is white per UI at the DAC
+output, held through the ZOH with the symbol: everything after it -- driver
+pole, an optical modulator's band limit, the channel -- shapes it exactly as
+it shapes the signal. It is drawn from a stream of its own, seeded from
+``sim.seed``, so switching it on moves no edge, receiver-noise or ADC draw.
 """
 
 from __future__ import annotations
@@ -43,7 +49,8 @@ class TxPipeline:
     """
 
     def __init__(self, cfg: LinkConfig, dac: TxDac | None = None,
-                 driver_nl: DriverNl | None = None) -> None:
+                 driver_nl: DriverNl | None = None,
+                 noise_rng: np.random.Generator | None = None) -> None:
         self.cfg = cfg
         tx = cfg.tx
         self.fir_taps = np.asarray(tx.fir_taps, dtype=np.float64)
@@ -54,6 +61,10 @@ class TxPipeline:
         self.pr_taps = t / np.abs(t).sum() if np.any(t[1:] != 0.0) else None
         self.dac_model = dac
         self.driver_nl = driver_nl
+        self.noise_rms = float(tx.noise_rms)
+        if self.noise_rms > 0.0 and noise_rng is None:
+            noise_rng = np.random.default_rng([cfg.sim.seed, 0x7E5])
+        self.noise_rng = noise_rng
         self.stats = {"dac_clipped": 0}
 
     @classmethod
@@ -132,9 +143,23 @@ class TxPipeline:
         """Equivalent white error of the DAC per UI [V] (0 without one)."""
         return 0.0 if self.dac_model is None else self.dac_model.sigma_q
 
-    def symbol_stage(self, symbols: np.ndarray) -> np.ndarray:
-        """Line symbols (level indices, after any precoding) -> per-UI volts."""
-        return self.dac(self.ffe(self.pr_filter(self.levels(symbols))))
+    @property
+    def tx_sigma(self) -> float:
+        """All the white per-UI error at the DAC output [V]: the DAC's
+        equivalent quantisation noise and the transmitter's own noise."""
+        return float(np.hypot(self.dac_sigma_q, self.noise_rms))
+
+    def noise(self, v: np.ndarray) -> np.ndarray:
+        if self.noise_rms == 0.0:
+            return v
+        return v + self.noise_rms * self.noise_rng.standard_normal(v.size)
+
+    def symbol_stage(self, symbols: np.ndarray, noise: bool = True) -> np.ndarray:
+        """Line symbols (level indices, after any precoding) -> per-UI volts.
+        ``noise=False`` leaves the transmitter's own noise out (a noiseless
+        reconstruction)."""
+        v = self.dac(self.ffe(self.pr_filter(self.levels(symbols))))
+        return self.noise(v) if noise else v
 
     # ----------------------------------------------------------- the crossing
     def edge_offsets(self, v_sym: np.ndarray, rng: np.random.Generator) -> np.ndarray:

@@ -725,7 +725,7 @@ GUI「Optical」页与 Android 的「Optical reach」study 用统计级联画同
 
 ## 17. DSP 发端:DAC 与驱动器压缩
 
-发端是一条流水线(`tx/pipeline.py::TxPipeline`):符号域 **电平 → [PR 占位] → FFE → DAC**,一次显式 ZOH(带时钟边沿偏移),
+发端是一条流水线(`tx/pipeline.py::TxPipeline`):符号域 **电平 → [PR 占位] → FFE → DAC → [发端噪声]**,一次显式 ZOH(带时钟边沿偏移),
 波形域 **驱动器压缩 → 驱动器单极点**。所有引擎与分析入口都从它取发端波形,新字段默认全关,关着时逐字节等于以前。
 
 ```yaml
@@ -740,6 +740,7 @@ tx:
   drv_compression: 0.1     # curve 的 c,与 optical.li_compression 同一定义(两端斜率比)
   # drv_p1db_v: 0.35       # tanh:单音 1 dB 压缩点的输入幅度
   # drv_oip3_v: 1.2        # cubic:输出三阶交调点幅度,y = x − 4/(3 OIP3²) x³
+  noise_rms: 0.0           # 发端自己的噪声 [V rms],每 UI 一个白噪声加在 DAC 输出;0 = 关
 ```
 
 ```python
@@ -750,6 +751,12 @@ r.sndr_db, r.rlm, r.dac_clipped
 
 - **削峰不静默**:`dac_fs` 小于 FFE 峰值时 `dac_clipped` 计数,TX SNDR 随之下降;`train_tx_fir` 在有 `dac_fs` 时把 Σ|taps| 限在 `dac_fs / swing`。
 - **统计引擎**把 DAC 折成每 UI 白噪 σ_q² = LSB²/12 + E[INL²],经 DAC→判决器的符号响应到 RX;驱动器压缩只在时域引擎里,统计引擎发 warning。
+- **发端噪声(`noise_rms`)**:驱动器 / DAC 的热噪声,在驱动器极点与(光链路)调制器带宽**之前**,所以后面每一级都把它和信号
+  一样整形 —— 与收端噪声(RIN、PD / TIA、`rx.noise_rms`,在带宽限制之后)正相反。独立随机流(`[sim.seed, 0x7E5]`),开它不挪
+  任何别的抽取;`noise_rms: 0` 逐位等于没有这个字段。统计引擎把它与 DAC 的 σ_q 合并,经 DAC → 判决器的响应到 RX;有序列检测器 +
+  PR 目标时,联合界的噪声自相关按两份方差加权:收端那份取自 FFE 抽头,发端那份是 DAC → 判决器逐 UI 响应的自相关。
+  TX SNDR(`tx_report`)与光 TDECQ 都含它;`front_end_waveform(with_noise=False)` 不含。DCD 按含噪的相邻值判沿,
+  噪声造成的伪沿两侧只差噪声那么一点,移动它对波形的影响可忽略。
 - **COM 不含 DAC / 驱动器**:`analysis/com.py` 与 `NativeCom` 用 802.3 的参考发端。
 
 示例 `examples/35_dsp_tx_sndr.py`:TX SNDR 对 DAC 位数 × 驱动器压缩(叠 6.02N + 1.76),以及示例 18 的信道扫描上

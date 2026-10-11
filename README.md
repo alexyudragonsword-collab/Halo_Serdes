@@ -42,7 +42,7 @@ print(run_time_link(cfg).summary())     # BER / SER / slicer SNR
 
 ## 图形界面 GUI
 
-一个专业的 Plotly Dash 工作台,把 40 个示例脚本的全部分析能力变成交互式操作
+一个专业的 Plotly Dash 工作台,把 41 个示例脚本的全部分析能力变成交互式操作
 (单次链路、双引擎交叉校验、眼图/浴盆、CTLE、自适应/CDR 动态、ADC 逐 lane、抖动预算、
 reach 扫描、FEC、串扰、AMI/COM、定点),共 17 个能力标签页。界面不新增任何仿真逻辑,
 只驱动现有引擎并渲染结果。详见 [`docs/GUI.md`](docs/GUI.md);
@@ -75,7 +75,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 
 **规模**(2026-10-03):核心库 ~9.8k 行 / 应用层与 GUI ~4.2k 行 / 测试 ~7.3k 行 / 示例 ~4.4k 行;
 **941 项测试**(闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
-**40 个编号示例**(`examples/00`–`39`)。
+**41 个编号示例**(`examples/00`–`40`)。
 
 ## 路线图
 

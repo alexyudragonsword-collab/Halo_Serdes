@@ -442,16 +442,21 @@ def adc_noise_sigma(cfg: LinkConfig) -> float:
     return float(acfg.fullscale / np.sqrt(12.0) * 2.0 ** (-bits))
 
 
-def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> float:
-    """sigma at the slicer of a white per-UI error of ``sigma_q`` added at the
-    DAC output: sqrt(sum_k p_k^2) sigma_q with p_k the symbol response from the
-    DAC to the slicer at the main cursor's phase."""
+def _dac_cursors(h: np.ndarray, dt: float, osr: int) -> np.ndarray:
+    """The symbol response from the DAC output to the slicer, one sample per
+    UI at the main cursor's phase."""
     from ..core.sampler import baud_samples
 
     p = pulse_from_impulse(Waveform(h, dt), osr).y
     peak = int(np.argmax(np.abs(p)))
-    cursors = baud_samples(p, osr, peak % osr)
-    return float(sigma_q * np.sqrt(np.sum(cursors ** 2)))
+    return baud_samples(p, osr, peak % osr)
+
+
+def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> float:
+    """sigma at the slicer of a white per-UI error of ``sigma_q`` added at the
+    DAC output: sqrt(sum_k p_k^2) sigma_q with p_k the symbol response from the
+    DAC to the slicer at the main cursor's phase."""
+    return float(sigma_q * np.sqrt(np.sum(_dac_cursors(h, dt, osr) ** 2)))
 
 
 #: PR loop load (per-symbol decision SER x sum c_k^2) from which run_statistical
@@ -556,9 +561,14 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         noise_sigma = noise_sigma * float(np.linalg.norm(ffe_taps))
         h_after_dac = np.convolve(h_after_dac, upsampled_taps(ffe_taps, osr))
     pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
-    if tx_pipe.dac_sigma_q > 0.0:
-        noise_sigma = float(np.hypot(noise_sigma, dac_noise_at_slicer(
-            tx_pipe.dac_sigma_q, h_after_dac, cfg.dt, osr)))
+    # white per-UI error at the DAC output -- the DAC's equivalent noise and
+    # the transmitter's own (tx.noise_rms) -- reaches the slicer through
+    # everything after the DAC, shaped as the signal is
+    rx_sigma = noise_sigma
+    tx_cursors = None
+    if tx_pipe.tx_sigma > 0.0:
+        tx_cursors = _dac_cursors(h_after_dac, cfg.dt, osr)
+        noise_sigma = float(np.hypot(noise_sigma, float(tx_pipe.tx_sigma * np.sqrt(np.sum(tx_cursors ** 2)))))
     if level_sigma is not None:
         level_sigma = np.asarray(level_sigma, dtype=np.float64)
 
@@ -619,9 +629,18 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # input (the receiver noise is band-limited to the baud rate), coloured
     # by the taps; only the partial-response union bound reads it
     noise_acf = np.ones(1)
-    if pr_active and mlsd_mem > 0 and ffe_taps is not None and len(ffe_taps) > 1:
-        w = np.asarray(ffe_taps, dtype=float)
-        noise_acf = np.correlate(w, w, "full")[w.size - 1:]
+    if pr_active and mlsd_mem > 0:
+        if ffe_taps is not None and len(ffe_taps) > 1:
+            w = np.asarray(ffe_taps, dtype=float)
+            noise_acf = np.correlate(w, w, "full")[w.size - 1:]
+        if tx_cursors is not None:
+            # the transmitter's share is coloured by the whole chain after the
+            # DAC, the FFE included: the cursors' own autocorrelation, weighted
+            # by the two shares' variances at the slicer
+            acf_rx = noise_acf / noise_acf[0] * rx_sigma ** 2
+            acf_tx = np.correlate(tx_cursors, tx_cursors, "full")[tx_cursors.size - 1:] * tx_pipe.tx_sigma ** 2
+            n = max(acf_rx.size, acf_tx.size)
+            noise_acf = np.pad(acf_rx, (0, n - acf_rx.size)) + np.pad(acf_tx, (0, n - acf_tx.size))
 
     # the phase the receiver samples goes first: the PR union bound's overlap
     # weights are sampled there once (pr_error_events) and carried to the

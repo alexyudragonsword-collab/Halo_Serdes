@@ -95,6 +95,7 @@ from halo_serdes.config.schema import (
     (lambda: TxConfig(drv_nl="cubic"), "drv_oip3_v"),
     (lambda: TxConfig(drv_nl="tanh", drv_p1db_v=-0.3), "drv_p1db_v"),
     (lambda: LinkConfig(modulation="pam4", tx=TxConfig(dac_bits=1)), "dac_bits"),
+    (lambda: TxConfig(noise_rms=-0.01), "noise_rms"),
     # receive partial response: 1 + aD only, main cursor 1, alpha in [0, 1],
     # and only where a digital FFE can shape it
     (lambda: PrConfig(target=()), "pr.target"),
@@ -173,7 +174,7 @@ def test_dsp_tx_fields_round_trip_through_yaml(tmp_path):
 
     cfg = LinkConfig(modulation="pam4", tx=TxConfig(
         fir_taps=(-0.1, 0.8, -0.1), fir_n_pre=1, dac_bits=7, dac_fs=0.9, dac_thermo_msbs=3,
-        dac_unit_sigma=0.02, drv_nl="curve", drv_compression=0.2))
+        dac_unit_sigma=0.02, drv_nl="curve", drv_compression=0.2, noise_rms=0.004))
     path = tmp_path / "dsp_tx.yaml"
     dump_config(cfg, path)
     assert load_config(path) == cfg
