@@ -10,7 +10,8 @@
 - 结果:真推导数 6 个 —— 示例 38 的 +0.34(ROADMAP)/ 约 0.3(USAGE)/ 2.3 / 0.03 dB(DSP §10 / §13),示例 37 发端与预测之差 0.4 / 1.3 dB;
   数都还对。登记 8 组 76 处 → 9 组 84 处(含 pitfalls 举例的两处)。其余是历史值、单独实测(多种子、定点扫描)、配置或别的示例打印的数。
 - 工具:`candidates [文档…] [--strict]` 只列不拦;推导式 `max` / `min` 支持多操作数。顺带修 `docs/summary.html` 三处停在 913 的测试数。
-- 测试 940 → 941(`tests/test_example_drift.py` 15 passed);只动 tools / docs,不涉及 `src/`,无需 Android。坑见 `engineering-pitfalls.md`
+- 测试 940 → 941(全量 941 passed / 1 skipped,JIT + iverilog);只动 tools / docs,不涉及 `src/`,无需 Android;CI(7fb884a)
+  测试矩阵、lint、examples、examples-full 全绿。坑见 `engineering-pitfalls.md`
   "文档里引用的示例数字"一条的 2026-10-10 更新。
 
 ## 2026-10-10 · 高 SER 下 CDR 失效:统计引擎报环路负载(study/pr-high-ser,ROADMAP P2 #15 余项)
