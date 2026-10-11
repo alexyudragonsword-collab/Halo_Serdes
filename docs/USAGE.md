@@ -393,9 +393,16 @@ rx:
   mlsd:
     kind: viterbi      # none | sliding | viterbi
     memory: 2          # 网格里的残余后光标数(状态数 = n_levels^(memory + PR 受控光标数))
+    state_memory: 2    # 可选:降状态网格(DFSE),状态只记最近 K 个符号,其余光标按各幸存路径的判决反馈;不设 = 全网格
     seq_len: 4         # sliding 的平方误差窗
 precode: true          # 1/(1+D) mod-N 预编码
 ```
+
+**降状态网格(`state_memory` = K)**:网格跨 L = PR 受控光标数 + `memory` 个光标,全网格 N^L 个状态(PAM4、1 + aD + bD²、
+memory 2 时 256)。K < L 时状态只记最近 K 个符号(N^K 个),后 L − K 个光标用每条幸存路径自己的判决减掉
+(decision-feedback sequence estimation,Duel-Hallen & Heegard 1989)。K = L(或不设)就是原来的全网格,逐判决相同。
+统计引擎按"两条路径在降状态网格里合并前"累计的距离算(长 n 的错误事件只计差的前 n + K 个样本),幸存路径的反馈错误不计。
+定点模式(`numeric.mode: fixed`)只支持全网格,设 K < L 会被拒。
 
 sliding 检测器**修正接收机自己的判决**(DFE / PR 逐符号判决),只建模一个后光标(残余的第一光标,PR 下是目标的 a);
 三光标 / 四光标 PR 目标(1 + aD + bD² [+ cD³])配 sliding 会被拒,用 viterbi。独立调用 `post_detect(..., "sliding")` 时不给 `dec0`
