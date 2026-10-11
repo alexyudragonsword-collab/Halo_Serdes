@@ -28,9 +28,15 @@ Non-LTI approximations (each cross-checked against the time engine):
   share of what the detector decides among all the events that hold with it
   (``pr_error_events``): the minimum distance alone was 2.5-20x optimistic
   against the time engine, the plain sum up to 2.9x pessimistic (transmit
-  a = 0.5), each event less its overlap with the one before 0.78-2.09x;
-  this 0.67-1.55x across receive and transmit PR, two to four cursors, at
-  BER 7e-5 to 2e-2. The per-symbol decisions the LMS and
+  a = 0.5), each event less its overlap with the one before 0.78-2.09x.
+  Each event sees the residual ISI (what is left outside the trellis)
+  projected on its own difference, as its noise is: at a single sample's
+  size it read 2-12x pessimistic behind a 3-7 tap FFE, which leaves that
+  residual large. Now 0.58-1.08x across receive and transmit PR, two to
+  four cursors, at BER 7e-5 to 2e-2, and 0.77-1.24x behind a 3-7 tap FFE
+  (where the time engine counted 28 errors or more).
+  An optical link's two binned neighbours stay a full-size shift (their
+  noise is per level, not per event). The per-symbol decisions the LMS and
   the CDR read (and, without a sequence detector, the detector) take the
   controlled cursors off with earlier decisions, errors included: a Markov
   chain over the last decision errors (``pr_symbol_decisions``) gives their
@@ -180,6 +186,29 @@ def isi_pdf(cursor_amps: np.ndarray, levels_norm: np.ndarray,
     return pdf
 
 
+def _pr_patterns(families: tuple[str, ...], max_len: int) -> list[np.ndarray]:
+    """The error patterns ``pr_error_events`` runs over, in its order: per
+    family, lengths 1..max_len (a constant run of 1 is the alternating one)."""
+    return [np.where(np.arange(n) % 2 == 0, 1.0, -1.0) if fam == "alternating" else np.ones(n)
+            for fam in families for n in range(1, max_len + 1)
+            if not (fam == "constant" and n == 1)]
+
+
+def pr_event_differences(cursors: np.ndarray, families: tuple[str, ...] = ("alternating",),
+                         max_len: int = 12, state_memory: int | None = None) -> list[np.ndarray]:
+    """The difference each of ``pr_error_events``' events makes to the
+    detector's expected samples (pattern * cursors, cut where a reduced-state
+    trellis merges), in its order and in units of the main cursor."""
+    h = np.asarray(cursors, dtype=float)
+    out = []
+    for e in _pr_patterns(families, max_len):
+        dd = np.convolve(e, h)
+        if state_memory is not None:
+            dd = dd[:e.size + state_memory]
+        out.append(dd)
+    return out
+
+
 def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
                     precoded: bool, max_len: int = 12,
                     snr: float | None = None,
@@ -224,12 +253,14 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     symbol errors per start, the union and not the sum: the at-least-one-event
     estimator of Owen, Maximov and Chertkov (2019), whose relative error stays
     bounded however rare the events. The ISI around the events is left out
-    of the weights, as the per-level sum adds it to each P(A_j).
+    of the weights, as the per-level sum adds it to each P(A_j), projected on
+    the event (``pr_event_differences``).
 
     The chained pairwise overlap this replaced (each L less its intersection
     with L - 1) read 0.78-2.09x the time engine on 16 PR links, up to 2.09x
     with a negative third cursor; this 0.67-1.55x
-    (``cairn/DSP发端与PR.md`` §14).
+    (``cairn/DSP发端与PR.md`` §14), and 0.58-1.08x once each event's ISI
+    was projected on it (§19).
 
     ``families`` adds ``"constant"`` (+1, +1, ...): with a negative
     controlled cursor after the first (b or c < 0) a run of same-sign errors is
@@ -246,9 +277,7 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
 
     h = np.asarray(cursors, dtype=float)
     rho = np.asarray(noise_acf, dtype=float) / float(noise_acf[0])
-    pats = [np.where(np.arange(n) % 2 == 0, 1.0, -1.0) if fam == "alternating" else np.ones(n)
-            for fam in families for n in range(1, max_len + 1)
-            if not (fam == "constant" and n == 1)]       # L = 1 is the same event
+    pats = _pr_patterns(families, max_len)
     if precoded:
         errs_p = np.array([np.count_nonzero(np.convolve(e, [1.0, 1.0]).round().astype(int) % n_levels)
                            for e in pats], dtype=float)
@@ -736,6 +765,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # error events the per-level sum runs over: one, unless a sequence
         # detector works a partial-response target (pr_error_events)
         events = [(g_mlsd, 1.0)]
+        ev_diffs = None
         if pr_active and mlsd_mem > 0:
             half_gap = 0.5 * abs(main) * float(np.min(np.diff(np.sort(levels_norm))))
             fams = (("alternating", "constant") if min(cfg.pr.target[2:], default=0.0) < 0.0
@@ -751,28 +781,47 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     union_ratio = [u[1] / e[1] if e[1] > 0 else 0.0
                                    for u, e in zip(union, events)]
                 events = [(g_e, w_e * r) for (g_e, w_e), r in zip(events, union_ratio)]
+            ev_diffs = pr_event_differences(cur, fams, state_memory=k_state)
 
         if pattern_sigma is not None:
             # the binned neighbours leave the random ISI and become a shift
+            # (with a PR sequence detector a full-size one for every event:
+            # their kernels are per level, so they are not projected on it)
             pos = [n_pre + j if j < 0 else n_pre + j - 1 for j in _BINNED_NEIGHBOURS]
             c_bin = np.array([isi[p] for p in pos])
             isi = isi.copy()
             isi[pos] = 0.0
         pdf = isi_pdf(isi, levels_norm, v_centers)
-        if xtalk_pulses:
-            for xp in xtalk_pulses:
-                xpk = int(np.argmax(np.abs(xp.y)))
-                xidx = xpk + np.arange(-n_pre, n_post + 1) * osr
-                xval = (xidx >= 0) & (xidx < xp.y.size)
-                xc = np.zeros(xidx.size)
-                xc[xval] = xp.y[xidx[xval]]
-                pdf = np.convolve(pdf, isi_pdf(xc * swing, levels_norm, v_centers),
-                                  mode="same")
+        xcs = []
+        for xp in xtalk_pulses or ():
+            xpk = int(np.argmax(np.abs(xp.y)))
+            xidx = xpk + np.arange(-n_pre, n_post + 1) * osr
+            xval = (xidx >= 0) & (xidx < xp.y.size)
+            xc = np.zeros(xidx.size)
+            xc[xval] = xp.y[xidx[xval]]
+            xcs.append(xc * swing)
+            pdf = np.convolve(pdf, isi_pdf(xcs[-1], levels_norm, v_centers), mode="same")
         pdf_isi = pdf
 
-        def noisy(g_ev: float) -> list:
+        def projected_isi(d_ev: np.ndarray) -> np.ndarray:
+            """The ISI PDF error event d_ev sees. The detector takes it when
+            d . (noise + ISI) > |d|^2 / 2, so in the slicer's units (threshold
+            half a level gap) its ISI is d . ISI / |d|^2: the residual cursors
+            correlated with d, sum_j a_j sum_k d_k c_(k-j) / |d|^2 -- shrunk by
+            about the event's distance, as its noise is (by g_ev). Left at the
+            single sample's ISI it read 2-12x pessimistic behind a 3-7 tap FFE,
+            where the residual is not small (cairn/DSP发端与PR.md §19)."""
+            dd = float(np.dot(d_ev, d_ev))
+            c_full = np.insert(isi, n_pre, 0.0)           # symbol order, main slot empty
+            pdf = isi_pdf(np.correlate(d_ev, c_full, "full") / dd, levels_norm, v_centers)
+            for xc in xcs:
+                pdf = np.convolve(pdf, isi_pdf(np.correlate(d_ev, xc, "full") / dd,
+                                               levels_norm, v_centers), mode="same")
+            return pdf
+
+        def noisy(g_ev: float, pdf_base: np.ndarray | None = None) -> list:
             """ISI + noise PDF per transmitted level, the noise divided by g_ev."""
-            pdf = pdf_isi
+            pdf = pdf_isi if pdf_base is None else pdf_base
             # noise kernel: one for an electrical link; one per *transmitted*
             # level when the noise follows the level (an inverting channel flips
             # the slicer order, not which symbol carried the most light)
@@ -809,8 +858,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         ser = 0.0
         nbe = 0.0
         pdf_eye = None
-        for g_ev, w_ev in events:
-            pdf_lv = noisy(g_ev)
+        for i_ev, (g_ev, w_ev) in enumerate(events):
+            pdf_lv = noisy(g_ev, None if ev_diffs is None else projected_isi(ev_diffs[i_ev]))
 
             # tail CDFs per level
             cdf_up = [np.cumsum(p[::-1])[::-1] for p in pdf_lv]   # P(x >= v)
@@ -839,7 +888,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 ser += w_ev * (p_err_up + p_err_dn) / n_levels
                 nbe += w_ev * (p_err_up + p_err_dn) / n_levels  # Gray: adjacent = 1 bit
             if pdf_eye is None:
-                pdf_eye = pdf_lv
+                pdf_eye = pdf_lv if ev_diffs is None else noisy(g_ev)
         pdf_lv = pdf_eye
         ser_phi[pi] = ser
         ber_phi[pi] = nbe / bits_per_sym
