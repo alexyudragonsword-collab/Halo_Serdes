@@ -292,6 +292,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("rx.mlsd.kind", "Detector", "enum",
            options=["none", "sliding", "viterbi"]),
         _f("rx.mlsd.memory", "Trellis memory (postcursors)", "int"),
+        _f("rx.mlsd.state_memory", "Reduced trellis: state memory K (empty = full)", "opt_int"),
         _f("rx.mlsd.seq_len", "Sliding window", "int"),
         _f("rx.mlsd.margin", "Sliding margin", "float"),
     ]),

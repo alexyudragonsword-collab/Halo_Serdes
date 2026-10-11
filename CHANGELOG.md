@@ -6,6 +6,23 @@
 
 ---
 
+## [未发布] — 降状态序列检测(DFSE,`rx.mlsd.state_memory`;示例 42)
+
+### 新增
+- `rx.mlsd.state_memory` = K:Viterbi 网格跨 L = len(pr.target) − 1 + memory 个光标,状态只记最近 K 个符号(N^K 个),其余
+  L − K 个光标用每条幸存路径自己的判决减掉(decision-feedback sequence estimation)。不设或 K = L 是原来的全网格,逐判决相同
+  (不设时仍走原内核,已有结果一个不变)。`dsp/mlsd.py` 的 `dfse_mlsd`(numba,`HALO_NO_JIT` 下 Python 同一判决)、
+  `post_detect(state_memory=)`、`mlse_min_distance_sq(state_memory=)`。
+- 统计引擎:降状态网格里两条路径在最后一个错误之后 K 个符号合并,长 n 的错误事件只计差的前 n + K 个样本(最小距离与 PR 联合界
+  `pr_error_events(state_memory=)` 都按此截断);幸存路径反馈出错的传播不计。224G LR 链路上全网格 / 16 / 4 状态统计对时域
+  1.09 / 1.10 / 0.99。
+- 配置:`state_memory` 只配 Viterbi、≥ 1、不超过网格长度;定点模式下 K < L 被拒(bit-true 检测器与 SV 是全网格表,ROADMAP P3 #12)。
+  功耗模型按 N^K 状态加逐状态的反馈加法计价。GUI / Android 表单字段 `rx.mlsd.state_memory`。
+- `examples/42_reduced_state_mlsd.py`(示例 38 的链路与种子,全网格三行与示例 38 逐位相同):1 + aD 4 状态 = 64 状态(36.33 dB);
+  1 + aD + bD² 16 状态 = 256 状态(38.60 dB),4 状态 37.75 dB;三光标 memory 1 的 64 状态 = 256 状态(38.94 dB)。两光标目标的
+  Viterbi 估计 12.73 → 1.02 pJ/b、收端 17.68 → 5.97 pJ/b。网格只需要目标的受控光标,残余交给逐路径反馈不丢 reach。
+- 测试 +18(`tests/test_mlsd_reduced.py` 16 项,`test_examples_api` 对示例 42 参数化 2 项)。
+
 ## [未发布] — 功耗估计(pJ/bit,估计口径;示例 41)
 
 ### 新增

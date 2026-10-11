@@ -140,7 +140,8 @@ def _mlsd_post_detect(cfg: LinkConfig, y_slicer: np.ndarray, dec: np.ndarray,
     out = post_detect(np.asarray(y_slicer, dtype=float), cursors,
                       np.asarray(levels, dtype=float), method,
                       seq_len=mcfg.seq_len, margin=mcfg.margin,
-                      dec0=None if method == "viterbi" else np.asarray(dec, dtype=np.int64))
+                      dec0=None if method == "viterbi" else np.asarray(dec, dtype=np.int64),
+                      state_memory=mcfg.state_memory)
     return np.asarray(out, dtype=np.int64)
 
 

@@ -5,6 +5,9 @@ Two implementations, mirroring the DragonPHY2 design space:
 - ``viterbi_mlsd``: full MLSE over a short residual channel memory L
   (states = n_levels^L, branch metric = squared error against the expected
   observation). The high-end option (PyBERT ViterbiDecoder_ISI idea, numba).
+- ``dfse_mlsd``: the same trellis reduced to n_levels^K states (K < L):
+  decision-feedback sequence estimation (Duel-Hallen & Heegard 1989), the
+  cursors beyond K cancelled with each survivor's own earlier decisions.
 - ``sliding_detector``: DragonPHY's low-cost post-detector — hypothesize
   single/adjacent-pair decision-error events, re-inject the corresponding
   error signature into the residual stream, keep the hypothesis with minimum
@@ -129,7 +132,70 @@ def _sliding_detector_py(y_eq: np.ndarray, dec: np.ndarray, levels: np.ndarray,
     return out
 
 
-def mlse_min_distance_sq(cursors: np.ndarray, max_event_len: int = 8) -> float:
+def _dfse_py(y: np.ndarray, levels: np.ndarray, cursors: np.ndarray, K: int):
+    """Reduced-state MLSE (DFSE): ``_viterbi_py``'s trellis with a state of the
+    last ``K`` symbols only (n_levels^K states, K < L = len(cursors) - 1).
+
+    A branch's expected observation takes cursors 1..K from the state and
+    cursors K+1..L from the predecessor survivor's own decisions (its tail
+    register: the symbols that have left the state window, newest first);
+    add-compare-select keeps, per state, the best predecessor and its tail.
+    Same state packing, ACS order and traceback as ``_viterbi_py``, so with
+    K = L it decides the same symbols.
+    """
+    n = y.size
+    nl = levels.size
+    L = cursors.size - 1
+    T = L - K
+    n_states = nl ** K
+    top = nl ** (K - 1)                 # weight of the oldest symbol in a state
+    INF = 1e30
+    metric = np.full(n_states, 0.0)
+    new_metric = np.empty(n_states)
+    tail = np.zeros((n_states, max(T, 1)), dtype=np.int64)
+    new_tail = np.zeros((n_states, max(T, 1)), dtype=np.int64)
+    bp = np.zeros((n, n_states), dtype=np.int64)
+    for k in range(n):
+        for s in range(n_states):
+            new_metric[s] = INF
+        for s in range(n_states):  # previous state
+            if metric[s] >= INF:
+                continue
+            # this survivor's share of the expected observation: the state's
+            # K symbols, then its own decisions beyond them
+            base = 0.0
+            ss = s
+            for i in range(1, K + 1):
+                base += cursors[i] * levels[ss % nl]
+                ss //= nl
+            for j in range(T):
+                base += cursors[K + 1 + j] * levels[tail[s, j]]
+            oldest = s // top
+            for m in range(nl):    # new symbol
+                e = y[k] - (cursors[0] * levels[m] + base)
+                cand = metric[s] + e * e
+                ns = (s * nl + m) % n_states
+                if cand < new_metric[ns]:
+                    new_metric[ns] = cand
+                    bp[k, ns] = s
+                    if T > 0:
+                        new_tail[ns, 0] = oldest
+                        for j in range(1, T):
+                            new_tail[ns, j] = tail[s, j - 1]
+        for s in range(n_states):
+            metric[s] = new_metric[s]
+            for j in range(T):
+                tail[s, j] = new_tail[s, j]
+    out = np.zeros(n, dtype=np.int64)
+    s = int(np.argmin(metric))
+    for k in range(n - 1, -1, -1):
+        out[k] = s % nl
+        s = bp[k, s]
+    return out
+
+
+def mlse_min_distance_sq(cursors: np.ndarray, max_event_len: int = 8,
+                         state_memory: int | None = None) -> float:
     """Minimum-distance² of the MLSE trellis for residual channel ``cursors``.
 
     ``d_min² = min over nonzero error events e of ‖cursors * e‖²`` with the
@@ -142,22 +208,35 @@ def mlse_min_distance_sq(cursors: np.ndarray, max_event_len: int = 8) -> float:
     Enumerates error events up to ``max_event_len`` taps (first tap fixed to +1
     by symmetry; remaining taps ternary), which captures the true minimum for
     the short residuals MLSE is used on.
+
+    ``state_memory`` K: a reduced-state (DFSE) trellis compares the two paths
+    only until they merge, K symbols after the event's last error, so an
+    event of length n counts the first n + K terms of ``cursors * e``
+    (error propagation through the survivors' feedback is not in it).
     """
     h = np.asarray(cursors, dtype=float)
-    best = float(np.dot(h, h))                 # single-symbol error e = [1]
+    keep = None if state_memory is None else int(state_memory)
+
+    def dist(e):
+        d = np.convolve(h, e)
+        if keep is not None:
+            d = d[:e.size + keep]
+        return float(np.dot(d, d))
+
+    best = dist(np.ones(1))                    # single-symbol error e = [1]
     from itertools import product
     for L in range(1, max_event_len):
         for tail in product((-1, 0, 1), repeat=L):
             if tail[-1] == 0:                  # last tap must be nonzero
                 continue
-            e = np.array((1,) + tail, dtype=float)
-            d = float(np.dot(np.convolve(h, e), np.convolve(h, e)))
+            d = dist(np.array((1,) + tail, dtype=float))
             if d < best:
                 best = d
     return best
 
 
-def mlse_gain_over_dfe_db(cursors: np.ndarray, max_event_len: int = 8) -> float:
+def mlse_gain_over_dfe_db(cursors: np.ndarray, max_event_len: int = 8,
+                          state_memory: int | None = None) -> float:
     """Asymptotic MLSE coding gain over an ideal DFE [dB].
 
     An ideal DFE cancels the postcursors, leaving distance ``|main|`` per
@@ -166,12 +245,14 @@ def mlse_gain_over_dfe_db(cursors: np.ndarray, max_event_len: int = 8) -> float:
     """
     h = np.asarray(cursors, dtype=float)
     main2 = float(h[0]) ** 2
-    return 10.0 * np.log10(mlse_min_distance_sq(h, max_event_len) / max(main2, 1e-30))
+    return 10.0 * np.log10(mlse_min_distance_sq(h, max_event_len, state_memory)
+                           / max(main2, 1e-30))
 
 
 def post_detect(y_eq: np.ndarray, cursors: np.ndarray, levels: np.ndarray,
                 method: str = "viterbi", *, seq_len: int = 4,
-                margin: float = 0.0, dec0: np.ndarray | None = None):
+                margin: float = 0.0, dec0: np.ndarray | None = None,
+                state_memory: int | None = None):
     """Run an MLSD post-detector over slicer-input samples of a *real* link.
 
     Turns the standalone kernels into a drop-in post-detector: ``y_eq`` are the
@@ -187,10 +268,17 @@ def post_detect(y_eq: np.ndarray, cursors: np.ndarray, levels: np.ndarray,
     from a slice that ignores that postcursor; a single-flip detector cannot
     repair the adjacent-pair errors that leaves, so on a 1 + 0.5D target it
     made SER 1500x worse than the decisions it was handed.
+
+    ``state_memory`` K below the trellis memory (``len(cursors) - 1``) runs
+    the reduced-state detector (``dfse_mlsd``); None or K >= L the full one.
     """
     cur = np.asarray(cursors, dtype=float)
     lv = np.asarray(levels, dtype=float)
     if method == "viterbi":
+        if state_memory is not None and state_memory < 1:
+            raise ValueError(f"state_memory must be >= 1, got {state_memory}")
+        if state_memory is not None and state_memory < cur.size - 1:
+            return dfse_mlsd(np.asarray(y_eq, dtype=float), lv, cur, int(state_memory))
         return viterbi_mlsd(np.asarray(y_eq, dtype=float), lv, cur)
     if method == "sliding":
         resid_post = float(cur[1] / cur[0]) if cur.size > 1 else 0.0
@@ -229,6 +317,7 @@ def slice_nearest_local(y: np.ndarray, scaled_levels: np.ndarray) -> np.ndarray:
 
 
 viterbi_mlsd = _viterbi_py
+dfse_mlsd = _dfse_py
 sliding_detector = _sliding_detector_py
 feedback_slice = _feedback_slice_py
 if os.environ.get("HALO_NO_JIT") != "1":
@@ -236,6 +325,7 @@ if os.environ.get("HALO_NO_JIT") != "1":
         import numba
 
         viterbi_mlsd = numba.njit(cache=True)(_viterbi_py)
+        dfse_mlsd = numba.njit(cache=True)(_dfse_py)
         sliding_detector = numba.njit(cache=True)(_sliding_detector_py)
         feedback_slice = numba.njit(cache=True)(_feedback_slice_py)
     except ImportError:
