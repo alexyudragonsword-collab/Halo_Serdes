@@ -146,7 +146,6 @@
     - {doc: docs/COMPARISON.md, text: "收端两光标目标比 delta + Viterbi 多 {adbd - delta} dB reach,"}
     - {doc: docs/COMPARISON.md, text: "第三个受控光标再多约 {c4m1 - adbd} dB(示例 38)"}
     - {doc: docs/USAGE.md, text: "第三个受控光标比两个只多约 {c4m1 - adbd} dB"}
-    - {doc: ROADMAP.md, text: "实测示例 38 只 +{c4m1 - adbd} dB"}
     - {doc: cairn/DSP发端与PR.md, text: "第二个受控光标在这条 224G LR 链路上再加 {adbd - ad} dB reach"}
     - {doc: cairn/DSP发端与PR.md, text: "delta 目标 {delta} → 两光标 {adbd} dB"}
     - {doc: cairn/DSP发端与PR.md, text: "memory 1 与 2 差 {c4m2 - c4m1} dB,也与 §12 相符"}
@@ -165,3 +164,15 @@
     p1: {example: "37", line: "TX PR a=1 {*} dB {*} dB {} dB"}
   quotes:
     - {doc: cairn/DSP发端与PR.md, text: "发端与预测的差在 {max(abs(t25 - p25), abs(t50 - p50), abs(t75 - p75))} dB 内,a = 1 仍差 {t1 - p1} dB"}
+
+- name: ex40 optical duobinary, the modulator bandwidth and Tx noise each PR placement needs
+  values:
+    ctrl_fr: {example: "40", line: "control (delta + Viterbi) {} ({*}) {*} ({*}) {*} ({*} dB) {*} ({*} dB)"}
+    rx1_fr: {example: "40", line: "RX PR a=1, precoded {} ({*}) {*} ({*}) {*} ({*} dB) {*} ({*} dB)"}
+    tx5_fr: {example: "40", line: "TX PR a=0.5 {} ({*}) {*} ({*}) {*} ({*} dB) {*} ({*} dB)"}
+    tx1_fr: {example: "40", line: "TX PR a=1, precoded {} ({*}) {*} ({*}) {*} ({*} dB) {*} ({*} dB)"}
+    ctrl12: {example: "40", line: "control (delta + Viterbi) {*} ({*}) {*} ({*}) {} ({*} dB) {*} ({*} dB)"}
+    ctrl22: {example: "40", line: "control (delta + Viterbi) {*} ({*}) {*} ({*}) {*} ({*} dB) {} ({*} dB)"}
+  quotes:
+    - {doc: cairn/DSP发端与PR.md, text: "收端 PR 让调制器带宽少要约 {(1 - rx1_fr / ctrl_fr) * 100} %({ctrl_fr} → {rx1_fr} GHz),发端 PR 多要 {(tx5_fr / ctrl_fr - 1) * 100}–{(tx1_fr / ctrl_fr - 1) * 100} %"}
+    - {doc: cairn/DSP发端与PR.md, text: "对照组的噪声容限只少 {20 * log10(ctrl22 / ctrl12)} dB"}

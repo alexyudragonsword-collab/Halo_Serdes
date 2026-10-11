@@ -6,6 +6,24 @@
 
 ---
 
+## [未发布] — 光 duobinary:发端噪声 `tx.noise_rms`,带宽受限调制器上 PR 放哪(示例 40)
+
+### 新增
+- `tx.noise_rms`:发端自己的噪声,每 UI 一个白噪声加在 DAC 输出(驱动器极点与调制器带宽之前,后面每一级都把它与信号一样整形)。
+  独立随机流 `[sim.seed, 0x7E5]`,开它不挪任何别的抽取;0(默认)时逐位不变(引擎指纹 819 值)。`symbol_stage(noise=False)`
+  给无噪声重建用(`front_end_waveform(with_noise=False)`)。GUI / Android 表单字段 `tx.noise_rms`。
+- `examples/40_pr_optical_duobinary.py`:示例 32 的 VCSEL + OM4,VCSEL 的 f_r 当带宽限制,对照 / 收端 PR(a = 1 预编码、MMSE a)/
+  发端 PR(a = 0.5、1 预编码)。噪声在调制器后:需要的 f_r 对照 14.23 GHz、收端 11.94 / 11.99、发端 16.74 / 17.36(加 host Tx FFE
+  后 9.31 / 8.55 / 8.34 / 10.99 / 11.53);噪声在发端:12 → 22 GHz 对照的噪声容限 42.7 → 48.2 mV,收端 PR 少 0.5–2.3 dB,
+  发端 PR 少 3.0–5.7 dB。两种情形下发端 PR 都不占优;光 duobinary 的收益由收端 PR 拿到。ROADMAP P3 #8 清空。
+
+### 修正
+- 统计引擎:发端噪声与 DAC 的 σ_q 合并;序列检测 + PR 目标的联合界,噪声自相关原来只取自 FFE 抽头(噪声在 FFE 输入是白的),
+  现在按两份方差加权 —— 收端那份 FFE 抽头的自相关,发端那份 DAC → 判决器逐 UI 响应的自相关(DAC 的 σ_q 也走这条)。
+  发端噪声为主时统计 / 时域:收端 PR 0.22–0.48 → 0.52–1.23,发端 a = 0.5 0.83–2.89 → 0.95–1.55。
+- `tx_report` 的 TX SNDR:参考发端原来带着同一份发端噪声,做差时抵消;参考改为无噪声,SNDR 现在含发端噪声。
+- `tools/example_drift.py`:"示例 38,40 万符号"里的 40 不再算作引用示例 40。
+
 ## [未发布] — 推导数登记补全,`example_drift.py candidates`
 
 ### 新增

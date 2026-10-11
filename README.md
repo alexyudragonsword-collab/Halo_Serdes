@@ -61,7 +61,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 配置 | `config/` | YAML → frozen dataclass 参数单源;严格键校验、dotted-path 覆盖、字段级合法性校验 |
 | 信号 | `core/` | `Waveform`/`SymbolStream`/`ResponseSet`(h/s/p/H 四响应);PRBS7-31、PRBS13Q/31Q、PRQS10 + 自同步检错;定点 QFormat |
 | 信道 | `channel/` | Touchstone(1/2/4/8/12 端口)导入、混模转换、保守外推、广义端接、解析 RLGC;FEXT/NEXT 串扰与多 lane 侵略者组 + ICN |
-| 发端 | `tx/` | 一条 `TxPipeline`(电平 → [PR 整形] → FFE → DAC → ZOH + 时钟边沿 → 驱动器压缩 → 驱动器带宽,七个引擎/分析入口共用);**DSP TX**:N bit DAC(温度计 + 二进制分段、单元失配 INL、削峰计数)、驱动器压缩(与 E/O 同一个压缩系数 c,另有 tanh / 三次)、TX SNDR 与 R_LM(`analysis/tx_metrics.py`,`examples/35`);FIR 预加重、RJ/SJ/DCD 抖动注入(Farrow 边沿);**PLL 相噪剖面时钟**(`tx.clock.kind: profile`,从 pll_simulator 导出的 L(f)+杂散合成有色逐沿抖动;接收端采样时钟同样可挂剖面 `rx.clock`,CDR 追踪两者之差,统计引擎用 `cdr/linear.py` 的环路模型给出残余;见 [`docs/clock_profile.md`](docs/clock_profile.md)) |
+| 发端 | `tx/` | 一条 `TxPipeline`(电平 → [PR 整形] → FFE → DAC → [发端噪声] → ZOH + 时钟边沿 → 驱动器压缩 → 驱动器带宽,七个引擎/分析入口共用);**DSP TX**:N bit DAC(温度计 + 二进制分段、单元失配 INL、削峰计数)、发端噪声 `tx.noise_rms`(在调制器带宽之前,`examples/40`)、驱动器压缩(与 E/O 同一个压缩系数 c,另有 tanh / 三次)、TX SNDR 与 R_LM(`analysis/tx_metrics.py`,`examples/35`);FIR 预加重、RJ/SJ/DCD 抖动注入(Farrow 边沿);**PLL 相噪剖面时钟**(`tx.clock.kind: profile`,从 pll_simulator 导出的 L(f)+杂散合成有色逐沿抖动;接收端采样时钟同样可挂剖面 `rx.clock`,CDR 追踪两者之差,统计引擎用 `cdr/linear.py` 的环路模型给出残余;见 [`docs/clock_profile.md`](docs/clock_profile.md)) |
 | 前端 | `afe/` | CTLE、VGA、求和节点有限带宽;时间交织 ADC(offset/gain/skew 失配、ENOB) |
 | 均衡 | `dsp/` | ZF/MMSE FFE、自适应 DFE(LMS/sign-sign)、Viterbi MLSE 与 sliding-detector MLSD、定点数据通路 |
 | 时钟 | `cdr/` | bang-bang 与 Mueller-Müller CDR(二阶环、环路延迟、相位钳位) |
