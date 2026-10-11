@@ -10,7 +10,8 @@
 - 验证:与独立参考(逐路径整段符号序列)在随机移位 / 饱和下逐判决相同;输入精确时等于浮点 DFSE;引擎定点误码数与浮点 3σ 内;
   SV lockstep(K = 1、4 状态、反馈 2 个光标、3000 符号)逐位通过,改一个金标即 FAIL。ROADMAP #12 剩"短 FFE 上的代价"。
 - 测试 996 → 1009(+13);全量 1009 passed / 1 skipped,`run_lockstep.sh` 九段全 PASS,引擎指纹 819 值逐位不变,本地 Cython 编译改过的
-  3 个模块通过。Android(f66bb97,含全部 `src/` 改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures。
+  3 个模块通过。Android(f66bb97,含全部 `src/` 改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包
+  三个 job 通过(pyinstaller 3 / nuitka 89 / onefile 113 分钟);eca39e2 上测试矩阵、RTL lockstep 全绿。
 - 上一条(#67)的 CI:Android(a49d9fd,含全部 `src/` 改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;
   桌面打包 pyinstaller 3 / nuitka 68 / onefile 88 分钟通过(onefile 在合并之后完成)。b2fa979 上测试矩阵、examples-full 全绿。
 
