@@ -15,6 +15,12 @@ rows are example 38's own:
   1 + aD + bD^2   -- 256 (full), 16 (K = 2: the target alone), 4 (K = 1)
   + cD^3          -- memory 1: 256 (full) and 64 (K = 3: the target alone)
 
+The 21-tap FFE leaves almost nothing inside the trellis beyond the target,
+so the second part cuts it to example 18's 3 taps (1 pre / 1 post), which
+leaves residual cursors the Viterbi has to resolve: the delta target with
+memory 3 (64 states full, 16 and 4 reduced) and 1 + aD with memory 2 (64
+full, 4 reduced).
+
 Reach is where the pre-FEC BER crosses KP4's threshold, refined to 0.4 dB
 (``fec.refine``); the Viterbi's power is example 41's estimate
 (``analysis/power.py``: public-figure coefficients, read the ratios).
@@ -69,8 +75,19 @@ CASES = {"1 + aD, full": (AD, 2, None),
          "+ cD^3 (memory 1), K = 3": (ADBDCD, 1, 3)}
 
 
+SHORT_LENGTHS = [0.15, 0.17, 0.18, 0.19, 0.20, 0.22]        # example 18's
+if QUICK:
+    SHORT_LENGTHS = SHORT_LENGTHS[::2]
+SHORT_FFE = (1, 1)
+SHORT_CASES = {"delta, memory 3, full": (PrConfig(), 3, None),
+               "delta, memory 3, K = 2": (PrConfig(), 3, 2),
+               "delta, memory 3, K = 1": (PrConfig(), 3, 1),
+               "1 + aD, memory 2, full": (AD, 2, None),
+               "1 + aD, memory 2, K = 1": (AD, 2, 1)}
+
+
 def make_cfg(length_m: float, pr: PrConfig, memory: int = 2, k: int | None = None,
-             n_sym: int = N_SYM) -> LinkConfig:
+             n_sym: int = N_SYM, ffe: tuple[int, int] = (6, 14)) -> LinkConfig:
     return LinkConfig(
         modulation="pam4", symbol_rate=112e9, osr=16,  # 224 Gb/s
         channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=5.0,
@@ -80,7 +97,7 @@ def make_cfg(length_m: float, pr: PrConfig, memory: int = 2, k: int | None = Non
         rx=RxConfig(arch="adc_dsp",
                     ctle=CtleConfig(enable=True, peak_db=6.0),
                     adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5, fullscale=0.6),
-                    ffe=FfeConfig(n_pre=6, n_post=14, adapt="lms", mu=3e-5),
+                    ffe=FfeConfig(n_pre=ffe[0], n_post=ffe[1], adapt="lms", mu=3e-5),
                     dfe=DfeConfig(n_taps=0),
                     mlsd=MlsdConfig(kind="viterbi", memory=memory, state_memory=k),
                     cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
@@ -97,31 +114,38 @@ def loss_db(length_m: float) -> float:
     return -ChannelModel.from_config(make_cfg(length_m, PrConfig(), n_sym=1000)).loss_at(56e9)
 
 
+sweep, reach, states, pj = {}, {}, {}, {}
+
+
+def ladder(cases: dict, lengths: list, ffe: tuple[int, int]) -> None:
+    """Reach of each case (into the module-level tables), its sweep printed."""
+    for name, (pr, mem, k) in cases.items():
+        t0 = time.time()
+        shown = {}
+
+        def measure(L, pr=pr, mem=mem, k=k, shown=shown):
+            r = run_time_link(make_cfg(L, pr, mem, k, ffe=ffe))
+            shown[L] = (loss_db(L), max(r.ber.ber, 0.5 / r.ber.n_checked))   # no errors: half a count
+            return shown[L][0], r.ber.ber
+
+        r = refine({L: measure(L) for L in lengths}, measure, P_STAR, tol=0.4)
+        sweep[name] = shown
+        reach[name] = r.value if r.value is not None else r.hi if r.note == "below sweep" else r.lo
+        cfg = make_cfg(lengths[0], pr, mem, k, n_sym=1000, ffe=ffe)
+        states[name] = trellis_states(cfg)
+        rep = power_report(cfg)
+        pj[name] = (rep.pj("host.rx.mlsd"), rep.pj("host.rx"))
+        print(f"  {name:<26} " + " ".join(f"{shown[L][0]:4.1f}dB:{shown[L][1]:8.1e}" for L in lengths)
+              + f"  [{time.time() - t0:.0f}s]", flush=True)
+        extra = sorted(set(shown) - set(lengths))
+        if extra:
+            print(f"  {'':<26} " + " ".join(f"{shown[L][0]:4.1f}dB:{shown[L][1]:8.1e}" for L in extra)
+                  + "  (refined)")
+
+
 print("224 Gb/s PAM4 LR, 21-tap LMS FFE + Viterbi, MMSE targets: full and reduced-state trellises")
 print(f"reach: post-KP4 1e-15 <=> pre-FEC BER <= {P_STAR:.2e}")
-sweep, reach, states, pj = {}, {}, {}, {}
-for name, (pr, mem, k) in CASES.items():
-    t0 = time.time()
-    shown = {}
-
-    def measure(L, pr=pr, mem=mem, k=k, shown=shown):
-        r = run_time_link(make_cfg(L, pr, mem, k))
-        shown[L] = (loss_db(L), max(r.ber.ber, 0.5 / r.ber.n_checked))   # no errors: half a count
-        return shown[L][0], r.ber.ber
-
-    r = refine({L: measure(L) for L in LENGTHS}, measure, P_STAR, tol=0.4)
-    sweep[name] = shown
-    reach[name] = r.value if r.value is not None else r.hi if r.note == "below sweep" else r.lo
-    cfg = make_cfg(LENGTHS[0], pr, mem, k, n_sym=1000)
-    states[name] = trellis_states(cfg)
-    rep = power_report(cfg)
-    pj[name] = (rep.pj("host.rx.mlsd"), rep.pj("host.rx"))
-    print(f"  {name:<26} " + " ".join(f"{shown[L][0]:4.1f}dB:{shown[L][1]:8.1e}" for L in LENGTHS)
-          + f"  [{time.time() - t0:.0f}s]", flush=True)
-    extra = sorted(set(shown) - set(LENGTHS))
-    if extra:
-        print(f"  {'':<26} " + " ".join(f"{shown[L][0]:4.1f}dB:{shown[L][1]:8.1e}" for L in extra)
-              + "  (refined)")
+ladder(CASES, LENGTHS, (6, 14))
 
 print("\nsummary                     states   reach [dB]  vs full   Viterbi [pJ/b]  receiver [pJ/b]")
 full_of = {"1 + aD": "1 + aD, full", "1 + aD + bD^2": "1 + aD + bD^2, full",
@@ -135,6 +159,15 @@ for name in CASES:
 # direction, as measured (cairn/DSP发端与PR.md §18)
 assert abs(reach["1 + aD + bD^2, K = 2"] - reach["1 + aD + bD^2, full"]) < 0.4, reach
 assert reach["1 + aD + bD^2, K = 2"] > reach["1 + aD, full"], reach
+
+# ---- the 3-tap FFE: residual cursors inside the trellis -----------------
+print("\n3-tap LMS FFE (1 pre / 1 post, example 18's): the trellis has residual ISI to resolve")
+ladder(SHORT_CASES, SHORT_LENGTHS, SHORT_FFE)
+print("\nsummary (3-tap FFE)          states   reach [dB]  vs full   Viterbi [pJ/b]")
+for name in SHORT_CASES:
+    ref = name.rsplit(",", 1)[0] + ", full"
+    gain = round(reach[name] - reach[ref], 2) + 0.0
+    print(f"  {name:<26} {states[name]:6d}   {reach[name]:8.2f}   {gain:+6.2f}   {pj[name][0]:10.2f}")
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.8))
