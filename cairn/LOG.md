@@ -9,6 +9,9 @@
 - 原因:联合界重叠权重按 `half_gap / noise_sigma` 抽样,光链路的 `noise_sigma` 只有电噪声 → SNR 高估、并集退化成简单求和。
 - 改:按全部噪声(电 + 光的平均方差)抽样。示例 40 链路上 PR 0.91–2.99 → 0.83–1.44×;电链路指纹逐位不变。`cairn/DSP发端与PR.md` §20。
 - 记下未做:事件噪声取首符号电平的方差(离线精确混合再低 0.6–0.8×)。测试 1012 → 1013(+1)。
+- 验证:本地全量 1013 passed / 1 skipped,指纹逐位不变,Cython 编译 `statistical.py` 通过。Android(9607ef5,含全部 `src/` 改动)
+  API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包 pyinstaller 3 / nuitka 85 / onefile 121 分钟通过;测试矩阵(含 nojit)、
+  examples、examples-full、RTL lockstep 全绿。
 - 上一条(#70)已记 CI;#69 / #70 于 2026-10-12 合入。
 
 ## 2026-10-11 · 统计引擎 PR 联合界的残余 ISI 按事件投影(fix/stat-short-ffe-pr,ROADMAP P2 #16)
