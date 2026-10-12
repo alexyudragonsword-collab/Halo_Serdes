@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-13 · 多 lane 范围评估(study/multilane-scope,ROADMAP P3 #9)
+
+- 用户选"先出范围评估"。现状:串扰侧完整(aggressor、ICN、COM、两引擎),链路本身单 lane;FEC 只有"比特误码独立"的二项投影;`error_idx` 现成。
+- 探针一(误码成簇):DFE4 在 3.2e-4 不成簇;1 + aD + Viterbi 99 % 事件成串、平均 3.2 符号,单 lane 连续映射下 RS 符号误码率只有二项投影的 0.46 倍。
+  802.3 的比特 / 符号对复用与 2 / 4 码字交织会打散成串(任务组材料,检索摘要)→ 拆成 9a。
+- 探针二(串扰相位):aggressor 延后 0…7/8 UI,时域变 4.7× / 32×;统计引擎取各 aggressor 峰值相位,统计 / 时域 1.2–41×,铁律 3 在串扰下没被覆盖
+  → 新增 ROADMAP P2 #19(一致性,先做);准同步 / 串扰入配置 → 9b;共享 CDR → 9c(静态读浴盆,动态按需)。PCS 协议行为进「边界」。
+- 落点:`cairn/多lane建模.md`(新)、ROADMAP、`architecture-invariants.md` 铁律 3 补一条、COMPARISON。只改文档,不改库。
+- 上一条(#74)CI:dccba92 上 Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;pyinstaller 4 分钟通过;测试矩阵(含 nojit)、
+  examples、examples-full、RTL lockstep 全绿;nuitka / onefile 写这条时仍在跑(结果见下一次更新)。#74 于 2026-10-12 合入。
+
 ## 2026-10-12 · TDECQ 未定条文:前后抽头差限制与多模光纤仿真滤波器(feat/tdecq-constraints,ROADMAP P3 #11 余项)
 
 - 核验(IEEE / OIF / LPO MSA 原文全被代理 403,只有检索摘要):dj D2.1 加了前后抽头差限制(按 w(0) 归一化,DFE 不归一化),数值没拿到,
