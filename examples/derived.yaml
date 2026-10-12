@@ -187,10 +187,10 @@
 
 - name: ex42 reduced-state trellis (4-state targets compared, 16 vs 4 states' Viterbi cost)
   values:
-    ad1: {example: "42", after: "summary", line: "1 + aD, K = 1 {*} {} {*} {*} {*}"}
-    adbd1: {example: "42", after: "summary", line: "1 + aD + bD^2, K = 1 {*} {} {*} {*} {*}"}
-    ad1_vit: {example: "42", after: "summary", line: "1 + aD, K = 1 {*} {*} {*} {} {*}"}
-    adbd2_vit: {example: "42", after: "summary", line: "1 + aD + bD^2, K = 2 {*} {*} {*} {} {*}"}
+    ad1: {example: "42", after: "receiver [pJ/b]", line: "1 + aD, K = 1 {*} {} {*} {*} {*}"}
+    adbd1: {example: "42", after: "receiver [pJ/b]", line: "1 + aD + bD^2, K = 1 {*} {} {*} {*} {*}"}
+    ad1_vit: {example: "42", after: "receiver [pJ/b]", line: "1 + aD, K = 1 {*} {*} {*} {} {*}"}
+    adbd2_vit: {example: "42", after: "receiver [pJ/b]", line: "1 + aD + bD^2, K = 2 {*} {*} {*} {} {*}"}
   quotes:
     - {doc: cairn/DSP发端与PR.md, text: "仍比同为 4 状态的 1 + aD 多 {adbd1 - ad1} dB"}
     - {doc: cairn/DSP发端与PR.md, text: "只多花 Viterbi 的 {adbd2_vit - ad1_vit} pJ/b(16 对 4 状态)"}

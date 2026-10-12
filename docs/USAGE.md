@@ -402,6 +402,8 @@ precode: true          # 1/(1+D) mod-N 预编码
 memory 2 时 256)。K < L 时状态只记最近 K 个符号(N^K 个),后 L − K 个光标用每条幸存路径自己的判决减掉
 (decision-feedback sequence estimation,Duel-Hallen & Heegard 1989)。K = L(或不设)就是原来的全网格,逐判决相同。
 统计引擎按"两条路径在降状态网格里合并前"累计的距离算(长 n 的错误事件只计差的前 n + K 个样本),幸存路径的反馈错误不计。
+选 K:示例 42 在 224G LR 上量过,K = PR 受控光标数(delta 目标取最小的 1)时 reach 与全网格相同或只差 ≤ 0.09 dB,21 抽头与 3 抽头
+FFE 都如此。注意 PR 目标配 3–7 抽头的短 FFE 时统计引擎偏悲观 1.8–10.7×(全网格同样,ROADMAP P2 #16),这种配置以时域引擎为准。
 定点模式(`numeric.mode: fixed`)跑 bit-true 的降状态检测器(`dsp/fixed_viterbi.py` 的 `run_fixed_dfse`:期望字 = 状态部分的未舍入表 + 各反馈光标按电平的未舍入份额,统一舍入一次;K = L 时与全网格逐判决相同),`rtl/dfse_mlsd.sv` 逐位对照。(2026-10-11 首版只有浮点,定点模式拒绝 K < L;同日补上。)
 
 sliding 检测器**修正接收机自己的判决**(DFE / PR 逐符号判决),只建模一个后光标(残余的第一光标,PR 下是目标的 a);

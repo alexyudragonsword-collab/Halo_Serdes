@@ -3,6 +3,14 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-11 · 降状态网格在短 FFE 上的代价(study/dfse-short-ffe,ROADMAP P3 #12 余项)
+
+- 示例 42 加第二部分(3 抽头 FFE):delta memory 3 的 64 / 16 / 4 状态 30.06 / 30.04 / 29.97 dB,1 + aD 的 64 / 4 状态 31.04 / 31.05 dB。
+  只留目标本身也只差 ≤ 0.09 dB(定长处误码约 +12%);原因是 3 抽头 FFE 留在网格窗口的残余只有 0.02–0.06。ROADMAP #12 清空。
+- 顺带发现两件,未修:短 FFE + PR 目标统计引擎悲观 1.8–10.7×(P2 #16,铁律 3 例外,示例不在此区间,已记进
+  `cairn/architecture-invariants.md`);1 抽头 FFE 下 MLSD 比 slicer 差约 7×(P2 #17)。证据见 `cairn/DSP发端与PR.md` §18"短 FFE"。
+- 只动示例与文档,不动 `src/`;测试数不变(1009)。
+
 ## 2026-10-11 · 降状态检测的定点与 RTL(feat/fixed-dfse,ROADMAP P3 #12)
 
 - 新:bit-true DFSE(`fixed_viterbi.run_fixed_dfse`)与 `rtl/dfse_mlsd.sv`。期望字 = 状态部分未舍入表 + 反馈份额,统一舍入一次 ——
