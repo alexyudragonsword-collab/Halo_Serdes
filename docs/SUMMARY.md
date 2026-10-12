@@ -262,6 +262,12 @@ the engine's 2-3 invalid tail decisions, since fixed), far below KP4's 2.4e-4 th
 | VCSEL 100G/λ,f_r 22 GHz,ER 4 dB,100 m OM4 | 4.59 dB | SR1 4.4 dB | 4.20 dB | f_r 22.3 GHz |
 | EML 200G/λ,55 GHz,ER 4.5 dB,500 m SMF | 1.88 dB(只 FFE 2.08) | DR1 3.4 dB | ≤ 2.5 dB | 29.8 GHz(只 FFE 34.6) |
 
+标准原文没拿到的几处(示例 34 最后一节):802.3dj 后加的参考 FFE 前后抽头差限制,两种候选值在这颗 EML 上处处不起作用;DR1 上限若按
+2025 年 9 月的提案降到 3.0 dB,最小带宽 29.8 → 33.7 GHz;多模的光纤仿真滤波器带宽 f_A 未知,这颗 VCSEL 在 f_A 25.8 GHz 处过 SR1。
+/ Where the standard texts were out of reach: the 802.3dj pre/post tap-difference limit is inactive on this EML for both candidate
+values; a 3.0 dB DR1 limit (a September 2025 proposal) would move its minimum bandwidth from 29.8 to 33.7 GHz; with the multimode
+fibre-emulation bandwidth f_A unknown, this VCSEL passes SR1 above f_A = 25.8 GHz.
+
 > 与上面三拓扑同一颗 VCSEL(f_r 22 GHz、ER 4 dB;RIN 取 −140 dB/Hz)按 SR1 的 TDECQ 刚好不过,ER 升到 4.2 dB 或
 > f_r 升到 22.3 GHz 就过;它对带宽最敏感:f_r 每降 2 GHz 涨 3–8 dB。L-I 压缩 0.5(曲线 R_LM
 > 0.52–0.56)时,VCSEL 的 TDECQ +5.1 dB、EML 只 +0.87 dB;VCSEL 的代价随带宽收缩(f_r 60 GHz 时 +1.9 dB),

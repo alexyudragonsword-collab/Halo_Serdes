@@ -17,6 +17,15 @@ simplification are marked:
 - Reference receiver: fourth-order Bessel-Thomson response with its 3 dB
   point at half the signalling rate (121.8.5.1; 26.5625 GHz at 53.125 GBd;
   802.3dj states 53.125 GHz for 200G/lambda).
+- ``fiber_emulation_hz``: the multimode clauses measure TDECQ at TP2 through
+  a further fourth-order Bessel-Thomson "fiber emulation filter" standing
+  for the worst-case fibre (802.3db Table 167-12 gives its 3 dB bandwidth
+  f_A, different for the VR and SR PMDs; 802.3cd / cm Clause 138 at
+  26.5625 GBd likewise), cascaded with the 0.5 x baud reference receiver,
+  which itself is unchanged. It filters the signal only: the noise the
+  equaliser is charged for (C_eq) is the receiver's. The f_A values were not
+  reachable here (a 2020 802.3db baseline lists 21.0 / 15.0 GHz for OM4
+  50 / 100 m, second-hand and pre-draft), so there is no default.
 - Reference equaliser: T-spaced FFE with tap coefficients summing to 1;
   5 taps with the largest at tap 1 or 2 for 100G/lambda (121.8.5.4,
   138.8.5), 15 taps with up to 3 precursors for 200G/lambda (802.3dj).
@@ -33,7 +42,19 @@ simplification are marked:
   subtracts b times the previous symbol's nominal level at that scale; its
   decisions are the transmitted symbols (no error propagation -- a pattern-
   locked measurement), and the noise sees only the FFE, so C_eq is the FFE's.
-  Not modelled: the later FFE tap limits on w(i)/w(0) and |w(1) - w(-1)|.
+- ``pre_post_limits=(lo, hi)``: 802.3dj D2.1 added a limit on the
+  difference of the taps either side of the main one, on taps normalised to
+  the main tap w(0) (the DFE coefficient is not normalised). Its final
+  form and values were not reachable; this keeps
+  lo <= (w(1) - w(-1)) / w(0) - b(1) <= hi, the form of a September 2025
+  comment-resolution proposal (-0.3, 0.15); a 2026 802.3ds baseline applies
+  a difference limit of 0.25 with its 1-tap DFE, citing 802.3dj D3.0 --
+  whether that difference includes b(1) the material does not say.
+  The least-squares start and every trial of the search are moved onto the
+  violated bound by trading w(1) against w(0) (the other taps and the sum
+  held), so the search can still slide along it. ``TdecqResult.pre_post``
+  reports the value either way. Per-tap limits on w(i)/w(0) are not
+  modelled (their values were TBD in the drafts that could be read).
 - Thresholds: P_th1 = P_ave - OMA_outer / 3, P_th2 = P_ave,
   P_th3 = P_ave + OMA_outer / 3, with P_ave the waveform's mean power.
 - OMA_outer = P3 - P0, P3 averaged over the central 2 UI of a run of seven
@@ -131,6 +152,7 @@ class TdecqResult:
     er_db: float                   # 10 log10(P3 / P0)
     oma_runs: tuple = (7, 6)       # run lengths the OMA came from
     dfe_b: float = 0.0             # reference DFE coefficient (0 without the DFE)
+    pre_post: float = 0.0          # (w(1) - w(-1)) / w(0) - b(1) of the taps found
     extras: dict = field(default_factory=dict)
 
 
@@ -277,12 +299,45 @@ def _dfe_start(X, A, target_lv, prev_lv, dfe_max, evaluate, n_pre):
     return evaluate(taps, n_pre, b=b)[0], taps, n_pre, b
 
 
+def _pre_post(taps: np.ndarray, n_pre: int, b: float) -> float:
+    """(w(1) - w(-1)) / w(0) - b(1), a missing neighbour counting as 0."""
+    w1 = taps[n_pre + 1] if n_pre + 1 < taps.size else 0.0
+    wm1 = taps[n_pre - 1] if n_pre >= 1 else 0.0
+    return float((w1 - wm1) / taps[n_pre] - b)
+
+
+def _onto_bound(taps: np.ndarray, n_pre: int, b: float, limits) -> np.ndarray | None:
+    """``taps`` if their pre/post difference is within ``limits``; else the
+    taps with w(1) and w(0) moved (their sum, and every other tap, held) so
+    it sits on the violated bound; None when that cannot be done."""
+    if limits is None:
+        return taps
+    lo, hi = limits
+    pp = _pre_post(taps, n_pre, b)
+    if lo - 1e-12 <= pp <= hi + 1e-12:
+        return taps
+    if n_pre + 1 >= taps.size:
+        return None
+    c = hi if pp > hi else lo
+    # w(1) = w(-1) + (c + b) w(0) with w(1) + w(0) = S
+    wm1 = taps[n_pre - 1] if n_pre >= 1 else 0.0
+    total = taps[n_pre] + taps[n_pre + 1]
+    w0 = (total - wm1) / (1.0 + c + b)
+    if w0 <= 0.0:
+        return None
+    out = taps.copy()
+    out[n_pre], out[n_pre + 1] = w0, total - w0
+    return out
+
+
 def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray, *,
           f_ref_hz: float | None = None, n_taps: int = 5, pre_options=(1, 2),
           target_ser: float = TARGET_SER, sigma_scope_w: float = 0.0,
           reference_filter: bool = True, optimise: bool = True,
           noise_bw_hz: float | None = None, skip_ui: int = 64,
-          dfe: bool = False, dfe_max: float = DFE_MAX) -> TdecqResult:
+          dfe: bool = False, dfe_max: float = DFE_MAX,
+          fiber_emulation_hz: float | None = None,
+          pre_post_limits: tuple[float, float] | None = None) -> TdecqResult:
     """TDECQ of a PAM4 optical power waveform.
 
     ``power`` [W] sampled every ``dt``, an integer number of samples per UI,
@@ -294,17 +349,24 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
     0.728 x the signalling rate). ``skip_ui`` UI at each end are left out of
     every statistic (filter and equaliser edges). ``dfe`` adds the 802.3dj
     1-tap reference DFE, its coefficient optimised in [0, ``dfe_max``].
+    ``fiber_emulation_hz`` adds the multimode clauses' fibre emulation filter
+    and ``pre_post_limits`` the 802.3dj pre/post tap difference limit (module
+    docstring for both; neither has a default value to give).
     """
     symbols = np.asarray(symbols, dtype=np.int64)
     if symbols.max() > 3 or symbols.min() < 0:
         raise ValueError("TDECQ is defined for PAM4: symbols must be level indices 0..3")
     if dfe and skip_ui < 1:
         raise ValueError("the DFE needs the symbol before the first scored one: skip_ui >= 1")
+    if pre_post_limits is not None and not pre_post_limits[0] < pre_post_limits[1]:
+        raise ValueError(f"pre_post_limits must be (lo, hi) with lo < hi, got {pre_post_limits}")
     osr = int(round(1.0 / (symbol_rate * dt)))
     if abs(osr * symbol_rate * dt - 1.0) > 1e-6:
         raise ValueError("dt must be an integer fraction of the UI")
     f_ref = 0.5 * symbol_rate if f_ref_hz is None else f_ref_hz
     y = reference_receiver(power, dt, f_ref) if reference_filter else np.asarray(power, float)
+    if fiber_emulation_hz is not None:
+        y = reference_receiver(y, dt, fiber_emulation_hz)      # the same BT4 shape
 
     n_sym = min(symbols.size, y.size // osr)
     nominal = np.array([-1.0, -1.0 / 3.0, 1.0 / 3.0, 1.0])
@@ -383,9 +445,18 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
         A[n_taps, :n_taps] = 1.0
         b = np.concatenate([2.0 * X.T @ target_lv, [1.0]])
         taps = np.linalg.solve(A, b)[:n_taps]
-        starts.append((evaluate(taps, n_pre)[0], taps, n_pre, 0.0))
+        cands = [(None, taps, n_pre, 0.0)]
         if dfe:
-            starts.append(_dfe_start(X, A, target_lv, prev_lv, dfe_max, evaluate, n_pre))
+            cands.append(_dfe_start(X, A, target_lv, prev_lv, dfe_max, evaluate, n_pre))
+        for v, taps, _, b_start in cands:
+            moved = _onto_bound(taps, n_pre, b_start, pre_post_limits)
+            if moved is None:
+                continue
+            if v is None or moved is not taps:
+                v = evaluate(moved, n_pre, b=b_start)[0]
+            starts.append((v, moved, n_pre, b_start))
+    if not starts:
+        raise ValueError(f"no reference equaliser meets pre_post_limits={pre_post_limits}")
     val, taps, n_pre, b_dfe = min(starts, key=lambda t: t[0])
     if optimise and np.isfinite(val):
         sig = evaluate(taps, n_pre, b=b_dfe)[1] * float(np.sqrt(taps @ R @ taps))
@@ -399,6 +470,9 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
                     trial = taps.copy()
                     trial[i] += sgn * step
                     trial[n_pre] -= sgn * step      # keep sum = 1 (+ b)
+                    trial = _onto_bound(trial, n_pre, b_dfe, pre_post_limits)
+                    if trial is None:
+                        continue
                     v, s_g, c_eq = evaluate(trial, n_pre, sig, b_dfe)[:3]
                     if v < val - 1e-6:
                         taps, val, improved, sig = trial, v, True, s_g * c_eq
@@ -409,6 +483,9 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
                         continue
                     trial = taps.copy()
                     trial[n_pre] += bt - b_dfe      # keep sum - b = 1
+                    trial = _onto_bound(trial, n_pre, bt, pre_post_limits)
+                    if trial is None:
+                        continue
                     v, s_g, c_eq = evaluate(trial, n_pre, sig, bt)[:3]
                     if v < val - 1e-6:
                         taps, b_dfe, val, improved, sig = trial, bt, v, True, s_g * c_eq
@@ -431,4 +508,5 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
         ceq=ceq, taps=np.asarray(taps), n_pre=int(n_pre), ser_left=ser_l, ser_right=ser_r,
         thresholds_w=thr, levels_w=levels, rlm=float(_rlm(levels)),
         er_db=float(10.0 * np.log10(p3 / p0)) if p0 > 0 else float("inf"),
-        oma_runs=runs_used, dfe_b=float(b_dfe), extras={"delay_samples": delay, "osr": osr, "f_ref_hz": f_ref})
+        oma_runs=runs_used, dfe_b=float(b_dfe), pre_post=_pre_post(np.asarray(taps), int(n_pre), b_dfe),
+        extras={"delay_samples": delay, "osr": osr, "f_ref_hz": f_ref})
