@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-12 · Viterbi 的网格在接收机实际采样点拟合(fix/mlsd-one-tap-ffe,ROADMAP P2 #17)
+
+- 原因:网格取自脉冲峰值处的模型,环路不停在那里;1 抽头 FFE 时第一后光标模型 −0.086 / 实际 +0.058,MLSD 比 slicer 多 7 倍误码。
+  有 DFE 时模型还把 DFE 之后的光标放错了延迟。改为按线路符号在实际采样点最小二乘拟合(决策导向的版本在脏 slicer 上被带偏,弃用)。
+- 用户选"全量修复 + 文档重算":12 个 MLSD 示例重跑,reach 动 ≤ 0.1 dB、结论不变;95 处推导数与引用打印值的文档同步。双引擎重量都在 2× 内。
+  `cairn/DSP发端与PR.md` §21。测试 1013 → 1015(+2)。
+- 验证:本地全量 1015 passed / 1 skipped,指纹逐位不变(MLSD 关闭的路径),Cython 编译 `timedomain.py` 通过。Android(acd123e,含全部
+  `src/` 改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包 pyinstaller 4 / nuitka 86 / onefile 124 分钟通过;
+  测试矩阵(含 nojit)、examples、examples-full(漂移与 95 处推导数)、RTL lockstep 全绿。
+- 上一条(#71)已合入;PR #69 / #70 / #71 于 2026-10-12 合入。
+
 ## 2026-10-12 · 光链路上联合界的 SNR 计入光噪声(fix/stat-optical-tx-pr,ROADMAP P2 #18)
 
 - 排除:关掉光噪声只留电噪声时发端 PR 1.02×(不是信道 / 电平);残余 ISI 与分箱平移 ≈ 0;光噪声着色差别太小。

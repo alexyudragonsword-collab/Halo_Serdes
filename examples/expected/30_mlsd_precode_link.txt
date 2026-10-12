@@ -1,11 +1,11 @@
-noise=0.040: slicer=7.446e-03  sliding=4.258e-03  viterbi=3.848e-03  (gain 1.94x)
-noise=0.045: slicer=1.216e-02  sliding=7.911e-03  viterbi=7.661e-03  (gain 1.59x)
-noise=0.050: slicer=1.810e-02  sliding=1.320e-02  viterbi=1.283e-02  (gain 1.41x)
-noise=0.055: slicer=2.486e-02  sliding=1.975e-02  viterbi=1.926e-02  (gain 1.29x)
-noise=0.060: slicer=3.254e-02  sliding=2.778e-02  viterbi=2.712e-02  (gain 1.20x)
+noise=0.040: slicer=7.446e-03  sliding=4.237e-03  viterbi=3.931e-03  (gain 1.89x)
+noise=0.045: slicer=1.216e-02  sliding=7.974e-03  viterbi=7.745e-03  (gain 1.57x)
+noise=0.050: slicer=1.810e-02  sliding=1.317e-02  viterbi=1.293e-02  (gain 1.40x)
+noise=0.055: slicer=2.486e-02  sliding=1.987e-02  viterbi=1.934e-02  (gain 1.29x)
+noise=0.060: slicer=3.254e-02  sliding=2.787e-02  viterbi=2.732e-02  (gain 1.19x)
 
-residual cursors [1.0, 0.161, 0.051]
-closed-form asymptotic MLSE gain over an IDEAL DFE: 0.12 dB
+residual cursors [1.0, 0.167, 0.053]
+closed-form asymptotic MLSE gain over an IDEAL DFE: 0.13 dB
   NOTE: that bound and the measured curve use different baselines. The
   measured gain is against the memoryless slicer (this link runs with
   the DFE off), which pays the full ISI penalty; the closed-form number

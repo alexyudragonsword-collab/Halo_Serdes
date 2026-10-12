@@ -51,7 +51,7 @@
 2. **双 RX 架构公平对比** —— mixed-signal 与 ADC-DSP 共享 Tx/信道/分析层,差异
    限制在两个组装类内。serdespy/PyBERT 只有 mixed-signal,DragonPHY2 只有 ADC。
 3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→33→36/38.5→43 dB
-   杠杆分解(DFE/deeper MLSD +1.7 dB、级联 FEC +3.3 dB、better ADC +5.5 dB,正交可叠加;
+   杠杆分解(DFE/deeper MLSD +1.8 dB、级联 FEC +3.2 dB、better ADC +5.4 dB,正交可叠加;
    2026-10-03 接收端修复与统计引擎一致性修复后重跑,旧阶梯 18→28→29→35→41 dB 是 CDR 锁偏时量的)。
 4. **双 MLSD 实现 + 解析 MLSE 增益 + 双引擎接线** —— Viterbi MLSE(最优)+ DragonPHY 式
    sliding-detector(低复杂度);`mlse_min_distance_sq`/`mlse_gain_over_dfe_db` 给出对理想
@@ -66,7 +66,7 @@
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/32、极限 30/36,
    30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、1013 个测试全通过、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、1015 个测试全通过、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -152,5 +152,5 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 1013 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 1015 测试通过。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。

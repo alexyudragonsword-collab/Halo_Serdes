@@ -202,3 +202,52 @@ def test_engines_agree_on_the_reduced_trellis(lr_runs, k):
     """Invariant 3 with a reduced-state detector on a real link."""
     t, s = lr_runs[k]
     assert 0.5 < s / t < 2.0, (k, t, s)
+
+
+# ------------------------------- the trellis where the receiver samples
+
+def test_trellis_cursors_are_the_channel_at_the_operating_point():
+    """A least-squares fit of the slicer samples on the line symbols they
+    carry returns the cursors there, main gain included: precursors and the
+    ISI past the trellis are fitted and dropped, slicer errors do not bias
+    it, and a cycle slip is realigned as the scorer realigns it."""
+    from halo_serdes.engine.timedomain import _trellis_cursors
+
+    cfg = LinkConfig(modulation="pam4")
+    rng = np.random.default_rng(5)
+    sym = rng.integers(0, 4, 40_000)
+    h = np.array([0.05, 0.92, 0.06, -0.02, 0.015])      # one precursor, main at 1
+    y = np.convolve(LV[sym], h)[1:sym.size + 1] + rng.normal(0.0, 0.35, sym.size)
+
+    def slice_(v):
+        return np.argmin(np.abs(v[:, None] - 0.92 * LV[None, :]), axis=1)
+
+    dec = slice_(y)
+    assert np.mean(dec != sym) > 1e-2                     # a far-from-clean slicer
+    c = _trellis_cursors(cfg, y, dec, LV, sym, sym, 100, 3)
+    assert c == pytest.approx([0.92, 0.06, -0.02], abs=0.01)
+    # one UI slipped half way: every later sample carries the next symbol
+    y2 = np.delete(y, 20_000)
+    c2 = _trellis_cursors(cfg, y2, slice_(y2), LV, sym, sym, 100, 3)
+    assert c2 == pytest.approx([0.92, 0.06, -0.02], abs=0.01)
+    assert _trellis_cursors(cfg, y[:200], dec[:200], LV, sym, sym, 100, 3) is None
+
+
+def _one_tap_cfg(n=100_000):
+    """Example 42's link at 0.06 m behind an FFE of its main tap alone."""
+    cfg = _lr_cfg(None, n)
+    return dc.replace(cfg, channel=dc.replace(cfg.channel, length_m=0.06), pr=PrConfig(),
+                      rx=dc.replace(cfg.rx, ffe=FfeConfig(n_pre=0, n_post=0, adapt="lms", mu=3e-5)))
+
+
+@needs_jit
+def test_viterbi_behind_a_one_tap_ffe_does_not_lose_to_its_slicer():
+    """Nothing re-centres the pulse when the FFE is one tap: the MM-CDR locks
+    where h(-1) = h(+1), and the first postcursor there is +0.06 where the
+    start-up model, read at the pulse peak, said -0.086. On that model the
+    Viterbi made 7x the slicer's errors; fitted where the receiver samples
+    it makes none (cairn/DSP发端与PR.md §21)."""
+    r = run_time_link(_one_tap_cfg())
+    assert r.extras["ser_slicer"] > 1e-3                     # the slicer does err here
+    assert r.ser <= 0.1 * r.extras["ser_slicer"]
+    assert r.extras["mlsd_resid"][0] > 0.03
