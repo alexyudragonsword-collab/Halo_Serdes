@@ -9,6 +9,9 @@
 - 改:每个事件的 ISI = 残余光标在事件差 d 上的投影 d · ISI / |d|²(成对条件的精确形式)。短 FFE 0.77–1.24×,§14 的 16 格
   0.67–1.55 → 0.58–1.08×(几何平均 0.80,剩下的近似朝乐观走)。非 PR 路径指纹逐位不变;示例输出不变。`cairn/DSP发端与PR.md` §19。
 - 顺带:光链路发端 PR、噪声在调制器后统计悲观 1.5–3.0×(原有)→ ROADMAP P2 #18。测试 1009 → 1012(+3)。
+- 验证:本地全量 1012 passed / 1 skipped,指纹 819 值逐位不变,Cython 编译 `statistical.py` 通过。Android(b61fb2e,含全部 `src/`
+  改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包 pyinstaller 3 / nuitka 116 / onefile 88 分钟通过;
+  测试矩阵(含 nojit)、examples、examples-full、RTL lockstep 全绿。
 - 上一条(#69)的 CI:b123ec9 上测试矩阵(含 nojit)、examples smoke、examples-full、RTL lockstep 全绿;本地全量 1009 passed / 1 skipped。
 
 ## 2026-10-11 · 降状态网格在短 FFE 上的代价(study/dfse-short-ffe,ROADMAP P3 #12 余项)
