@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-12 · TDECQ 未定条文:前后抽头差限制与多模光纤仿真滤波器(feat/tdecq-constraints,ROADMAP P3 #11 余项)
+
+- 核验(IEEE / OIF / LPO MSA 原文全被代理 403,只有检索摘要):dj D2.1 加了前后抽头差限制(按 w(0) 归一化,DFE 不归一化),数值没拿到,
+  候选 (−0.3, 0.15)(2025-09 提案)/ 0.25(802.3ds 基线);DR1 上限 3.0 dB 是提案,未见采纳;MMF 的 TDECQ 是 0.5×baud 参考接收机
+  再级联一个光纤仿真滤波器(802.3db Table 167-12 的 f_A),数值没拿到;OIF CTLE 表值仍没拿到。
+- 建:`tdecq(pre_post_limits=…)`(越界移到边界,搜索可沿边界走)、`tdecq(fiber_emulation_hz=…)`、`TdecqResult.pre_post`;默认都不加。
+- 量(示例 34 新增一节,原输出逐行不变):EML 上两种候选处处不起作用;DR1 若 3.0 dB 最小带宽 29.83 → 33.72 GHz;VCSEL 在 f_A 25.8 GHz 处
+  过 SR1,本模型 100 m OM4 约当 f_A 25 GHz。`cairn/光互联建模.md` §8。测试 1017 → 1020(+3)。
+- 验证:本地全量 1020 passed / 1 skipped,Cython 编译 `tdecq.py` 通过;指纹不覆盖 TDECQ,`src/` 只改了 `analysis/tdecq.py`(引擎未动),默认路径不变由示例 34 原输出逐行相同与原有 18 个测试证明。
+- 上一条(#73)已于 2026-10-12 合入。
+
 ## 2026-10-12 · CPO 相对 LPO 的功耗差(feat/power-cpo,ROADMAP P3 #11 余项)
 
 - 原状:功耗模型里 LPO 与 CPO 同价(拓扑只改电段损耗)。拆成两项:模块自身开销 —— `topology.optics_placement`

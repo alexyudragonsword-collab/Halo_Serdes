@@ -21,6 +21,15 @@ Three sweeps per transmitter: extinction ratio (more ER, less RIN per unit
 OMA), laser bandwidth (VCSEL relaxation frequency / EML 3 dB bandwidth),
 and L-I compression (``li_compression``: the inner levels move, R_LM falls).
 The table gives where each sweep crosses its limit.
+
+The last part asks what the details the standard texts here could not settle
+(they were not reachable, ``analysis/tdecq.py``) would change:
+
+- the 802.3dj limit on the reference FFE's pre/post tap difference, value
+  unknown: is it active anywhere on the EML's sweeps?
+- the DR1 TDECQ limit, 3.4 dB, or 3.0 dB as a September 2025 proposal had it;
+- the multimode TDECQ test's fibre emulation filter (802.3db Table 167-12),
+  bandwidth unknown: the VCSEL at TP2 through it, against the modelled fibre.
 """
 
 import dataclasses
@@ -91,8 +100,8 @@ def with_optical(cfg: LinkConfig, **kw) -> LinkConfig:
         cfg.topology, optical=dataclasses.replace(cfg.topology.optical, **kw)))
 
 
-def measure(cfg: LinkConfig, kw: dict):
-    power, line = transmitter_power(cfg, include_seg_a=False, through_fibre=True)
+def measure(cfg: LinkConfig, kw: dict, through_fibre: bool = True):
+    power, line = transmitter_power(cfg, include_seg_a=False, through_fibre=through_fibre)
     return tdecq(power, cfg.dt, cfg.symbol_rate, line, **kw)
 
 
@@ -104,6 +113,11 @@ def crossing(x, y, limit):
         if (y[i] - limit) * (y[i + 1] - limit) <= 0 and y[i] != y[i + 1]:
             return float(x[i] + (limit - y[i]) / (y[i + 1] - y[i]) * (x[i + 1] - x[i]))
     return "all pass" if np.all(y <= limit) else "all fail"
+
+
+def fmt(v, unit):
+    """A crossing as a number with its unit, or "all pass" / "all fail"."""
+    return f"{v:.2f}{unit}" if isinstance(v, float) else v
 
 
 results = {}
@@ -121,11 +135,13 @@ for name, t in TRANSMITTERS.items():
         bw_ffe = [measure(with_optical(cfg, **{t["bw_field"]: b}), dict(kw, dfe=False)).tdecq_db
                   for b in t["bw_sweep"]]
     er = [measure(with_optical(cfg, er_db=e), kw).tdecq_db for e in ER_SWEEP]
-    bw = [measure(with_optical(cfg, **{t["bw_field"]: b}), kw).tdecq_db for b in t["bw_sweep"]]
+    bw_meas = [measure(with_optical(cfg, **{t["bw_field"]: b}), kw) for b in t["bw_sweep"]]
+    bw = [m.tdecq_db for m in bw_meas]
     li_meas = [measure(with_optical(cfg, li_compression=c), kw) for c in LI_SWEEP]
     li = [m.tdecq_db for m in li_meas]
     rlm_curve = [optical_rlm(with_optical(cfg, li_compression=c).topology.optical) for c in LI_SWEEP]
-    results[name] = dict(er=er, bw=bw, li=li, rlm=[m.rlm for m in li_meas], rlm_curve=rlm_curve)
+    results[name] = dict(er=er, bw=bw, li=li, rlm=[m.rlm for m in li_meas], rlm_curve=rlm_curve,
+                         base=base, bw_meas=bw_meas, li_meas=li_meas)
     for label, xs, ys in (("ER [dB]", ER_SWEEP, er), (t["bw_label"], t["bw_sweep"] / 1e9, bw),
                           ("li_compression", LI_SWEEP, li)):
         row = "  ".join(f"{x:g}:{y:.2f}" for x, y in zip(xs, ys))
@@ -147,11 +163,56 @@ for name, t in TRANSMITTERS.items():
     er_x = crossing(ER_SWEEP, r["er"], t["limit"])
     bw_x = crossing(t["bw_sweep"] / 1e9, r["bw"], t["limit"])
     li_x = crossing(LI_SWEEP, r["li"], t["limit"])
-
-    def fmt(v, unit):
-        return f"{v:.2f}{unit}" if isinstance(v, float) else v
     print(f"{name:<20} {t['limit']:5.1f}dB {fmt(er_x, ' dB'):>8} {fmt(bw_x, ' GHz'):>14} "
           f"{fmt(li_x, ''):>16}")
+
+# ------------------------------------------ what the unsettled texts change ---
+EML, VCSEL = "EML 200G/λ (DR1)", "VCSEL 100G/λ (SR1)"
+print("\nWhat the details the standard texts here could not settle would change")
+# 1. the 802.3dj reference FFE pre/post difference limit, on taps normalised
+# to the main one: lo <= (w(1) - w(-1)) / w(0) - b(1) <= hi
+r, t = results[EML], TRANSMITTERS[EML]
+pts = [r["base"]] + r["bw_meas"] + r["li_meas"]
+pp = [m.pre_post for m in pts]
+print(f"  {EML}: (w(1) - w(-1)) / w(0) - b(1) over the baseline and the bandwidth / compression sweeps:"
+      f" {min(pp):+.3f} ... {max(pp):+.3f}")
+print("  " + "  ".join(f"{x:g}G:{m.pre_post:+.3f}" for x, m in zip(t["bw_sweep"] / 1e9, r["bw_meas"])))
+no_b = [m.pre_post + m.dfe_b for m in pts]
+print(f"  without b(1), (w(1) - w(-1)) / w(0): {min(no_b):+.3f} ... {max(no_b):+.3f}")
+LIMITS = {"proposal (-0.3, 0.15)": (-0.3, 0.15), "(-0.25, 0.25)": (-0.25, 0.25),
+          "tighter (-0.05, 0.05)": (-0.05, 0.05)}
+slow = {float(x): m for x, m in zip(t["bw_sweep"], r["bw_meas"])}
+check = {"baseline": (t["cfg"], r["base"]),
+         "EML 30 GHz": (with_optical(t["cfg"], f_r_hz=30e9), slow[30e9]),
+         "EML 25 GHz": (with_optical(t["cfg"], f_r_hz=25e9), slow[25e9])}
+print(f"  {'limit':<24}" + "".join(f"{k:>22}" for k in check))
+for lname, lim in LIMITS.items():
+    row = []
+    for cname, (c, free) in check.items():
+        held = measure(c, dict(t["measure"], pre_post_limits=lim))
+        row.append(f"{held.tdecq_db:6.2f} ({held.tdecq_db - free.tdecq_db:+.2f})")
+    print(f"  {lname:<24}" + "".join(f"{x:>22}" for x in row))
+inside = all(-0.25 <= v <= 0.15 for v in pp) and all(abs(v) <= 0.25 for v in no_b)
+print(f"  the candidates hold everywhere unconstrained, with or without b(1): {inside}")
+assert inside, (pp, no_b)
+
+# 2. the DR1 TDECQ limit: 3.4 dB (baselines) or 3.0 dB (proposed, unverified)
+print(f"  {EML} at a 3.0 dB limit: min ER {fmt(crossing(ER_SWEEP, r['er'], 3.0), ' dB')}, "
+      f"min bandwidth {fmt(crossing(t['bw_sweep'] / 1e9, r['bw'], 3.0), ' GHz')}, "
+      f"max compression {fmt(crossing(LI_SWEEP, r['li'], 3.0), '')}")
+
+# 3. the multimode TDECQ test: TP2 (no fibre) through a BT4 fibre emulation
+# filter f_A after the 0.5 x baud reference receiver, against the modelled fibre
+t = TRANSMITTERS[VCSEL]
+fibre = results[VCSEL]["base"].tdecq_db
+print(f"  {VCSEL}: modelled 100 m OM4 {fibre:.2f} dB; at TP2 through a fibre emulation filter f_A:")
+FA = [None, 40e9, 30e9, 25e9, 21e9, 18e9, 15e9]
+emu = [measure(t["cfg"], dict(t["measure"], fiber_emulation_hz=f), through_fibre=False).tdecq_db
+       for f in FA]
+print("  " + "  ".join(f"{'none' if f is None else f'{f / 1e9:g}G'}:{v:.2f}" for f, v in zip(FA, emu)))
+fa_x = crossing([f / 1e9 for f in FA[1:]], emu[1:], t["limit"])
+print(f"  SR1 {t['limit']} dB is crossed at f_A = "
+      + (f"{fa_x:.1f} GHz" if isinstance(fa_x, float) else fa_x))
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 3, figsize=(15, 4.6))

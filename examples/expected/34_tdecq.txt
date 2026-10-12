@@ -15,4 +15,18 @@ EML 200G/λ (DR1): TDECQ 1.88 dB (limit 3.4 dB), OMA +2.04 dBm, ER 4.53 dB, R_LM
 transmitter           limit   min ER  min bandwidth  max compression
 VCSEL 100G/λ (SR1)     4.4dB  4.20 dB      22.33 GHz         all fail
 EML 200G/λ (DR1)       3.4dB all pass      29.83 GHz         all pass
+
+What the details the standard texts here could not settle would change
+  EML 200G/λ (DR1): (w(1) - w(-1)) / w(0) - b(1) over the baseline and the bandwidth / compression sweeps: -0.116 ... -0.025
+  25G:-0.116  30G:-0.105  35G:-0.088  40G:-0.076  45G:-0.062  55G:-0.049  65G:-0.037  80G:-0.025
+  without b(1), (w(1) - w(-1)) / w(0): +0.101 ... +0.224
+  limit                                 baseline            EML 30 GHz            EML 25 GHz
+  proposal (-0.3, 0.15)             1.88 (+0.00)          3.37 (+0.00)          4.14 (+0.00)
+  (-0.25, 0.25)                     1.88 (+0.00)          3.37 (+0.00)          4.14 (+0.00)
+  tighter (-0.05, 0.05)             1.89 (+0.00)          4.48 (+1.11)          6.09 (+1.95)
+  the candidates hold everywhere unconstrained, with or without b(1): True
+  EML 200G/λ (DR1) at a 3.0 dB limit: min ER all pass, min bandwidth 33.72 GHz, max compression all pass
+  VCSEL 100G/λ (SR1): modelled 100 m OM4 4.59 dB; at TP2 through a fibre emulation filter f_A:
+  none:2.97  40G:3.41  30G:3.89  25G:4.50  21G:5.68  18G:8.20  15G:16.35
+  SR1 4.4 dB is crossed at f_A = 25.8 GHz
 wrote examples/output/34_tdecq.png

@@ -222,3 +222,57 @@ def test_dfe_helps_a_slow_200g_transmitter_more():
 
     assert gain(35e9) > gain(80e9) + 0.1
     assert tdecq_value(cfg).dfe_b > 0.0
+
+
+# ---------------------------------------------- reference equaliser limits
+
+def test_pre_post_difference_is_reported_and_held_to_its_limits():
+    """A post-cursor h asks the FFE for w(1) / w(0) = -h, so (w(1) - w(-1)) /
+    w(0) = -h unconstrained. A limit that binds holds it on the bound and
+    costs TDECQ; one that does not changes nothing, bit for bit."""
+    w = _postcursor(0.3)
+    free = tdecq(w, DT, BAUD, SYM, reference_filter=False)
+    assert free.pre_post == pytest.approx(-0.3, abs=0.03)
+    t = free.taps / free.taps[free.n_pre]
+    assert free.pre_post == pytest.approx(t[free.n_pre + 1] - t[free.n_pre - 1], abs=1e-12)
+    held = tdecq(w, DT, BAUD, SYM, reference_filter=False, pre_post_limits=(-0.1, 0.1))
+    assert held.pre_post >= -0.1 - 1e-9
+    assert held.taps.sum() == pytest.approx(1.0, abs=1e-9)
+    assert held.tdecq_db > free.tdecq_db + 0.2
+    loose = tdecq(w, DT, BAUD, SYM, reference_filter=False, pre_post_limits=(-1.0, 1.0))
+    assert loose.tdecq_db == free.tdecq_db and np.array_equal(loose.taps, free.taps)
+
+
+def test_pre_post_limit_counts_the_dfe():
+    """With the DFE the post-cursor goes to b(1), so (w(1) - w(-1)) / w(0) -
+    b(1) is about -h: the proposal's (-0.3, 0.15) leaves h = 0.2 alone, a
+    -0.1 floor pushes work back from the DFE and costs TDECQ."""
+    w = _postcursor(0.2)
+    free = tdecq(w, DT, BAUD, SYM, reference_filter=False, dfe=True)
+    assert free.pre_post == pytest.approx(-0.2, abs=0.03)
+    same = tdecq(w, DT, BAUD, SYM, reference_filter=False, dfe=True, pre_post_limits=(-0.3, 0.15))
+    assert same.tdecq_db == free.tdecq_db
+    held = tdecq(w, DT, BAUD, SYM, reference_filter=False, dfe=True, pre_post_limits=(-0.1, 0.15))
+    assert held.pre_post >= -0.1 - 1e-9
+    assert held.taps.sum() - held.dfe_b == pytest.approx(1.0, abs=1e-9)
+    assert held.tdecq_db > free.tdecq_db + 0.05
+    with pytest.raises(ValueError, match="pre_post_limits"):
+        tdecq(w, DT, BAUD, SYM, pre_post_limits=(0.1, -0.1))
+
+
+def test_fiber_emulation_filters_the_signal_not_the_noise_weighting():
+    """The multimode fibre emulation filter is a BT4 on the signal: the same
+    as filtering the waveform first, with C_eq unchanged in definition; a
+    narrower filter closes the eye of a modelled VCSEL further."""
+    from halo_serdes.analysis.tdecq import reference_receiver
+    from halo_serdes.engine.optical_stage import transmitter_power
+
+    cfg = _lpo()
+    power, line = transmitter_power(cfg, include_seg_a=False)
+    a = tdecq(power, cfg.dt, cfg.symbol_rate, line, fiber_emulation_hz=30e9)
+    pre = reference_receiver(power, cfg.dt, 30e9)
+    b = tdecq(pre, cfg.dt, cfg.symbol_rate, line)
+    assert a.tdecq_db == pytest.approx(b.tdecq_db, abs=1e-6)
+    base = tdecq(power, cfg.dt, cfg.symbol_rate, line)
+    narrow = tdecq(power, cfg.dt, cfg.symbol_rate, line, fiber_emulation_hz=18e9)
+    assert base.tdecq_db < a.tdecq_db < narrow.tdecq_db
