@@ -114,25 +114,70 @@ def _residual_ratios(eq_cursors: np.ndarray, eq_pre: int, n_dfe: int,
     return tail / main
 
 
+def _trellis_cursors(cfg: LinkConfig, y: np.ndarray, dec: np.ndarray, levels: np.ndarray,
+                     line_idx: np.ndarray, user_idx: np.ndarray, start: int, n_cursors: int,
+                     n_pre: int = 2, n_extra: int = 2) -> np.ndarray | None:
+    """The sequence detector's channel where the receiver actually samples.
+
+    A least-squares fit of the slicer samples on the line symbols they carry,
+    y_k ~ sum_j c_j L[x_(k-j)] for j = -n_pre .. n_cursors - 1 + n_extra;
+    the precursors and the cursors past the trellis are fitted so they do not
+    bias it, then dropped. Returns c_0 .. c_(n-1) in units of the slicer
+    levels -- the cursor vector ``post_detect`` takes, the main one's gain
+    included -- or None with too few samples.
+
+    The detector's knowledge of its channel is ideal here, as it was before:
+    the trellis used to be the simulator's own pulse model, read at the pulse
+    peak through the final taps. That is not where the loops settle. With a
+    one-tap FFE the MM-CDR locks where h(-1) = h(+1) on the raw pulse and
+    nothing re-centres it: the model's first postcursor was -0.086 where the
+    samples held +0.058 (and the main 0.92 of the levels), and the Viterbi on
+    it made 7x the slicer's errors. Behind a DFE the model also put the
+    cursors after the DFE's at trellis delays 1, 2, ...; the fit sees what is
+    at those delays (cairn/DSP发端与PR.md §21). The symbols are realigned
+    across cycle slips as ``score`` realigns them; fitting on the receiver's
+    own decisions instead was biased by their errors where the slicer is far
+    from clean (example 06: MLSD gain 2.4x -> 1.4x at slicer BER 8e-2).
+    """
+    from .scoring import find_slips, user_decisions
+
+    y = np.asarray(y, dtype=float)
+    n = y.size
+    pos = np.arange(n)
+    slip = find_slips(user_decisions(cfg, np.asarray(dec))[start:n], user_idx, start)
+    if slip is not None:
+        pos[start:] += slip
+    ok = (pos >= 0) & (pos < line_idx.size)
+    sym = np.full(n, -1, dtype=np.int64)
+    sym[ok] = line_idx[pos[ok]]
+    k = np.arange(max(int(start), n_cursors + n_extra), n - n_pre)
+    js = np.arange(-n_pre, n_cursors + n_extra)
+    rows = sym[k[:, None] - js[None, :]]
+    keep = np.all(rows >= 0, axis=1)
+    if keep.sum() < 50 * js.size:
+        return None
+    lv = np.asarray(levels, dtype=float)
+    coef = np.linalg.lstsq(lv[rows[keep]], y[k[keep]], rcond=None)[0]
+    return coef[n_pre: n_pre + n_cursors]
+
+
 def _mlsd_post_detect(cfg: LinkConfig, y_slicer: np.ndarray, dec: np.ndarray,
-                      levels: np.ndarray, resid: np.ndarray,
-                      head: np.ndarray | None = None) -> np.ndarray:
+                      levels: np.ndarray, cursors: np.ndarray) -> np.ndarray:
     """Re-decide the symbol stream with the configured sequence detector.
 
-    ``levels`` are the slicer levels in volts, so the trellis cursor vector is
-    ``[1, r1, r2, ...]`` — the residual ratios scale those same volt levels --
-    or, with a partial-response target, ``head`` (``[1, alpha]``) and then
-    the residual. Returns ``dec`` unchanged when MLSD is off or there is
-    nothing to detect over.
+    ``levels`` are the slicer levels in volts and ``cursors`` scale them:
+    the main one (its gain included), then -- with a partial-response
+    target -- the controlled cursors, then the residual
+    (``_trellis_cursors``). Returns ``dec`` unchanged when MLSD is off or
+    there is nothing to detect over.
     """
     mcfg = cfg.rx.mlsd
     if mcfg.kind == "none":
         return dec
     from ..dsp.mlsd import post_detect
 
-    cursors = np.concatenate([[1.0] if head is None else np.asarray(head, dtype=float),
-                              np.asarray(resid, dtype=float)])
-    if np.all(np.abs(cursors[1:]) < 1e-9):    # nothing left to detect over
+    cursors = np.asarray(cursors, dtype=float)
+    if np.all(np.abs(cursors[1:]) < 1e-9 * abs(cursors[0])):    # nothing left to detect over
         return dec
     method = "viterbi" if mcfg.kind == "viterbi" else "sliding"
     # the sliding detector corrects the receiver's decisions -- under a PR
@@ -467,12 +512,17 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     jitter_budget = _stream_jitter(cfg, rx_y, jitter_budget)
 
     n_run = dec.size
+    warm = warmup_symbols(cfg, train_end, n_run)
     # --- optional MLSD over the postcursors the DFE left behind ---
     resid_ratios = _residual_ratios(cursors, 0, n_dfe, cfg.rx.mlsd.memory)
     dec_slicer = dec
-    dec = _mlsd_post_detect(cfg, y_sum[:n_run], dec, levels, resid_ratios)
-
-    warm = warmup_symbols(cfg, train_end, n_run)
+    if cfg.rx.mlsd.kind != "none":
+        trellis = _trellis_cursors(cfg, y_sum[:n_run], dec, levels, ref_idx, user_idx, warm,
+                                   1 + cfg.rx.mlsd.memory)
+        if trellis is None:
+            trellis = np.concatenate([[1.0], resid_ratios])
+        resid_ratios = trellis[1:] / trellis[0]
+        dec = _mlsd_post_detect(cfg, y_sum[:n_run], dec, levels, trellis)
     sc = score(cfg, dec=dec, dec_slicer=dec_slicer, y_slicer=y_sum,
                levels=levels, line_idx=ref_idx, user_idx=user_idx,
                n_run=n_run, warmup=warm)
@@ -689,6 +739,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # used to be scored: a fixed tail of wrong symbols, 3/(2N) in BER.
     n_run = max(dec.size - fcfg.n_pre, 0)
     dec = dec[:n_run]
+    warm = warmup_symbols(cfg, train_end, n_run)
     # --- optional MLSD over the residual the FFE/DFE left behind ---
     eq_final, eq_pre_f = equalized_cursors(cursors, w_ffe, n_pre_c, fcfg.n_pre)
     resid_ratios = _residual_ratios(eq_final, eq_pre_f, n_dfe,
@@ -697,6 +748,16 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     head = (eq_final[eq_pre_f: eq_pre_f + n_t] / eq_final[eq_pre_f]
             if pr.active else None)
     dec_slicer = dec
+    trellis = None
+    if cfg.rx.mlsd.kind != "none":
+        # ... and all of it where the loops actually settled
+        trellis = _trellis_cursors(cfg, y_sl[:n_run], dec, levels, ref_idx, user_idx, warm,
+                                   n_t + cfg.rx.mlsd.memory)
+        if trellis is None:
+            trellis = np.concatenate([[1.0] if head is None else head, resid_ratios])
+        resid_ratios = trellis[n_t:] / trellis[0]
+        if pr.active:
+            head = trellis[:n_t] / trellis[0]
     if fixed is not None and cfg.rx.mlsd.kind == "sliding":
         # the bit-true detector on the loop's slicer words (dsp/fixed_mlsd.py)
         from ..dsp.fixed_mlsd import build_fixed_sliding, run_fixed_sliding
@@ -705,7 +766,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         # the float detector's residual is the first cursor after the main
         # one -- the target's own under PR -- and, like it, it corrects the
         # loop's own decisions rather than a plain slice of the words
-        rp = float(head[1]) if head is not None and len(head) > 1 else float(resid_ratios[0])
+        rp = float(trellis[1] / trellis[0])
         fsd = build_fixed_sliding(cfg, rp, fl.levels_out, fl.out_lsb, fl.out_bits)
         v_fx = rec["v_out"][:n_run]
         dec = run_fixed_sliding(fsd, v_fx, np.asarray(dec[:n_run], dtype=np.int64),
@@ -723,10 +784,9 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         )
 
         fl, rec = fixed["loop"], fixed["record"]
-        cursors = np.concatenate([[1.0] if head is None else np.asarray(head, dtype=float),
-                                  np.asarray(resid_ratios, dtype=float)])
+        cursors = trellis
         k_state = cfg.rx.mlsd.state_memory
-        if not np.all(np.abs(cursors[1:]) < 1e-9):
+        if not np.all(np.abs(cursors[1:]) < 1e-9 * abs(cursors[0])):
             if k_state is not None and k_state < cursors.size - 1:
                 fvd = build_fixed_dfse(cfg, cursors, fl.levels_out, fl.out_bits, k_state)
                 dec = run_fixed_dfse(fvd, rec["v_out"][:n_run], fl.levels_out.size)
@@ -734,10 +794,9 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 fvd = build_fixed_viterbi(cfg, cursors, fl.levels_out, fl.out_bits)
                 dec = run_fixed_viterbi(fvd, rec["v_out"][:n_run], fl.levels_out.size)
             fixed["mlsd"] = {"detector": fvd, "dec": dec}
-    else:
-        dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, resid_ratios, head)
+    elif trellis is not None:
+        dec = _mlsd_post_detect(cfg, y_sl[:n_run], dec, levels, trellis)
 
-    warm = warmup_symbols(cfg, train_end, n_run)
     # score() undoes the precoder first: the slicer decided line symbols
     sc = score(cfg, dec=dec, dec_slicer=dec_slicer, y_slicer=y_sl,
                levels=levels, line_idx=ref_idx, user_idx=user_idx,
