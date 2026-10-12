@@ -6,6 +6,23 @@
 
 ---
 
+## [未发布] — CPO 相对 LPO 的功耗差(ROADMAP P3 #11 余项)
+
+### 新增
+- `TopologyConfig.optics_placement: pluggable | co_packaged`(默认 `pluggable`):光路是前面板笼子里的可插拔模块,还是主机封装基板上的
+  共封装光引擎。只有功耗模型读它 —— 引擎只认段 A / B 的损耗;不进表单(应用层不算功耗)。
+- `PowerCoefficients.co_packaged_optics_j_per_bit` = 6.9 pJ/b(Broadcom 51.2T CPO 5.5 W / 800G;JLT 2026 交换机级对比的 2024 年 CPO,
+  比 LPO 省 23%;区间 5.6–8.0)。`power_report` 对共封装光路按它计价,可插拔仍按 `optics_j_per_bit` 9.0;重定时器照算。
+
+### 变更(示例输出)
+- 示例 41 第 4 节:同收端下 CPO 11.15 对 LPO 13.25 pJ/b(原两者同价);新增 100 m OM4 上两条链路的时域 ENOB 阶梯(9 抽头 FFE,
+  CTLE 6 / 7.5 / 9 dB 取最好,满量程 0.2):LPO 最低 ENOB 5.0、CPO 3.5,按各自收端计价 LPO 12.57、CPO 9.74 pJ/b,共省 2.82(22%)——
+  模块开销 2.10,1.5 bit ADC 0.72。第 5 节加 CPO / LPO 一列与 CPO 光引擎系数两端两个变体:0.67–0.86。原有数字不变。
+- 文档里"LPO 与 CPO 在模型里同价"一句(SUMMARY、USAGE、COMPARISON、`cairn/功耗建模.md`)改为上述结论并附更正说明。
+
+### 测试
+- +2:`tests/test_power.py` 共封装只换光路总量(收端同价、重定时器照算);`optics_placement` 取值校验。
+
 ## [未发布] — Viterbi 的网格在接收机实际采样点拟合(ROADMAP P2 #17)
 
 ### 修复

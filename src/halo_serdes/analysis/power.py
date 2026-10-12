@@ -24,7 +24,10 @@ What it counts, per link direction:
 - sequence detector (either architecture): Viterbi branch and path metrics
   over ``N ** (len(pr.target) - 1 + mlsd.memory)`` states, or the sliding
   detector's three hypotheses over its window;
-- optics (``topology.optical`` set): a per-bit lump for the E/O and O/E ends;
+- optics (``topology.optical`` set): a per-bit lump for the E/O and O/E ends,
+  a pluggable module's or a co-packaged engine's (``topology.optics_placement``);
+  the difference stands for the module's own overhead (its power conversion
+  and management, a driver and TIA reaching across the host's board trace);
 - retimer (``topology.retimer == "both"``): two more receivers and
   transmitters, priced by the same rules from ``retimer_rx`` / ``retimer_tx``.
 
@@ -70,7 +73,11 @@ class PowerCoefficients:
     - ``tx_j_per_bit``: 1.0 pJ/b, between a 16 nm 64 Gb/s transmitter
       (1.39 pJ/b) and a 3 nm 224 Gb/s DAC transmitter (sub-pJ/b);
     - ``optics_j_per_bit``: 9.0 pJ/b, measured 800G LPO modules
-      (9-9.7 pJ/b; vendors quote 5-8 W per 800G, 6-10 pJ/b).
+      (9-9.7 pJ/b; vendors quote 5-8 W per 800G, 6-10 pJ/b);
+    - ``co_packaged_optics_j_per_bit``: 6.9 pJ/b, a co-packaged optical
+      engine: Broadcom's 51.2T CPO at 5.5 W per 800G, and a 2026 switch-
+      level comparison's 2024 CPO figure, 23% below LPO (range 5.6, NVIDIA's
+      9 W per 1.6T port, to 8.0, Broadcom's previous CPO at 6.4 W per 800G).
     """
 
     adc_fom: Literal["walden", "schreier"] = "walden"
@@ -86,13 +93,14 @@ class PowerCoefficients:
     rx_common_j_per_bit: float = 1.2e-12
     tx_j_per_bit: float = 1.0e-12
     optics_j_per_bit: float = 9.0e-12
+    co_packaged_optics_j_per_bit: float = 6.9e-12
 
     def __post_init__(self):
         if self.adc_fom not in ("walden", "schreier"):
             raise ValueError(f"adc_fom must be 'walden' or 'schreier', got {self.adc_fom!r}")
         for name in ("adc_fom_walden_j", "mult32_j", "add32_j", "node_scale", "digital_overhead",
                      "comparator_j", "analog_dfe_tap_j", "rx_common_j_per_bit", "tx_j_per_bit",
-                     "optics_j_per_bit"):
+                     "optics_j_per_bit", "co_packaged_optics_j_per_bit"):
             if not getattr(self, name) >= 0.0:
                 raise ValueError(f"{name} must be >= 0, got {getattr(self, name)}")
         if self.metric_bits < 1:
@@ -271,8 +279,11 @@ def power_report(cfg: LinkConfig, coeffs: PowerCoefficients | None = None) -> Po
     blocks = tx_blocks(cfg, cfg.tx, k, "host.tx") + rx_blocks(cfg, cfg.rx, k, "host.rx")
     topo = cfg.topology
     if topo is not None and topo.optical.kind != "none":
-        blocks.append(PowerBlock("optics", k.optics_j_per_bit * cfg.data_rate,
-                                 f"{topo.optical.kind} E/O + O/E"))
+        co = topo.optics_placement == "co_packaged"
+        j = k.co_packaged_optics_j_per_bit if co else k.optics_j_per_bit
+        blocks.append(PowerBlock("optics", j * cfg.data_rate,
+                                 f"{topo.optical.kind} E/O + O/E, "
+                                 + ("co-packaged engine" if co else "pluggable module")))
     if topo is not None and topo.retimer == "both":
         # a retimer at the module's ingress and one at its egress
         pair = (tx_blocks(cfg, topo.retimer_tx, k, "retimer.tx")

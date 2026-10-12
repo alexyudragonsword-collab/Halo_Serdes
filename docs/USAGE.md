@@ -695,6 +695,9 @@ run_time_link(cfg, symbols=my_symbols)   # 任何引擎都能接外部符号流(
 注意全刻度:未重定时时 host RX 看到整条链(增益 0.25),重定时后每个 RX 只看一段电线(0.5)或光路(0.25),
 `adc.fullscale` 要跟着设(预置 `pam4_100g_lpo_vcsel.yaml` 里 host 0.3、重定时器 0.6)。
 
+**光路放在哪**:`topology.optics_placement: pluggable | co_packaged`(默认 `pluggable`)只给功耗模型看 —— 引擎只认段 A / B 的损耗,
+CPO 的"短走线"要靠把段设短来表达;`co_packaged` 按共封装光引擎计价(见下文功耗一节)。表单里没有这个字段(应用不算功耗)。
+
 **大信号曲线与 TDECQ(阶段 3)**:`topology.optical.li_compression`(0 = 线性)给 E/O 一条静态大信号曲线 ——
 VCSEL 是二阶 L-I 带热翻转(压缩顶电平),EML 是指数型 EAM 吸收曲线(压缩底电平);两端外电平钉住,OMA / ER 不变,
 内电平移动,`tx.rlm` 成为"驱动器设定",光域 R_LM 由曲线导出。曲线作用在 E/O 小信号输出上(Wiener 顺序),
@@ -955,9 +958,12 @@ power_report(cfg, k).pj_per_bit
 - **算什么**:发端每 bit 一个总量(有 `tx.dac_bits` 时加数字 FIR);两种收端共用的前端 / 时钟 / CDR 用同一个系数(比较时抵消);
   混合信号的比较器(数据 N − 1,tap1 展开 × N,加误差、边沿比较器)与模拟 DFE 抽头;ADC 按 Walden(每 bit ×2)或 Schreier(×4)
   定律,`adc.enob` 未设时按 `n_bits` 计价(理想量化器的功耗没有意义,备注里会写);数字 FFE / DFE / Viterbi 按运算次数 ×
-  Horowitz 45 nm 能耗 × DeepScaleTool 的 45 → 7 nm 缩放;有光路加一个光模块总量,`retimer: both` 加两对收发。
+  Horowitz 45 nm 能耗 × DeepScaleTool 的 45 → 7 nm 缩放;有光路加一个光路总量(`topology.optics_placement`:`pluggable` 按可插拔模块
+  9.0、`co_packaged` 按共封装光引擎 6.9 pJ/b),`retimer: both` 加两对收发。
 - **不算什么**:数字块只算运算(寄存器、时钟树、并行展开、LMS、幸存路径存储不算,是下限);每 bit 能耗与符号率无关(假设);
-  CPO 与 LPO 在模型里同价(拓扑只改电段损耗,CPO 省下的驱动走线与模块开销不在模型里)。
+  发端驱动随走线、摆幅的变化(`tx_j_per_bit` 是常数:CPO 的主机走线短,模型只从收端配置看得到它省下的那部分);外置激光源单列与否,
+  资料没说。(2026-10-12 前这里写"CPO 与 LPO 在模型里同价",现已区分。)
 - **示例** `examples/41_power_budget.py`:与已发表总量核对(112 Gb/s 收发器 4.23 vs 4.63 pJ/b,retimed 减 LPO 8.51 vs 实测 7.4–8.5),
   示例 07 的两种收端(混合信号 1.60、ADC 4.81 pJ/b),224G LR 杠杆(Viterbi 每多一个受控光标 ×3.76 / ×3.91),
-  示例 33 的三种拓扑,以及每个结论在系数区间两端是否还成立。
+  示例 33 的三种拓扑(同收端下 CPO 比 LPO 少 2.10 pJ/b;再用时域阶梯找 100 m 处各自要的 ADC —— LPO ENOB 5.0、CPO 3.5 ——
+  按各自收端计价 LPO 12.57、CPO 9.74 pJ/b),以及每个结论在系数区间两端是否还成立。

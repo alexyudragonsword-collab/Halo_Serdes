@@ -79,7 +79,7 @@
 (`engine/cascade.py`,示例 33 LPO / retimed / CPO 同台);E/O 大信号曲线(VCSEL L-I / EAM,统计引擎按邻符号图样建了它对 ISI 的
 弯折,压缩 0…0.5 时两引擎 0.86–1.28×)与 802.3 TDECQ(`analysis/tdecq.py`,示例 34)。
 LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极管噪声之前才有用)。
-功耗(2026-10-11 已做,估计口径):`analysis/power.py` 按模块给 pJ/bit —— ADC 按 FOM、数字 FFE / DFE / Viterbi 按运算次数、比较器、光模块、重定时器;系数全是公开数据的估计,与已发表总量差在 2 倍内,只读比值(示例 41:retimed 减 LPO 8.51 pJ/b,实测模块之差 7.4–8.5);LPO 与 CPO 在模型里同价,CPO 省下的那部分不在模型里。(802.3dj TDECQ 的 1 抽头 DFE 已建。)三个参考库都没有光路。
+功耗(2026-10-11 已做,估计口径):`analysis/power.py` 按模块给 pJ/bit —— ADC 按 FOM、数字 FFE / DFE / Viterbi 按运算次数、比较器、光模块、重定时器;系数全是公开数据的估计,与已发表总量差在 2 倍内,只读比值(示例 41:retimed 减 LPO 8.51 pJ/b,实测模块之差 7.4–8.5);CPO 按共封装光引擎计价(`topology.optics_placement`),同收端下比 LPO 少模块自身开销 2.10 pJ/b,再加 100 m 处短走线让出的 1.5 bit ADC,共省 22%(2026-10-12;此前同价)。(802.3dj TDECQ 的 1 抽头 DFE 已建。)三个参考库都没有光路。
 
 **相对 PyBERT**
 

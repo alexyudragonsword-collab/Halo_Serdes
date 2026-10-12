@@ -179,15 +179,34 @@ def test_dac_tx_adds_its_fir_and_tx_pr_lengthens_it():
 
 # ------------------------------------------------------------- topologies
 
-def _optical(retimer="none"):
+def _optical(retimer="none", placement="pluggable"):
     return TopologyConfig(optical=OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0), retimer=retimer,
-                          retimer_rx=adc_rx(enob=5.5, n_dfe=0), retimer_tx=TxConfig())
+                          retimer_rx=adc_rx(enob=5.5, n_dfe=0), retimer_tx=TxConfig(),
+                          optics_placement=placement)
 
 
 def test_optics_only_with_an_optical_topology():
     assert power_report(link(adc_rx())).watts("optics") == 0.0
     r = power_report(link(adc_rx(), topology=_optical()))
     assert r.pj("optics") == pytest.approx(K.optics_j_per_bit * 1e12)
+
+
+def test_co_packaged_optics_drop_only_the_module_overhead():
+    lpo = power_report(link(adc_rx(), topology=_optical()))
+    cpo = power_report(link(adc_rx(), topology=_optical(placement="co_packaged")))
+    assert cpo.pj("optics") == pytest.approx(K.co_packaged_optics_j_per_bit * 1e12)
+    assert cpo.watts("host") == pytest.approx(lpo.watts("host"))      # same receivers, same price
+    assert lpo.pj_per_bit - cpo.pj_per_bit == pytest.approx(
+        (K.optics_j_per_bit - K.co_packaged_optics_j_per_bit) * 1e12)
+    # a retimed co-packaged engine keeps its retimers
+    ret = power_report(link(adc_rx(), topology=_optical("both", "co_packaged")))
+    assert ret.watts("retimer") == pytest.approx(
+        power_report(link(adc_rx(), topology=_optical("both"))).watts("retimer"))
+
+
+def test_optics_placement_is_validated():
+    with pytest.raises(ValueError, match="optics_placement"):
+        _optical(placement="onboard")
 
 
 def test_retimed_is_lpo_plus_two_retimers():
