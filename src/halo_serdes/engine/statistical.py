@@ -32,9 +32,10 @@ Non-LTI approximations (each cross-checked against the time engine):
   Each event sees the residual ISI (what is left outside the trellis)
   projected on its own difference, as its noise is: at a single sample's
   size it read 2-12x pessimistic behind a 3-7 tap FFE, which leaves that
-  residual large. Now 0.58-1.08x across receive and transmit PR, two to
-  four cursors, at BER 7e-5 to 2e-2, and 0.77-1.24x behind a 3-7 tap FFE
-  (where the time engine counted 28 errors or more).
+  residual large. Now 0.60-1.08x across receive and transmit PR, two to
+  four cursors, at BER 7e-5 to 2e-2, and 0.95-1.53x behind a 3-7 tap FFE
+  (where the time engine counted 28 errors or more; against the time
+  engine's Viterbi on a trellis fitted where the receiver samples).
   An optical link's two binned neighbours stay a full-size shift (their
   noise is per level, not per event). On an optical link the union's
   overlap weights are sampled at the SNR of all its noise, the optical
