@@ -36,7 +36,15 @@ Non-LTI approximations (each cross-checked against the time engine):
   four cursors, at BER 7e-5 to 2e-2, and 0.77-1.24x behind a 3-7 tap FFE
   (where the time engine counted 28 errors or more).
   An optical link's two binned neighbours stay a full-size shift (their
-  noise is per level, not per event). The per-symbol decisions the LMS and
+  noise is per level, not per event). On an optical link the union's
+  overlap weights are sampled at the SNR of all its noise, the optical
+  share averaged over levels (at the electrical share alone the events
+  looked disjoint and the union became the plain sum: 1.5-3.0x pessimistic
+  behind transmit PR, now 0.83-1.44x over transmit and receive PR). Each
+  event still takes the noise of the level and neighbours of its first
+  symbol for all its samples; averaging every sample's own, which the
+  noise really does along an event, would lower these 0.6-0.8x (offline).
+  The per-symbol decisions the LMS and
   the CDR read (and, without a sequence detector, the detector) take the
   controlled cursors off with earlier decisions, errors included: a Markov
   chain over the last decision errors (``pr_symbol_decisions``) gives their
@@ -773,10 +781,24 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             cur = np.concatenate([head, np.asarray(res)])
             events = pr_error_events(cur, noise_acf, n_levels, cfg.precode, families=fams,
                                      state_memory=k_state)
-            if noise_sigma > 0:
+            # the overlap weights are sampled at the link's SNR: all of its
+            # noise, the optical share (per level, here averaged) included.
+            # With the receiver's electrical noise alone an optical link read
+            # as noiseless, the events as disjoint and the union as the plain
+            # sum -- 1.5-3.0x pessimistic behind transmit PR
+            # (cairn/DSP发端与PR.md §20)
+            sigma_union = noise_sigma
+            if pattern_sigma is not None:
+                var_opt = float(np.mean(pattern_sigma ** 2))
+                if curve_var is not None:
+                    var_opt += float(np.mean(curve_var[pi]))
+                sigma_union = float(np.sqrt(noise_sigma ** 2 + var_opt))
+            elif level_sigma is not None:
+                sigma_union = float(np.sqrt(noise_sigma ** 2 + np.mean(level_sigma ** 2)))
+            if sigma_union > 0:
                 if union_ratio is None:
                     union = pr_error_events(cur, noise_acf, n_levels, cfg.precode,
-                                            snr=half_gap / noise_sigma, families=fams,
+                                            snr=half_gap / sigma_union, families=fams,
                                             state_memory=k_state)
                     union_ratio = [u[1] / e[1] if e[1] > 0 else 0.0
                                    for u, e in zip(union, events)]
