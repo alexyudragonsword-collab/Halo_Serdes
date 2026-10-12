@@ -14,7 +14,7 @@ from halo_serdes.channel import ChannelModel
 from halo_serdes.config import LinkConfig, PrConfig
 from halo_serdes.config.schema import (
     AdcConfig, CdrConfig, ChannelConfig, ClockConfig, CtleConfig, DfeConfig, FfeConfig, MlsdConfig,
-    RxConfig, SimConfig, TxConfig,
+    OpticalConfig, RxConfig, SimConfig, TopologyConfig, TxConfig,
 )
 from halo_serdes.core.mapping import precode_1plusd, unprecode_1plusd
 from halo_serdes.dsp.ffe import equalized_cursors, mmse_ffe, zf_ffe
@@ -991,4 +991,39 @@ def test_invariant3_with_a_pr_target_behind_a_short_ffe(target, ffe, length_m):
     mc = run_time_link(cfg)
     st = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
     assert mc.ber.n_errors >= 25
+    assert 0.5 < st.ber / mc.ber.ber < 2.0
+
+
+# ------------------------------------- optical: the union at the link's SNR
+
+def _vcsel_pr_link(f_r_hz, target, at, n_sym=200_000):
+    """Example 40's link: VCSEL + 100 m OM4, 53.125 GBd PAM4, 17-tap LMS FFE,
+    memory-2 Viterbi; the noise after the modulator (RIN, shot, TIA)."""
+    return LinkConfig(
+        modulation="pam4", symbol_rate=53.125e9, osr=16,
+        tx=TxConfig(swing=1.0, fir_taps=(1.0,), fir_n_pre=0),
+        rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=3.0),
+                    adc=AdcConfig(n_bits=10, n_lanes=16, enob=None, fullscale=0.3),
+                    ffe=FfeConfig(n_pre=4, n_post=12, adapt="lms", mu=3e-5),
+                    dfe=DfeConfig(n_taps=0), mlsd=MlsdConfig(kind="viterbi", memory=2),
+                    cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
+                    noise_rms=1e-4),
+        sim=SimConfig(n_symbols=n_sym, seed=7, pattern="prbs13q"),
+        topology=TopologyConfig(optical=OpticalConfig(
+            kind="vcsel_mmf", f_r_hz=f_r_hz, damping_hz=30e9, er_db=4.0, oma_dbm=1.0,
+            rin_db_hz=-145.0, length_m=100.0, modal_bw_mhz_km=4700.0, responsivity_a_w=0.7,
+            tia_bw_hz=40e9, tia_noise_pa_sqrthz=12.0, tz_ohm=2000.0)),
+        pr=PrConfig(target=target, at=at))
+
+
+@needs_jit
+def test_invariant3_with_transmit_pr_on_an_optical_link():
+    """The union's overlap weights are sampled at the link's SNR. The optical
+    noise sits in the per-level kernels, not in the receiver's electrical
+    sigma; at that sigma alone (0.08 mV) the events looked disjoint, the
+    union became the plain sum, and this link read 2.99x (cairn/DSP发端与PR.md §20)."""
+    cfg = _vcsel_pr_link(16e9, (1.0, 0.5), "tx")
+    mc = run_time_link(cfg)
+    st = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert mc.ber.n_errors >= 100
     assert 0.5 < st.ber / mc.ber.ber < 2.0
