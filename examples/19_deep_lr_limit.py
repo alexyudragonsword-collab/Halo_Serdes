@@ -8,8 +8,8 @@ honest finding: at deep LR the link is SNR-limited, not ISI/DSP-depth-limited.
   ISI is already small; the wall is noise, and FFE-inverting a 30 dB channel
   enhances it);
 - the big lever is ADC sampling quality — better ENOB / lower noise floor
-  buys ~5.5 dB of reach with the SAME DSP (31.3 -> 33.0 dB from DSP depth, but
-  33.0 -> 38.5 dB from the ADC; recomputed 2026-10-09). The earlier
+  buys ~5.4 dB of reach with the SAME DSP (31.3 -> 33.1 dB from DSP depth, but
+  33.1 -> 38.5 dB from the ADC; recomputed 2026-10-09). The earlier
   28 -> 29 -> 35.5 dB ladder was taken with MM-CDR off the peak.
 
 The sequence detector is the engine's (``mlsd``), scored over every symbol.

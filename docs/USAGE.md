@@ -402,7 +402,7 @@ precode: true          # 1/(1+D) mod-N 预编码
 memory 2 时 256)。K < L 时状态只记最近 K 个符号(N^K 个),后 L − K 个光标用每条幸存路径自己的判决减掉
 (decision-feedback sequence estimation,Duel-Hallen & Heegard 1989)。K = L(或不设)就是原来的全网格,逐判决相同。
 统计引擎按"两条路径在降状态网格里合并前"累计的距离算(长 n 的错误事件只计差的前 n + K 个样本),幸存路径的反馈错误不计。
-选 K:示例 42 在 224G LR 上量过,K = PR 受控光标数(delta 目标取最小的 1)时 reach 与全网格相同或只差 ≤ 0.09 dB,21 抽头与 3 抽头
+选 K:示例 42 在 224G LR 上量过,K = PR 受控光标数(delta 目标取最小的 1)时 reach 与全网格相同或只差 ≤ 0.07 dB,21 抽头与 3 抽头
 FFE 都如此。(同日原记"PR 目标配 3–7 抽头的短 FFE 时统计引擎偏悲观 1.8–10.7×,以时域为准";已修,见下文统计引擎一条。)
 定点模式(`numeric.mode: fixed`)跑 bit-true 的降状态检测器(`dsp/fixed_viterbi.py` 的 `run_fixed_dfse`:期望字 = 状态部分的未舍入表 + 各反馈光标按电平的未舍入份额,统一舍入一次;K = L 时与全网格逐判决相同),`rtl/dfse_mlsd.sv` 逐位对照。(2026-10-11 首版只有浮点,定点模式拒绝 K < L;同日补上。)
 
@@ -411,10 +411,15 @@ sliding 检测器**修正接收机自己的判决**(DFE / PR 逐符号判决),�
 就从"把该后光标反馈掉"的判决起步。(2026-10-08 前它丢掉传入的判决、从忽略该光标的切片起步:1 + 0.5D 目标下
 SER 从 2e-5 变 3e-2,示例 27 里不如 DFE;见 CHANGELOG。)
 
+**网格的光标从哪来**:时域引擎在接收机实际采样点拟合 —— 判决器样本对它们携带的线路符号做最小二乘(按 `score` 的方式跨周跳重对齐),
+前光标与网格之外的光标一起拟合再丢掉,主光标的增益保留;浮点与 bit-true 的 Viterbi / DFSE / sliding 都用它。检测器对信道的了解是理想的
+(此前用的是仿真器自己的脉冲模型,读在脉冲峰值上;FFE 只有主抽头时 MM-CDR 不锁在峰值,模型的第一后光标 −0.086 对实际 +0.06,
+Viterbi 反比 slicer 多 7 倍误码;有 DFE 时模型还把 DFE 之后的光标放到了网格的延迟 1、2 上。2026-10-12 起改为拟合,`cairn/DSP发端与PR.md` §21)。
+
 ```python
 res = run_time_link(cfg, channel=ch)
 print(res.ser, res.extras["ser_slicer"])      # MLSD 后 vs 原始判决器基线
-print(res.extras["mlsd_resid"])               # MLSD 工作的残余光标
+print(res.extras["mlsd_resid"])               # MLSD 工作的残余光标(实际采样点拟合的,对主光标归一)
 ```
 
 **什么时候有用**:MLSD 只在**有残余 ISI** 时有收益。若 FFE/DFE 已经把眼睁开
@@ -830,8 +835,8 @@ precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 �
 
 **光 duobinary(发端带宽受限)**:调制器自身的低通就是 1 + D 滤波器,发端只需预编码 —— 在这里就是收端 PR(a ≈ 1,可配预编码),
 不是 `at: tx`。示例 `examples/40_pr_optical_duobinary.py`(VCSEL 的 f_r 当带宽限制):噪声在调制器后(RIN、PD / TIA)时收端 PR
-让需要的 f_r 从 14.23 降到 11.94 GHz,发端 PR 要 16.74–17.36 GHz;噪声在发端(`tx.noise_rms`,调制器带宽之前)时带宽限制几乎
-不扣分,PR 都不赚(固定 a = 1 的收端 −1.5…−2.3 dB,MMSE 选 a 时选回 delta、持平,发端 −3.0…−5.8 dB 噪声容限)。发端该做的是预加重(host Tx FFE),不是整形。
+让需要的 f_r 从 14.23 降到 11.94 GHz,发端 PR 要 16.74–17.30 GHz;噪声在发端(`tx.noise_rms`,调制器带宽之前)时带宽限制几乎
+不扣分,PR 都不赚(固定 a = 1 的收端 −1.5…−2.4 dB,MMSE 选 a 时选回 delta、持平,发端 −3.0…−5.7 dB 噪声容限)。发端该做的是预加重(host Tx FFE),不是整形。
 
 ---
 

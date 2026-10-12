@@ -10,7 +10,7 @@ each need a third controlled cursor. This script estimated the gain before
 anyone paid for it.
 
 The engine has had the fourth cursor since 2026-10-10, and example 38
-measures it: 38.94 dB at memory 1 (256 states), 38.97 dB at memory 2, +0.3
+measures it: 38.88 dB at memory 1 (256 states), 38.89 dB at memory 2, +0.3
 dB where this estimate said +0.6-0.7 dB after its correction (four seeds
 measured +0.2-0.5 dB). The script stays as the record of that estimate and
 prints the measured reach beside its own.
@@ -67,7 +67,7 @@ SYMBOL_POWER = float(np.mean(LEVELS ** 2))         # 5/9
 N_PRE, N_POST = 6, 14                               # example 38's FFE
 LENGTHS = np.linspace(0.16, 0.36, 21)               # 24 .. 55 dB at 56 GHz
 #: example 38's measured reach [dB] by (target cursors, residual memory)
-MEASURED = {(1, 2): 31.33, (2, 2): 36.33, (3, 2): 38.60, (4, 1): 38.94, (4, 2): 38.97}
+MEASURED = {(1, 2): 31.33, (2, 2): 36.33, (3, 2): 38.60, (4, 1): 38.88, (4, 2): 38.89}
 #: (target cursors, residual memory): example 38's three, then a fourth cursor
 #: at the same trellis size as three (memory 1) and at four times it (memory 2)
 CONFIGS = ((1, 2), (2, 2), (3, 2), (4, 1), (4, 2))
