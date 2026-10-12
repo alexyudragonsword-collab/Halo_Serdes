@@ -618,7 +618,8 @@ class TopologyConfig:
 
     LPO, CPO and a retimed module are this one chain cut at different places;
     at stage 1 they differ only in what segments A and B lose, the optical
-    blocks are shared. ``LinkConfig.topology`` set replaces ``channel`` with
+    blocks are shared (``optics_placement`` says which a link is, for the
+    power model). ``LinkConfig.topology`` set replaces ``channel`` with
     this cascade; left ``None`` the link is the electrical one it always was.
     """
 
@@ -635,9 +636,17 @@ class TopologyConfig:
     retimer: Literal["none", "both"] = "none"
     retimer_rx: RxConfig = field(default_factory=RxConfig)
     retimer_tx: TxConfig = field(default_factory=TxConfig)
+    # Where the E/O and O/E sit. "pluggable": a module in a front-panel cage
+    # at the end of the host's board trace (LPO, or a retimed module with
+    # ``retimer``); "co_packaged": an optical engine on the host's package
+    # substrate (CPO). Only the power model reads it (``analysis/power.py``
+    # prices a co-packaged engine without the module's own overhead); what
+    # the shorter trace does to the signal is ``seg_a`` / ``seg_b``.
+    optics_placement: Literal["pluggable", "co_packaged"] = "pluggable"
 
     def __post_init__(self):
         _require_in(self.retimer, {"none", "both"}, "topology.retimer")
+        _require_in(self.optics_placement, {"pluggable", "co_packaged"}, "topology.optics_placement")
         # The cascade multiplies H(f) point by point, so both segments must
         # be evaluated on one grid; the grid is seg_a's and seg_b must agree.
         _require(self.seg_a.n_freq == self.seg_b.n_freq,

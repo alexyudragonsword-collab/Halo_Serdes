@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-12 · CPO 相对 LPO 的功耗差(feat/power-cpo,ROADMAP P3 #11 余项)
+
+- 原状:功耗模型里 LPO 与 CPO 同价(拓扑只改电段损耗)。拆成两项:模块自身开销 —— `topology.optics_placement`
+  (pluggable / co_packaged,只有功耗模型读)+ `co_packaged_optics_j_per_bit` 6.9 pJ/b(Broadcom CPO 5.5 W / 800G、JLT 2026 比 LPO 省 23%;
+  一手页面全被代理拦截,经检索摘要);短走线让收端省下的 —— 由仿真定:示例 41 在 100 m OM4 上跑时域 ENOB 阶梯,LPO 最低 5.0、CPO 3.5。
+- 结果:LPO 12.57、CPO 9.74 pJ/b,省 22%(模块 2.10 + 1.5 bit ADC 0.72);系数区间内 CPO / LPO 0.67–0.86。`cairn/功耗建模.md` §5、坑、更正。
+- 坑:CTLE / 满量程不分别调,差距会被放大到至少 2 bit;只给一档 CTLE 时阶梯停在擦边点。发端随摆幅省的那部分仍不建。测试 1015 → 1017(+2)。
+- 验证:本地全量 1017 passed / 1 skipped,指纹对 main 819 值逐位不变,Cython 编译 `schema.py` / `power.py` 通过;
+  示例 41 全尺寸与 smoke 阶梯一致。Android(57d9201,含全部 `src/` 改动)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;桌面打包 pyinstaller 3 / nuitka 84 / onefile 126 分钟通过;
+  测试矩阵(含 nojit)、examples、examples-full、RTL lockstep 全绿。
+- 上一条(#72)已于 2026-10-12 合入。
+
 ## 2026-10-12 · Viterbi 的网格在接收机实际采样点拟合(fix/mlsd-one-tap-ffe,ROADMAP P2 #17)
 
 - 原因:网格取自脉冲峰值处的模型,环路不停在那里;1 抽头 FFE 时第一后光标模型 −0.086 / 实际 +0.058,MLSD 比 slicer 多 7 倍误码。

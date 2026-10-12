@@ -26,19 +26,39 @@ Power model (analysis/power.py): coefficients are public-figure estimates; read 
 == 4. example 33's links (53.125 GBd PAM4, ADC ENOB 5.5), per link direction, pJ/b
   topology        host TX+RX   optics  retimers    total
   LPO                   4.25     9.00      0.00    13.25
-  CPO                   4.25     9.00      0.00    13.25
+  CPO                   4.25     6.90      0.00    11.15
   DSP retimed           4.25     9.00      8.51    21.76
-  LPO and CPO price the same here: the model has no term for what CPO removes (driving the host trace, the module's own overhead)
+  same receivers: CPO's engine against LPO's module, 2.10 pJ/b (the module's own overhead)
+
+   host ADC each link needs at 100 m of OM4 (time engine; 9-tap FFE, CTLE 6 / 7.5 / 9 dB, the best kept): pre-FEC BER, pass <= 2.19e-04
+  LPO (8 dB segments)  ENOB 6.0: CTLE 6 dB 6.44e-05  CTLE 7.5 dB 6.19e-05  CTLE 9 dB 4.64e-05
+  LPO (8 dB segments)  ENOB 5.5: CTLE 6 dB 1.24e-04  CTLE 7.5 dB 8.51e-05  CTLE 9 dB 6.96e-05
+  LPO (8 dB segments)  ENOB 5.0: CTLE 6 dB 3.81e-04  CTLE 7.5 dB 2.53e-04  CTLE 9 dB 1.68e-04
+  LPO (8 dB segments)  ENOB 4.5: CTLE 6 dB 1.92e-03  CTLE 7.5 dB 1.17e-03  CTLE 9 dB 5.93e-04  -> fails
+  CPO (4 dB segments)  ENOB 6.0: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 1.44e-04
+  CPO (4 dB segments)  ENOB 5.5: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 1.44e-04
+  CPO (4 dB segments)  ENOB 5.0: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 1.42e-04
+  CPO (4 dB segments)  ENOB 4.5: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 1.42e-04
+  CPO (4 dB segments)  ENOB 4.0: CTLE 6 dB 1.29e-05  CTLE 7.5 dB 2.58e-06  CTLE 9 dB 1.57e-04
+  CPO (4 dB segments)  ENOB 3.5: CTLE 6 dB 2.96e-04  CTLE 7.5 dB 1.06e-04  CTLE 9 dB 2.11e-04
+  CPO (4 dB segments)  ENOB 3.0: CTLE 6 dB 3.49e-03  CTLE 7.5 dB 1.63e-03  CTLE 9 dB 1.00e-03  -> fails
+                          ENOB     ADC  host TX+RX   optics    total
+  LPO, its receiver        5.0    1.12        3.57     9.00    12.57
+  CPO, LPO's receiver      5.0    1.12        3.57     6.90    10.47
+  CPO, its receiver        3.5    0.40        2.84     6.90     9.74
+  CPO saves 2.82 pJ/b (22% of LPO): the module's own overhead 2.10, the 1.5 bit of ADC the shorter trace lets go 0.72
 
 == 5. sensitivity: the same comparisons at the ends of each coefficient's range
-  coefficients            ADC/MS   ENOB+1  PR 16->64  64->256  ret-LPO  ret/LPO
-  default                   3.01    +3.17      +2.39    +9.48    +8.51     1.64
-  ADC FOM 38 fJ             2.10    +1.72      +2.39    +9.48    +7.06     1.56
-  ADC FOM 120 fJ            4.42    +5.43      +2.39    +9.48   +10.77     1.75
-  ADC Schreier 146 dB       5.85   +23.12      +2.39    +9.48    +9.19     1.68
-  ADC Schreier 151 dB       2.55    +7.31      +2.39    +9.48    +6.56     1.53
-  digital x0.5              2.87    +3.17      +1.19    +4.74    +8.04     1.62
-  digital x3                3.57    +3.17      +7.17   +28.43   +10.38     1.73
-  comparator x3             2.01    +3.17      +2.39    +9.48    +8.51     1.64
-  RX common 0.57 pJ/b       4.31    +3.17      +2.39    +9.48    +7.25     1.57
+  coefficients            ADC/MS   ENOB+1  PR 16->64  64->256  ret-LPO  ret/LPO  CPO/LPO
+  default                   3.01    +3.17      +2.39    +9.48    +8.51     1.64     0.78
+  ADC FOM 38 fJ             2.10    +1.72      +2.39    +9.48    +7.06     1.56     0.79
+  ADC FOM 120 fJ            4.42    +5.43      +2.39    +9.48   +10.77     1.75     0.75
+  ADC Schreier 146 dB       5.85   +23.12      +2.39    +9.48    +9.19     1.68     0.76
+  ADC Schreier 151 dB       2.55    +7.31      +2.39    +9.48    +6.56     1.53     0.80
+  digital x0.5              2.87    +3.17      +1.19    +4.74    +8.04     1.62     0.77
+  digital x3                3.57    +3.17      +7.17   +28.43   +10.38     1.73     0.78
+  comparator x3             2.01    +3.17      +2.39    +9.48    +8.51     1.64     0.78
+  RX common 0.57 pJ/b       4.31    +3.17      +2.39    +9.48    +7.25     1.57     0.76
+  CPO engine 5.6 pJ/b       3.01    +3.17      +2.39    +9.48    +8.51     1.64     0.67
+  CPO engine 8.0 pJ/b       3.01    +3.17      +2.39    +9.48    +8.51     1.64     0.86
 wrote examples/output/41_power_budget.png
