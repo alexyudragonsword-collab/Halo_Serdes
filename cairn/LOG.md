@@ -11,7 +11,7 @@
 - 建:`tdecq(pre_post_limits=…)`(越界移到边界,搜索可沿边界走)、`tdecq(fiber_emulation_hz=…)`、`TdecqResult.pre_post`;默认都不加。
 - 量(示例 34 新增一节,原输出逐行不变):EML 上两种候选处处不起作用;DR1 若 3.0 dB 最小带宽 29.83 → 33.72 GHz;VCSEL 在 f_A 25.8 GHz 处
   过 SR1,本模型 100 m OM4 约当 f_A 25 GHz。`cairn/光互联建模.md` §8。测试 1017 → 1020(+3)。
-- 验证:本地全量待补;指纹不覆盖 TDECQ,`src/` 只改了 `analysis/tdecq.py`(引擎未动),默认路径不变由示例 34 原输出逐行相同与原有 18 个测试证明。
+- 验证:本地全量 1020 passed / 1 skipped,Cython 编译 `tdecq.py` 通过;指纹不覆盖 TDECQ,`src/` 只改了 `analysis/tdecq.py`(引擎未动),默认路径不变由示例 34 原输出逐行相同与原有 18 个测试证明。
 - 上一条(#73)已于 2026-10-12 合入。
 
 ## 2026-10-12 · CPO 相对 LPO 的功耗差(feat/power-cpo,ROADMAP P3 #11 余项)
