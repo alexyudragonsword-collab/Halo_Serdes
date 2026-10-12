@@ -13,14 +13,16 @@ from halo_serdes.cdr.adc_kernel import _adc_rx_py, adc_rx
 from halo_serdes.channel import ChannelModel
 from halo_serdes.config import LinkConfig, PrConfig
 from halo_serdes.config.schema import (
-    AdcConfig, CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig, MlsdConfig,
+    AdcConfig, CdrConfig, ChannelConfig, ClockConfig, CtleConfig, DfeConfig, FfeConfig, MlsdConfig,
     RxConfig, SimConfig, TxConfig,
 )
 from halo_serdes.core.mapping import precode_1plusd, unprecode_1plusd
 from halo_serdes.dsp.ffe import equalized_cursors, mmse_ffe, zf_ffe
 from halo_serdes.dsp.mlsd import mlse_gain_over_dfe_db, viterbi_mlsd
 from halo_serdes.engine import run_time_link
-from halo_serdes.engine.statistical import pr_symbol_decisions, run_statistical
+from halo_serdes.engine.statistical import (
+    pr_error_events, pr_event_differences, pr_symbol_decisions, run_statistical,
+)
 
 
 # Engine-level runs of 60k-600k symbols take 2-6 minutes each through the
@@ -940,3 +942,53 @@ def test_sliding_detector_is_refused_under_a_three_cursor_target():
     # viterbi is the detector for it, and a two-cursor target stays allowed
     dataclasses.replace(_link(0.18, 0.0, n_sym=1000), pr=PrConfig(target=(1.0, 0.75, 0.25)))
     _link(0.18, 0.5, n_sym=1000, mlsd="sliding")
+
+
+# ------------------------------------------- short FFE: residual ISI projected
+
+def test_event_differences_are_the_union_bounds_events():
+    """One difference per event of pr_error_events, in its order: the
+    pattern through the cursors, cut where a reduced-state trellis merges."""
+    cur = np.array([1.0, 0.5, 0.1, -0.05])
+    for fams in (("alternating",), ("alternating", "constant")):
+        ev = pr_error_events(cur, np.ones(1), 4, False, families=fams)
+        d = pr_event_differences(cur, fams)
+        assert len(d) == len(ev) == len(fams) * 12 - (len(fams) - 1)
+        for (g, _), dd in zip(ev, d):            # white noise: gain |d|
+            assert g == pytest.approx(np.linalg.norm(dd))
+    d = pr_event_differences(cur)
+    assert np.allclose(d[0], cur) and np.allclose(d[1], np.convolve([1.0, -1.0], cur))
+    dk = pr_event_differences(cur, state_memory=1)
+    assert [x.size for x in dk[:3]] == [2, 3, 4] and np.allclose(dk[2], d[2][:4])
+
+
+def _short_ffe_link(target, ffe, length_m, n_sym=400_000):
+    """Example 42's 224G link behind a short LMS FFE, MMSE target, Viterbi memory 2."""
+    return LinkConfig(
+        modulation="pam4", symbol_rate=112e9, osr=16,
+        channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=5.0, r_skin=2.0e-3,
+                              loss_tangent=0.012, n_freq=8192),
+        tx=TxConfig(swing=1.0, fir_taps=(-0.06, 1.0, -0.12), fir_n_pre=1,
+                    clock=ClockConfig(rj_ui=0.004)),
+        rx=RxConfig(arch="adc_dsp", ctle=CtleConfig(enable=True, peak_db=6.0),
+                    adc=AdcConfig(n_bits=8, n_lanes=16, enob=6.5, fullscale=0.6),
+                    ffe=FfeConfig(n_pre=ffe[0], n_post=ffe[1], adapt="lms", mu=3e-5),
+                    dfe=DfeConfig(n_taps=0), mlsd=MlsdConfig(kind="viterbi", memory=2),
+                    cdr=CdrConfig(kind="mueller_muller", kp_shift=7, ki_shift=15),
+                    noise_rms=0.0015),
+        sim=SimConfig(n_symbols=n_sym, seed=3, pattern="prbs13q"),
+        pr=PrConfig(target=target, adapt="mmse"))
+
+
+@needs_jit
+@pytest.mark.parametrize("target,ffe,length_m", [((1.0, 0.5), (1, 3), 0.21),
+                                                 ((1.0, 0.5, 0.0), (2, 4), 0.22)])
+def test_invariant3_with_a_pr_target_behind_a_short_ffe(target, ffe, length_m):
+    """A 5-7 tap FFE leaves residual ISI outside the trellis; each error event
+    sees it projected on its own difference, as it sees the noise. At a single
+    sample's size it read 10.7x and 7.3x here (cairn/DSP发端与PR.md §19)."""
+    cfg = _short_ffe_link(target, ffe, length_m)
+    mc = run_time_link(cfg)
+    st = run_statistical(cfg, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+    assert mc.ber.n_errors >= 25
+    assert 0.5 < st.ber / mc.ber.ber < 2.0
