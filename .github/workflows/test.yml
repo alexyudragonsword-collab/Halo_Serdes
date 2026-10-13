@@ -25,7 +25,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # the nojit legs take 15-16 or 25-30 min depending on the runner; 30 cut
+    # the slow ones off (main ae0d60e, PR #80 twice) once the suite had grown
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
