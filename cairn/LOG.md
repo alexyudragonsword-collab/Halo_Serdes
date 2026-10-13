@@ -12,7 +12,7 @@
   → 新增 ROADMAP P2 #19(一致性,先做);准同步 / 串扰入配置 → 9b;共享 CDR → 9c(静态读浴盆,动态按需)。PCS 协议行为进「边界」。
 - 落点:`cairn/多lane建模.md`(新)、ROADMAP、`architecture-invariants.md` 铁律 3 补一条、COMPARISON。只改文档,不改库。
 - 上一条(#74)CI:dccba92 上 Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;pyinstaller 4 分钟通过;测试矩阵(含 nojit)、
-  examples、examples-full、RTL lockstep 全绿;nuitka / onefile 写这条时仍在跑(结果见下一次更新)。#74 于 2026-10-12 合入。
+  examples、examples-full、RTL lockstep 全绿;nuitka 120 / onefile 97 分钟通过(2026-10-13 补记)。#74 于 2026-10-12 合入。
 
 ## 2026-10-12 · TDECQ 未定条文:前后抽头差限制与多模光纤仿真滤波器(feat/tdecq-constraints,ROADMAP P3 #11 余项)
 
