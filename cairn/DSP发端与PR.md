@@ -5,7 +5,7 @@ summary: "DSP 发端(阶段 0 + 1):TxPipeline 收拢七处拼装点、DAC 量化
 tags: [tx, dac, driver, compression, sndr, rlm, partial-response, statistical-engine, invariant-3, invariant-5]
 contains: [convention, approximation, closed-form, pitfall, known-gap]
 created: "2026-10-02"
-updated: "2026-10-11"
+updated: "2026-10-13"
 related: [architecture-invariants.md, engineering-pitfalls.md, 光互联建模.md]
 authoring_mode: ai_generated
 ---
@@ -803,3 +803,45 @@ reach 以外变得多些(示例 38 的 LMS 跟踪行 42.4 dB 处 4.9e-2 → 1.5e
 全网格 / K = 2 / K = 1 0.92 / 0.92 / 0.89(此前 1.09 / 1.10 / 0.99)。都在 2× 内。
 `tests/test_mlsd_reduced.py`:拟合在有前光标、网格外 ISI、slicer 错误与一次周跳时给出原光标;1 抽头链路上 MLSD 不输给 slicer
 (旧模型下失败)。
+
+## 22. ADC 收端的 DFE:起点决定终点(2026-10-13,ROADMAP P1 #21)
+
+**问题**(9c 探针里发现,`cairn/多lane建模.md` §8.4):时域 ADC 收端带 DFE 的四个预设,DFE 抽头全 ≈ 0。FFE 从不计 DFE 的 MMSE
+起步(第一后光标也被压到 0),DFE 的初值取自均衡后的游标,也 ≈ 0。
+
+**原因**:联合 FFE/DFE 的 LMS 代价面沿"FFE 留 h1、DFE 消 h1"这个方向是平的 —— FFE 围着 DFE 调,两个方向都不走。`dfe.mu`
+放大 3000 倍抽头只动 0.01;同一链路三种起点终点三种(DFE 0.32 / 0.56 / 0.64,BER 2.2e-5 / 3.8e-6 / 1.8e-5)。起初以为是 DFE 步长
+没按电平功率归一(§8.4 的说法),已更正。**起点是模型的一部分**,要写清楚。
+
+**做法**:
+- `dsp/ffe.mmse_ffe(..., free_post=n)`:主光标之后的 n 个后光标不计入 MMSE 代价(DFE 消它们),其余照旧。
+- 时域 ADC 收端(`timedomain` 的起点)`free_post = rx.dfe.n_taps`,正则项的噪声在有 DFE 时加 ADC 噪声
+  (`statistical.adc_noise_sigma`;FFE 看到的噪声本来含它)。没有 DFE 时起点不变 —— 那时 LMS 从哪起步都到同一点 ——
+  对应的指纹逐位不变。
+- **例外**:预编码 1 + D 的复合判决(`pr` 1 + D、`precode`、`adapt = none`)。那个模式下 DFE 反馈的是由复合判决递推重建的线符号,
+  错一个就一直错;DFE 用上后一条测试链路 246 → 5779 个误码。它的起点保持不计 DFE。
+- `engine.cascade.initial_ffe_taps`(统计单跑的代用解、`lane_curve` 的 ADC 用法)同一规则。
+- 统计引擎加 DFE 误码传播(第一个抽头):一次错判在下一个样本上留下 h1 × 电平间距;p = 输入按这个量偏移后的 SER(对下一个
+  符号的电平与符号取平均),误码按两状态链 s / (1 − p + s)(`extras['dfe_ep_factor']`;PR / MLSD 路径不加)。理想 DFE 在抽头
+  0.57 时比时域乐观 1.8–2.9×、抽头 ≥ 0.69 时 3.3–5.0×;先试的 1 / (1 − p) 在闭眼上发散,两状态链在 s 大时自己封顶。
+
+**结果**(各预设自身噪声):224G 106 GBd 2.27e-4 → 4.0e-6(452 → 8 个误码),112 GBd stress 5 → 0,deep-LR DFE8 3 → 0;1.5 mV
+时 6.6e-4 → 4.1e-5。指纹 136 个值变:ADC + DFE 的时域与统计、合成的 adc_dsp / optical 统计(误码传播),以及各带 DFE 收端的
+新 `dfe_ep_factor` 键;混合信号的 BER 只在高 BER 处被误码传播抬高(NRZ 32G static 的统计 0.069 → 0.096,PAM4 32G 第 10 位)。
+示例全尺寸重跑,12 个输出变(05 07 08 15 16 19 20 21 31 39 44 45),38 / 42 / 43 不变。**结论变了的**:
+- 深 LR 阶梯(示例 19–21):31 → 33 → 36.3 / 38.5 → 42.8 dB 变为 31 → 36.0 → 40.5 / 44.2 → 47.8 dB。DSP 深度 +1.8 → +4.7 dB,
+  "深 LR 主要 SNR 受限、DSP 深度收益小"不再成立,与收端 PR 的 +5.0 dB 相差无几(每 dB 0.46 vs 0.48 pJ/b);FEC 与 ADC 两杠杆
+  合起来比之和少 0.9 dB(此前多 1.1 dB):ENOB 7.5 的 BER 曲线更陡,内码的 31 倍在它上面只走 3.6 dB。`docs/SUMMARY.md` §04。
+- 示例 08 定点:权重字长墙从 wl 5 移到 wl 7(wl 5 / 6 与宽字长判决不一致 6.1e-4 / 2.5e-4,此前 0);默认 10 bit 不受影响。
+- 示例 31:最好的 kp_shift 变了;MM 环路线性模型两端高估 CDR 误差(P2 #24)。示例 45 的 ADC 曲线(代用 FFE)读高 14–25×(P2 #23)。
+
+**双引擎**:带 DFE 的 ADC 收端统计 / 时域 0.81–1.25×(加误码传播之前 0.35–0.55×);lane 冻结在偏移处、给定它收敛的 FFE
+0.93–1.47×;准同步串扰三条链路 0.72–0.86×(此前 0.79–0.93×);crosstalk 漂移恒等式按 `ber / dfe_ep_factor` 比。
+
+**铁律 2**:混合信号收端的 DFE 一直从信道游标起步、是用上的;修之前 ADC 预设的头条 BER 偏悲观一到两个数量级,两种架构的对比
+不公平。现在两边的 DFE 都在用。
+
+**余项**:静态引擎的 FFE 仍不计 DFE(P2 #22,6–14× 悲观);统计单跑的代用 FFE 离时域收敛点很远(P2 #23);MM 环路模型在 DFE
+用上后两端高估(P2 #24)。`tests/test_ffe.py::test_mmse_leaves_the_dfe_its_postcursors`、
+`tests/test_adc_rx.py::test_adc_dfe_engages`。
+

@@ -177,13 +177,16 @@ measurements of the recovered clock minus the Tx clock, mean removed):
 |---|---|---|
 | 16 GBd NRZ, lossy + AWGN, 5 MHz-corner 1/f² at 0.11 UI | 4 / 6 / 8 | 0.97 / 0.99 / 1.00 |
 | same, clean channel, no noise | 4 / 6 / 8 | 0.82 / 0.95 / 1.08 |
-| 112 GBd PAM4 ADC, SSPLL scaled to 200 fs | 5 / 7 / 9 | 0.95 / 1.22 / 0.92 |
+| 112 GBd PAM4 ADC, SSPLL scaled to 200 fs | 5 / 7 / 9 | 0.82 / 1.03 / 0.80 |
 
-(The ADC row is example 31's printout, 2026-10-08 full-size rerun; it read
-0.96 / 0.96 / 0.73 before.) The MM figure scatters ±20 % around the model on
-that preset's loop (`ki_shift 15` with a tiny detector gain makes it
-integrator-dominated and underdamped), over-reading at mid gain and
-under-reading at low; the bang-bang figure on a quiet clock is limited by the limit
+(The ADC row is example 31's printout, 2026-10-13 full-size rerun after
+ROADMAP P1 #21 engaged the receiver's DFE; it read 0.95 / 1.22 / 0.92 on the
+2026-10-08 rerun and 0.96 / 0.96 / 0.73 before that.) The MM figure scatters
+around the model on that preset's loop (`ki_shift 15` with a tiny detector
+gain makes it integrator-dominated and underdamped). With the DFE idle it
+over-read by up to 22 % at mid gain and under-read at low; with it engaged
+the model is within 7 % at mid gain (kp_shift 6-8) and over-reads by 26-39 %
+at both ends (kp_shift 4 and 9, ROADMAP P2 #24); the bang-bang figure on a quiet clock is limited by the limit
 cycle not being white noise. On the cross-check link the two engines' BER
 agree to 1.3–1.5× with the profile clock (invariant #3 asks for 2×).
 

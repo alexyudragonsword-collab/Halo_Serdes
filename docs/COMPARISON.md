@@ -50,8 +50,9 @@
    (比值 1.03×),是本框架最大差异化增量。
 2. **双 RX 架构公平对比** —— mixed-signal 与 ADC-DSP 共享 Tx/信道/分析层,差异
    限制在两个组装类内。serdespy/PyBERT 只有 mixed-signal,DragonPHY2 只有 ADC。
-3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→33→36/38.5→43 dB
-   杠杆分解(DFE/deeper MLSD +1.8 dB、级联 FEC +3.2 dB、better ADC +5.4 dB,正交可叠加;
+3. **架构探索 / reach 阶梯** —— 系统性量化 224G 深 LR 的 18→36→40.5/44.2→47.8 dB
+   杠杆分解(DFE/deeper MLSD +4.7 dB、级联 FEC +4.5 dB、better ADC +8.2 dB,正交,大体可叠加;
+   2026-10-13 ADC 收端的 DFE 起作用后重测,此前 18→33→36.3/38.5→42.8 dB、DFE/deeper MLSD 只 +1.8 dB;
    2026-10-03 接收端修复与统计引擎一致性修复后重跑,旧阶梯 18→28→29→35→41 dB 是 CDR 锁偏时量的)。
 4. **双 MLSD 实现 + 解析 MLSE 增益 + 双引擎接线** —— Viterbi MLSE(最优)+ DragonPHY 式
    sliding-detector(低复杂度);`mlse_min_distance_sq`/`mlse_gain_over_dfe_db` 给出对理想
@@ -114,7 +115,7 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
 - ✅ **多 lane 串扰系统级** —— **本轮补齐**(`aggressor_bank`/`icn_rms`,见上);单 lane 数据仍为主。2026-10-13 量到:两个引擎在串扰下按不同相位取
   aggressor(统计取各自峰值 = 最坏相位),aggressor 延后 0…7/8 UI 时统计 / 时域 1.2–41×;同日改为在受扰 lane 的采样网格上读、ADC 先过 FFE,
   加 `XtalkAggressor.skew_s`,各 skew 下 0.79–1.21×(P2 #19);同日串扰进 `LinkConfig.crosstalk`、准同步 lane 按 ppm 建(时域按 aggressor 自己的速率、
-  统计对相位求平均,0.79–0.93×,示例 44);同日加了 FEC 映射与交织(示例 43)与共享时钟的静态 skew 预算(`analysis/skew.py`,示例 45;
+  统计对相位求平均,0.72–0.86×,示例 44);同日加了 FEC 映射与交织(示例 43)与共享时钟的静态 skew 预算(`analysis/skew.py`,示例 45;
   混合信号对时域 0.49–1.78×);链路级多 lane 的范围与余项见 `cairn/多lane建模.md`
 
 **相对 DragonPHY2**
