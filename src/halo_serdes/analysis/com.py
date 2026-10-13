@@ -172,9 +172,17 @@ def _rx_ffe_taps(c: np.ndarray, mi: int, n_pre: int, n_post: int, n_dfe: int,
 def compute_com(channel: ChannelModel, cfg: LinkConfig,
                 xtalk_pulses: list[Waveform] | None = None,
                 params: ComParams | None = None) -> ComResult93a:
-    """Compute COM (dB) for ``channel`` under ``cfg`` per the 93A/178A method."""
+    """Compute COM (dB) for ``channel`` under ``cfg`` per the 93A/178A method.
+
+    ``xtalk_pulses``: the aggressors' coupling pulses; None takes them from
+    ``cfg.crosstalk`` (each read around its own peak, COM's convention --
+    skew and ppm do not enter)."""
     p = params or ComParams()
     osr = cfg.osr
+    if xtalk_pulses is None and cfg.crosstalk.active:
+        from ..channel.crosstalk import aggressors_from_config
+
+        xtalk_pulses = [a.pulse(osr) for a in aggressors_from_config(cfg)]
     n_dfe = p.n_dfe if p.n_dfe is not None else cfg.rx.dfe.n_taps
 
     # normalized symbol levels and per-symbol variance

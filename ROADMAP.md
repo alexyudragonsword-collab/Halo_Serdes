@@ -74,9 +74,10 @@ AMI GetWave 记入下方「边界」。)
 (2026-10-13 已做范围评估:`cairn/多lane建模.md`,两个探针 + 802.3 交织结构的检索摘要。串扰相位那一半先作为一致性问题记在 P2 #19。)
 (2026-10-13 已做 9a FEC 映射与交织:`fec/interleave.py` 按复用与码字交织把误码映射到 RS 码、按事件外推 KP4 帧错误率;示例 43 ——
 二项投影对 PR 链路在仿 200G/lane 的符号对复用 + 四码字下偏保守 0.58 dB,单 lane / 比特复用下偏乐观 0.30–2.20 dB,DFE 几乎不受影响。
-`cairn/多lane建模.md` §6。)剩下:
-- **9b 准同步 lane 与串扰入配置**:aggressor 频偏(时域按 ppm 重采样、统计引擎按相位平均),aggressor 环境进 `LinkConfig`(铁律 1;
-  现在是 API 入参)。P2 #19 已做(同步 lane 的 `skew_s`)。
+`cairn/多lane建模.md` §6。)
+(2026-10-13 已做 9b 准同步 lane 与串扰入配置:`LinkConfig.crosstalk`(一组合成 lane + 逐个列出的 aggressor,可从多端口 Touchstone 取耦合),
+两个引擎与 COM 从它建 aggressor;`ppm` ≠ 0 的准同步 lane 时域按自己的速率保持符号、统计引擎对相位求平均,三条链路统计 / 时域 0.79–0.93×;
+表单有 bank 那几项。示例 44,`cairn/多lane建模.md` §7。)剩下:
 - **9c 共享 CDR**:静态 skew 预算(一个 CDR 的相位给 N 条 lane 用 = 每条 lane 偏离最佳相位 skew 处的 BER,读统计引擎的浴盆即可);
   动态的多 lane 环路(主 lane 跟踪、lane 间相关抖动)要多 lane 同时跑的时域内核,按需。
 PCS 层的 deskew、对齐标记锁定与 lane 重排是数字协议行为,不做(见「边界」)。

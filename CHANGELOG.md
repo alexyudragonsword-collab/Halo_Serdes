@@ -6,6 +6,44 @@
 
 ---
 
+## [未发布] — 串扰进配置;准同步 lane(ROADMAP P3 #9b)
+
+### 新增
+- `LinkConfig.crosstalk`(`CrosstalkConfig`):受扰 lane 的串扰环境,铁律 1 的缺口(此前只能 API 入参)。
+  - 一组合成 lane:`n_fext` / `n_next`,耦合 `coupling_db` ± `spread_db`,数据由 `seed` 生成。
+  - 外加逐个列出的 `aggressors`(`AggressorConfig`):合成的，或用 `file` 从多端口 Touchstone 取耦合。
+  - YAML、`apply_overrides`、表单(bank 那七项)都能写。
+  - 时域(含流式)、统计、COM 都从它建 aggressor。显式 `xtalk=` / `xtalk_pulses=` 替换配置，两者都给时警告。
+- 准同步 lane:`ppm` ≠ 0(`XtalkAggressor.ppm`、`crosstalk.symbol_index`)。
+  - 时域按 aggressor 自己的速率保持它的符号，默认引擎与流式引擎同一个函数。
+  - 统计引擎对 aggressor 相位求平均(PR 联合界的事件投影同样)。
+  - 一次运行扫不过整 UI 时警告。
+- `run_statistical(xtalk=...)`:传 aggressor 本身,ppm 才能生效;`xtalk_pulses` 仍按同步 lane 算。
+- 示例 44(`examples/44_quasi_sync_xtalk.py`):三条链路，同步 8 个 skew 对准同步 ±100 ppm。
+- `aggressor_bank` / `synthetic_aggressor` 加 `skew_s` / `ppm` 参数。
+
+### 变更
+- 静态引擎遇到配置串扰时报错(它不注入串扰)。
+- 带重定时器的拓扑遇到配置串扰时报错(三条链路，说不清属于哪段)。
+- GUI / 应用的串扰与多 lane study 先去掉运行配置里的串扰，再自己扫。
+- 没有串扰时数值不变：指纹 846 值逐位相同。
+
+### 结论(示例 44)
+- 同步 lane 的时域 BER 在 8 个 skew 上差 8.9–32.2×。
+- 准同步 lane 落在各 skew 平均附近：时域 BER 是同步平均的 0.80–0.97。
+- 准同步时统计 / 时域 0.79–0.93×。
+
+### 测试
+- +18:`tests/test_crosstalk.py`
+  - 配置建 bank 与列出的 lane;YAML 往返;校验(6 组)。
+  - 配置与 API 逐位相同，两者都给时警告。
+  - `symbol_index` 的走速;流式 hold;流式引擎配合准同步配置。
+  - 一个 aggressor 的相位平均 = 各 skew 平均。
+  - 两组链路准同步铁律 3。
+  - 运行太短时警告;静态 / 重定时报错;COM 从配置取。
+
+---
+
 ## [未发布] — PAM4 比特误码按 Gray 码不同的比特数计(ROADMAP P2 #20)
 
 ### 修复

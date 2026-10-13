@@ -49,6 +49,12 @@ class XtalkAggressor:
             (same clock, fixed offset). It decides where on the coupling
             pulse the victim's sampling instants fall, i.e. which of the
             aggressor's cursors it sees; applied to the nearest sample.
+        ppm: the aggressor's symbol-rate offset from the victim's [ppm] -- a
+            quasi-synchronous lane on its own reference clock. Its symbols
+            are held at its own rate on the victim's sample grid
+            (:func:`symbol_index`), so the phase the victim sees walks
+            ``ppm`` 1e-6 UI per UI; the statistical engine averages over that
+            phase. 0 is the synchronous lane, sample for sample as before.
     """
 
     coupling: np.ndarray
@@ -59,6 +65,7 @@ class XtalkAggressor:
     seed: int = 0
     label: str = ""
     skew_s: float = 0.0
+    ppm: float = 0.0
 
     def __post_init__(self):
         self.coupling = np.asarray(self.coupling, dtype=np.float64)
@@ -91,7 +98,8 @@ class XtalkAggressor:
         convolves with the coupling response, and returns exactly
         ``n_samples`` samples aligned to the victim time grid.
         """
-        agg_tx = hold(self.symbol_volts(n_samples, osr, modulation), osr)
+        v = self.symbol_volts(n_samples, osr, modulation)
+        agg_tx = hold(v, osr) if self.ppm == 0.0 else v[symbol_index(np.arange(n_samples), osr, self.ppm)]
         y = np.convolve(agg_tx, self.launched_coupling)[:n_samples]
         if y.size < n_samples:
             y = np.pad(y, (0, n_samples - y.size))
@@ -104,6 +112,9 @@ class XtalkAggressor:
         mod = modulation if modulation is not None else self.modulation
         rng = np.random.default_rng(self.seed)
         n_sym = n_samples // osr + self.coupling.size // osr + 2
+        if self.ppm > 0.0:                      # a faster lane sends more in the run
+            n_sym = max(n_sym, int(symbol_index(np.array([n_samples]), osr, self.ppm)[0])
+                        + self.coupling.size // osr + 2)
         if mod == "pam4":
             lv = pam4_levels(self.swing)
             sym = rng.integers(0, 4, size=n_sym)
@@ -113,10 +124,23 @@ class XtalkAggressor:
         return lv[sym]
 
 
+def symbol_index(samples: np.ndarray, osr: int, ppm: float) -> np.ndarray:
+    """Which of an aggressor's symbols is on its line at each victim sample.
+
+    Its UI is the victim's / (1 + ``ppm`` 1e-6): symbol ``floor(n (1 + ppm
+    1e-6) / osr)`` at sample n, the plain ``n // osr`` at ``ppm`` 0. One
+    function, so the default and the streamed engine hold the same way."""
+    samples = np.asarray(samples, dtype=np.int64)
+    if ppm == 0.0:
+        return samples // osr
+    return np.floor(samples * (1.0 + ppm * 1e-6) / osr).astype(np.int64)
+
+
 def synthetic_aggressor(kind: str, coupling_db: float, ui: float, dt: float,
                         *, modulation: str = "nrz", seed: int = 0,
                         f3db: float | None = None, swing: float = 1.0,
-                        label: str = "") -> XtalkAggressor:
+                        label: str = "", skew_s: float = 0.0,
+                        ppm: float = 0.0) -> XtalkAggressor:
     """Build a parametric FEXT/NEXT aggressor with a target coupling level.
 
     ``coupling_db`` sets the UI-sampled coupling-pulse peak (e.g. -26 dB for a
@@ -141,13 +165,15 @@ def synthetic_aggressor(kind: str, coupling_db: float, ui: float, dt: float,
     coupling = coupling * (10.0 ** (coupling_db / 20.0) / max(pk, 1e-30))
     return XtalkAggressor(coupling=coupling, dt=dt, kind=kind, swing=swing,
                           modulation=modulation, seed=seed,
-                          label=label or f"{kind.upper()} {coupling_db:.0f}dB")
+                          label=label or f"{kind.upper()} {coupling_db:.0f}dB",
+                          skew_s=skew_s, ppm=ppm)
 
 
 def aggressor_bank(n_fext: int, n_next: int, coupling_db: float, ui: float,
                    dt: float, *, modulation: str = "nrz", swing: float = 1.0,
                    spread_db: float = 2.0, base_seed: int = 0,
-                   f3db: float | None = None) -> list[XtalkAggressor]:
+                   f3db: float | None = None, skew_s: float = 0.0,
+                   ppm: float = 0.0) -> list[XtalkAggressor]:
     """A multi-lane crosstalk environment: ``n_fext`` FEXT + ``n_next`` NEXT
     aggressors, each an independent lane.
 
@@ -155,7 +181,8 @@ def aggressor_bank(n_fext: int, n_next: int, coupling_db: float, ui: float,
     uniform spread (lane-to-lane variation), and each gets a distinct data seed
     so the aggressors are mutually independent. NEXT is typically the stronger,
     broadband coupler; here both share ``coupling_db`` so the caller controls the
-    mix explicitly through the counts.
+    mix explicitly through the counts. ``skew_s`` / ``ppm``: every lane's (see
+    :class:`XtalkAggressor`).
     """
     rng = np.random.default_rng(base_seed)
     bank: list[XtalkAggressor] = []
@@ -166,7 +193,7 @@ def aggressor_bank(n_fext: int, n_next: int, coupling_db: float, ui: float,
             bank.append(synthetic_aggressor(
                 kind, lvl, ui, dt, modulation=modulation, seed=seed,
                 f3db=f3db, swing=swing,
-                label=f"{kind.upper()}{i + 1} {lvl:.0f}dB"))
+                label=f"{kind.upper()}{i + 1} {lvl:.0f}dB", skew_s=skew_s, ppm=ppm))
             seed += 1
     return bank
 
@@ -245,3 +272,48 @@ def import_xtalk(network, victim_out: int, aggressor_in: int, dt: float,
     coupling = freq2impulse(H_zp, f_zp).y
     return XtalkAggressor(coupling=coupling, dt=dt, kind=kind, swing=swing,
                           seed=seed, label=f"{kind.upper()} imported")
+
+
+def aggressors_from_config(cfg) -> list[XtalkAggressor]:
+    """The aggressors ``cfg.crosstalk`` describes, on the victim's grid.
+
+    The bank (``aggressor_bank``) first, then the listed ones; every lane
+    sends the victim's modulation at the victim's Tx swing. A listed lane
+    without a ``seed`` takes the next one after the bank's."""
+    xc = cfg.crosstalk
+    if not xc.active:
+        return []
+    swing = cfg.tx.swing
+    out = aggressor_bank(xc.n_fext, xc.n_next, xc.coupling_db, cfg.ui, cfg.dt,
+                         modulation=cfg.modulation, swing=swing, spread_db=xc.spread_db,
+                         base_seed=xc.seed, skew_s=xc.skew_ui * cfg.ui, ppm=xc.ppm)
+    next_seed = xc.seed + xc.n_fext + xc.n_next + 1
+    for i, a in enumerate(xc.aggressors):
+        seed = a.seed if a.seed is not None else next_seed + i
+        if a.file:
+            f_max = cfg.channel.f_max or 2.0 / cfg.ui
+            agg = import_xtalk(a.file, a.victim_port, a.aggressor_port,
+                               cfg.dt, f_max, n_freq=cfg.channel.n_freq, kind=a.kind,
+                               swing=swing, seed=seed)
+            agg.modulation, agg.skew_s, agg.ppm = cfg.modulation, a.skew_ui * cfg.ui, a.ppm
+            agg.__post_init__()
+        else:
+            agg = synthetic_aggressor(a.kind, a.coupling_db, cfg.ui, cfg.dt,
+                                      modulation=cfg.modulation, seed=seed, f3db=a.f3db_hz,
+                                      swing=swing, skew_s=a.skew_ui * cfg.ui, ppm=a.ppm)
+        out.append(agg)
+    return out
+
+
+def engine_aggressors(cfg, xtalk=None) -> list[XtalkAggressor]:
+    """The aggressors an engine injects: ``cfg.crosstalk`` unless an explicit
+    ``xtalk`` (a list, possibly empty) replaces it -- with a warning when the
+    config describes aggressors too, since then one of the two is ignored."""
+    if xtalk is None:
+        return aggressors_from_config(cfg)
+    if cfg.crosstalk.active:
+        import warnings
+
+        warnings.warn("crosstalk passed explicitly (xtalk=...) replaces cfg.crosstalk; "
+                      "the config's aggressors are ignored", stacklevel=3)
+    return list(xtalk)

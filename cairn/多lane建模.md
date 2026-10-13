@@ -166,6 +166,34 @@ PCS 层的 deskew、对齐标记锁定、lane 重排是数字协议行为,留在
 - 顺带发现:`symbol_checker` 把 Gray 下只差一比特的 0 ↔ 3 记成 2 bit,预编码 PAM4 的 BER 因此高 25 %(ROADMAP P2 #20;
   2026-10-13 已修,两个引擎都按 Gray 码不同的比特数计)。
 
+### 7. 准同步 lane 与串扰入配置(P3 #9b,2026-10-13 已做)
+
+**配置**:`LinkConfig.crosstalk`(`CrosstalkConfig`)= 一组合成 lane(`n_fext` / `n_next`、`coupling_db` ± `spread_db`、`seed`,即
+`aggressor_bank`)+ 逐个列出的 `aggressors`(`AggressorConfig`:合成,或 `file` 从多端口 Touchstone 的两个口之间取耦合)。
+bank 的 lane 共用 `skew_ui` / `ppm`;列出的各自给;列出的 lane 不给 `seed` 时接在 bank 之后,两条 lane 不会共用数据。
+时域(含流式)、统计、COM 都从这里建 aggressor;显式 `xtalk=` / `xtalk_pulses=` 替换配置(两者都有时警告)。静态引擎遇到配置串扰报错
+(它不注入串扰),带重定时器的拓扑也报错(三条链路,一个串扰环境说不清属于哪段)。表单(桌面 / Android)有 bank 那七项,
+`aggressors` 只在 YAML。没有串扰时指纹 846 值逐位不变。
+
+**准同步**:`ppm` ≠ 0 的 lane 有自己的参考时钟。时域:它的第 k 个符号在受扰采样点 n 上,k = floor(n (1 + ppm·1e-6) / osr)
+(`crosstalk.symbol_index`,默认引擎与流式引擎同一个函数),相位每 UI 走 ppm·1e-6 UI。统计:受扰轮流在 aggressor 脉冲的每个相位上采样、
+每个相位一样多 —— 该 aggressor 的 ISI PDF 取各相位的平均(与受扰自己的相位无关,算一次;PR 联合界的事件投影同样按相位平均)。
+一个 aggressor 时这正是同步各 skew 的 BER 的平均(PDF 尾部对它线性;单测逐位到 1e-6)。前提:一次运行扫过整 UI ——
+`n_symbols × |ppm| × 1e-6` < 1 时统计引擎警告。
+
+**量**(示例 44:2 FEXT + 2 NEXT,30 万符号;统计 / 时域):
+
+| 链路 | 同步,8 个 skew 的时域 BER | 同步 统计 / 时域 | 准同步 ±100 ppm 时域 BER | 准同步 统计 / 时域 | 准同步 / 同步平均(时域) |
+|---|---|---|---|---|---|
+| 224G ADC 106 GBd,1.5 mV,−46 dB | 2.13e-3 … 3.46e-2(16.3×) | 0.98–1.02 | 8.08e-3 / 7.81e-3 | 0.90 / 0.93 | 0.83 / 0.80 |
+| PAM4 32G 混合信号,6 mV,−34 dB | 8.64e-4 … 7.69e-3(8.9×) | 0.85–1.23 | 2.62e-3 / 2.57e-3 | 0.84 / 0.86 | 0.96 / 0.94 |
+| NRZ 28G,10 mV,−27 dB | 9.15e-4 … 2.95e-2(32.2×) | 0.41–1.17 | 8.22e-3 / 8.25e-3 | 0.80 / 0.79 | 0.97 / 0.97 |
+
+- 准同步的统计结果与 ppm 的大小无关(探针:+100 / −100 / +300 ppm 逐位相同),时域 ±100 / +300 ppm 在计数误差内一致。
+- 同步 lane 的串扰代价随 skew 差一个数量级;准同步 lane 落在各 skew 的平均附近 —— 同步 lane 的 skew 是可以设计的量,准同步给的是平均。
+- NRZ 在 7/8 UI 的 0.41 是 §3 那一点(浴盆在锁定点旁太陡),不是串扰模型的问题。
+- 测试:`tests/test_crosstalk.py` 配置与 API 逐位相同、YAML 往返、校验、相位平均 = 各 skew 平均、两组链路准同步铁律 3、流式、静态 / 重定时报错、COM 从配置取。
+
 ## 资料来源
 
 - 802.3bs:Anslow,https://www.ieee802.org/3/bs/public/15_09/anslow_3bs_03_0915.pdf

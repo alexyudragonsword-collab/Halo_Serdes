@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-13 · 串扰进配置;准同步 lane(feat/xtalk-config,ROADMAP P3 #9b)
+
+- 建:`LinkConfig.crosstalk`(bank + 逐个 `AggressorConfig`,可从 Touchstone 取耦合),时域 / 流式 / 统计 / COM 从它建 aggressor;显式入参替换并警告;
+  静态引擎与重定时拓扑遇到配置串扰报错;表单加 bank 七项(Android 同一份 SECTIONS);应用的串扰 study 先去掉配置串扰。
+- 准同步:`ppm` ≠ 0 时域按 aggressor 自己的速率保持符号(`symbol_index`,两种引擎同一个函数),统计对相位求平均(一个 aggressor 时 = 各 skew 平均,单测 1e-6)。
+- 量(示例 44):同步 8 个 skew 时域差 8.9–32.2×;准同步统计 / 时域 0.79–0.93×,时域是同步平均的 0.80–0.97。`cairn/多lane建模.md` §7。
+- 验证:指纹 846 值逐位不变;Cython(schema / crosstalk / statistical / timedomain / stream / cascade / static_link / com / 应用两模块)通过。
+- 上一条(#78)于 2026-10-13 合入。
+
 ## 2026-10-13 · PAM4 比特误码按 Gray 码不同的比特数计(fix/pam4-gray-bits,ROADMAP P2 #20)
 
 - 原:`symbol_checker` 与统计引擎的逐符号判决链按 min(|电平差|, 2) 数比特,0 ↔ 3(00 / 10,只差 1 bit)记成 2;预编码 mod 4 回绕出的正是它,预编码 PAM4 BER 高 25 %。

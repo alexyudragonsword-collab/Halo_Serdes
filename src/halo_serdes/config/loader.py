@@ -57,7 +57,13 @@ def _build(cls: type, data: dict[str, Any], path: str) -> Any:
         if dataclasses.is_dataclass(tp) and isinstance(value, dict):
             kwargs[key] = _build(tp, value, f"{path}.{key}")
         elif typing.get_origin(tp) is tuple and isinstance(value, (list, tuple)):
-            kwargs[key] = tuple(value)
+            item = typing.get_args(tp)[0] if typing.get_args(tp) else None
+            if dataclasses.is_dataclass(item):
+                # a list of sub-configs (crosstalk.aggressors): each its own mapping
+                kwargs[key] = tuple(v if isinstance(v, item) else _build(item, v, f"{path}.{key}[{i}]")
+                                    for i, v in enumerate(value))
+            else:
+                kwargs[key] = tuple(value)
         else:
             kwargs[key] = _coerce(tp, value, f"{path}.{key}")
     return cls(**kwargs)
