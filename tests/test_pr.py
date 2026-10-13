@@ -16,7 +16,7 @@ from halo_serdes.config.schema import (
     AdcConfig, CdrConfig, ChannelConfig, ClockConfig, CtleConfig, DfeConfig, FfeConfig, MlsdConfig,
     OpticalConfig, RxConfig, SimConfig, TopologyConfig, TxConfig,
 )
-from halo_serdes.core.mapping import precode_1plusd, unprecode_1plusd
+from halo_serdes.core.mapping import GRAY_BIT_DISTANCE, precode_1plusd, unprecode_1plusd
 from halo_serdes.dsp.ffe import equalized_cursors, mmse_ffe, zf_ffe
 from halo_serdes.dsp.mlsd import mlse_gain_over_dfe_db, viterbi_mlsd
 from halo_serdes.engine import run_time_link
@@ -608,9 +608,15 @@ def _gauss_pdfs(n_levels, sigma, v):
     return [p / p.sum()] * n_levels
 
 
-def _mc_decisions(levels, head, sigma, composite=False, precoded=False, n=400_000, seed=1):
+def _mc_decisions(levels, head, sigma, composite=False, precoded=False, n=400_000, seed=1,
+                  bits=False):
     """The kernel's per-symbol decision, written out in numpy: subtract the
-    controlled cursors times the previous decisions (or slice composites)."""
+    controlled cursors times the previous decisions (or slice composites).
+    SER, or with ``bits`` (SER, Gray bit errors per symbol)."""
+    def out(sent, got):
+        ser = float(np.mean(sent != got))
+        return (ser, float(np.mean(GRAY_BIT_DISTANCE[sent, got]))) if bits else ser
+
     rng = np.random.default_rng(seed)
     m = levels.size
     x = rng.integers(0, m, n)
@@ -623,15 +629,13 @@ def _mc_decisions(levels, head, sigma, composite=False, precoded=False, n=400_00
         q = np.argmin(np.abs(y[:, None] - comp[None, :]), axis=1)
         sent = (x + np.concatenate([[0], x[:-1]])) % m
         got = q % m
-        return float(np.mean(sent[1:] != got[1:]))
+        return out(sent[1:], got[1:])
     for k in range(n):
         u = y[k] - sum(c * levels[d[k - t]] for t, c in enumerate(head[1:], start=1) if k >= t)
         d[k] = int(np.argmin(np.abs(u - levels)))
     if precoded:
-        sent = (x[1:] + x[:-1]) % m
-        got = (d[1:] + d[:-1]) % m
-        return float(np.mean(sent != got))
-    return float(np.mean(x[1:] != d[1:]))
+        return out((x[1:] + x[:-1]) % m, (d[1:] + d[:-1]) % m)
+    return out(x[1:], d[1:])
 
 
 @pytest.mark.parametrize("head,m,sigma,kw", [
@@ -654,6 +658,21 @@ def test_symbol_decision_chain_matches_monte_carlo(head, m, sigma, kw):
     mc = _mc_decisions(levels, head, sigma, **kw)
     assert mc > 3e-4, mc
     assert ser == pytest.approx(mc, rel=0.1), (ser, mc)
+
+
+@pytest.mark.parametrize("head,kw", [((1.0, 0.5), {"precoded": True}), ((1.0, 1.0), {"composite": True})])
+def test_precoded_chain_counts_gray_bits(head, kw):
+    """Precoded, the user symbol is a mod-4 sum and its errors wrap: 0 <-> 3 is
+    one Gray bit, not two. The chain's bit count against the decision rule's,
+    each wrong symbol weighed by the bits its Gray code differs in."""
+    levels = np.linspace(-1.0, 1.0, 4)
+    v = np.linspace(-3.0, 3.0, 6001)
+    ser, nbe = pr_symbol_decisions(_gauss_pdfs(4, 0.11, v), v, levels, head,
+                                   composite=kw.get("composite", False), precoded=True)
+    mc_ser, mc_nbe = _mc_decisions(levels, head, 0.11, bits=True, **kw)
+    assert nbe == pytest.approx(mc_nbe, rel=0.1), (nbe, mc_nbe)
+    # wrapped errors are common: fewer bits per wrong symbol than min(|d|, 2) gave
+    assert nbe / ser == pytest.approx(mc_nbe / mc_ser, rel=0.05)
 
 
 def test_propagation_costs_more_than_an_ideal_tap():

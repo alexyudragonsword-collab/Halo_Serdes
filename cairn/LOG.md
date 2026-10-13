@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-13 · PAM4 比特误码按 Gray 码不同的比特数计(fix/pam4-gray-bits,ROADMAP P2 #20)
+
+- 原:`symbol_checker` 与统计引擎的逐符号判决链按 min(|电平差|, 2) 数比特,0 ↔ 3(00 / 10,只差 1 bit)记成 2;预编码 mod 4 回绕出的正是它,预编码 PAM4 BER 高 25 %。
+- 改:两处都用 `core.mapping.GRAY_BIT_DISTANCE`。指纹 846 值逐位不变(无预编码预设)。`tests/test_cascade.py` 原先把 0 → 3 断言成 2 bit,改为 1。
+- 示例:44 个全尺寸重跑后比对 —— 40 的两行预编码(收端 f_r 11.94 → 11.86、发端 17.30 → 17.10 GHz,噪声容限各动 0.2–0.3 dB,结论不变)、
+  36 的预编码点 8.9e-6 → 7.6e-6,37 / 38 / 42 只动 BER ≥ 0.07 的点。引用处更新、旧值写在日期说明里;`derived` 95 条引用成立。
+- 验证:本地全量 1053 passed / 1 skipped / 1 failed(就是上面那条钉住旧计数的测试,改后单独重跑通过);ruff、Cython(`mapping.py` / `statistical.py`)通过。
+  测试 1050 → 1054(+4)。
+- 坑:并行 4 个全尺寸示例时 38(1024 状态 × 40 万符号)与 43(256 状态 × 400 万符号)的 Viterbi 回溯表各要 3.3 / 8 GB,被杀掉无回溯;单独跑都通过。
+- 上一条(#77)于 2026-10-13 合入。
+- CI:源码提交 525bed8 上 Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures,pyinstaller / nuitka / onefile 通过(它的测试矩阵红,
+  是那条钉住旧计数的 cascade 测试与尚未更新的 expected,下一提交修);head 7f3cb1a 上测试矩阵(含 nojit)、examples、examples-full 全绿。
+
 ## 2026-10-13 · 误码按 lane 复用与码字交织映射到 RS 码(feat/fec-mapping,ROADMAP P3 #9a)
 
 - 建:`fec/interleave.py`(`bit_errors` / `FecLayout` / `burst_profile` → 复合泊松 FER、等效门限、按事件 bootstrap);时域与静态链路 extras 加 `reference`

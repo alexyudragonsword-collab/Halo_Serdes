@@ -195,8 +195,10 @@ def test_statistical_cascade_matches_the_time_engine_within_2x():
 def test_end_to_end_scoring_counts_bits_like_the_engines():
     cfg_p = _ADC
     sent = np.array([0, 1, 2, 3, 0, 1, 2, 3])
-    got = np.array([0, 1, 2, 3, 3, 1, 2, 3])          # one 0->3 jump: 2 Gray bits
+    got = np.array([0, 1, 2, 3, 3, 1, 2, 3])          # 0 -> 3: 00 vs 10, one Gray bit
     b = end_to_end_ber(cfg_p, sent, got)
-    assert (b.n_checked, b.n_errors) == (16, 2)
+    assert (b.n_checked, b.n_errors) == (16, 1)
+    got = np.array([0, 1, 2, 3, 2, 1, 2, 3])          # 0 -> 2: 00 vs 11, two
+    assert end_to_end_ber(cfg_p, sent, got).n_errors == 2
     b = end_to_end_ber(_MS, np.array([0, 1, 1, 0]), np.array([0, 1, 0, 0]))
     assert (b.n_checked, b.n_errors) == (4, 1)

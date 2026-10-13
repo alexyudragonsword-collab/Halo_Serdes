@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .mapping import gray_encode_bits
+from .mapping import GRAY_BIT_DISTANCE, gray_encode_bits
 
 _TAPS: dict[int, tuple[int, ...]] = {
     7: (7, 6),
@@ -158,17 +158,20 @@ def prbs_checker(order: int, rx_bits: np.ndarray, sync_bits: int | None = None) 
 
 def symbol_checker(ref_symbols: np.ndarray, rx_symbols: np.ndarray,
                    gray: bool = True) -> BerResult:
-    """Compare PAM4 symbol streams; counts bit errors (Gray: adjacent-level
-    error = 1 bit, 2-level jump = 2 bits, matching serdespy prqs_checker)."""
+    """Compare PAM4 symbol streams; counts bit errors.
+
+    Gray: the bits that differ between the two levels' Gray codes -- 1 for an
+    adjacent level, 2 for a two-level jump, and 1 for 0 <-> 3 (00 vs 10).
+    serdespy's prqs_checker counts min(|difference|, 2), and so did this until
+    2026-10-13: it read 0 <-> 3 as two bits, which only matters where those
+    errors are common -- 1/(1+D) mod 4 precoding, whose wrapped errors are
+    exactly 0 <-> 3 (precoded PAM4 BER read 25 % high, ROADMAP P2 #20)."""
     ref = np.asarray(ref_symbols, dtype=np.int64)
     rx = np.asarray(rx_symbols, dtype=np.int64)
     n = min(ref.size, rx.size)
     ref, rx = ref[:n], rx[:n]
     if gray:
-        # Gray-coded level index: bit errors = hamming distance of gray codes,
-        # equivalently |level difference| capped at 2 for the standard map.
-        diff = np.abs(ref - rx)
-        n_bit_errs = int(np.sum(np.minimum(diff, 2)))
+        n_bit_errs = int(np.sum(GRAY_BIT_DISTANCE[ref, rx]))
     else:
         n_bit_errs = int(np.sum(ref != rx) * 2)
     errs = np.nonzero(ref != rx)[0]

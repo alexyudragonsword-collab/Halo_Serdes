@@ -15,6 +15,11 @@ _GRAY_ENC = np.array([0, 1, 3, 2], dtype=np.int8)
 # inverse: level index -> (b_msb, b_lsb)
 _GRAY_DEC_MSB = np.array([0, 0, 1, 1], dtype=np.int8)
 _GRAY_DEC_LSB = np.array([0, 1, 1, 0], dtype=np.int8)
+# bits that differ between two PAM4 level indices: the Hamming distance of
+# their Gray codes. Not min(|difference|, 2): 0 (00) and 3 (10) differ in one
+# bit, and that is the error 1/(1+D) mod 4 precoding makes when it wraps.
+GRAY_BIT_DISTANCE = (_GRAY_DEC_MSB[:, None] != _GRAY_DEC_MSB[None, :]).astype(np.int64) \
+    + (_GRAY_DEC_LSB[:, None] != _GRAY_DEC_LSB[None, :])
 
 
 def gray_encode_bits(b_msb: np.ndarray, b_lsb: np.ndarray) -> np.ndarray:

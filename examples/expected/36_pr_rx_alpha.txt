@@ -22,7 +22,7 @@ reach [dB @ 56 GHz]:
   a=0.75  36.33 dB  +5.00 dB  <- best
   a=1     36.16 dB  +4.83 dB
 
-a = 1 at 33.3 dB: plain 2.54e-06, precoded 8.88e-06
+a = 1 at 33.3 dB: plain 2.54e-06, precoded 7.61e-06
 
 receiver-chosen a (pr.adapt = 'lms': MMSE start, LMS-tracked):
   27.3 dB  a 0.597 -> 0.598  BER  6.3e-07

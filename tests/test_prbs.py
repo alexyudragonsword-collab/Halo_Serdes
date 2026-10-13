@@ -76,3 +76,17 @@ def test_symbol_checker_gray_bit_weighting():
     res = symbol_checker(ref, rx, gray=True)
     assert res.n_errors == 1 + 2
     assert res.n_checked == 10
+
+
+def test_symbol_checker_counts_the_bits_that_differ():
+    """0 (00) and 3 (10) differ in one bit -- the error a wrapped 1/(1+D) mod 4
+    precoder makes -- not two (ROADMAP P2 #20)."""
+    ref = np.array([0, 3, 0, 3, 1, 2])
+    rx = np.array([3, 0, 2, 1, 3, 0])                   # 1 + 1 + 2 + 2 + 2 + 2
+    assert symbol_checker(ref, rx, gray=True).n_errors == 10
+    # every pair, against the Gray codes themselves
+    from halo_serdes.core.mapping import gray_decode_symbols
+    for u in range(4):
+        for v in range(4):
+            bits = gray_decode_symbols(np.array([u])) != gray_decode_symbols(np.array([v]))
+            assert symbol_checker(np.array([u]), np.array([v])).n_errors == bits.sum()
