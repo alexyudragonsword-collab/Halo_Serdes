@@ -123,11 +123,11 @@ def test_the_statistical_engine_sees_the_adc_receivers_ffe(recs):
     unequalised channel -- SER 0.32, StatEye BER 0.16 beside a time-domain
     1e-4 -- and the Single Run card, the Dual-Engine view and the crosstalk
     baseline all showed it. With the time run's FFE it lands within 2x of the
-    time engine (89 errors at 2e5 symbols: 2.29e-4 vs 2.40e-4); a
-    statistical-only run gets the MMSE starting FFE and is in the same
-    decade, not at 0.16."""
+    time engine (89 errors at 2e5 symbols: 2.29e-4 vs 2.40e-4; at 2.5 mV
+    since the receiver's DFE engages, ROADMAP P1 #21); a statistical-only
+    run gets the MMSE starting FFE and is in the same decade, not at 0.16."""
     vals = cb.config_to_values(cb.load_preset("PAM4 224G ADC (106 GBd)"))
-    vals.update({"sim.n_symbols": 200_000, "sim.engine": "both"})
+    vals.update({"sim.n_symbols": 200_000, "sim.engine": "both", "rx.noise_rms": 0.0025})
     both = run_from_values(vals)
     assert both.sim.ber.n_errors > 30
     assert 0.5 < both.stat.ber / both.sim.ber.ber < 2.0

@@ -1,16 +1,21 @@
 """Deep 224G long-reach: how far can FFE + DFE + deeper MLSD + KP4 reach?
 
 Pushing past the ~31.3 dB reach of example 18's receiver by adding DFE (cancels far
-postcursors without FFE's noise enhancement) and deeper MLSD memory. The
-honest finding: at deep LR the link is SNR-limited, not ISI/DSP-depth-limited.
+postcursors without FFE's noise enhancement) and deeper MLSD memory. Both
+levers pay; the ADC's pays more:
 
-- adding DFE + MLSD memory-3 over FFE+memory-2 buys under 2 dB (the residual
-  ISI is already small; the wall is noise, and FFE-inverting a 30 dB channel
-  enhances it);
-- the big lever is ADC sampling quality — better ENOB / lower noise floor
-  buys ~5.4 dB of reach with the SAME DSP (31.3 -> 33.1 dB from DSP depth, but
-  33.1 -> 38.5 dB from the ADC; recomputed 2026-10-09). The earlier
-  28 -> 29 -> 35.5 dB ladder was taken with MM-CDR off the peak.
+- adding DFE8 + MLSD memory-3 over FFE+memory-2 buys 4.7 dB (31.3 -> 36.0 dB):
+  the FFE leaves the DFE's eight post-cursors to it instead of inverting them;
+- the bigger lever is ADC sampling quality — better ENOB / lower noise floor
+  buys ~8.2 dB of reach with the SAME DSP (31.3 -> 36.0 dB from DSP depth, but
+  36.0 -> 44.2 dB from the ADC; 2026-10-13).
+
+Until 2026-10-13 the ADC receiver's DFE never engaged (ROADMAP P1 #21: the
+FFE started from the full MMSE solution, and the joint LMS has no gradient
+to hand the post-cursors over), so DSP depth bought under 2 dB (31.3 -> 33.1
+dB) and the ADC 5.4 dB (33.1 -> 38.5 dB), and this example concluded the
+link was SNR-limited, not DSP-depth-limited. The earlier 28 -> 29 -> 35.5 dB
+ladder was taken with MM-CDR off the peak.
 
 The sequence detector is the engine's (``mlsd``), scored over every symbol.
 Until 2026-10-09 the example ran its own Viterbi on ``res.y_slicer``, which
@@ -88,7 +93,7 @@ CONFIGS = {
     "same + better ADC (ENOB7.5)": dict(n_pre=6, n_post=4, n_dfe=8, peak=8, mem=3,
                                        enob=7.5, noise=0.0008),
 }
-lengths = [0.16, 0.18, 0.19, 0.20, 0.21, 0.22, 0.24, 0.26, 0.28]
+lengths = [0.16, 0.18, 0.19, 0.20, 0.21, 0.22, 0.24, 0.26, 0.28, 0.30, 0.32, 0.34]
 
 KP4 = fec_threshold("kp4")
 results, reaches = {}, {}
@@ -131,7 +136,7 @@ for label in ("FFE + MLSD mem2 (example 18)", "FFE + DFE8 + MLSD mem3"):
                 color=colors[label], label=tag(label))
 ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
-       title="Add DFE + deeper MLSD: under 2 dB more at same ADC\n(residual ISI already small; deep LR is SNR-limited)")
+       title="Add DFE + deeper MLSD: ~5 dB more at same ADC\n(the DFE takes the post-cursors the FFE would invert)")
 ax.yaxis.set_major_formatter(_fmt); ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=7.5); ax.grid(True, which="both", alpha=0.3)
 
@@ -143,7 +148,7 @@ for label in ("FFE + DFE8 + MLSD mem3", "same + better ADC (ENOB7.5)"):
                 color=colors[label], label=tag(label))
 ax.axhline(1e-15, color="green", ls=":", lw=1, label="link target 1e-15")
 ax.set(xlabel="Channel insertion loss @ 56 GHz Nyquist [dB]", ylabel="post-KP4 BER",
-       title="Better ADC (ENOB 6.5->7.5, half the noise): ~5 dB more at same DSP\n(the real lever for deep LR is sampling quality)")
+       title="Better ADC (ENOB 6.5->7.5, half the noise): ~8 dB more at same DSP\n(the biggest single lever for deep LR is sampling quality)")
 ax.yaxis.set_major_formatter(_fmt); ax.yaxis.set_minor_formatter(_nofmt)
 ax.legend(fontsize=7.5); ax.grid(True, which="both", alpha=0.3)
 

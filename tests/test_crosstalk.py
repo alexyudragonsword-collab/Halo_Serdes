@@ -341,16 +341,25 @@ def test_stream_engine_with_quasi_synchronous_config_crosstalk():
 def test_one_drifting_aggressor_is_the_mean_over_its_phases():
     """The statistical engine's quasi-synchronous aggressor is the synchronous
     one averaged over every phase: with one aggressor (and a PDF tail that is
-    linear in it) its BER is the mean of the skews' BERs."""
+    linear in it) its first-error rate is the mean of the skews'. The DFE's
+    error propagation on top (``dfe_ep_factor``, ROADMAP P1 #21) is not
+    linear in the PDF; taken from the averaged one it is 0.4 % off here."""
     cfg = _xt_cfg("PAM4 32G mixed-signal", 0.006, 100_000, n_fext=1, coupling_db=-30.0,
                   spread_db=0.0, seed=1, ppm=100.0)
-    drift = run_statistical(cfg).ber
+    drift = run_statistical(cfg)
     import dataclasses
 
     skews = [run_statistical(dataclasses.replace(cfg, crosstalk=dataclasses.replace(
-        cfg.crosstalk, ppm=0.0, skew_ui=k / cfg.osr))).ber for k in range(cfg.osr)]
-    assert drift == pytest.approx(np.mean(skews), rel=1e-6)
-    assert max(skews) > 2 * min(skews)                  # the phase mattered
+        cfg.crosstalk, ppm=0.0, skew_ui=k / cfg.osr))) for k in range(cfg.osr)]
+
+    def first(s):
+        # the factor is the one at the nearest grid phase, the BER read
+        # between two: 3e-5 apart on this link
+        return s.ber / s.extras["dfe_ep_factor"]
+    assert first(drift) == pytest.approx(np.mean([first(s) for s in skews]), rel=1e-4)
+    assert drift.ber == pytest.approx(np.mean([s.ber for s in skews]), rel=0.02)
+    bers = [s.ber for s in skews]
+    assert max(bers) > 2 * min(bers)                    # the phase mattered
 
 
 @pytest.mark.parametrize("name, noise, coupling_db", [

@@ -15,10 +15,14 @@ keep it under a target; ``shared_cdr`` places the clock:
 
 Three links (the presets' receivers, receiver noise set so the curves stay
 above 1e-300). The ADC lane's FFE is the MMSE solution the time engine
-starts from, re-solved at each offset or held at the lock point's. Re-solved
-it reads 1.4-4.5x above a time-domain lane held at the offset; which FFE a
-lane converges to is ROADMAP P2 #21 (cairn/多lane建模.md §8, where the
-time-domain cross-check is).
+starts from, re-solved at each offset or held at the lock point's. That is a
+stand-in: re-solved it reads 14-25x above a time-domain lane held at the
+offset, whose LMS moves its FFE well past the start (given the FFE that lane
+converged to, the statistical engine reads 0.93-1.47x of it), so the ADC
+curve here is pessimistic and never reaches the KP4 threshold; ROADMAP P2 #23
+(cairn/多lane建模.md §8, where the time-domain cross-check is). Before
+2026-10-13 (P1 #21) the time-domain lane's DFE never engaged and the
+stand-in read 1.4-4.5x.
 
 Pass ``--quick`` for a smoke run (fewer phases).
 """
@@ -137,7 +141,7 @@ if not QUICK:
         assert shared_cdr(main, SKEWS, "minmax").worst <= m.worst * (1 + 1e-9)
     adc = results["PAM4 224G ADC (106 GBd)"][0]
     moved, held = adc["FFE re-solved"], adc["FFE held at lock"]
-    assert float(held.at(0.25)) > 5 * float(moved.at(0.25))
+    assert float(held.at(0.25)) > 3 * float(moved.at(0.25))
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(2, len(LINKS), figsize=(15, 8))

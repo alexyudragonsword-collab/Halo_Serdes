@@ -123,8 +123,9 @@ def test_adc_lane_reads_far_higher_with_the_lock_points_ffe():
     held = lane_curve(cfg, ch, n_phases=8, ffe_taps=initial_ffe_taps(cfg, ch))
     assert moved.readapt and not held.readapt
     assert float(moved.at(0.0)) == pytest.approx(float(held.at(0.0)), rel=1e-9)
-    assert float(held.at(0.25)) > 5 * float(moved.at(0.25))
-    assert float(held.at(-0.25)) > 2 * float(moved.at(-0.25))
+    # 4.5x / 14.6x (with the DFE engaged and its error propagation counted)
+    assert float(held.at(0.25)) > 3 * float(moved.at(0.25))
+    assert float(held.at(-0.25)) > 5 * float(moved.at(-0.25))
 
 
 # ------------------------------------------------- invariant 3: against the time engine
@@ -184,10 +185,10 @@ def test_invariant3_mixed_signal_lane_off_its_lock(name, noise, offsets):
 
 def test_invariant3_adc_lane_with_the_ffe_it_converged_to():
     """Given the FFE the time-domain lane converged to at the offset, the
-    statistical engine sampling there reads its BER: 0.98-1.26 over +-3/8 UI."""
+    statistical engine sampling there reads its BER (cairn/多lane建模.md §8.2)."""
     from halo_serdes.channel import ChannelModel
 
-    cfg = _preset("PAM4 224G ADC (106 GBd)", 0.0015)
+    cfg = _preset("PAM4 224G ADC (106 GBd)", 0.0025)
     ch = ChannelModel.from_config(cfg)
     offsets = (-0.25, 0.25)
     with warnings.catch_warnings():

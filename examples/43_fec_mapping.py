@@ -14,8 +14,8 @@ clause text (``cairn/多lane建模.md``).
 Example 42's link (224 Gb/s PAM4, 21-tap LMS FFE, MM-CDR, ENOB 6.5, 1.5 mV)
 with five receivers:
 
-  FFE + DFE1                -- the FFE leaves a DFE little to do: isolated errors
-  FFE + DFE1, precoded      -- 1/(1+D): each of those becomes two
+  FFE + DFE1                -- its tap engaged (~0.6): an error propagates, ~3 per event
+  FFE + DFE1, precoded      -- 1/(1+D): a run of them becomes about two
   1 + aD, Viterbi           -- example 42's first row
   1 + aD, Viterbi, precoded
   1 + aD + bD^2, Viterbi    -- example 42's third row (256 states)
@@ -71,10 +71,10 @@ N_BOOT = 50 if QUICK else 200
 AD = PrConfig(target=(1.0, 0.5), adapt="mmse")
 ADBD = PrConfig(target=(1.0, 0.5, 0.0), adapt="mmse")
 # name: (PR target, Viterbi?, precoded?, sweep lengths [m], profile length [m])
-DFE_LENGTHS = [0.18, 0.19, 0.20, 0.21, 0.22, 0.23]
+DFE_LENGTHS = [0.18, 0.19, 0.20, 0.21, 0.22, 0.23, 0.24]
 PR_LENGTHS = [0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30]
-CASES = {"FFE + DFE1": (PrConfig(), False, False, DFE_LENGTHS, 0.205),
-         "FFE + DFE1, precoded": (PrConfig(), False, True, DFE_LENGTHS, 0.205),
+CASES = {"FFE + DFE1": (PrConfig(), False, False, DFE_LENGTHS, 0.225),
+         "FFE + DFE1, precoded": (PrConfig(), False, True, DFE_LENGTHS, 0.225),
          "1 + aD, Viterbi": (AD, True, False, PR_LENGTHS, 0.24),
          "1 + aD, Viterbi, precoded": (AD, True, True, PR_LENGTHS, 0.24),
          "1 + aD + bD^2, Viterbi": (ADBD, True, False, PR_LENGTHS, 0.255)}
@@ -203,15 +203,20 @@ for label, a, b in (("1 + aD over DFE1", "1 + aD, Viterbi", "FFE + DFE1"),
         cells.append(fmt(None if va is None or vb is None else round(va - vb, 2) + 0.0, "+.2f"))
     print(f"  {label:<26} {cells[0]:>11} " + " ".join(f"{c:>18}" for c in cells[1:]))
 
-# direction, as measured (cairn/多lane建模.md §6); only on a full-size run
-if not QUICK and len(ratio) == len(CASES) * len(LAYOUTS):
-    assert all(0.9 < f <= 1.0 for f in floor.values()), floor
-    for case in ("1 + aD, Viterbi", "1 + aD + bD^2, Viterbi"):
-        assert ratio[case, "sym pair 8:1, 4 cw"] > 1.5, ratio            # pessimistic
-        assert ratio[case, "one lane"] < 0.8, ratio                      # optimistic
-        assert ratio[case, "bit mux 4:1, 2 cw"] < 0.4, ratio
-        assert ratio[case, "bit mux 8:1, 2 cw"] < ratio[case, "bit mux 4:1, 2 cw"], ratio
-    assert 0.9 < ratio["FFE + DFE1", "sym pair 8:1, 4 cw"] < 1.2, ratio  # isolated errors: no change
+# direction, as measured (cairn/多lane建模.md §6); only on a full-size run. The
+# DFE's errors were isolated (a ratio of ~1 everywhere) while its tap stayed at
+# 0 (ROADMAP P1 #21); engaged, it makes runs like the Viterbi's.
+if not QUICK:
+    missing = [k for k in ((c, n) for c in CASES for n in LAYOUTS) if k not in ratio]
+    if missing:
+        print(f"direction checks skipped: no threshold ratio for {missing}")
+    else:
+        assert all(0.9 < f <= 1.0 for f in floor.values()), floor
+        for case in ("FFE + DFE1", "1 + aD, Viterbi", "1 + aD + bD^2, Viterbi"):
+            assert ratio[case, "sym pair 8:1, 4 cw"] > 1.5, ratio        # pessimistic
+            assert ratio[case, "one lane"] < 0.8, ratio                  # optimistic
+            assert ratio[case, "bit mux 4:1, 2 cw"] < 0.4, ratio
+            assert ratio[case, "bit mux 8:1, 2 cw"] < ratio[case, "bit mux 4:1, 2 cw"], ratio
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))

@@ -12,7 +12,13 @@ extrapolation to arbitrarily low BER without Monte-Carlo, the capability none
 of the three reference libraries has.
 
 Non-LTI approximations (each cross-checked against the time engine):
-- DFE: ideal cancellation of the covered postcursors (weights assumed exact);
+- DFE: ideal cancellation of the covered postcursors (weights assumed exact),
+  with its error propagation on top (plain slicer path): a wrong decision
+  leaves h1 x the level step on the next sample; p = the SER with the input
+  shifted that way, and the SER s becomes s / (1 - p + s), the two-state
+  chain's (``extras['dfe_ep_factor']``; first tap only -- the 1-tap
+  Gilbert model, cairn/多lane建模.md §2). Without it the ADC receiver with
+  its DFE engaged read 0.35-0.55x the time engine; with it 0.81-1.25x;
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
 - ADC receiver: the ADC's noise, fullscale^2/12 * 2^(-2 ENOB) (bare
   quantisation without an ENOB), joins the receiver noise at the FFE input
@@ -738,6 +744,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     ser_phi = np.zeros(osr)
     ber_phi = np.zeros(osr)
     ser_sym_phi = np.zeros(osr)
+    ep_factor_phi = np.ones(osr)
     ber_sym_phi = np.zeros(osr)
     head_energy_phi = np.zeros(osr)       # the controlled cursors' energy, sum c_k^2 (k >= 1)
     # precoded 1 + D at a = 1 slices composite levels in the kernel (no
@@ -813,11 +820,14 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 head.append(isi[n_pre + j] / main if main else 0.0)
                 isi[n_pre + j] = 0.0
         # ideal DFE removes the n_dfe postcursors after the target
+        h_dfe1 = 0.0
         if n_dfe > 0:
             isi_list = list(isi)
             for d in range(n_dfe):
                 pos = n_pre + n_t - 1 + d  # index into isi (post side starts at n_pre)
                 if pos < len(isi_list):
+                    if d == 0:
+                        h_dfe1 = float(isi_list[pos])
                     isi_list[pos] = 0.0
             isi = np.asarray(isi_list)
 
@@ -995,6 +1005,35 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             if pdf_eye is None:
                 pdf_eye = pdf_lv if ev_diffs is None else noisy(g_ev)
         pdf_lv = pdf_eye
+        if n_dfe > 0 and not pr_active and mlsd_mem == 0 and h_dfe1 != 0.0:
+            # DFE error propagation (the "ideal DFE" above feeds back correct
+            # decisions). A wrong decision -- one level off, nearly always --
+            # leaves h1 x the level step on the next sample; the chance that
+            # one goes wrong too is the SER with the slicer input shifted
+            # that way, averaged over the next symbol's level and the sign.
+            # Errors then follow the two-state (Gilbert) chain: a symbol
+            # after a correct one fails with s, the ideal-DFE SER, after a
+            # wrong one with p, so it is wrong s / (1 - p + s) of the time --
+            # s / (1 - p) while errors are rare, never past 1 on a closed
+            # eye. Each one bit (Gray). First DFE tap only. With the ADC's
+            # DFE engaged (ROADMAP P1 #21; tap 0.57) the time engine read
+            # 1.8-2.9x this engine's ideal-DFE BER.
+            step = float(np.min(np.diff(np.sort(levels_norm)))) * h_dfe1
+            p_ep = 0.0
+            for j in range(n_levels):
+                for sgn in (1.0, -1.0):
+                    p_j = 0.0
+                    if j < n_levels - 1:
+                        thr = (lv_sorted[j] + lv_sorted[j + 1]) / 2.0
+                        p_j += tail_ge(thr - lv_sorted[j] - sgn * step, int(order[j]))
+                    if j > 0:
+                        thr = (lv_sorted[j - 1] + lv_sorted[j]) / 2.0
+                        p_j += tail_le(thr - lv_sorted[j] - sgn * step, int(order[j]))
+                    p_ep += p_j / (2 * n_levels)
+            p_ep = min(p_ep, 0.99)
+            ep_factor_phi[pi] = 1.0 / (1.0 - p_ep + min(ser, 1.0))
+            ser *= ep_factor_phi[pi]
+            nbe *= ep_factor_phi[pi]
         ser_phi[pi] = ser
         ber_phi[pi] = nbe / bits_per_sym
         if pr_active:
@@ -1094,6 +1133,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "clock_loop": loop_sol,
                 "lock_phase_ui": lock_ui,
                 "ber_min_phase": float(ber_phi.min()),
+                "dfe_ep_factor": float(ep_factor_phi[best]),
                 # SER of the per-symbol PR decisions (the time engine's
                 # extras['ser_slicer']); None without a PR target
                 "ser_slicer": float(ser_sym_phi[best]) if pr_active else None,
