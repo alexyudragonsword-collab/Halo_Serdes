@@ -6,6 +6,45 @@
 
 ---
 
+## [未发布] — 误码按 lane 复用与码字交织映射到 RS 码,成串误码的 KP4 帧错误率(ROADMAP P3 #9a)
+
+### 新增
+- `fec/interleave.py`:
+  - `bit_errors(decisions, reference)`:按 Gray 比特(MSB 在前)给出误码在线上的比特位置;参考为 −1(周跳留下的空位)的符号不计。
+  - `FecLayout(lanes, pcs_lanes, mux_bits, interleave, stagger)`:物理 lane 上的比特怎样到达 (码字, RS 符号)。几种复用 —— 单 lane 连续、
+    比特复用、按符号、按符号对 —— 与 1 / 2 / 4 码字交织都由参数表达。预置 `SEQUENTIAL`、`BIT_MUX_2CW`(仿 400GBASE-R)、
+    `SYMBOL_PAIR_4CW`(仿 200G/lane);后两个按 802.3 资料的二手摘要建模,不是条文转录。
+  - `burst_profile(...)` → `BurstProfile`:误码按间隔分事件,记每个"事件 × 码字"占几个 RS 符号。
+    - `frame_error_rate(ber)`:复合泊松尾部(事件率随 BER 缩放、足迹不变)。
+    - `threshold()`:FER 等于二项投影在其门限处 FER 的 pre-FEC BER。
+    - `resample(rng)`:按事件 bootstrap。
+  - `compound_fer(lam, pmf, t)`:按尾部直接求和,1e-13 量级不丢精度。
+- 时域引擎与静态链路的 `extras["reference"]`:与 `decisions` 同长的参考符号。只加键,数值不变(指纹原有 819 个值逐位相同,另外 27 个是新键)。
+- 示例 43(`examples/43_fec_mapping.py`):示例 42 的 224G 链路,五种收端 × 四种映射,给出等效门限(带 bootstrap)与按门限读的 reach。
+
+### 结论(示例 43)
+- **二项投影对 PR 链路偏不偏,取决于映射**:
+  - 仿 200G/lane 的符号对复用 + 四码字下偏保守:1 + aD 与 1 + aD + bD² 的 reach 都 +0.58 dB。
+  - 单 lane 连续映射下偏乐观 0.30 / 0.70 dB;4:1 比特复用下偏乐观 0.60 / 1.56 dB;8:1 比特复用下偏乐观 2.14 / 2.20 dB。
+- DFE 的误码基本孤立,映射对它的影响在 −0.25…+0.02 dB 之间。
+- 预编码把 1 + aD 的一串误码变成恰好两个:比特复用 8:1 下 +1.63 dB,符号对复用下 −0.11 dB。
+- 更正范围评估里的一条推断:单 lane 下 RS 符号误码率低(0.51 倍)不等于帧错误率低,t = 15 的尾部由每个码字里的簇大小决定
+  (`cairn/多lane建模.md` §2 更正、§6;`engineering-pitfalls.md`)。
+
+### 发现(未修,ROADMAP P2 #20)
+- `symbol_checker` 把 Gray 下只差一比特的 0 ↔ 3 记成 2 bit,所以预编码 PAM4 的 BER 高 25 %(1 + aD 预编码链路:2.51e-4 对 2.01e-4)。
+
+### 测试
+- +25:`tests/test_fec_interleave.py`
+  - 映射:每个码字恰好 n 个符号;已知突发落在哪;参数校验。
+  - Gray 比特计数与跳过空参考。
+  - 引擎交回的参考符号。
+  - 复合泊松:单符号事件就是泊松尾部;对四条 lane 逐码字直接计数,t = 2 / 4 / 6 吻合。
+  - 等效门限:孤立误码 0.986;独立误码 0.92–1.0;PR 式误码串在三种映射下的方向。
+  - bootstrap 可复现;无误码时报错。
+
+---
+
 ## [未发布] — 串扰在受扰 lane 的采样相位上读,lane 间 skew 两个引擎同用(ROADMAP P2 #19)
 
 ### 修复

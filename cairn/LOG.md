@@ -3,6 +3,20 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-13 · 误码按 lane 复用与码字交织映射到 RS 码(feat/fec-mapping,ROADMAP P3 #9a)
+
+- 建:`fec/interleave.py`(`bit_errors` / `FecLayout` / `burst_profile` → 复合泊松 FER、等效门限、按事件 bootstrap);时域与静态链路 extras 加 `reference`
+  (只加键;指纹原有 819 值逐位相同,另 27 个是新键)。校验:四条 lane 逐码字直接计数对复合泊松 t = 0…5 吻合;独立误码 0.95–0.99、孤立误码 0.986。
+- 量(示例 43,示例 42 的链路,门限附近 400 万符号):二项投影对 PR + Viterbi 在仿 200G/lane 的符号对复用 + 四码字下偏保守(reach +0.58 dB),
+  单 lane / 4:1 / 8:1 比特复用下偏乐观(1 + aD −0.30 / −0.60 / −2.14 dB);DFE −0.25…+0.02 dB。1 + aD 对 DFE1 的优势随映射 3.09–5.55 dB。
+- **更正**范围评估 §2:单 lane 下 RS 符号误码率低(0.51 倍)≠ FER 低,t = 15 的尾部由码字内簇大小决定,方向反了(已在 §2 追加更正;坑记入 pitfalls)。
+- 顺带发现 `symbol_checker` 把 0 ↔ 3 记 2 bit,预编码 PAM4 BER 高 25 % → ROADMAP P2 #20(未修)。
+- 落点:`cairn/多lane建模.md` §6、ROADMAP(9a 移除、P2 #20 新增)、CHANGELOG、USAGE §11、README。测试 1023 → 1050(+25 个新测试,+2 是按示例参数化的测试多了示例 43)。
+- 上一条(#76)CI:ebd6964 上 Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;pyinstaller 3 分钟、测试矩阵(含 nojit)、
+  examples、RTL lockstep 全绿;nuitka 125 / onefile 93 分钟通过。#76 于 2026-10-13 合入。
+- 验证:本地全量 1050 passed / 1 skipped;ruff 通过;Cython 编译 `interleave.py` / `fec/__init__.py` / `timedomain.py` / `static_link.py` 通过;
+  示例 43 全尺寸 702 s(二项列与示例 42 逐位相同)、smoke 15 s;`example_drift.py derived` 95 条引用全部成立。
+
 ## 2026-10-13 · 串扰在受扰 lane 的采样相位上读(fix/xtalk-phase,ROADMAP P2 #19)
 
 - 原因两条:统计引擎按每个 aggressor 自己的峰值取游标(所有 aggressor 同时最坏);ADC 收端的串扰没过 FFE(时域在 ADC 前叠加,跟信号一起被 FFE 放大)。

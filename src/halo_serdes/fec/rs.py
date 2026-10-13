@@ -107,6 +107,9 @@ def pre_to_post_fec_ber(pre_ber: float, code: str = "kp4",
     erroneous symbols' bits wrong. Bursty error statistics (DFE error
     propagation!) violate the random assumption — pair with 1/(1+D)
     precoding, and validate with the real codec when it matters.
+    ``fec/interleave.py`` evaluates a measured run's errors through a given
+    lane-to-codeword mapping instead: which way this projection errs depends
+    on that mapping (example 43).
     """
     n, k, t = (544, 514, 15) if code == "kp4" else (528, 514, 7)
     ser = 1.0 - (1.0 - pre_ber) ** M_BITS

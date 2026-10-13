@@ -545,7 +545,7 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "ser_slicer": sc.ser_slicer,
                 "precode": cfg.precode,
                 "cycle_slips": sc.cycle_slips, "slip_at": sc.slip_at,
-                "decisions": sc.decisions})
+                "decisions": sc.decisions, "reference": sc.reference})
 
 
 def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, w_dfe0,
@@ -837,7 +837,9 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "pr_target": (1.0,) + tuple(float(c) for c in alpha_out[:n_t - 1])
                 if pr.active else None,
                 "cycle_slips": sc.cycle_slips, "slip_at": sc.slip_at,
-                "decisions": sc.decisions,
+                # what was decided and what should have been (-1 where a slip
+                # left none): bit error positions for fec/interleave.py
+                "decisions": sc.decisions, "reference": sc.reference,
                 # numeric.mode 'fixed': the bit-true loop and its record
                 # (dsp/fixed_loop.py; rtl/adc_dsp_loop.sv replays it)
                 "fixed": fixed})

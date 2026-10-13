@@ -1,0 +1,56 @@
+224 Gb/s PAM4 LR (example 42's link): KP4 projected per layout
+independent-bit projection: post-KP4 1e-15 <=> pre-FEC BER <= 2.19e-04
+threshold ratio: pre-FEC BER at which the layout's frame error rate equals the projection's,
+over P*; above 1 the projection is pessimistic for these errors
+
+1. independent bit errors at P* (8 Mbit): the method's floor
+  one lane: 0.953   bit mux 4:1, 2 cw: 0.989   bit mux 8:1, 2 cw: 0.974   sym pair 8:1, 4 cw: 0.987
+
+2. each receiver near the threshold (4M symbols): its events, and the threshold ratio per layout
+   (bootstrap 90 % over events in brackets)
+  FFE + DFE1                 31.1 dB  BER 1.44e-04  events  1080  errors/event 1.07  [~s]
+      one lane               RS symbols/independent 0.96  per codeword 1/2/3+: 0.979/0.021/0.000  threshold ratio  0.84 [0.79-0.90]
+      bit mux 4:1, 2 cw      RS symbols/independent 1.00  per codeword 1/2/3+: 0.963/0.037/0.000  threshold ratio  0.72 [0.66-0.77]
+      bit mux 8:1, 2 cw      RS symbols/independent 1.00  per codeword 1/2/3+: 0.960/0.039/0.001  threshold ratio  0.66 [0.59-0.74]
+      sym pair 8:1, 4 cw     RS symbols/independent 0.96  per codeword 1/2/3+: 1.000/0.000/0.000  threshold ratio  1.03 [1.02-1.04]
+  FFE + DFE1, precoded       31.1 dB  BER 2.80e-04  events  1118  errors/event 2.00  [~s]
+      one lane               RS symbols/independent 0.61  per codeword 1/2/3+: 0.779/0.221/0.000  threshold ratio  0.60 [0.56-0.64]
+      bit mux 4:1, 2 cw      RS symbols/independent 0.98  per codeword 1/2/3+: 0.687/0.313/0.001  threshold ratio  0.28 [0.23-0.32]
+      bit mux 8:1, 2 cw      RS symbols/independent 1.00  per codeword 1/2/3+: 0.659/0.341/0.000  threshold ratio  0.29 [0.28-0.30]
+      sym pair 8:1, 4 cw     RS symbols/independent 0.61  per codeword 1/2/3+: 1.000/0.000/0.000  threshold ratio  1.62 [1.59-1.64]
+  1 + aD, Viterbi            36.4 dB  BER 2.52e-04  events   761  errors/event 2.64  [~s]
+      one lane               RS symbols/independent 0.51  per codeword 1/2/3+: 0.658/0.339/0.003  threshold ratio  0.55 [0.50-0.59]
+      bit mux 4:1, 2 cw      RS symbols/independent 0.87  per codeword 1/2/3+: 0.544/0.443/0.013  threshold ratio  0.25 [0.23-0.27]
+      bit mux 8:1, 2 cw      RS symbols/independent 0.98  per codeword 1/2/3+: 0.499/0.373/0.129  threshold ratio  0.05 [0.05-0.06]
+      sym pair 8:1, 4 cw     RS symbols/independent 0.51  per codeword 1/2/3+: 0.999/0.001/0.000  threshold ratio  1.92 [1.85-1.97]
+  1 + aD, Viterbi, precoded  36.4 dB  BER 2.01e-04  events   805  errors/event 2.00  [~s]
+      one lane               RS symbols/independent 0.76  per codeword 1/2/3+: 0.491/0.508/0.001  threshold ratio  0.31 [0.29-0.33]
+      bit mux 4:1, 2 cw      RS symbols/independent 0.84  per codeword 1/2/3+: 0.874/0.125/0.001  threshold ratio  0.54 [0.51-0.59]
+      bit mux 8:1, 2 cw      RS symbols/independent 0.98  per codeword 1/2/3+: 0.683/0.317/0.000  threshold ratio  0.31 [0.30-0.32]
+      sym pair 8:1, 4 cw     RS symbols/independent 0.76  per codeword 1/2/3+: 1.000/0.000/0.000  threshold ratio  1.30 [1.28-1.33]
+  1 + aD + bD^2, Viterbi     38.6 dB  BER 2.34e-04  events   803  errors/event 2.33  [~s]
+      one lane               RS symbols/independent 0.54  per codeword 1/2/3+: 0.749/0.245/0.006  threshold ratio  0.47 [0.35-0.61]
+      bit mux 4:1, 2 cw      RS symbols/independent 0.93  per codeword 1/2/3+: 0.601/0.391/0.008  threshold ratio  0.26 [0.24-0.28]
+      bit mux 8:1, 2 cw      RS symbols/independent 0.98  per codeword 1/2/3+: 0.591/0.349/0.061  threshold ratio  0.07 [0.06-0.10]
+      sym pair 8:1, 4 cw     RS symbols/independent 0.54  per codeword 1/2/3+: 0.999/0.001/0.000  threshold ratio  1.80 [1.75-1.86]
+
+3. reach [dB] where the sweep's pre-FEC BER crosses each threshold (refined to 0.4 dB)
+  FFE + DFE1                 27.3dB: 6.3e-07 28.8dB: 2.5e-06 30.3dB: 4.4e-05 31.1dB: 1.4e-04 31.4dB: 2.6e-04 31.8dB: 4.4e-04 33.3dB: 1.8e-03 34.9dB: 5.1e-03  [~s]
+  FFE + DFE1, precoded       27.3dB: 6.3e-07 28.8dB: 1.5e-05 29.6dB: 2.8e-05 29.9dB: 6.6e-05 30.3dB: 7.4e-05 30.7dB: 1.7e-04 31.1dB: 2.8e-04 31.4dB: 4.3e-04 31.8dB: 6.5e-04 33.3dB: 2.9e-03 34.9dB: 8.1e-03  [~s]
+  1 + aD, Viterbi            27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 2.5e-06 34.1dB: 1.0e-05 34.5dB: 1.9e-05 34.9dB: 2.0e-05 35.6dB: 3.9e-05 36.0dB: 1.1e-04 36.4dB: 2.4e-04 36.8dB: 3.8e-04 37.1dB: 4.8e-04 37.9dB: 1.1e-03 39.4dB: 4.2e-03 42.4dB: 2.4e-02 45.5dB: 7.5e-02  [~s]
+  1 + aD, Viterbi, precoded  27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 6.3e-07 34.9dB: 3.0e-05 35.6dB: 3.3e-05 36.0dB: 1.3e-04 36.4dB: 1.9e-04 36.8dB: 2.8e-04 37.1dB: 3.6e-04 37.9dB: 7.0e-04 39.4dB: 2.7e-03 42.4dB: 1.5e-02 45.5dB: 4.7e-02  [~s]
+  1 + aD + bD^2, Viterbi     27.3dB: 6.3e-07 30.3dB: 6.3e-07 33.3dB: 6.3e-07 36.4dB: 1.5e-05 36.8dB: 3.6e-05 37.1dB: 6.6e-05 37.9dB: 1.0e-04 38.3dB: 1.4e-04 38.6dB: 2.3e-04 39.0dB: 3.3e-04 39.4dB: 5.2e-04 42.4dB: 6.3e-03 45.5dB: 1.9e-01  [~s]
+
+                             independent           one lane  bit mux 4:1, 2 cw  bit mux 8:1, 2 cw sym pair 8:1, 4 cw
+  FFE + DFE1                       31.35      31.24 (-0.11)      31.15 (-0.20)      31.09 (-0.25)      31.36 (+0.02)
+  FFE + DFE1, precoded             30.88      30.57 (-0.32)      29.90 (-0.98)      29.92 (-0.96)      31.28 (+0.40)
+  1 + aD, Viterbi                  36.33      36.03 (-0.30)      35.73 (-0.60)      34.19 (-2.14)      36.91 (+0.58)
+  1 + aD, Viterbi, precoded        36.52      35.81 (-0.71)      35.96 (-0.55)      35.81 (-0.71)      36.80 (+0.28)
+  1 + aD + bD^2, Viterbi           38.60      37.90 (-0.70)      37.04 (-1.56)      36.40 (-2.20)      39.18 (+0.58)
+
+  differences of reach, per layout [dB]: the PR target's gain over the DFE, and what precoding does
+  1 + aD over DFE1                 +4.98              +4.79              +4.59              +3.09              +5.55
+  1 + aD + bD^2 over DFE1          +7.26              +6.66              +5.90              +5.31              +7.81
+  precoding the DFE1               -0.46              -0.67              -1.24              -1.17              -0.08
+  precoding 1 + aD                 +0.19              -0.22              +0.23              +1.63              -0.11
+wrote examples/output/43_fec_mapping.png
