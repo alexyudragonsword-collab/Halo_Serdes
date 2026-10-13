@@ -256,11 +256,16 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
                tx_ami, rx_ami, xtalk, collect_jitter: bool):
     """Tx -> channel + CTLE + VGA -> [AMI] -> [crosstalk] -> noise.
 
+    ``xtalk``: aggressors to inject; None takes them from ``cfg.crosstalk``.
+
     Returns ``(h, rx, jitter_budget)``: the impulse the receivers' pulse
     analysis works from and the received waveform -- an array, or with
     ``sim.stream`` a :class:`~halo_serdes.engine.stream.StreamRx` produced as
     the receiver consumes it. Shared by both receiver architectures.
     """
+    from ..channel.crosstalk import engine_aggressors
+
+    xtalk = engine_aggressors(cfg, xtalk)
     osr = cfg.osr
     if cfg.sim.stream:
         v_sym = tx_pipe.symbol_stage(line_symbols)

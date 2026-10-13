@@ -95,6 +95,14 @@ def reach_study(rec) -> dict:
 
 # --- crosstalk sweep -------------------------------------------------------
 
+def _without_crosstalk(cfg: LinkConfig) -> LinkConfig:
+    """The run's link with its own crosstalk taken out: these sweeps set the
+    aggressors themselves, and the baseline is the link without any."""
+    from halo_serdes.config import CrosstalkConfig
+
+    return dataclasses.replace(cfg, crosstalk=CrosstalkConfig()) if cfg.crosstalk.active else cfg
+
+
 def crosstalk_study(rec) -> dict:
     """BER vs a common FEXT+NEXT coupling level (statistical engine).
 
@@ -104,7 +112,7 @@ def crosstalk_study(rec) -> dict:
 
     def compute():
         from halo_serdes.channel import synthetic_aggressor
-        cfg = rec.cfg
+        cfg = _without_crosstalk(rec.cfg)
         cm = ChannelModel.from_config(cfg)
         base = _stat_ber(cfg, cm)
         couplings = [-40, -34, -30, -26, -22, -18]
@@ -126,7 +134,7 @@ def multilane_study(rec) -> dict:
     def compute():
         from halo_serdes.analysis.com import compute_com
         from halo_serdes.channel import aggressor_bank, icn_rms
-        cfg = rec.cfg
+        cfg = _without_crosstalk(rec.cfg)
         cm = ChannelModel.from_config(cfg)
         counts = [0, 1, 2, 4, 6, 8, 12]
         icn, com = [], []

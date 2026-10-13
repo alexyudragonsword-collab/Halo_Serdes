@@ -109,6 +109,10 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         raise NotImplementedError(
             "the static engine has no sequence detector to resolve a partial-response "
             "target; run pr.target with the time engine (sim.engine 'time' or 'both')")
+    if cfg.crosstalk.active:
+        raise NotImplementedError(
+            "the static engine injects no crosstalk; run cfg.crosstalk with the time engine "
+            "(sim.engine 'time' or 'both')")
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 

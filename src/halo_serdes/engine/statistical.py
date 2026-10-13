@@ -87,8 +87,10 @@ Non-LTI approximations (each cross-checked against the time engine):
   victim's symbol grid delayed by their ``skew_s`` (synchronous lanes), and
   through the FFE on an ADC receiver (the time engine adds them before the
   ADC). Cursors below 1e-4 of an aggressor's largest are dropped.
-  Plesiochronous lanes (an aggressor's phase drifting through the UI) are
-  not modelled. Until 2026-10-13 every aggressor was read at its own peak,
+  Quasi-synchronous lanes (``ppm`` != 0: the aggressor's phase drifting
+  through the UI) are averaged over the phase -- the time engine holds their
+  symbols at their own rate -- which assumes the run sweeps whole UIs
+  (warned when it sweeps less than one). Until 2026-10-13 every aggressor was read at its own peak,
   all at their worst phase at once: 1.2-41x against the time engine as the
   skew moved (cairn/多lane建模.md §3);
 - optical topology with a large-signal E/O curve (``li_compression`` > 0):
@@ -143,7 +145,7 @@ from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
 from ..core.mapping import GRAY_BIT_DISTANCE
-from ..core.sampler import upsampled_taps
+from ..core.sampler import baud_samples, upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
 from ..tx.pipeline import TxPipeline
@@ -565,12 +567,37 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     ffe_taps: np.ndarray | None = None, ffe_pre: int = 0,
                     v_bins: int = 4096, n_pre: int = 24, n_post: int = 64,
                     xtalk_pulses: list[Waveform] | None = None,
-                    level_sigma: np.ndarray | None = None) -> StatResult:
+                    level_sigma: np.ndarray | None = None, xtalk=None) -> StatResult:
     """``level_sigma``: extra noise sigma at the slicer per transmitted level
     (ascending), added in quadrature to the receiver noise; derived from
     ``channel.optical`` when None. Explicit for studies and for pinning that
-    equal kernels reproduce the single-kernel engine."""
+    equal kernels reproduce the single-kernel engine.
+
+    Crosstalk: ``cfg.crosstalk`` unless ``xtalk`` (``XtalkAggressor`` list)
+    or ``xtalk_pulses`` (coupling pulses of synchronous aggressors) replaces
+    it. A quasi-synchronous aggressor (``ppm`` != 0) is averaged over the
+    phase it drifts through."""
     osr = cfg.osr
+    if xtalk is not None and xtalk_pulses is not None:
+        raise ValueError("pass xtalk (aggressors) or xtalk_pulses, not both")
+    if xtalk_pulses is not None:
+        if cfg.crosstalk.active:
+            import warnings
+
+            warnings.warn("xtalk_pulses replaces cfg.crosstalk; the config's aggressors are ignored",
+                          stacklevel=2)
+        x_in = [(xp, 0.0) for xp in xtalk_pulses]
+    else:
+        from ..channel.crosstalk import engine_aggressors
+
+        x_in = [(a.pulse(osr), a.ppm) for a in engine_aggressors(cfg, xtalk)]
+    sweep = min((abs(ppm) for _, ppm in x_in if ppm), default=0.0) * 1e-6 * cfg.sim.n_symbols
+    if 0.0 < sweep < 1.0:
+        import warnings
+
+        warnings.warn(f"a quasi-synchronous aggressor drifts {sweep:.2f} UI over sim.n_symbols: "
+                      "the time engine sees part of the phase range this engine averages over",
+                      stacklevel=2)
     if channel is None:
         channel = ChannelModel.from_config(cfg)
     pattern_sigma = None
@@ -732,12 +759,24 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # crosstalk at the slicer: the coupling pulses through what follows the
     # node the time engine adds them at (the FFE on an ADC receiver), on the
     # victim pulse's time origin -- both start at their symbol's launch
-    x_slicer = []
-    for xp in xtalk_pulses or ():
+    x_slicer, x_drift = [], []
+    for xp, ppm in x_in:
         xy = np.asarray(xp.y, dtype=np.float64)
         if ffe_taps is not None and len(ffe_taps) > 1:
             xy = np.convolve(xy, upsampled_taps(ffe_taps, osr))
-        x_slicer.append(xy)
+        if ppm == 0.0:
+            x_slicer.append(xy)
+            continue
+        # quasi-synchronous: the victim's instants fall on every phase of the
+        # aggressor's pulse in turn, equally often over a run -- its cursors
+        # at each phase, and the ISI PDF averaged over them (the same for
+        # every phase of the victim's, so taken once)
+        sets = []
+        for ph in range(osr):
+            xc = baud_samples(xy, osr, ph) * swing      # cursors of a response, not symbols
+            sets.append(xc[np.abs(xc) >= 1e-4 * np.abs(xc).max()] if xc.size else xc)
+        x_drift.append((sets, np.mean([isi_pdf(xc, levels_norm, v_centers) for xc in sets], axis=0)))
+    drift_projected = {}
     union_ratio = None
     for pi in [i_lock] + [i for i in range(osr) if i != i_lock]:
         off = phi_offsets[pi]
@@ -843,6 +882,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 xc = xc[np.abs(xc) >= 1e-4 * np.abs(xc).max()]
             xcs.append(xc)
             pdf = np.convolve(pdf, isi_pdf(xc, levels_norm, v_centers), mode="same")
+        for _, x_pdf in x_drift:
+            pdf = np.convolve(pdf, x_pdf, mode="same")
         pdf_isi = pdf
 
         def projected_isi(d_ev: np.ndarray) -> np.ndarray:
@@ -859,6 +900,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             for xc in xcs:
                 pdf = np.convolve(pdf, isi_pdf(np.correlate(d_ev, xc, "full") / dd,
                                                levels_norm, v_centers), mode="same")
+            for k, (sets, _) in enumerate(x_drift):
+                key = (k, d_ev.tobytes())
+                if key not in drift_projected:   # independent of the victim's phase
+                    drift_projected[key] = np.mean(
+                        [isi_pdf(np.correlate(d_ev, xc, "full") / dd, levels_norm, v_centers)
+                         for xc in sets], axis=0)
+                pdf = np.convolve(pdf, drift_projected[key], mode="same")
             return pdf
 
         def noisy(g_ev: float, pdf_base: np.ndarray | None = None) -> list:

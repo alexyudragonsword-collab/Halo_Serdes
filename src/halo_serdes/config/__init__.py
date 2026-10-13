@@ -2,9 +2,11 @@ from .loader import apply_overrides, dump_config, load_config
 from .schema import (
     AdcCalConfig,
     AdcConfig,
+    AggressorConfig,
     CdrConfig,
     ChannelConfig,
     ClockConfig,
+    CrosstalkConfig,
     CtleConfig,
     DfeConfig,
     FfeConfig,
@@ -20,7 +22,8 @@ from .schema import (
 )
 
 __all__ = [
-    "AdcCalConfig", "AdcConfig", "CdrConfig", "ChannelConfig", "ClockConfig", "CtleConfig", "DfeConfig",
+    "AdcCalConfig", "AdcConfig", "AggressorConfig", "CdrConfig", "ChannelConfig", "ClockConfig",
+    "CrosstalkConfig", "CtleConfig", "DfeConfig",
     "FfeConfig", "LinkConfig", "NumericConfig", "OpticalConfig", "PrConfig", "QFormat", "RxConfig",
     "SimConfig", "TopologyConfig", "TxConfig",
     "load_config", "dump_config", "apply_overrides",

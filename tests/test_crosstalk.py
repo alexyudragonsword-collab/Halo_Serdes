@@ -225,3 +225,189 @@ def test_skew_delays_the_coupling_both_engines_see():
     assert np.array_equal(yb[4:], ya[:-4])
     with pytest.raises(ValueError, match="skew_s"):
         XtalkAggressor(coupling=a.coupling, dt=a.dt, skew_s=-1e-12)
+
+
+# ------------------------------------- crosstalk in the config; quasi-synchronous lanes
+
+def _xt_cfg(name, noise, n_symbols, **xt):
+    import dataclasses
+
+    from halo_serdes.config import CrosstalkConfig
+    from halo_serdes_app import config_bridge as cb
+
+    cfg = cb.load_preset(name)
+    return dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=noise),
+                               sim=dataclasses.replace(cfg.sim, n_symbols=n_symbols),
+                               crosstalk=CrosstalkConfig(**xt))
+
+
+def test_config_builds_the_bank_and_the_listed_lanes():
+    from halo_serdes.channel.crosstalk import aggressors_from_config
+    from halo_serdes.config import AggressorConfig, CrosstalkConfig
+
+    cfg = LinkConfig(modulation="pam4", tx=TxConfig(swing=0.8), crosstalk=CrosstalkConfig(
+        n_fext=2, n_next=1, coupling_db=-30.0, seed=4, skew_ui=0.25, ppm=50.0,
+        aggressors=(AggressorConfig(kind="next", coupling_db=-36.0, skew_ui=0.5),)))
+    aggs = aggressors_from_config(cfg)
+    assert [a.kind for a in aggs] == ["fext", "fext", "next", "next"]
+    assert len({a.seed for a in aggs}) == 4                         # no two lanes share data
+    assert all(a.modulation == "pam4" and a.swing == 0.8 for a in aggs)
+    assert [a.ppm for a in aggs] == [50.0, 50.0, 50.0, 0.0]
+    assert [a.skew_s / cfg.ui for a in aggs] == pytest.approx([0.25, 0.25, 0.25, 0.5])
+    assert aggs[-1].coupling_peak_db(cfg.osr) == pytest.approx(-36.0, abs=0.2)
+    assert aggressors_from_config(LinkConfig()) == []
+
+
+def test_crosstalk_config_round_trips_through_yaml(tmp_path):
+    pytest.importorskip("yaml")
+    from halo_serdes.config import CrosstalkConfig, dump_config, load_config
+
+    cfg = LinkConfig(crosstalk=CrosstalkConfig(n_next=3, ppm=-100.0, aggressors=(
+        {"kind": "fext", "coupling_db": -28.0, "skew_ui": 0.125},)))
+    dump_config(cfg, tmp_path / "x.yaml")
+    assert load_config(tmp_path / "x.yaml") == cfg
+
+
+@pytest.mark.parametrize("kw, match", [
+    (dict(n_fext=-1), "n_fext"), (dict(skew_ui=-0.1), "skew_ui"), (dict(ppm=2e4), "ppm"),
+    (dict(spread_db=-1.0), "spread_db"),
+    (dict(aggressors=({"kind": "both"},)), "kind"),
+    (dict(aggressors=({"victim_port": 2, "aggressor_port": 2},)), "ports"),
+])
+def test_crosstalk_config_is_validated(kw, match):
+    from halo_serdes.config import CrosstalkConfig
+
+    with pytest.raises(ValueError, match=match):
+        CrosstalkConfig(**kw)
+
+
+def test_engines_take_the_aggressors_from_the_config():
+    """Config and explicit argument are the same aggressors, sample for
+    sample; given both, the argument wins and says so."""
+    import dataclasses
+
+    from halo_serdes.channel.crosstalk import aggressors_from_config
+
+    cfg = _xt_cfg("PAM4 32G mixed-signal", 0.006, 20_000, n_fext=1, n_next=1,
+                  coupling_db=-34.0, seed=1, skew_ui=0.25)
+    from_cfg = run_time_link(cfg)
+    explicit = run_time_link(dataclasses.replace(cfg, crosstalk=type(cfg.crosstalk)()),
+                             xtalk=aggressors_from_config(cfg))
+    assert np.array_equal(from_cfg.extras["decisions"], explicit.extras["decisions"])
+    assert from_cfg.ber.n_errors > 0
+    with pytest.warns(UserWarning, match="replaces cfg.crosstalk"):
+        run_time_link(cfg, xtalk=[])
+    s_cfg = run_statistical(cfg)
+    s_exp = run_statistical(dataclasses.replace(cfg, crosstalk=type(cfg.crosstalk)()),
+                            xtalk_pulses=[a.pulse(cfg.osr) for a in aggressors_from_config(cfg)])
+    assert s_cfg.ber == pytest.approx(s_exp.ber, rel=1e-12)
+
+
+def test_symbol_index_walks_ppm_per_ui():
+    from halo_serdes.channel.crosstalk import symbol_index
+
+    n = np.arange(16 * 100_000)
+    assert np.array_equal(symbol_index(n, 16, 0.0), n // 16)
+    k = symbol_index(n, 16, 200.0)
+    assert k[-1] == 100_000 + 19                       # 100k UI at +200 ppm: 20 more, less the last partial
+    assert set(np.diff(k)) == {0, 1}
+    assert symbol_index(n, 16, -200.0)[-1] == 100_000 - 21
+
+
+def test_quasi_synchronous_hold_streams_like_the_whole_run():
+    from halo_serdes.channel.crosstalk import symbol_index
+    from halo_serdes.engine.stream import HoldSource
+
+    v = np.random.default_rng(0).normal(size=5_000)
+    src = HoldSource(v, 16, 150.0)
+    got = np.concatenate([src.read(m) for m in (1, 997, 4000, 31, 20_000)])
+    k = symbol_index(np.arange(got.size), 16, 150.0)
+    assert np.array_equal(got, v[k])
+
+
+def test_stream_engine_with_quasi_synchronous_config_crosstalk():
+    from test_stream import _both_ways, _ms_cfg
+
+    cfg = _ms_cfg(30_000)
+    import dataclasses
+
+    from halo_serdes.config import CrosstalkConfig
+
+    cfg = dataclasses.replace(cfg, crosstalk=CrosstalkConfig(n_fext=1, n_next=1, coupling_db=-16.0,
+                                                             spread_db=0.0, seed=11, ppm=200.0))
+    _both_ways(cfg, 30)
+
+
+def test_one_drifting_aggressor_is_the_mean_over_its_phases():
+    """The statistical engine's quasi-synchronous aggressor is the synchronous
+    one averaged over every phase: with one aggressor (and a PDF tail that is
+    linear in it) its BER is the mean of the skews' BERs."""
+    cfg = _xt_cfg("PAM4 32G mixed-signal", 0.006, 100_000, n_fext=1, coupling_db=-30.0,
+                  spread_db=0.0, seed=1, ppm=100.0)
+    drift = run_statistical(cfg).ber
+    import dataclasses
+
+    skews = [run_statistical(dataclasses.replace(cfg, crosstalk=dataclasses.replace(
+        cfg.crosstalk, ppm=0.0, skew_ui=k / cfg.osr))).ber for k in range(cfg.osr)]
+    assert drift == pytest.approx(np.mean(skews), rel=1e-6)
+    assert max(skews) > 2 * min(skews)                  # the phase mattered
+
+
+@pytest.mark.parametrize("name, noise, coupling_db", [
+    ("PAM4 224G ADC (106 GBd)", 0.0015, -46.0),
+    ("PAM4 32G mixed-signal", 0.006, -34.0),
+])
+def test_invariant3_with_quasi_synchronous_crosstalk(name, noise, coupling_db):
+    """Aggressors 100 ppm off the victim's clock: the time engine draws their
+    symbols at their own rate and sees every phase in turn; the statistical
+    engine averages over the phase. 0.84-0.93x on these links at 300k
+    symbols (cairn/多lane建模.md §7)."""
+    cfg = _xt_cfg(name, noise, 120_000, n_fext=2, n_next=2, coupling_db=coupling_db,
+                  seed=1, ppm=100.0)
+    t = run_time_link(cfg)
+    kw = dict(ffe_taps=t.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre) if cfg.rx.arch == "adc_dsp" else {}
+    s = run_statistical(cfg, **kw)
+    assert t.ber.n_errors > 300
+    assert 0.5 < s.ber / t.ber.ber < 2.0, (t.ber.ber, s.ber)
+
+
+def test_short_run_against_slow_drift_warns():
+    cfg = _xt_cfg("PAM4 32G mixed-signal", 0.006, 5_000, n_fext=1, ppm=10.0)
+    with pytest.warns(UserWarning, match="drifts"):
+        run_statistical(cfg)
+
+
+def test_static_link_and_retimed_cascade_refuse_config_crosstalk():
+    import dataclasses
+
+    from halo_serdes.config import CrosstalkConfig
+    from halo_serdes.engine import run_static_link
+    from halo_serdes.engine.cascade import segment_configs
+
+    cfg = _xt_cfg("PAM4 32G mixed-signal", 0.006, 5_000, n_fext=1)
+    with pytest.raises(NotImplementedError, match="crosstalk"):
+        run_static_link(cfg)
+    from halo_serdes_app import config_bridge as cb
+
+    ret = cb.load_preset("PAM4 32G mixed-signal")
+    from halo_serdes.config.schema import OpticalConfig, TopologyConfig
+    ret = dataclasses.replace(ret, topology=TopologyConfig(optical=OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0),
+                                                           retimer="both"),
+                              crosstalk=CrosstalkConfig(n_next=1))
+    with pytest.raises(ValueError, match="retimed"):
+        segment_configs(ret)
+
+
+def test_com_reads_the_config_aggressors():
+    import dataclasses
+
+    from halo_serdes.analysis.com import compute_com
+    from halo_serdes.channel.crosstalk import aggressors_from_config
+
+    cfg = _xt_cfg("NRZ 28G analytic (COM/xtalk)", 0.002, 5_000, n_fext=1, n_next=1, seed=2)
+    cm = ChannelModel.from_config(cfg)
+    a = compute_com(cm, cfg).com_db
+    b = compute_com(cm, dataclasses.replace(cfg, crosstalk=type(cfg.crosstalk)()),
+                    xtalk_pulses=[x.pulse(cfg.osr) for x in aggressors_from_config(cfg)]).com_db
+    assert a == pytest.approx(b)
+    assert a < compute_com(cm, dataclasses.replace(cfg, crosstalk=type(cfg.crosstalk)())).com_db

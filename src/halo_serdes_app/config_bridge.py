@@ -326,6 +326,18 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
     ("numeric", "Numeric", [
         _f("numeric.mode", "Datapath", "enum", options=["float", "fixed"]),
     ]),
+    # The victim lane's crosstalk environment: a bank of synthetic lanes
+    # (crosstalk.aggressors, one by one, is YAML-only). ppm 0 is a lane on
+    # the victim's clock, skew_ui later; otherwise its phase drifts.
+    ("crosstalk", "Crosstalk", [
+        _f("crosstalk.n_fext", "FEXT aggressors", "int"),
+        _f("crosstalk.n_next", "NEXT aggressors", "int"),
+        _f("crosstalk.coupling_db", "Coupling peak [dB]", "float"),
+        _f("crosstalk.spread_db", "Lane-to-lane spread ± [dB]", "float"),
+        _f("crosstalk.skew_ui", "Lane skew [UI] (synchronous)", "float"),
+        _f("crosstalk.ppm", "Clock offset [ppm] (0 = synchronous)", "float"),
+        _f("crosstalk.seed", "Aggressor data seed", "int"),
+    ]),
     # Optical interconnect. "none" is the electrical link (topology=None in
     # the config); the other two kinds replace `channel` with
     # segment A -> E/O -> fibre -> O/E -> segment B.

@@ -221,7 +221,27 @@ for L in np.linspace(0.1, 0.4, 10):
 
 ## 7. 串扰
 
-一个 `XtalkAggressor` 对象**同时**驱动时域和统计两个引擎,保证一致:
+**写进配置**(推荐,铁律 1):`LinkConfig.crosstalk` 描述受扰 lane 的串扰环境,两个引擎(以及 COM)都从它建 aggressor:
+
+```python
+from halo_serdes.config import CrosstalkConfig, AggressorConfig
+
+cfg = dataclasses.replace(cfg, crosstalk=CrosstalkConfig(
+    n_fext=2, n_next=2, coupling_db=-34.0, spread_db=2.0, seed=1,   # 一组合成 lane(aggressor_bank)
+    skew_ui=0.25,              # 同步 lane:比受扰晚 0.25 UI 发
+    # ppm=100.0,               # 准同步 lane:时钟差 100 ppm,相位一直漂(skew 不再起作用)
+    aggressors=(AggressorConfig(kind="fext", file="xtalk.s8p", victim_port=1, aggressor_port=4),)))
+t = run_time_link(cfg)          # 时域:注入
+s = run_statistical(cfg)        # 统计:同一组 aggressor
+```
+
+YAML 里同名(`crosstalk:` 下一组键,`aggressors:` 是映射的列表);表单有 bank 那几项(`aggressors` 只在 YAML)。
+`ppm` 0 是同步 lane:受扰在每个耦合脉冲的同一个相位上采样,代价随 skew 变得很厉害(示例 44 的三条链路在 8 个 skew 上差 8.9–32.2×)。
+`ppm` ≠ 0 是准同步 lane(各自参考时钟):时域按 aggressor 自己的速率保持它的符号,受扰轮流看到每个相位;统计引擎对相位求平均
+(要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.79–0.93×,时域 BER 是同步各 skew 平均的 0.80–0.97(示例 44)。
+静态引擎不注入串扰,配置里有串扰时报错;带重定时器的拓扑是三条链路,配置的串扰说不清属于哪一段,也报错。
+
+**API 入参**:一个 `XtalkAggressor` 对象**同时**驱动时域和统计两个引擎,保证一致;显式给出时**替换**配置里的串扰(两者都有时警告):
 
 ```python
 from halo_serdes.channel import synthetic_aggressor, aggressor_bank, icn_rms
@@ -236,7 +256,8 @@ s = run_statistical(cfg, channel=ch,
 
 两个引擎在受扰 lane 自己的采样相位上看串扰(ADC 收端在 FFE 之后);aggressor 比受扰晚多少发由 `XtalkAggressor.skew_s` 给
 (同步 lane 的 lane 间 skew,秒,≥ 0,取最近的采样点),两个引擎同用。串扰代价随 skew 变得很厉害(4 个 aggressor 的例子里 4.7–32×),
-扫 skew 用 `dataclasses.replace(a, skew_s=x * cfg.ui)`。准同步 lane(相位漂移)两个引擎都没建。
+扫 skew 用 `dataclasses.replace(a, skew_s=x * cfg.ui)`。准同步 lane 给 `XtalkAggressor.ppm`;统计引擎要看到 ppm 就传
+`run_statistical(cfg, xtalk=[...])`(aggressor 本身),`xtalk_pulses` 只带脉冲、按同步 lane 算。
 
 **多 lane 环境**(N 个 FEXT + M 个 NEXT,逐 lane 独立数据与耦合抖动):
 

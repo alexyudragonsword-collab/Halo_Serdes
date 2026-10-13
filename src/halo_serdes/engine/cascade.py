@@ -91,6 +91,12 @@ def segment_configs(cfg: LinkConfig) -> list[tuple[str, LinkConfig]]:
     top = cfg.topology
     if top is None or top.retimer == "none":
         return [("link", cfg)]
+    if cfg.crosstalk.active:
+        # three links in series: which of them the aggressors couple into is
+        # not something one crosstalk environment can say
+        raise ValueError("crosstalk with a retimed topology: the config describes one lane's "
+                         "aggressors, and the cascade is three links; attach them per segment "
+                         "through run_time_link(xtalk=...)")
     rep = dataclasses.replace
     seg_a = rep(cfg, channel=top.seg_a, topology=None, rx=top.retimer_rx)
     optics = rep(cfg, topology=TopologyConfig(

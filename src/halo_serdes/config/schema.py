@@ -736,6 +736,88 @@ class PrConfig:
 
 
 @dataclass(frozen=True)
+class AggressorConfig:
+    """One crosstalk aggressor lane, listed by itself in
+    ``CrosstalkConfig.aggressors``.
+
+    Its coupling -- from the aggressor's Tx voltage to the victim's receiver
+    input -- is synthetic (a FEXT or NEXT shape whose UI-sampled peak is
+    ``coupling_db``, ``f3db_hz`` its bandwidth, default 0.35 / UI) or, with
+    ``file``, the path from ``aggressor_port`` to ``victim_port`` of a
+    multi-port Touchstone (0-based single-ended ports;
+    ``channel.crosstalk.import_xtalk``). ``skew_ui`` / ``ppm`` as for the
+    bank in ``CrosstalkConfig``; ``seed`` draws the lane's data (default:
+    the next seed after the bank's, so no two lanes share their data)."""
+
+    kind: Literal["fext", "next"] = "fext"
+    coupling_db: float = -30.0
+    file: Optional[str] = None
+    victim_port: int = 1
+    aggressor_port: int = 2
+    f3db_hz: Optional[float] = None
+    skew_ui: float = 0.0
+    ppm: float = 0.0
+    seed: Optional[int] = None
+
+    def __post_init__(self):
+        _require_in(self.kind, {"fext", "next"}, "crosstalk aggressor kind")
+        _require(self.skew_ui >= 0, f"crosstalk aggressor skew_ui must be >= 0, got {self.skew_ui}")
+        _require(abs(self.ppm) < 1e4, f"crosstalk aggressor ppm must be within +-1e4, got {self.ppm}")
+        _require(self.f3db_hz is None or self.f3db_hz > 0,
+                 f"crosstalk aggressor f3db_hz must be > 0 when set, got {self.f3db_hz}")
+        _require(self.victim_port >= 0 and self.aggressor_port >= 0
+                 and self.victim_port != self.aggressor_port,
+                 f"crosstalk aggressor ports must be distinct and >= 0, got "
+                 f"victim {self.victim_port}, aggressor {self.aggressor_port}")
+
+
+@dataclass(frozen=True)
+class CrosstalkConfig:
+    """The victim lane's crosstalk environment.
+
+    A bank of synthetic lanes -- ``n_fext`` FEXT and ``n_next`` NEXT, each
+    coupling drawn uniformly within +-``spread_db`` of ``coupling_db`` and
+    each with its own data, all from ``seed`` (``aggressor_bank``) -- plus any
+    listed one by one in ``aggressors``. Empty (the default) is no crosstalk.
+
+    Where the lanes sit in time against the victim: synchronous lanes
+    (``ppm`` 0, the victim's own clock) launch ``skew_ui`` UI later, so the
+    victim samples every coupling at one fixed phase; quasi-synchronous lanes
+    (their own reference clock, ``ppm`` away from the victim's) drift through
+    every phase over a run -- the time engine draws their symbols at their
+    own rate, the statistical engine averages over the phase. The engines
+    build the aggressors from here; an explicit ``xtalk=`` argument replaces
+    it (with a warning when both are given)."""
+
+    n_fext: int = 0
+    n_next: int = 0
+    coupling_db: float = -30.0
+    spread_db: float = 2.0
+    seed: int = 0
+    skew_ui: float = 0.0
+    ppm: float = 0.0
+    aggressors: tuple[AggressorConfig, ...] = ()
+
+    def __post_init__(self):
+        _require(self.n_fext >= 0 and self.n_next >= 0,
+                 f"crosstalk.n_fext / n_next must be >= 0, got {self.n_fext} / {self.n_next}")
+        _require(self.spread_db >= 0, f"crosstalk.spread_db must be >= 0, got {self.spread_db}")
+        _require(self.skew_ui >= 0, f"crosstalk.skew_ui must be >= 0, got {self.skew_ui}")
+        _require(abs(self.ppm) < 1e4, f"crosstalk.ppm must be within +-1e4, got {self.ppm}")
+        # a mapping per aggressor is accepted (a flat override, a form) and
+        # built here, so the frozen config always holds AggressorConfig
+        aggs = tuple(AggressorConfig(**a) if isinstance(a, dict) else a for a in self.aggressors)
+        _require(all(isinstance(a, AggressorConfig) for a in aggs),
+                 "crosstalk.aggressors must be AggressorConfig entries or mappings")
+        object.__setattr__(self, "aggressors", aggs)
+
+    @property
+    def active(self) -> bool:
+        """Any aggressor at all."""
+        return self.n_fext + self.n_next + len(self.aggressors) > 0
+
+
+@dataclass(frozen=True)
 class LinkConfig:
     # defaults define the product mixed-signal anchor point: 16 GBd NRZ
     # (the canonical validated configuration, well inside the comfort zone)
@@ -757,6 +839,8 @@ class LinkConfig:
     topology: Optional[TopologyConfig] = None
     # Receive-side partial-response target (ADC receiver only)
     pr: PrConfig = field(default_factory=PrConfig)
+    # The victim lane's crosstalk environment (none by default)
+    crosstalk: CrosstalkConfig = field(default_factory=CrosstalkConfig)
 
     def __post_init__(self):
         _require_in(self.modulation, {"nrz", "pam4"}, "modulation")

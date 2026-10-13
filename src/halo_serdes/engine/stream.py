@@ -187,15 +187,20 @@ class Sum:
 
 
 class HoldSource:
-    """``core.sampler.hold`` of per-UI values, read in order (zeros past the end)."""
+    """``core.sampler.hold`` of per-UI values, read in order (zeros past the end).
+    ``ppm``: held at a rate that far off the grid's (a quasi-synchronous
+    aggressor, ``crosstalk.symbol_index``)."""
 
-    def __init__(self, v: np.ndarray, osr: int):
+    def __init__(self, v: np.ndarray, osr: int, ppm: float = 0.0):
         self.v = np.asarray(v, dtype=np.float64)
         self.osr = osr
+        self.ppm = ppm
         self.pos = 0
 
     def read(self, m: int) -> np.ndarray:
-        k = (self.pos + np.arange(m)) // self.osr
+        from ..channel.crosstalk import symbol_index
+
+        k = symbol_index(self.pos + np.arange(m), self.osr, self.ppm)
         self.pos += m
         y = np.zeros(m)
         ok = k < self.v.size
@@ -351,7 +356,7 @@ def build_stream(cfg, tx_pipe, v_sym: np.ndarray, jitter_s: np.ndarray, h: np.nd
     for agg in xtalk:
         # the default engine's aggressor draws, held and filtered as they go
         v_agg = agg.symbol_volts(n_total, osr, cfg.modulation)
-        rx = Sum(rx, Fir(HoldSource(v_agg, osr), agg.launched_coupling, block))
+        rx = Sum(rx, Fir(HoldSource(v_agg, osr, agg.ppm), agg.launched_coupling, block))
     col = None
     if jitter_h is not None:
         from ..analysis.jitter import CrossingCollector
