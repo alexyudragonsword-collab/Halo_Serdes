@@ -145,7 +145,7 @@ from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
 from ..core.mapping import GRAY_BIT_DISTANCE
-from ..core.sampler import upsampled_taps
+from ..core.sampler import baud_samples, upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
 from ..tx.pipeline import TxPipeline
@@ -773,7 +773,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # every phase of the victim's, so taken once)
         sets = []
         for ph in range(osr):
-            xc = xy[ph::osr] * swing
+            xc = baud_samples(xy, osr, ph) * swing      # cursors of a response, not symbols
             sets.append(xc[np.abs(xc) >= 1e-4 * np.abs(xc).max()] if xc.size else xc)
         x_drift.append((sets, np.mean([isi_pdf(xc, levels_norm, v_centers) for xc in sets], axis=0)))
     drift_projected = {}

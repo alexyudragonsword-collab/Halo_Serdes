@@ -9,7 +9,9 @@
   静态引擎与重定时拓扑遇到配置串扰报错;表单加 bank 七项(Android 同一份 SECTIONS);应用的串扰 study 先去掉配置串扰。
 - 准同步:`ppm` ≠ 0 时域按 aggressor 自己的速率保持符号(`symbol_index`,两种引擎同一个函数),统计对相位求平均(一个 aggressor 时 = 各 skew 平均,单测 1e-6)。
 - 量(示例 44):同步 8 个 skew 时域差 8.9–32.2×;准同步统计 / 时域 0.79–0.93×,时域是同步平均的 0.80–0.97。`cairn/多lane建模.md` §7。
-- 验证:指纹 846 值逐位不变;Cython(schema / crosstalk / statistical / timedomain / stream / cascade / static_link / com / 应用两模块)通过。
+- 验证:本地全量 1073 passed / 1 skipped / 1 failed —— 失败的是铁律 5 的源码扫描(统计引擎里新写的 `xy[ph::osr]` 按 osr 跨步切片),
+  改用 `core.sampler.baud_samples` 后单独重跑通过(数值相同);指纹 846 值逐位不变;Cython(schema / crosstalk / statistical / timedomain /
+  stream / cascade / static_link / com / 应用两模块)通过。测试 1054 → 1074(+18,+2 是示例参数化多了 44)。
 - 上一条(#78)于 2026-10-13 合入。
 
 ## 2026-10-13 · PAM4 比特误码按 Gray 码不同的比特数计(fix/pam4-gray-bits,ROADMAP P2 #20)
