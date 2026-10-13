@@ -19,6 +19,9 @@
 - `engine.cascade.initial_ffe_taps(at_ui=)`:在偏离脉冲峰值处解 MMSE FFE;`front_end_pulse` 是它解的脉冲。
 - 示例 45(`examples/45_shared_cdr_skew.py`):三条链路的曲线与窗口，四条 lane 三种时钟放法。
 
+### 变更
+- CI 测试 job 的超时 30 → 45 分钟:nojit 那两条在慢的 runner 上要 25–30 分钟，已经开始被截断。
+
 ### 结论
 - 不是"读一次运行的浴盆":
   - ADC 的浴盆沿用锁定点的 FFE,偏 1/4 UI 读高 21×;

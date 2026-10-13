@@ -14,6 +14,9 @@
   2.29e-4 → 5.2e-6,另两个带 DFE 的预设误码 → 0。未修(会动全部 ADC 时域结果)。
 - 验证:本地全量 1086 passed / 1 skipped(1074 → 1086,+10 `test_skew.py`、+2 示例参数化);指纹 846 值逐位不变;ruff、Cython(skew / analysis 包 /
   cascade / statistical)通过;`HALO_NO_JIT=1` 下铁律 3 测试通过;示例 45 全尺寸 24 s,`derived` 95 条引用成立。
+- CI(4c317e3,代码提交):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;pyinstaller / nuitka / onefile、测试矩阵、examples、
+  examples-full、RTL lockstep 全绿。PR 头 dbdc5aa(只改 LOG)上 `test (3.10, nojit)` 两次跑满 30 分钟被取消 —— main 的 ae0d60e 也超时过,
+  近十次 nojit 两极(15–16 / 25–30 分钟、三次停在 29),本 PR 的 `test_skew.py` nojit 下 33 s 把它推过线:测试 job `timeout-minutes` 30 → 45。
 - 上一条(#79)于 2026-10-13 合入。
 
 ## 2026-10-13 · 串扰进配置;准同步 lane(feat/xtalk-config,ROADMAP P3 #9b)
