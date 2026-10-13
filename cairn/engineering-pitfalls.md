@@ -5,7 +5,7 @@ summary: "开发中真实踩过、并付出返工代价的坑 —— 每条都�
 tags: [pitfalls, measurement, mlsd, benchmarking, packaging, android, serdes]
 contains: [pitfall, measurement-trap, api-trap, packaging-trap, statistical-significance]
 created: "2026-08-18"
-updated: "2026-10-08"
+updated: "2026-10-13"
 related: [architecture-invariants.md]
 authoring_mode: ai_generated
 ---

@@ -5,7 +5,7 @@ summary: "Halo_Serdes 的六条架构不变量与代码/文档约定 —— 破�
 tags: [architecture, invariants, conventions, serdes]
 contains: [architecture-invariant, code-convention, doc-convention, validation-tradeoff]
 created: "2026-08-18"
-updated: "2026-10-03"
+updated: "2026-10-13"
 related: [engineering-pitfalls.md, knowledge-inventory.md]
 authoring_mode: ai_generated
 ---
