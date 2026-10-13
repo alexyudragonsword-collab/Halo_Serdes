@@ -3,6 +3,21 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-13 · ADC 收端的 DFE 起作用(fix/adc-dfe-start,ROADMAP P1 #21)
+
+- 原因:联合 FFE/DFE 的 LMS 代价面沿"FFE 留 h1、DFE 消 h1"是平的,终点由起点决定(`dfe.mu` ×3000 抽头只动 0.01;三种起点三种终点);
+  起点是不计 DFE 的 MMSE → DFE ≈ 0。`多lane建模.md` §8.4 原说"步长没按功率归一",已更正。
+- 改:`mmse_ffe(free_post=)`,时域 ADC 起点与 `initial_ffe_taps` 把 DFE 的后光标留给 DFE、有 DFE 时正则加 ADC 噪声;预编码 1 + D 复合判决例外
+  (246 → 5779 个误码)。统计引擎加第一抽头 DFE 误码传播,两状态链 s / (1 − p + s)(`dfe_ep_factor`):理想 DFE 乐观 1.8–5× → 0.81–1.25×。
+- 结果:224G 106 GBd 2.27e-4 → 4.0e-6,stress / deep-LR → 0 误码;指纹 136 值变。13 个示例输出变,19–21 扫描加长、43 的 DFE 剖析点挪到新门限。
+  **结论更正**:深 LR 阶梯 31 → 33 → 36.3 / 38.5 → 42.8 变 31 → 36.0 → 40.5 / 44.2 → 47.8 dB,DSP 深度 +1.8 → +4.7 dB(与收端 PR 打平),
+  FEC 与 ADC 合起来比之和少 0.9 dB(原多 1.1);DFE1 的误码不再孤立(每事件 3.05),FEC 映射对它与 PR 同向,PR 对 DFE1 +4.98 → +2.13 dB;
+  示例 08 字长墙 wl 5 → 7。示例 43 的方向断言缺数据时原先静默跳过(这回第一次重跑因此"通过"),改为打印。`cairn/DSP发端与PR.md` §22。
+- 余项 → ROADMAP P2 #22 静态引擎 FFE 不计 DFE(6–14×)、#23 统计代用 FFE 离时域收敛点 14–25×(示例 45 的 ADC 曲线)、#24 MM 环路模型两端高估 1.26–1.39×。
+- 验证:本地全量 1088 passed / 1 skipped(+2:`test_mmse_leaves_the_dfe_its_postcursors`、`test_adc_dfe_engages`);指纹两次录逐位相同;
+  ruff、Cython(ffe / timedomain / cascade / statistical / skew)通过;`derived` 96 条引用成立。
+- 上一条(#80)于 2026-10-13 合入。
+
 ## 2026-10-13 · 共享时钟的 lane 间静态 skew 预算(feat/shared-cdr-skew,ROADMAP P3 #9c 静态部分)
 
 - 建:`analysis/skew.py`(`lane_curve` / `LaneCurve.window` / `shared_cdr` 三种放法);`run_statistical(phase_ui=)` 在锁定点 + 偏移处采样、相位轴居中于此
