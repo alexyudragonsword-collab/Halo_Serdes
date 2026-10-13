@@ -6,6 +6,20 @@
 
 ---
 
+## [未发布] — 静态引擎的 FFE 把后光标留给 DFE(ROADMAP P2 #22)
+
+### 修复
+- `run_static_link` 的 FFE 原先按 MMSE 连 DFE 的后光标一起压掉,DFE 几乎不用。改为 MMSE-DFE(`mmse_ffe(free_post=rx.dfe.n_taps)`),
+  与 P1 #21 的时域起点同一规则;两种架构一样,正则项不加 ADC 噪声(静态引擎不量化)。
+
+### 变更(数会动)
+- NRZ 32G static 在 10 mV 下 2.56e-2 → 1.47e-3;指纹 72 个 `static` 值变(切片器 SNR 六个预设 +0.5…+2.6 dB,三个 −0.1…−0.5 dB)。
+- 示例 01 / 03:切片器 SNR 15.1 → 19.3 dB,内眼 6.8 → 16.2 mV;系统框图(`tools/draw_system_diagram.py`)重画。
+- 示例 04:MC 5.93e-4 → 4.95e-4,StatEye 对 MC 1.03× → 0.92×(README / SUMMARY / COMPARISON / 铁律 3 的基线数)。
+- 测试:`test_ffe_leaves_the_dfe_its_postcursors`。
+
+---
+
 ## [未发布] — ADC 收端的 DFE 起作用(ROADMAP P1 #21)
 
 ### 修复

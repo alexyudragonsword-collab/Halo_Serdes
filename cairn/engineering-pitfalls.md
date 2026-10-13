@@ -79,7 +79,7 @@ docstring 早写了这一条。**规则:残差大到与 BER 矛盾时,先查对�
 
 **ADC 时域收端,先看一眼 DFE 抽头。** `SimResult.dfe_taps` ≈ 0 说明 DFE 没起作用:FFE 从不计 DFE 的 MMSE 起步,联合 LMS
 停在那里(带 DFE 的四个 ADC 预设全是这样;从 DFE 感知的起点 224G 106 GBd 2.29e-4 → 5.2e-6)。2026-10-13 已修(ROADMAP P1 #21,
-`cairn/DSP发端与PR.md` §22);静态引擎的 FFE 仍不计 DFE(P2 #22)。
+`cairn/DSP发端与PR.md` §22);静态引擎同一规则(P2 #22,§23)。
 
 **联合自适应停在起点,不一定是步长的事。** 最初以为 ADC 的 DFE 不动是步长没按电平功率归一(主光标 37 mV 时每步 ~1e-7);
 把 `dfe.mu` 放大 3000 倍抽头只动 0.01 —— 代价面沿"FFE 留 h1、DFE 消 h1"是平的,FFE 围着 DFE 调,LMS 两个方向都不走。
