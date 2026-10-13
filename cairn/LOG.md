@@ -9,7 +9,8 @@
 - 改:在受扰 lane 的采样网格上读全部游标,ADC 先过 FFE;`XtalkAggressor.skew_s`(同步 lane 的 skew)经 `launched_coupling` 给时域 / 流式 / 统计同用。
 - 各 skew 下统计 / 时域:224G ADC 2.9–49× → 1.01–1.08×,PAM4 32G MS 0.79–1.21×,NRZ 28G 0.41–1.17×(0.41 是浴盆在锁定点旁太陡,§3)。
   示例 24 在 −18 dB 24× → 0.66×。COM 不动(自有口径)。`cairn/多lane建模.md` §3。测试 1020 → 1023(+3)。
-- 验证:本地全量待补;Cython 编译 `statistical.py` / `crosstalk.py` / `stream.py` 通过;示例 26 / 28 输出不变。
+- 验证:本地全量 1023 passed / 1 skipped;指纹对 main 819 值逐位不变(无串扰的路径);Cython 编译 `statistical.py` / `crosstalk.py` /
+  `stream.py` 通过;示例 26 / 28 输出不变。
 - 上一条(#75)已于 2026-10-13 合入。
 
 ## 2026-10-13 · 多 lane 范围评估(study/multilane-scope,ROADMAP P3 #9)
