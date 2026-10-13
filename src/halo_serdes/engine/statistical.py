@@ -12,7 +12,13 @@ extrapolation to arbitrarily low BER without Monte-Carlo, the capability none
 of the three reference libraries has.
 
 Non-LTI approximations (each cross-checked against the time engine):
-- DFE: ideal cancellation of the covered postcursors (weights assumed exact);
+- DFE: ideal cancellation of the covered postcursors (weights assumed exact),
+  with its error propagation on top (plain slicer path): a wrong decision
+  leaves h1 x the level step on the next sample; p = the SER with the input
+  shifted that way, and errors come in geometric bursts, 1 / (1 - p) per
+  first error (``extras['dfe_ep_factor']``; first tap only -- the 1-tap
+  Gilbert model, cairn/多lane建模.md §2). Without it the ADC receiver with
+  its DFE engaged read 0.35-0.55x the time engine; with it 0.81-1.25x;
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
 - ADC receiver: the ADC's noise, fullscale^2/12 * 2^(-2 ENOB) (bare
   quantisation without an ENOB), joins the receiver noise at the FFE input
