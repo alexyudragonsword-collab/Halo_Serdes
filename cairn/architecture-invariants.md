@@ -85,6 +85,8 @@ MLSD 比 slicer 多 7 倍误码);改为在实际采样点按线路符号拟合,�
 光链路发端 PR、噪声在调制器后 1.5–3.0× 偏悲观(原有,与投影无关)记 ROADMAP P2 #18。
 2026-10-13 补:**串扰下没被覆盖**。统计引擎按每个 aggressor 自己的峰值相位取游标(所有 aggressor 同时最坏),时域是耦合冲激碰巧对齐的相位;
 aggressor 整体延后 0…7/8 UI 时统计 / 时域 1.2–41×,`tests/test_crosstalk.py` 只查两边都变差。记 ROADMAP P2 #19(`cairn/多lane建模.md` §3)。
+同日修:统计引擎在受扰 lane 的采样网格上读 aggressor、ADC 收端先过 FFE,`XtalkAggressor.skew_s` 两个引擎同用;各 skew 下 ADC 1.01–1.08×、
+PAM4 混合信号 0.79–1.21×,测试按 skew 查 2×。
 2026-10-12 补:#18 的原因是联合界的重叠权重按 `half_gap / noise_sigma` 抽样,光链路的 `noise_sigma` 只有接收端电噪声,光噪声在逐电平核里 ——
 SNR 高估几十倍、并集退化成简单求和。改为按全部噪声抽样后光链路 PR 0.83–1.44×(原 0.91–2.99)。§20。
 

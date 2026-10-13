@@ -330,7 +330,7 @@ def build_stream(cfg, tx_pipe, v_sym: np.ndarray, jitter_s: np.ndarray, h: np.nd
     nhn = 2 * NOISE_FIR_HALF_UI * osr + 1
     lti = [h] if optical is None else list(optical.stages)
     block = block_size(*(x.size for x in lti), nhn, 0 if drv is None else drv[0].size,
-                       *(a.coupling.size for a in xtalk))
+                       *(a.launched_coupling.size for a in xtalk))
 
     def tx():
         src = ZohSource(v_sym, jitter_s, osr, cfg.ui, tx_pipe.driver_nl)
@@ -351,7 +351,7 @@ def build_stream(cfg, tx_pipe, v_sym: np.ndarray, jitter_s: np.ndarray, h: np.nd
     for agg in xtalk:
         # the default engine's aggressor draws, held and filtered as they go
         v_agg = agg.symbol_volts(n_total, osr, cfg.modulation)
-        rx = Sum(rx, Fir(HoldSource(v_agg, osr), agg.coupling, block))
+        rx = Sum(rx, Fir(HoldSource(v_agg, osr), agg.launched_coupling, block))
     col = None
     if jitter_h is not None:
         from ..analysis.jitter import CrossingCollector

@@ -7,8 +7,12 @@ drives both engines (time: xtalk=[...]; statistical: xtalk_pulses=[a.pulse()]),
 so crosstalk stays inside the dual-engine cross-validation.
 
 This sweeps aggressor coupling strength and shows the SNR/BER collapse, and
-overlays the two-engine BER: they track in trend, with the statistical engine
-sitting above as the conservative (worst-case-ISI) upper bound.
+overlays the two-engine BER. The statistical engine reads the aggressors where
+the time engine's victim samples them -- on its own sampling grid, the
+aggressors launching on the victim's symbol grid (``XtalkAggressor.skew_s``
+sets a lane-to-lane offset) -- so the two agree within invariant 3's 2x where
+the time engine counts errors. Until 2026-10-13 it read every aggressor at its
+own peak, all at their worst phase at once, and sat 24x above at -18 dB.
 """
 
 import sys
@@ -80,7 +84,7 @@ ax1.semilogy(x, td_ber, "o-", color="C0", label="Time engine (MC)")
 ax1.semilogy(x, stat_ber, "s--", color="C3", label="Statistical engine (StatEye)")
 ax1.axhline(2.4e-4, color="green", ls=":", lw=1, label="KP4 pre-FEC threshold")
 ax1.set(xlabel="Crosstalk coupling strength [dB]", ylabel="pre-FEC BER",
-        title="Dual-engine crosstalk (stat=conservative bound)\n(same XtalkAggressor drives both engines)")
+        title="Dual-engine crosstalk\n(same XtalkAggressor drives both engines)")
 ax1.yaxis.set_major_formatter(_fmt)
 ax1.legend(fontsize=8); ax1.grid(True, which="both", alpha=0.3)
 

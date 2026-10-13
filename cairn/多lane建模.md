@@ -70,6 +70,23 @@ authoring_mode: ai_generated
   ("独立平稳干扰")也没写"取峰值相位"。
 - 准同步 lane(各自参考时钟、有 ppm 频偏)的 aggressor 相位会扫过一个 UI,物理上对应相位平均,两个引擎都没有这种模式。
 
+**修(2026-10-13,P2 #19)**:统计引擎改在受扰 lane 的采样网格上读 aggressor —— 每个相位 φ 取耦合脉冲上下标 ≡ (峰值 + φ) mod osr 的全部游标
+(aggressor 数据与受扰无关,哪个算"第 0 个"无所谓;小于最大值 1e-4 的丢掉);ADC 收端先过 FFE(时域在 ADC 之前叠加串扰,
+所以串扰跟着信号一起被 FFE 放大 —— 原先统计引擎漏了这一步)。`XtalkAggressor.skew_s`(≥ 0,秒,取最近的采样点)是 aggressor 比受扰晚多久发,
+时域、流式、统计都用 `launched_coupling`。`skew_s = 0` 时时域逐位同前(指纹)。各 skew 下统计 / 时域:
+
+| 链路 | 修前 | 修后 |
+|---|---|---|
+| PAM4 32G 混合信号,4 × −30 dB,6 mV(0…7/8 UI) | 1.2–5.7× | 0.89–1.19× |
+| PAM4 32G 混合信号,4 × −34 dB(0 / ¼ / ½ / ¾ UI) | — | 0.79–1.21× |
+| NRZ 28G,4 × −27 dB,10 mV(0…7/8 UI) | 1.3–41× | 0.41–1.17× |
+| 224G ADC 106 GBd,4 × −46 dB,1.5 mV(0 / ¼ / ½ / ¾ UI) | 2.9–49× | 1.01–1.08× |
+
+NRZ 在 7/8 UI 的 0.41 不是串扰模型的问题:那一点的统计浴盆在锁定点旁 1/16 UI 内从 4.5e-4 升到 7.6e-3,时域的 5.6e-3 只对应锁定点差半个
+采样(这个预设本身就带"边缘区"警告)。测试 `tests/test_crosstalk.py::test_invariant3_with_crosstalk_at_every_lane_skew` 用 ADC 与 PAM4 混合信号两组。
+示例 24(28 GBd NRZ,一个 FEXT + 一个 NEXT)在 −18 dB:时域 5.51e-3,统计 1.34e-1 → 3.64e-3;−22 dB 时时域 0 误码,统计 4.44e-2 → 2.1e-8。
+COM(`analysis/com.py`)仍按各 aggressor 自己的峰值取 —— 那是它自己的口径,不参与铁律 3。
+
 ### 4. 共享 CDR / lane 间 skew 预算
 
 - 静态部分(一个 CDR 的相位给 N 条 lane 用,lane 间有固定 skew)等于每条 lane 在偏离自己最佳相位 skew 处的 BER —— 统计引擎已经报 BER 随相位

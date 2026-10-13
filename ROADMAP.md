@@ -46,12 +46,10 @@ AMI GetWave 记入下方「边界」。)
 (光噪声在逐电平核里),事件看起来互不相交、并集退化成简单求和;改为按全部噪声抽样后示例 40 链路上的 PR 0.83–1.44×。
 见 CHANGELOG 与 `cairn/DSP发端与PR.md` §20。)
 
-### 19. 串扰下双引擎口径不一致(2026-10-13,#9 范围评估时量到)
-统计引擎按每个 aggressor **自己的峰值相位**取串扰游标(`statistical.py`:`xpk = argmax |pulse|`),等于所有 aggressor 同时处在最坏相位;
-时域引擎是耦合冲激碰巧对齐到哪就是哪。证据(`cairn/多lane建模.md` §3):4 个 aggressor 整体延后 0…7/8 UI,时域 BER 变 4.7×(PAM4 32G
-混合信号,4 × −30 dB)/ 32×(NRZ 28G,4 × −27 dB),统计 / 时域 1.2–5.7× / 1.3–41×。`tests/test_crosstalk.py` 只检查两边都变差,
-铁律 3 在串扰下没被覆盖;`statistical.py` 顶部近似清单的串扰一条也没写取峰值。
-要做:两个引擎用同一个显式的 aggressor 相位(同步 lane 的 skew),统计引擎按它取游标;补串扰下的 2× 测试;把口径写进近似清单。
+(2026-10-13 清空:原 #19 串扰下双引擎口径不一致 —— 统计引擎按每个 aggressor 自己的峰值取游标(所有 aggressor 同时最坏),ADC 收端
+还没让串扰过 FFE;改为在受扰 lane 的采样网格上读、ADC 收端先过 FFE,并加 `XtalkAggressor.skew_s`(同步 lane 的 skew,两个引擎同用)。
+各 skew 下统计 / 时域:224G ADC 2.9–49× → 1.01–1.08×,PAM4 32G 混合信号 0.79–1.21×;示例 24 在 −18 dB 由 24× 变 0.66×。
+见 CHANGELOG 与 `cairn/多lane建模.md` §3。)
 
 ---
 
@@ -74,7 +72,7 @@ AMI GetWave 记入下方「边界」。)
   证据:1 + aD + Viterbi 的误码 99 % 成串(平均 3.2 个符号),单 lane 连续映射下 RS 符号误码率只有二项投影的 0.46 倍;DFE4 在 3.2e-4
   不成簇。802.3 的比特 / 符号对复用与 2 / 4 码字交织会打散成串 —— 示例 36 / 38 / 42 的 PR reach 在真实映射下偏不偏要它来回答。不改引擎。
 - **9b 准同步 lane 与串扰入配置**:aggressor 频偏(时域按 ppm 重采样、统计引擎按相位平均),aggressor 环境进 `LinkConfig`(铁律 1;
-  现在是 API 入参)。依赖 P2 #19。
+  现在是 API 入参)。P2 #19 已做(同步 lane 的 `skew_s`)。
 - **9c 共享 CDR**:静态 skew 预算(一个 CDR 的相位给 N 条 lane 用 = 每条 lane 偏离最佳相位 skew 处的 BER,读统计引擎的浴盆即可);
   动态的多 lane 环路(主 lane 跟踪、lane 间相关抖动)要多 lane 同时跑的时域内核,按需。
 PCS 层的 deskew、对齐标记锁定与 lane 重排是数字协议行为,不做(见「边界」)。

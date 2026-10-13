@@ -82,7 +82,15 @@ Non-LTI approximations (each cross-checked against the time engine):
   (no CDR self-noise), which is also what keeps it byte-identical to the
   pre-profile engine;
 - crosstalk: aggressor cursor sets convolved in as independent stationary
-  interference;
+  interference, read where the time engine's victim samples them -- on the
+  victim's sampling grid at each phase, the aggressors launching on the
+  victim's symbol grid delayed by their ``skew_s`` (synchronous lanes), and
+  through the FFE on an ADC receiver (the time engine adds them before the
+  ADC). Cursors below 1e-4 of an aggressor's largest are dropped.
+  Plesiochronous lanes (an aggressor's phase drifting through the UI) are
+  not modelled. Until 2026-10-13 every aggressor was read at its own peak,
+  all at their worst phase at once: 1.2-41x against the time engine as the
+  skew moved (cairn/多lane建模.md §3);
 - optical topology with a large-signal E/O curve (``li_compression`` > 0):
   the curve's steady-state levels stand in for the transmitted ones and the
   chain stays linear, plus a per-phase, per-bin shift for how the curve
@@ -720,6 +728,15 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     i_lock = osr // 2
     if lock_pos is not None:
         i_lock = int(np.argmin(np.abs(phi_offsets - ((lock_pos - peak + osr / 2) % osr - osr / 2))))
+    # crosstalk at the slicer: the coupling pulses through what follows the
+    # node the time engine adds them at (the FFE on an ADC receiver), on the
+    # victim pulse's time origin -- both start at their symbol's launch
+    x_slicer = []
+    for xp in xtalk_pulses or ():
+        xy = np.asarray(xp.y, dtype=np.float64)
+        if ffe_taps is not None and len(ffe_taps) > 1:
+            xy = np.convolve(xy, upsampled_taps(ffe_taps, osr))
+        x_slicer.append(xy)
     union_ratio = None
     for pi in [i_lock] + [i for i in range(osr) if i != i_lock]:
         off = phi_offsets[pi]
@@ -816,14 +833,15 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             isi[pos] = 0.0
         pdf = isi_pdf(isi, levels_norm, v_centers)
         xcs = []
-        for xp in xtalk_pulses or ():
-            xpk = int(np.argmax(np.abs(xp.y)))
-            xidx = xpk + np.arange(-n_pre, n_post + 1) * osr
-            xval = (xidx >= 0) & (xidx < xp.y.size)
-            xc = np.zeros(xidx.size)
-            xc[xval] = xp.y[xidx[xval]]
-            xcs.append(xc * swing)
-            pdf = np.convolve(pdf, isi_pdf(xcs[-1], levels_norm, v_centers), mode="same")
+        for xy in x_slicer:
+            # every one of the aggressor's cursors the victim's sampling
+            # instants at this phase fall on (its data is independent of the
+            # victim's, so which one is "cursor 0" does not matter)
+            xc = xy[np.arange((peak + off) % osr, xy.size, osr)] * swing
+            if xc.size:
+                xc = xc[np.abs(xc) >= 1e-4 * np.abs(xc).max()]
+            xcs.append(xc)
+            pdf = np.convolve(pdf, isi_pdf(xc, levels_norm, v_centers), mode="same")
         pdf_isi = pdf
 
         def projected_isi(d_ev: np.ndarray) -> np.ndarray:
