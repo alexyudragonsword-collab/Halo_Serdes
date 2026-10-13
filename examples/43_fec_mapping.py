@@ -71,10 +71,10 @@ N_BOOT = 50 if QUICK else 200
 AD = PrConfig(target=(1.0, 0.5), adapt="mmse")
 ADBD = PrConfig(target=(1.0, 0.5, 0.0), adapt="mmse")
 # name: (PR target, Viterbi?, precoded?, sweep lengths [m], profile length [m])
-DFE_LENGTHS = [0.18, 0.19, 0.20, 0.21, 0.22, 0.23]
+DFE_LENGTHS = [0.18, 0.19, 0.20, 0.21, 0.22, 0.23, 0.24]
 PR_LENGTHS = [0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30]
-CASES = {"FFE + DFE1": (PrConfig(), False, False, DFE_LENGTHS, 0.205),
-         "FFE + DFE1, precoded": (PrConfig(), False, True, DFE_LENGTHS, 0.205),
+CASES = {"FFE + DFE1": (PrConfig(), False, False, DFE_LENGTHS, 0.225),
+         "FFE + DFE1, precoded": (PrConfig(), False, True, DFE_LENGTHS, 0.225),
          "1 + aD, Viterbi": (AD, True, False, PR_LENGTHS, 0.24),
          "1 + aD, Viterbi, precoded": (AD, True, True, PR_LENGTHS, 0.24),
          "1 + aD + bD^2, Viterbi": (ADBD, True, False, PR_LENGTHS, 0.255)}
