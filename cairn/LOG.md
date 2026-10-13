@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-13 · 串扰在受扰 lane 的采样相位上读(fix/xtalk-phase,ROADMAP P2 #19)
+
+- 原因两条:统计引擎按每个 aggressor 自己的峰值取游标(所有 aggressor 同时最坏);ADC 收端的串扰没过 FFE(时域在 ADC 前叠加,跟信号一起被 FFE 放大)。
+- 改:在受扰 lane 的采样网格上读全部游标,ADC 先过 FFE;`XtalkAggressor.skew_s`(同步 lane 的 skew)经 `launched_coupling` 给时域 / 流式 / 统计同用。
+- 各 skew 下统计 / 时域:224G ADC 2.9–49× → 1.01–1.08×,PAM4 32G MS 0.79–1.21×,NRZ 28G 0.41–1.17×(0.41 是浴盆在锁定点旁太陡,§3)。
+  示例 24 在 −18 dB 24× → 0.66×。COM 不动(自有口径)。`cairn/多lane建模.md` §3。测试 1020 → 1023(+3)。
+- 验证:本地全量待补;Cython 编译 `statistical.py` / `crosstalk.py` / `stream.py` 通过;示例 26 / 28 输出不变。
+- 上一条(#75)已于 2026-10-13 合入。
+
 ## 2026-10-13 · 多 lane 范围评估(study/multilane-scope,ROADMAP P3 #9)
 
 - 用户选"先出范围评估"。现状:串扰侧完整(aggressor、ICN、COM、两引擎),链路本身单 lane;FEC 只有"比特误码独立"的二项投影;`error_idx` 现成。

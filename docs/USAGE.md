@@ -234,6 +234,10 @@ s = run_statistical(cfg, channel=ch,
                     xtalk_pulses=[a.pulse(cfg.osr) for a in (fext, next_)])
 ```
 
+两个引擎在受扰 lane 自己的采样相位上看串扰(ADC 收端在 FFE 之后);aggressor 比受扰晚多少发由 `XtalkAggressor.skew_s` 给
+(同步 lane 的 lane 间 skew,秒,≥ 0,取最近的采样点),两个引擎同用。串扰代价随 skew 变得很厉害(4 个 aggressor 的例子里 4.7–32×),
+扫 skew 用 `dataclasses.replace(a, skew_s=x * cfg.ui)`。准同步 lane(相位漂移)两个引擎都没建。
+
 **多 lane 环境**(N 个 FEXT + M 个 NEXT,逐 lane 独立数据与耦合抖动):
 
 ```python

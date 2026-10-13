@@ -44,6 +44,11 @@ class XtalkAggressor:
         modulation: ``'nrz'`` or ``'pam4'`` for the aggressor data.
         seed: RNG seed for the aggressor's independent random data.
         label: display name.
+        skew_s: how much later than the victim the aggressor launches its
+            symbols [s], >= 0 -- the lane-to-lane skew of a synchronous lane
+            (same clock, fixed offset). It decides where on the coupling
+            pulse the victim's sampling instants fall, i.e. which of the
+            aggressor's cursors it sees; applied to the nearest sample.
     """
 
     coupling: np.ndarray
@@ -53,14 +58,25 @@ class XtalkAggressor:
     modulation: str = "nrz"
     seed: int = 0
     label: str = ""
+    skew_s: float = 0.0
 
     def __post_init__(self):
         self.coupling = np.asarray(self.coupling, dtype=np.float64)
+        if not self.skew_s >= 0.0:
+            raise ValueError(f"skew_s must be >= 0, got {self.skew_s}")
+
+    @property
+    def launched_coupling(self) -> np.ndarray:
+        """The coupling as the victim sees it: delayed by ``skew_s`` to the
+        nearest sample. Both engines use this one."""
+        k = int(round(self.skew_s / self.dt))
+        return np.concatenate([np.zeros(k), self.coupling]) if k else self.coupling
 
     def pulse(self, osr: int) -> Waveform:
-        """Coupling pulse response (single aggressor symbol) — feeds the
-        statistical engine's ``xtalk_pulses`` at the same node."""
-        return pulse_from_impulse(Waveform(self.coupling, self.dt), osr)
+        """Coupling pulse response (single aggressor symbol, ``skew_s``
+        included) — feeds the statistical engine's ``xtalk_pulses`` at the
+        same node, on the same time origin as the victim's pulse."""
+        return pulse_from_impulse(Waveform(self.launched_coupling, self.dt), osr)
 
     def coupling_peak_db(self, osr: int) -> float:
         """UI-sampled coupling peak relative to unit Tx swing [dB]."""
@@ -76,7 +92,7 @@ class XtalkAggressor:
         ``n_samples`` samples aligned to the victim time grid.
         """
         agg_tx = hold(self.symbol_volts(n_samples, osr, modulation), osr)
-        y = np.convolve(agg_tx, self.coupling)[:n_samples]
+        y = np.convolve(agg_tx, self.launched_coupling)[:n_samples]
         if y.size < n_samples:
             y = np.pad(y, (0, n_samples - y.size))
         return y

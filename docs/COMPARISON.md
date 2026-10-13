@@ -112,7 +112,8 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
   第三个受控光标再多约 0.3 dB(示例 38)
 - **GUI** —— 纯脚本/库,无交互界面(设计取向,非缺陷)
 - ✅ **多 lane 串扰系统级** —— **本轮补齐**(`aggressor_bank`/`icn_rms`,见上);单 lane 数据仍为主。2026-10-13 量到:两个引擎在串扰下按不同相位取
-  aggressor(统计取各自峰值 = 最坏相位),aggressor 延后 0…7/8 UI 时统计 / 时域 1.2–41×,记 ROADMAP P2 #19;链路级多 lane(FEC 交织、
+  aggressor(统计取各自峰值 = 最坏相位),aggressor 延后 0…7/8 UI 时统计 / 时域 1.2–41×;同日改为在受扰 lane 的采样网格上读、ADC 先过 FFE,
+  加 `XtalkAggressor.skew_s`,各 skew 下 0.79–1.21×(P2 #19);链路级多 lane(FEC 交织、
   准同步 lane、共享 CDR)的范围评估见 `cairn/多lane建模.md`
 
 **相对 DragonPHY2**

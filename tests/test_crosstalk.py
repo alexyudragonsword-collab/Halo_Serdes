@@ -166,3 +166,62 @@ def test_import_xtalk_from_synthetic_network():
                        f_max=40e9, kind="fext")
     assert isinstance(agg, XtalkAggressor)
     assert agg.coupling.size > 0 and np.any(agg.coupling != 0.0)
+
+
+# ------------------------------------------- lane skew: one phase, two engines
+
+def _preset_with_bank(name, noise, coupling_db, n_symbols):
+    import dataclasses
+
+    from halo_serdes.channel import aggressor_bank
+    from halo_serdes_app import config_bridge as cb
+
+    cfg = cb.load_preset(name)
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=noise),
+                              sim=dataclasses.replace(cfg.sim, n_symbols=n_symbols))
+    return cfg, aggressor_bank(2, 2, coupling_db, cfg.ui, cfg.dt, modulation=cfg.modulation,
+                               base_seed=1)
+
+
+def _both(cfg, bank, skew_ui):
+    import dataclasses
+
+    xt = [dataclasses.replace(a, skew_s=skew_ui * cfg.ui) for a in bank]
+    t = run_time_link(cfg, xtalk=xt)
+    kw = dict(ffe_taps=t.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre) if cfg.rx.arch == "adc_dsp" else {}
+    s = run_statistical(cfg, xtalk_pulses=[a.pulse(cfg.osr) for a in xt], **kw)
+    return t.ber.ber, s.ber
+
+
+@pytest.mark.parametrize("name, noise, coupling_db, skews", [
+    ("PAM4 224G ADC (106 GBd)", 0.0015, -46.0, (0.0, 0.25, 0.5, 0.75)),
+    ("PAM4 32G mixed-signal", 0.006, -34.0, (0.0, 0.25, 0.5)),
+])
+def test_invariant3_with_crosstalk_at_every_lane_skew(name, noise, coupling_db, skews):
+    """The statistical engine reads the aggressors where the time engine's
+    victim samples them -- on its own sampling grid, after the FFE on an ADC
+    receiver -- for the skew both are given. Read at each aggressor's own peak
+    (and, on the ADC, before the FFE) it was 2.9-49x off as the skew moved."""
+    cfg, bank = _preset_with_bank(name, noise, coupling_db, 60_000)
+    bers = [_both(cfg, bank, s) for s in skews]
+    for t, s in bers:
+        assert 0.5 < s / t < 2.0, bers
+    times = [t for t, _ in bers]
+    assert max(times) > 2.5 * min(times), bers          # the skew matters ...
+    stats = [s for _, s in bers]
+    assert np.argmax(stats) == np.argmax(times), bers    # ... the same way in both
+
+
+def test_skew_delays_the_coupling_both_engines_see():
+    ui, osr = 1 / 28e9, 16
+    a = synthetic_aggressor("fext", -20.0, ui, ui / osr, seed=3)
+    assert a.launched_coupling is a.coupling                       # no skew: untouched
+    b = XtalkAggressor(coupling=a.coupling, dt=a.dt, seed=3, skew_s=0.25 * ui)
+    assert np.array_equal(b.launched_coupling[4:], a.coupling)
+    assert not np.any(b.launched_coupling[:4])
+    assert np.array_equal(b.pulse(osr).y[4:4 + 100], a.pulse(osr).y[:100])
+    yb = b.time_contribution(20_000, osr, "nrz")
+    ya = a.time_contribution(20_000, osr, "nrz")
+    assert np.array_equal(yb[4:], ya[:-4])
+    with pytest.raises(ValueError, match="skew_s"):
+        XtalkAggressor(coupling=a.coupling, dt=a.dt, skew_s=-1e-12)
