@@ -16,6 +16,8 @@
   examples、RTL lockstep 全绿;nuitka 125 / onefile 93 分钟通过。#76 于 2026-10-13 合入。
 - 验证:本地全量 1050 passed / 1 skipped;ruff 通过;Cython 编译 `interleave.py` / `fec/__init__.py` / `timedomain.py` / `static_link.py` 通过;
   示例 43 全尺寸 702 s(二项列与示例 42 逐位相同)、smoke 15 s;`example_drift.py derived` 95 条引用全部成立。
+- CI(80b7257):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;pyinstaller 3 分钟、nuitka 28 分钟、测试矩阵(含 nojit)、
+  examples、examples-full(与 `examples/expected` 比对)、RTL lockstep 全绿;onefile 记这条时仍在跑。
 
 ## 2026-10-13 · 串扰在受扰 lane 的采样相位上读(fix/xtalk-phase,ROADMAP P2 #19)
 
