@@ -12,6 +12,9 @@
 - 验证:本地全量 1073 passed / 1 skipped / 1 failed —— 失败的是铁律 5 的源码扫描(统计引擎里新写的 `xy[ph::osr]` 按 osr 跨步切片),
   改用 `core.sampler.baud_samples` 后单独重跑通过(数值相同);指纹 846 值逐位不变;Cython(schema / crosstalk / statistical / timedomain /
   stream / cascade / static_link / com / 应用两模块)通过。测试 1054 → 1074(+18,+2 是示例参数化多了 44)。
+- CI(0989789):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(表单多了 crosstalk 一节,FormContractTest 通过);
+  测试矩阵(含 nojit)、examples、examples-full、RTL lockstep、pyinstaller 全绿。首个提交 6eea12f 上 API 35 的模拟器 13 分钟没出测试报告就失败
+  (API 34 / 编译版同代码通过),0989789 上同一 job 通过 —— 模拟器的事,不是代码。
 - 上一条(#78)于 2026-10-13 合入。
 
 ## 2026-10-13 · PAM4 比特误码按 Gray 码不同的比特数计(fix/pam4-gray-bits,ROADMAP P2 #20)
