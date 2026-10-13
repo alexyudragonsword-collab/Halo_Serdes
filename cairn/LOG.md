@@ -16,6 +16,9 @@
 - 余项 → ROADMAP P2 #22 静态引擎 FFE 不计 DFE(6–14×)、#23 统计代用 FFE 离时域收敛点 14–25×(示例 45 的 ADC 曲线)、#24 MM 环路模型两端高估 1.26–1.39×。
 - 验证:本地全量 1088 passed / 1 skipped(+2:`test_mmse_leaves_the_dfe_its_postcursors`、`test_adc_dfe_engages`);指纹两次录逐位相同;
   ruff、Cython(ffe / timedomain / cascade / statistical / skew)通过;`derived` 96 条引用成立。
+- CI:最后一个代码提交 a212192 上 Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(API 35 第一次报 34/0 后 Gradle
+  非零退出、step 红,同一 app 代码在 f774ed1 / 43fd12e 上都过,重跑一次通过);pyinstaller 绿,nuitka / onefile 写这条时仍在跑。
+  PR 头 bcd8bb0:测试矩阵(含 nojit)、examples、examples-full、RTL lockstep、lint 全绿(a212192 上 examples 红是期望输出还没更新)。
 - 上一条(#80)于 2026-10-13 合入。
 
 ## 2026-10-13 · 共享时钟的 lane 间静态 skew 预算(feat/shared-cdr-skew,ROADMAP P3 #9c 静态部分)
