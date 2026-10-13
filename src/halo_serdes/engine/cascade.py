@@ -204,11 +204,15 @@ def initial_ffe_taps(cfg: LinkConfig, channel: ChannelModel | None = None,
     n_pre_c, n_post_c = fcfg.n_pre + 4, fcfg.n_post + 12
     cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak)
     n_taps = fcfg.n_pre + 1 + fcfg.n_post
-    n_dfe = cfg.rx.dfe.n_taps
     from .statistical import adc_noise_sigma
 
     # the time engine's own start (ROADMAP P1 #21): the DFE's postcursors
-    # left to it, the ADC's noise in the regulariser when there is a DFE
+    # left to it, the ADC's noise in the regulariser when there is a DFE --
+    # except under the precoded 1 + D composite slicer (timedomain)
+    pr = cfg.pr
+    composite = (pr.active and cfg.precode and len(pr.target) == 2 and pr.target[1] == 1.0
+                 and pr.adapt == "none")
+    n_dfe = 0 if composite else cfg.rx.dfe.n_taps
     return mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
                     noise_var=cfg.rx.noise_rms ** 2 + (adc_noise_sigma(cfg) ** 2 if n_dfe else 0.0),
                     free_post=n_dfe)

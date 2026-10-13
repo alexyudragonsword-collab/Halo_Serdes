@@ -655,13 +655,19 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # flat along "the FFE leaves h1, the DFE cancels it", and neither moves
     # along it (a 3000x larger DFE step neither). An FFE that zeroes the
     # DFE's postcursors too left the DFE at 0 for good -- the 224G preset at
-    # 2.29e-4 instead of 3.8e-6 (ROADMAP P1 #21). So it starts at the MMSE
+    # 2.27e-4 instead of 4.0e-6 (ROADMAP P1 #21). So it starts at the MMSE
     # FFE-DFE for the noise the FFE sees, the ADC's included. Without a DFE
     # the LMS gets to the same point from anywhere; that start is unchanged.
+    # So is the precoded 1 + D composite slicer's: its DFE feeds back line
+    # symbols rebuilt from the composite decisions, a wrong one stays wrong,
+    # and with the DFE engaged one test link went from 246 to 5779 errors.
+    composite = (pr.active and cfg.precode and n_t == 2 and alpha == 1.0
+                 and pr.adapt == "none")
+    dfe_start = 0 if composite else n_dfe
     from .statistical import adc_noise_sigma
     w_ffe0 = mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
-                      noise_var=cfg.rx.noise_rms ** 2 + (adc_noise_sigma(cfg) ** 2 if n_dfe else 0.0),
-                      target=target, noise_cov=tx_cov, free_post=n_dfe)
+                      noise_var=cfg.rx.noise_rms ** 2 + (adc_noise_sigma(cfg) ** 2 if dfe_start else 0.0),
+                      target=target, noise_cov=tx_cov, free_post=dfe_start)
     eq_cursors, eq_pre = equalized_cursors(cursors, w_ffe0, n_pre_c, fcfg.n_pre)
     main = eq_cursors[eq_pre]
     # the DFE cancels what follows the target's controlled cursors

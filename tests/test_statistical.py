@@ -264,12 +264,15 @@ def test_mixed_signal_cross_check_within_2x(mod, length_m, noise, n_dfe):
     assert 0.5 < ratio < 2.0, (mod, length_m, noise, n_dfe, stat.ber, mc.ber.ber, ratio)
 
 
-@pytest.mark.parametrize("enob,length_m", [(5.0, 0.15), (6.5, 0.22), (8.0, 0.28)])
+@pytest.mark.parametrize("enob,length_m", [(5.0, 0.16), (6.5, 0.24), (8.0, 0.30)])
 def test_adc_noise_is_in_the_statistical_engine(enob, length_m):
     """ADC receiver with 0.5 mV of receiver noise, so the ADC's own noise
     (fullscale^2/12 * 2^(-2 ENOB)) carries the BER: statistical within 2x of
     the time engine. Without it the statistical engine read 0 at ENOB 5,
-    where the time engine counts 1.5e-4."""
+    where the time engine counted 1.5e-4. (The links are longer since
+    2026-10-13: the receiver's DFE engages now, ROADMAP P1 #21, taps
+    0.56-0.79, and the statistical engine counts its error propagation,
+    x2.0-3.8; 0.81-0.96 of the time engine.)"""
     from halo_serdes.engine.statistical import adc_noise_sigma
 
     cfg = _adc_link_for_noise(length_m, enob)

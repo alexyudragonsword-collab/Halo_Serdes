@@ -738,6 +738,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     ser_phi = np.zeros(osr)
     ber_phi = np.zeros(osr)
     ser_sym_phi = np.zeros(osr)
+    ep_factor_phi = np.ones(osr)
     ber_sym_phi = np.zeros(osr)
     head_energy_phi = np.zeros(osr)       # the controlled cursors' energy, sum c_k^2 (k >= 1)
     # precoded 1 + D at a = 1 slices composite levels in the kernel (no
@@ -813,11 +814,14 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 head.append(isi[n_pre + j] / main if main else 0.0)
                 isi[n_pre + j] = 0.0
         # ideal DFE removes the n_dfe postcursors after the target
+        h_dfe1 = 0.0
         if n_dfe > 0:
             isi_list = list(isi)
             for d in range(n_dfe):
                 pos = n_pre + n_t - 1 + d  # index into isi (post side starts at n_pre)
                 if pos < len(isi_list):
+                    if d == 0:
+                        h_dfe1 = float(isi_list[pos])
                     isi_list[pos] = 0.0
             isi = np.asarray(isi_list)
 
@@ -995,6 +999,32 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             if pdf_eye is None:
                 pdf_eye = pdf_lv if ev_diffs is None else noisy(g_ev)
         pdf_lv = pdf_eye
+        if n_dfe > 0 and not pr_active and mlsd_mem == 0 and h_dfe1 != 0.0:
+            # DFE error propagation (the "ideal DFE" above feeds back correct
+            # decisions). A wrong decision -- one level off, nearly always --
+            # leaves h1 x the level step on the next sample; the chance that
+            # one goes wrong too is the SER with the slicer input shifted
+            # that way, averaged over the next symbol's level and the sign.
+            # Errors then come in geometric bursts: 1 / (1 - p) of them per
+            # first error, each one bit (Gray). First DFE tap only. With the
+            # ADC's DFE engaged (ROADMAP P1 #21; tap 0.57) the time engine
+            # read 1.8-2.9x this engine's ideal-DFE BER.
+            step = float(np.min(np.diff(np.sort(levels_norm)))) * h_dfe1
+            p_ep = 0.0
+            for j in range(n_levels):
+                for sgn in (1.0, -1.0):
+                    p_j = 0.0
+                    if j < n_levels - 1:
+                        thr = (lv_sorted[j] + lv_sorted[j + 1]) / 2.0
+                        p_j += tail_ge(thr - lv_sorted[j] - sgn * step, int(order[j]))
+                    if j > 0:
+                        thr = (lv_sorted[j - 1] + lv_sorted[j]) / 2.0
+                        p_j += tail_le(thr - lv_sorted[j] - sgn * step, int(order[j]))
+                    p_ep += p_j / (2 * n_levels)
+            p_ep = min(p_ep, 0.99)
+            ep_factor_phi[pi] = 1.0 / (1.0 - p_ep)
+            ser *= ep_factor_phi[pi]
+            nbe *= ep_factor_phi[pi]
         ser_phi[pi] = ser
         ber_phi[pi] = nbe / bits_per_sym
         if pr_active:
@@ -1094,6 +1124,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "clock_loop": loop_sol,
                 "lock_phase_ui": lock_ui,
                 "ber_min_phase": float(ber_phi.min()),
+                "dfe_ep_factor": float(ep_factor_phi[best]),
                 # SER of the per-symbol PR decisions (the time engine's
                 # extras['ser_slicer']); None without a PR target
                 "ser_slicer": float(ser_sym_phi[best]) if pr_active else None,
