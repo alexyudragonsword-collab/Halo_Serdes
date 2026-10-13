@@ -111,7 +111,17 @@ def test_the_engines_hand_back_what_they_scored_against(cfg):
         assert np.mean(dec != ref) == pytest.approx(r.ser)
         err, n = bit_errors(dec, ref)
         assert err.size > 0 and n == 2 * dec.size
-        assert err.size <= r.ber.n_errors                # the checker counts 0<->3 as two
+        assert err.size == r.ber.n_errors                # the same Gray bits the checker counts
+
+
+def test_precoded_errors_wrap_and_count_one_bit():
+    """1/(1+D) mod 4 turns a line error into two user errors, and the wrapped
+    ones are 0 <-> 3: one Gray bit. The engine's BER counts it so."""
+    r = run_time_link(dataclasses.replace(_ADC, precode=True))
+    dec, ref = r.extras["decisions"], r.extras["reference"]
+    wrapped = np.sum(np.abs(dec - ref) == 3)
+    assert wrapped > 0
+    assert r.ber.n_errors == bit_errors(dec, ref)[0].size
 
 
 # ------------------------------------------------------------- extrapolation

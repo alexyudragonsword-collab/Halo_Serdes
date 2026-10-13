@@ -142,6 +142,7 @@ from ..cdr.linear import (
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
+from ..core.mapping import GRAY_BIT_DISTANCE
 from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
@@ -401,8 +402,8 @@ def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
 
     ``pdf_lv`` is the ISI + noise PDF per transmitted level (on
     ``v_centers``) and ``lv`` the levels at the slicer; the levels are taken
-    as evenly spaced. Bits per wrong symbol follow the checker:
-    min(|index difference|, 2).
+    as evenly spaced. Bits per wrong symbol follow the checker: the Hamming
+    distance of the two symbols' Gray codes (``GRAY_BIT_DISTANCE``).
     """
     n = lv.size
     order = np.argsort(lv)
@@ -421,7 +422,7 @@ def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
         return np.diff(np.concatenate([[0.0], f, [1.0]]))
 
     def bits(u: int, v: int) -> int:
-        return min(abs(int(u) - int(v)), 2)
+        return int(GRAY_BIT_DISTANCE[int(u), int(v)])
 
     if composite:
         comp = 2 * ls[0] + step * np.arange(2 * n - 1)
