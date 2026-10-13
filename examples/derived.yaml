@@ -41,14 +41,15 @@
     - {doc: docs/summary.html, text: "+{adc - dfe} dB ADC 质量"}
     - {doc: docs/summary.html, text: "DSP 深度(+{dfe - ffe} dB)"}
     - {doc: examples/19_deep_lr_limit.py, text: "Pushing past the ~{ffe} dB reach of example 18's receiver"}
-    - {doc: examples/19_deep_lr_limit.py, text: "MLSD memory-3 over FFE+memory-2 buys under {dfe - ffe |upper} dB"}
+    - {doc: examples/19_deep_lr_limit.py, text: "MLSD memory-3 over FFE+memory-2 buys {dfe - ffe} dB ({ffe} -> {dfe} dB)"}
     - {doc: examples/19_deep_lr_limit.py, text: "buys ~{adc - dfe} dB of reach with the SAME DSP ({ffe} -> {dfe} dB from DSP depth"}
     - {doc: examples/19_deep_lr_limit.py, text: "{dfe} -> {adc} dB from the ADC"}
     - {doc: examples/21_full_stack_lr.py, text: "the ADC lever (~+{adc - dfe} dB)"}
     - {doc: cairn/功耗建模.md, text: "+{adc - dfe} dB 的 ADC 杠杆的代价是外推"}
     - {doc: cairn/功耗建模.md, text: "示例 19 的 DFE8 + memory 3 花 +2.17 pJ/b 换 +{dfe - ffe} dB"}
-    - {doc: docs/SUMMARY.md, text: "收端 PR 换 +5.0 dB、DSP 深度只换 +{dfe - ffe} dB"}
-    - {doc: docs/SUMMARY.md, text: "receive PR buys +5.0 dB and DSP depth +{dfe - ffe} dB"}
+    - {doc: cairn/功耗建模.md, text: "每 dB {2.17 / (dfe - ffe)} vs 0.48 pJ/b"}
+    - {doc: docs/SUMMARY.md, text: "收端 PR 换 +5.0 dB、DSP 深度(另加 8 抽头 DFE)换 +{dfe - ffe} dB"}
+    - {doc: docs/SUMMARY.md, text: "receive PR buys +5.0 dB and DSP depth (with an 8-tap DFE besides) +{dfe - ffe} dB"}
 
 - name: ex20 concatenated-FEC lever (KP4 alone vs + BCH(255,215) inner code)
   values:
@@ -82,10 +83,10 @@
     - {doc: docs/SUMMARY.md, text: "concat FEC | {b} dB | +{b - a} |"}
     - {doc: docs/SUMMARY.md, text: "better ADC | {c} dB | +{c - a} |"}
     - {doc: docs/SUMMARY.md, text: "full stack** | **{d} dB** | **+{d - a}** |"}
-    - {doc: docs/SUMMARY.md, text: "两个正交的杠杆(+{b - a} 与 +{c - a} dB)合起来 +{d - a} dB,不少于单独之和(+{b + c - 2 * a})"}
-    - {doc: docs/SUMMARY.md, text: "合起来比相加还多 {d - b - c + a} dB"}
-    - {doc: docs/SUMMARY.md, text: "levers (+{b - a} and +{c - a} dB) give +{d - a} dB together, no less than their sum (+{b + c - 2 * a})"}
-    - {doc: docs/SUMMARY.md, text: "beats the sum by {d - b - c + a} dB"}
+    - {doc: docs/SUMMARY.md, text: "两个正交的杠杆(+{b - a} 与 +{c - a} dB)合起来 +{d - a} dB,比单独之和(+{b + c - 2 * a})少 {b + c - a - d} dB"}
+    - {doc: docs/SUMMARY.md, text: "ENOB 6.5 的曲线走这 31 倍用 {b - a} dB({a} → {b}),ENOB 7.5 的更陡,只用 {d - c} dB({c} → {d})"}
+    - {doc: docs/SUMMARY.md, text: "levers (+{b - a} and +{c - a} dB) give +{d - a} dB together, {b + c - a - d} dB short of their sum (+{b + c - 2 * a})"}
+    - {doc: docs/SUMMARY.md, text: "curve climbs in {b - a} dB ({a} → {b}) and the steeper ENOB 7.5 one in {d - c} dB ({c} → {d})"}
     - {doc: docs/SUMMARY.md, text: "| {b} / {c} dB | 单杠杆 +{b - a} / +{c - a} dB |"}
     - {doc: docs/SUMMARY.md, text: "| **{d} dB** | 全栈 +{d - a} dB |"}
     - {doc: docs/COMPARISON.md, text: "224G 深 LR 的 {*}→{*}→{b}/{c}→{d} dB"}

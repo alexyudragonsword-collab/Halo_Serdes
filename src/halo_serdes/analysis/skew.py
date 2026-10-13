@@ -14,7 +14,8 @@ each offset*. That is one statistical run per offset
 levels at the phase it samples. The FFE it takes as given, so an ADC lane
 needs the FFE it adapts to at each offset (``lane_curve(ffe_taps=)``).
 Held at the lock point's instead, it read 21x high at a quarter UI on the
-224G preset (against the FFE a time-domain lane converged to there).
+224G preset (against the FFE a time-domain lane converged to there; measured
+before ROADMAP P1 #21 engaged the ADC receiver's DFE).
 
 ``cairn/多lane建模.md`` §8 has the time-domain cross-check and its setup (a
 frozen loop held at the offset, started from the cursors there).
@@ -161,9 +162,10 @@ def lane_curve(cfg: LinkConfig, channel=None, *, n_phases: int = 16,
     peak) giving the FFE the lane adapts to there -- e.g. ``lambda at:
     engine.cascade.initial_ffe_taps(cfg, channel, at_ui=at)``, the MMSE FFE
     the time engine starts from. Which FFE the lane's adaptation reaches is
-    the open question of ROADMAP P2 #21: the statistical-only stand-ins read
-    1.4-4.5x above the time engine's own converged receiver, and that
-    receiver's DFE never engages (cairn/多lane建模.md §8).
+    the open question of ROADMAP P2 #23: that stand-in reads 14-25x above a
+    time-domain lane held at the offset on the 224G preset, whose LMS moves
+    the FFE well past its start; given the FFE that lane converged to, the
+    statistical engine reads 0.93-1.47x of it (cairn/多lane建模.md §8).
     """
     from ..channel import ChannelModel
     from ..engine.statistical import run_statistical

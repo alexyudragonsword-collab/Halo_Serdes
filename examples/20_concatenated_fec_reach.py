@@ -1,7 +1,8 @@
 """Deep 224G LR with concatenated inner-code FEC — how far can reach go?
 
-Example 19 showed the DSP (FFE+DFE+MLSD) is SNR-limited near ~33 dB with KP4
-alone. Concatenated FEC attacks the OTHER lever: an inner hard-decision block
+Example 19 took the DSP (FFE+DFE+MLSD) to ~36 dB with KP4 alone (~33 dB
+before 2026-10-13, when the ADC receiver's DFE never engaged -- ROADMAP P1
+#21). Concatenated FEC attacks the OTHER lever: an inner hard-decision block
 code corrects most raw errors, presenting a far lower BER to the RS-KP4 outer
 and raising the tolerable pre-FEC BER ~31x (2.2e-4 -> 6.9e-3 for BCH(255,215)) — the deep-LR
 / 800G-1.6T approach.
@@ -86,7 +87,7 @@ def measure(L):
     return -lo, pb
 
 
-lengths = [0.16, 0.18, 0.19, 0.20, 0.21, 0.22, 0.24, 0.26]
+lengths = [0.16, 0.18, 0.19, 0.20, 0.21, 0.22, 0.24, 0.26, 0.28, 0.30, 0.32]
 print("Sweeping link pre-FEC BER (FFE + DFE8 + MLSD mem3, ADC ENOB 6.5)...")
 sweep = {}                           # channel length -> (loss dB, pre-FEC BER)
 for L in lengths:

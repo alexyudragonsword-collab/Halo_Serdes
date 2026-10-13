@@ -1,9 +1,9 @@
 """Full-stack deep LR: best DSP + better ADC + concatenated FEC together.
 
-Examples 19 and 20 showed the ADC lever (~+5.4 dB) and the FEC lever (~+3 dB)
+Examples 19 and 20 showed the ADC lever (~+8.2 dB) and the FEC lever (~+4.5 dB)
 separately. This combines them. Four cumulative configs, same channel sweep:
 
-  A. KP4 + ADC ENOB 6.5              (baseline, ~33 dB)
+  A. KP4 + ADC ENOB 6.5              (baseline, ~36 dB)
   B. + concatenated BCH inner FEC     (FEC lever)
   C. + better ADC ENOB 7.5            (ADC lever)
   D. both: ADC 7.5 + concatenated FEC (full stack)
@@ -75,7 +75,7 @@ def pre_fec(length_m, enob, noise, n_sym=500_000):
     return cm.loss_at(56e9), run_time_link(cfg, channel=cm).ber.ber
 
 
-lengths = [0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30]
+lengths = [0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30, 0.32, 0.34, 0.36]
 GRADES = {6.5: 0.0015, 7.5: 0.0008}  # ADC ENOB -> input-referred noise rms
 print("Sweeping pre-FEC BER, two ADC grades...")
 sweeps = {e: {} for e in GRADES}     # channel length -> (loss dB, pre-FEC BER)
