@@ -461,6 +461,32 @@ rs = rs_kp4(); cw = rs.encode(msg); dec, n_err = rs.decode(cw_with_errors)
 
 投影公式只需 scipy;只有真实编解码才需要 galois。
 
+**误码成串时**:上面的投影假设比特误码互相独立。PR 目标 + Viterbi(还有预编码)的误码成串,一串误码落进 RS 码的哪几个符号、
+哪几个码字,取决于 lane 怎么复用到 FEC lane、码字怎么交织 —— `fec/interleave.py` 按映射把一次时域运行的误码位置算到
+(码字, RS 符号),按事件率 × 实测事件足迹外推帧错误率(复合泊松),再给出"帧错误率等于二项投影在其门限处的值"的
+pre-FEC BER:
+
+```python
+from halo_serdes.engine import run_time_link
+from halo_serdes.fec import (BIT_MUX_2CW, SEQUENTIAL, SYMBOL_PAIR_4CW, FecLayout,
+                             bit_errors, burst_profile, fec_threshold)
+
+r = run_time_link(cfg)                                   # 时域引擎的 extras 带判决与参考符号
+err, n_bits = bit_errors(r.extras["decisions"], r.extras["reference"])   # Gray 比特,MSB 在前
+prof = burst_profile(err, n_bits, SYMBOL_PAIR_4CW)       # 误码分事件(间隔 ≤ 8 符号算一个)→ (码字, RS 符号)
+prof.frame_error_rate()                                  # 本次 BER 下的复合泊松 FER
+prof.threshold() / fec_threshold("kp4")                  # > 1:二项投影对这些误码偏悲观
+prof.resample(rng).threshold()                           # 按事件 bootstrap,看事件数够不够
+FecLayout(lanes=2, pcs_lanes=8, mux_bits=1, interleave=2, stagger=1)   # 自定义:8:1 比特复用、两码字
+```
+
+`SEQUENTIAL` 是单 lane、连续 10 bit 符号、不交织;`BIT_MUX_2CW` 仿 400GBASE-R(16 条 PCS lane 四条一组比特复用、两码字棋盘交织);
+`SYMBOL_PAIR_4CW` 仿 200G/lane(符号对复用、四码字)。后两个按 802.3 资料的二手摘要建模,不是条文转录(`cairn/多lane建模.md`)。
+要点:**RS 符号误码率低不等于 FER 低** —— t = 15 的尾部由每个码字里的簇大小决定。示例 43 量了五种收端 × 四种映射:
+PR + Viterbi 在符号对复用 + 四码字下二项投影偏悲观(门限约 ×1.9),单 lane 连续映射与比特复用下偏乐观(×0.5 / ×0.25,8:1 比特复用 ×0.05);
+DFE 的误码在这条链路上基本孤立,映射几乎不影响它。假设:事件之间独立、事件率随 BER 线性缩放而足迹不变(所以要在门限附近量),
+各物理 lane 统计相同且互不相关(串扰相关的误码不在内)。
+
 ---
 
 ## 12. IBIS-AMI 模型

@@ -209,7 +209,7 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                              # budget, not an RX circuit block (see module doc)
                              "eq_semantics": "link_budget",
                              "cycle_slips": sc.cycle_slips,
-                             "decisions": sc.decisions})
+                             "decisions": sc.decisions, "reference": sc.reference})
 
 
 def fold_eye(y: np.ndarray, osr: int, phase: int, n_traces: int = 2000,
