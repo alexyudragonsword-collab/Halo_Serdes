@@ -214,3 +214,18 @@ def test_noiseless_adc_link_has_no_tail_errors(mod, n_pre):
     level 0): a fixed ~3-error floor, 3/(2N) in BER, on every ADC run."""
     res = run_time_link(_clean_adc_link(mod, n_pre))
     assert res.ber.n_errors == 0, list(res.ber.error_idx)
+
+
+def test_adc_dfe_engages():
+    """The ADC receiver's FFE starts with the DFE's postcursor left to the
+    DFE (ROADMAP P1 #21). Started DFE-blind, the joint LMS kept the tap at 0
+    for good -- the cost is flat along "FFE leaves h1, DFE cancels it" -- and
+    this link read 6.6e-4 (300k symbols) where it now reads 4.1e-5."""
+    from halo_serdes_app import config_bridge as cb
+
+    cfg = cb.load_preset("PAM4 224G ADC (106 GBd)")
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=0.0015),
+                              sim=dataclasses.replace(cfg.sim, n_symbols=150_000))
+    t = run_time_link(cfg)
+    assert t.dfe_taps[0] > 0.4, t.dfe_taps
+    assert t.ber.ber < 2e-4, t.ber

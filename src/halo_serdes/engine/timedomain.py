@@ -650,11 +650,20 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     alpha = target[1] if pr.active else 0.0
     beta = target[2] if (pr.active and n_t >= 3) else 0.0
     gamma = target[3] if (pr.active and n_t == 4) else 0.0
+    n_dfe = cfg.rx.dfe.n_taps
+    # With a DFE the start decides where the joint LMS ends: the cost is
+    # flat along "the FFE leaves h1, the DFE cancels it", and neither moves
+    # along it (a 3000x larger DFE step neither). An FFE that zeroes the
+    # DFE's postcursors too left the DFE at 0 for good -- the 224G preset at
+    # 2.29e-4 instead of 3.8e-6 (ROADMAP P1 #21). So it starts at the MMSE
+    # FFE-DFE for the noise the FFE sees, the ADC's included. Without a DFE
+    # the LMS gets to the same point from anywhere; that start is unchanged.
+    from .statistical import adc_noise_sigma
     w_ffe0 = mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
-                      noise_var=cfg.rx.noise_rms ** 2, target=target, noise_cov=tx_cov)
+                      noise_var=cfg.rx.noise_rms ** 2 + (adc_noise_sigma(cfg) ** 2 if n_dfe else 0.0),
+                      target=target, noise_cov=tx_cov, free_post=n_dfe)
     eq_cursors, eq_pre = equalized_cursors(cursors, w_ffe0, n_pre_c, fcfg.n_pre)
     main = eq_cursors[eq_pre]
-    n_dfe = cfg.rx.dfe.n_taps
     # the DFE cancels what follows the target's controlled cursors
     w_dfe0 = (eq_cursors[eq_pre + n_t: eq_pre + n_t + n_dfe] / main
               if n_dfe else np.zeros(0))

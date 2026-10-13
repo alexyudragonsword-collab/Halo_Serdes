@@ -81,7 +81,7 @@ def zf_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
 
 def mmse_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
              noise_var: float = 0.0, normalize: bool = True, target=None,
-             noise_cov: np.ndarray | None = None) -> np.ndarray:
+             noise_cov: np.ndarray | None = None, free_post: int = 0) -> np.ndarray:
     """Regularized MMSE FFE over the full ISI support.
 
     Minimizes ||M w - d||^2 + noise_var * ||w||^2 with d a delta at the main
@@ -89,12 +89,22 @@ def mmse_ffe(cursors: np.ndarray, c_pre: int, n_taps: int, tap_pre: int,
     least-squares ZF solution. ``noise_cov`` (n_taps x n_taps) adds noise
     that is not white at the FFE input -- noise from ahead of the channel,
     coloured by it -- as w' C w, on the same scale as ``noise_var``.
+
+    ``free_post``: the output cursors right after the target that a DFE of
+    that many taps cancels are left out of the cost, so the FFE spends no
+    taps or noise gain forcing them to zero. Forced to zero (the default)
+    they leave the DFE nothing to do -- and a joint LMS started there keeps
+    it that way (ROADMAP P1 #21).
     """
     M = _conv_matrix(cursors, n_taps)
     d = np.zeros(M.shape[0])
     t = _target(target)
     n = min(t.size, d.size - (c_pre + tap_pre))
     d[c_pre + tap_pre: c_pre + tap_pre + n] = t[:n]
+    if free_post > 0:
+        keep = np.ones(d.size, dtype=bool)
+        keep[c_pre + tap_pre + n: c_pre + tap_pre + n + free_post] = False
+        M, d = M[keep], d[keep]
     A = M.T @ M + noise_var * np.eye(n_taps)
     if noise_cov is not None:
         A = A + noise_cov

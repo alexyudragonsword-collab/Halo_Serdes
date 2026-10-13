@@ -59,3 +59,20 @@ def test_channel_cursors_extraction():
     p = Waveform(y, 1e-12)
     c = channel_cursors(p, osr, 2, 3)
     assert np.allclose(c, [0.0, 0.25, 1.0, 0.5, 0.0, 0.0])
+
+
+def test_mmse_leaves_the_dfe_its_postcursors():
+    """``free_post`` takes the cursors a DFE cancels out of the cost: the
+    FFE stops forcing them to zero, and spends less noise gain."""
+    c = np.array([0.05, 0.2, 1.0, 0.6, 0.25, 0.1])
+    blind = mmse_ffe(c, 2, 7, 3, noise_var=0.01, normalize=False)
+    aware = mmse_ffe(c, 2, 7, 3, noise_var=0.01, normalize=False, free_post=1)
+    eb, pre = equalized_cursors(c, blind, 2, 3)
+    ea, _ = equalized_cursors(c, aware, 2, 3)
+    assert abs(eb[pre + 1] / eb[pre]) < 0.05            # the DFE-blind solve zeroes h1 ...
+    assert ea[pre + 1] / ea[pre] > 0.2                  # ... the DFE-aware one leaves it
+    assert np.linalg.norm(aware) / abs(ea[pre]) < np.linalg.norm(blind) / abs(eb[pre])
+    # the cursors after the DFE's are still equalised
+    assert abs(ea[pre + 2] / ea[pre]) < 0.1
+    assert np.array_equal(mmse_ffe(c, 2, 7, 3, noise_var=0.01, free_post=0),
+                          mmse_ffe(c, 2, 7, 3, noise_var=0.01))
