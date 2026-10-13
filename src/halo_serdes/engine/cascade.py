@@ -162,22 +162,13 @@ def run_cascade(cfg: LinkConfig, statistical: bool = False,
     return out
 
 
-def initial_ffe_taps(cfg: LinkConfig, channel: ChannelModel | None = None) -> np.ndarray | None:
-    """The MMSE FFE the ADC time engine starts from, for a statistical-only run.
-
-    The statistical engine takes the equaliser as given; on an ADC receiver
-    the time engine's own starting point (MMSE on the front-end pulse) is a
-    fair stand-in when no time run is available, which is how a sweep can
-    stay on the fast engine. None for a receiver without an FFE.
-    """
+def front_end_pulse(cfg: LinkConfig, channel: ChannelModel | None = None):
+    """The pulse :func:`initial_ffe_taps` solves on: channel (both optical
+    stages, on an optical topology), CTLE and VGA, on the ``cfg.dt`` grid."""
     from ..channel.response import pulse_from_impulse
     from ..core.waveform import Waveform
-    from ..dsp import channel_cursors, mmse_ffe
     from .optical_stage import apply_front_end, split_impulses
 
-    fcfg = cfg.rx.ffe
-    if cfg.rx.arch != "adc_dsp" or fcfg.n_pre + fcfg.n_post == 0:
-        return None
     if channel is None:
         channel = ChannelModel.from_config(cfg)
     if getattr(channel, "optical", None) is not None:
@@ -185,9 +176,31 @@ def initial_ffe_taps(cfg: LinkConfig, channel: ChannelModel | None = None) -> np
         h = np.convolve(h1, h2)
     else:
         h = apply_front_end(cfg, channel.response_set(cfg.dt).h.y)
+    return pulse_from_impulse(Waveform(h, cfg.dt), cfg.osr)
+
+
+def initial_ffe_taps(cfg: LinkConfig, channel: ChannelModel | None = None,
+                     at_ui: float = 0.0) -> np.ndarray | None:
+    """The MMSE FFE the ADC time engine starts from, for a statistical-only run.
+
+    The statistical engine takes the equaliser as given; on an ADC receiver
+    the time engine's own starting point (MMSE on the front-end pulse) is a
+    fair stand-in when no time run is available, which is how a sweep can
+    stay on the fast engine. None for a receiver without an FFE.
+
+    ``at_ui``: solve for a receiver that samples that far from the pulse
+    peak (to the nearest sample) -- a lane whose sampling phase is set by
+    another lane's clock adapts its FFE where it samples
+    (``analysis.skew``).
+    """
+    from ..dsp import channel_cursors, mmse_ffe
+
+    fcfg = cfg.rx.ffe
+    if cfg.rx.arch != "adc_dsp" or fcfg.n_pre + fcfg.n_post == 0:
+        return None
     osr = cfg.osr
-    pulse = pulse_from_impulse(Waveform(h, cfg.dt), osr)
-    peak = int(np.argmax(np.abs(pulse.y)))
+    pulse = front_end_pulse(cfg, channel)
+    peak = int(np.argmax(np.abs(pulse.y))) + int(np.round(at_ui * osr))
     n_pre_c, n_post_c = fcfg.n_pre + 4, fcfg.n_post + 12
     cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak)
     n_taps = fcfg.n_pre + 1 + fcfg.n_post

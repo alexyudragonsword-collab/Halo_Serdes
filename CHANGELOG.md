@@ -6,6 +6,42 @@
 
 ---
 
+## [未发布] — 共享时钟的 lane 间静态 skew 预算(ROADMAP P3 #9c 静态部分)
+
+### 新增
+- `analysis/skew.py`:一个 CDR 的时钟采 N 条 lane 时各 lane 的 BER。
+  - `lane_curve(cfg)`:lane 偏离自己锁定点时的 BER 曲线。每个偏移一次统计引擎,DFE、判决电平(ADC 还有 FFE)在那个相位上重新适应。
+  - ADC 收端要给 `ffe_taps`:一组,或"采样相位 → FFE"的函数。
+  - `LaneCurve`:读数(对数线性、过半 UI 回绕)、最低点、`window(BER 目标)`、`budget_ui`。
+  - `shared_cdr(curves, skews, policy)`:时钟放法 master / average / minmax,给出各 lane 的 BER、最差与平均。
+- `run_statistical(phase_ui=)`:在锁定点 + 偏移处采样,相位轴以那里为中心(主光标就是那里采到的)。
+  `None` 走原路径;`0` 与原 `ber` 逐位相同。
+- `engine.cascade.initial_ffe_taps(at_ui=)`:在偏离脉冲峰值处解 MMSE FFE;`front_end_pulse` 是它解的脉冲。
+- 示例 45(`examples/45_shared_cdr_skew.py`):三条链路的曲线与窗口，四条 lane 三种时钟放法。
+
+### 结论
+- 不是"读一次运行的浴盆":
+  - ADC 的浴盆沿用锁定点的 FFE,偏 1/4 UI 读高 21×;
+  - 均衡后的脉冲最大样本可能不是主光标，从浴盆挪着读会认错。
+- 对时域(冻结环路停在偏移处，均衡器从那里的游标起步):
+  - 混合信号 0.49–1.78×(PAM4 32G、NRZ 28G,−3/8…+1/4 UI);
+  - ADC 给定时域 lane 在该偏移收敛的 FFE 时 0.98–1.26×(±3/8 UI);
+  - 用 MMSE 起点代用 FFE 时 1.4–4.5×。
+- PAM4 32G 混合信号(示例 45):
+  - bang-bang 环路锁在浴盆底之后 0.19 UI;
+  - 四条 lane 用 minmax 时钟时最差 5.3e-7,是单条 lane 用自己环路时(5.5e-6)的 0.09;
+  - average 反而比 master 差(浴盆在晚的一侧陡)。
+
+### 发现(未修，记入 ROADMAP P1 #21)
+- 时域 ADC 收端的 DFE 不起作用:FFE 从不计 DFE 的 MMSE 起步,DFE 抽头停在 ≈ 0。
+- 从 DFE 感知的起点出发:224G 106 GBd 2.29e-4 → 5.2e-6;带 DFE 的另两个预设误码 5 / 3 → 0。
+
+### 测试
+- +10:`tests/test_skew.py`
+  - 曲线读数与回绕、窗口、三种放法、输入校验;
+  - `phase_ui` 与原浴盆一致;ADC 不给 FFE 报错;ADC 重解 FFE 与沿用的差别;
+  - 铁律 3:两条混合信号链路对冻结在偏移处的时域 lane;ADC 给定 lane 收敛的 FFE。
+
 ## [未发布] — 串扰进配置;准同步 lane(ROADMAP P3 #9b)
 
 ### 新增

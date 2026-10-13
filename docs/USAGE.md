@@ -30,6 +30,7 @@
 18. [接收端部分响应(PR)整形](#18-接收端部分响应pr整形)
 19. [TI-ADC 校准(后台 / 前台)](#19-ti-adc-校准后台--前台)
 20. [功耗估计(pJ/bit)](#20-功耗估计pjbit)
+21. [共享时钟的 lane 间 skew 预算](#21-共享时钟的-lane-间-skew-预算)
 
 ---
 
@@ -1029,3 +1030,37 @@ power_report(cfg, k).pj_per_bit
   示例 07 的两种收端(混合信号 1.60、ADC 4.81 pJ/b),224G LR 杠杆(Viterbi 每多一个受控光标 ×3.76 / ×3.91),
   示例 33 的三种拓扑(同收端下 CPO 比 LPO 少 2.10 pJ/b;再用时域阶梯找 100 m 处各自要的 ADC —— LPO ENOB 5.0、CPO 3.5 ——
   按各自收端计价 LPO 12.57、CPO 9.74 pJ/b),以及每个结论在系数区间两端是否还成立。
+
+---
+
+## 21. 共享时钟的 lane 间 skew 预算
+
+一个 CDR 的时钟采 N 条 lane 时(一条 lane 的环路带全部,或一个环路听所有 lane),数据晚到 s UI 的 lane 被早采 s UI。
+`analysis/skew.py` 给静态部分:lane 偏离自己锁定点时的 BER 曲线,它的 DFE、判决电平(ADC 还有 FFE)在那个相位上重新适应。
+
+```python
+from halo_serdes.analysis import lane_curve, shared_cdr
+from halo_serdes.engine.cascade import initial_ffe_taps
+
+c = lane_curve(cfg, n_phases=32)          # 每个偏移一次统计引擎(run_statistical(phase_ui=d))
+c.at(-0.1)                                # 偏离锁定点 -0.1 UI 的 BER(对数线性插值,过半 UI 回绕)
+c.best_offset_ui                          # 曲线最低点(bang-bang 环路常锁在它之后 0.1-0.2 UI)
+c.window(2.19e-4), c.budget_ui(2.19e-4)   # BER <= 目标的偏移区间与宽度 = 可放进去的 lane 间 skew 总跨度
+
+r = shared_cdr(c, [0.0, 0.06, -0.09, 0.13], policy="minmax")   # 或 "master"(master=i)、"average"
+r.phase_ui, r.offsets_ui, r.ber, r.worst, r.mean
+
+# ADC 收端要给 lane 在每个偏移处适应到的 FFE:一组,或"采样相位(UI,距脉冲峰值)-> FFE"
+c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch, at_ui=at))
+```
+
+- 不是"读一次运行的浴盆":ADC 的浴盆沿用锁定点的 FFE(对时域 lane 自己收敛的 FFE 偏 1/4 UI 读高 21×;示例 45 用 MMSE 起点
+  时 7.1×),均衡后脉冲的最大样本也可能不是主光标。
+  离开锁定点读统计结果用 `run_statistical(phase_ui=d)`。
+- 对时域(冻结环路停在偏移处,均衡器从那里的游标起步):混合信号 0.49–1.78×;ADC 给定时域 lane 在该偏移收敛的 FFE 时 0.98–1.26×,
+  用上面的 MMSE 起点代用 1.4–4.5×(ROADMAP P1 #21:时域 ADC 收端的 DFE 停在 0)。
+- 不含:主 lane 跟踪抖动时从 lane 跟着走的动态部分、lane 间相关抖动(要多 lane 同时跑的时域内核;时钟抖动的平滑仍按 lane
+  自己的环路算);各 lane 的串扰相位随 skew 变
+  (要的话每条 lane 自己建 `cfg.crosstalk`,`shared_cdr` 收一组曲线)。
+- 示例 `examples/45_shared_cdr_skew.py`:三条链路的曲线、窗口、四条 lane 三种时钟放法;PAM4 32G 混合信号的 minmax 时钟
+  下最差 lane 是单条 lane 用自己环路时的 0.09(锁定点不在浴盆底)。`cairn/多lane建模.md` §8。

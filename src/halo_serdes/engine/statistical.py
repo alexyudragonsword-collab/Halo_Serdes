@@ -63,7 +63,9 @@ Non-LTI approximations (each cross-checked against the time engine):
   settles with the LMS FFE on the pre-FFE pulse peak; on a narrow bathtub
   (example 32's CPO with a host FFE through a c = 0.5 laser) that is one
   sample and 3x from the minimum (until 2026-10-09 the ADC was read at the
-  minimum);
+  minimum). ``phase_ui`` reads a set offset from the lock point instead (a
+  lane on another lane's clock, ``analysis.skew``); the clock jitter smear
+  is still the lane's own loop's;
 - coloured clock (``tx.clock.kind = "profile"``): the CDR is linearised
   (``cdr/linear.py``) and the smear sigma is the profile power the loop does
   not track plus the jitter it acquires from its own detector noise, both
@@ -567,11 +569,19 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     ffe_taps: np.ndarray | None = None, ffe_pre: int = 0,
                     v_bins: int = 4096, n_pre: int = 24, n_post: int = 64,
                     xtalk_pulses: list[Waveform] | None = None,
-                    level_sigma: np.ndarray | None = None, xtalk=None) -> StatResult:
+                    level_sigma: np.ndarray | None = None, xtalk=None,
+                    phase_ui: float | None = None) -> StatResult:
     """``level_sigma``: extra noise sigma at the slicer per transmitted level
     (ascending), added in quadrature to the receiver noise; derived from
     ``channel.optical`` when None. Explicit for studies and for pinning that
     equal kernels reproduce the single-kernel engine.
+
+    ``phase_ui``: sample that far from the receiver's lock point [UI] -- a
+    lane whose clock comes from another lane's loop (``analysis.skew``).
+    ``ber`` / ``ser`` are read there and the phase axis is centred on it,
+    so the main cursor is the one sampled there even when an equaliser
+    has made a neighbouring one larger. None: the lock point, on the axis
+    centred on the pulse peak (as before the parameter existed).
 
     Crosstalk: ``cfg.crosstalk`` unless ``xtalk`` (``XtalkAggressor`` list)
     or ``xtalk_pulses`` (coupling pulses of synchronous aggressors) replaces
@@ -683,7 +693,12 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     lock_pos = None
     if cfg.rx.arch in ("mixed_signal", "adc_dsp"):
         lock_pos = _lock_position(cfg, h_pre_ffe, h_chan, tx_pipe, has_ffe, ffe_pre)
-    if pr_active and has_ffe and lock_pos is not None:
+    if phase_ui is not None and lock_pos is not None:
+        # a sampling point set from outside: the grid is centred on it, as
+        # for a PR target below, so the labels stay put at any offset
+        lock_pos = lock_pos + float(phase_ui) * osr
+        peak = int(np.round(lock_pos))
+    elif pr_active and has_ffe and lock_pos is not None:
         # equalised to [1, a(, b(, c))] the pulse has comparable cursors and
         # its largest sample falls between them, up to half a UI after the
         # main one; the phase grid (+-half a UI) is centred where the
