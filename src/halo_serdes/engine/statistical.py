@@ -15,8 +15,8 @@ Non-LTI approximations (each cross-checked against the time engine):
 - DFE: ideal cancellation of the covered postcursors (weights assumed exact),
   with its error propagation on top (plain slicer path): a wrong decision
   leaves h1 x the level step on the next sample; p = the SER with the input
-  shifted that way, and errors come in geometric bursts, 1 / (1 - p) per
-  first error (``extras['dfe_ep_factor']``; first tap only -- the 1-tap
+  shifted that way, and the SER s becomes s / (1 - p + s), the two-state
+  chain's (``extras['dfe_ep_factor']``; first tap only -- the 1-tap
   Gilbert model, cairn/多lane建模.md §2). Without it the ADC receiver with
   its DFE engaged read 0.35-0.55x the time engine; with it 0.81-1.25x;
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
@@ -1011,10 +1011,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             # leaves h1 x the level step on the next sample; the chance that
             # one goes wrong too is the SER with the slicer input shifted
             # that way, averaged over the next symbol's level and the sign.
-            # Errors then come in geometric bursts: 1 / (1 - p) of them per
-            # first error, each one bit (Gray). First DFE tap only. With the
-            # ADC's DFE engaged (ROADMAP P1 #21; tap 0.57) the time engine
-            # read 1.8-2.9x this engine's ideal-DFE BER.
+            # Errors then follow the two-state (Gilbert) chain: a symbol
+            # after a correct one fails with s, the ideal-DFE SER, after a
+            # wrong one with p, so it is wrong s / (1 - p + s) of the time --
+            # s / (1 - p) while errors are rare, never past 1 on a closed
+            # eye. Each one bit (Gray). First DFE tap only. With the ADC's
+            # DFE engaged (ROADMAP P1 #21; tap 0.57) the time engine read
+            # 1.8-2.9x this engine's ideal-DFE BER.
             step = float(np.min(np.diff(np.sort(levels_norm)))) * h_dfe1
             p_ep = 0.0
             for j in range(n_levels):
@@ -1028,7 +1031,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                         p_j += tail_le(thr - lv_sorted[j] - sgn * step, int(order[j]))
                     p_ep += p_j / (2 * n_levels)
             p_ep = min(p_ep, 0.99)
-            ep_factor_phi[pi] = 1.0 / (1.0 - p_ep)
+            ep_factor_phi[pi] = 1.0 / (1.0 - p_ep + min(ser, 1.0))
             ser *= ep_factor_phi[pi]
             nbe *= ep_factor_phi[pi]
         ser_phi[pi] = ser
