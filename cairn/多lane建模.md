@@ -163,7 +163,8 @@ PCS 层的 deskew、对齐标记锁定、lane 重排是数字协议行为,留在
   单 lane 的门限比 bootstrap 区间最宽(1 + aD + bD² 0.35–0.61):少数占 3–4 个符号的事件决定尾部。
 - 映射是二手资料的模型(棋盘 stagger、符号对的"奇数 lane 延后两个码字"按 (s + 2q) mod 4 近似,只在长于 M·g = 160 比特的突发上与
   真实结构不同),各物理 lane 统计相同且互不相关(串扰造成的跨 lane 相关误码不在内)。
-- 顺带发现:`symbol_checker` 把 Gray 下只差一比特的 0 ↔ 3 记成 2 bit,预编码 PAM4 的 BER 因此高 25 %(ROADMAP P2 #20)。
+- 顺带发现:`symbol_checker` 把 Gray 下只差一比特的 0 ↔ 3 记成 2 bit,预编码 PAM4 的 BER 因此高 25 %(ROADMAP P2 #20;
+  2026-10-13 已修,两个引擎都按 Gray 码不同的比特数计)。
 
 ## 资料来源
 
