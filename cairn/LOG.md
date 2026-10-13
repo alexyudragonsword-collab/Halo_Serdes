@@ -13,6 +13,8 @@
   测试 1050 → 1054(+4)。
 - 坑:并行 4 个全尺寸示例时 38(1024 状态 × 40 万符号)与 43(256 状态 × 400 万符号)的 Viterbi 回溯表各要 3.3 / 8 GB,被杀掉无回溯;单独跑都通过。
 - 上一条(#77)于 2026-10-13 合入。
+- CI:源码提交 525bed8 上 Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures,pyinstaller / nuitka / onefile 通过(它的测试矩阵红,
+  是那条钉住旧计数的 cascade 测试与尚未更新的 expected,下一提交修);head 7f3cb1a 上测试矩阵(含 nojit)、examples、examples-full 全绿。
 
 ## 2026-10-13 · 误码按 lane 复用与码字交织映射到 RS 码(feat/fec-mapping,ROADMAP P3 #9a)
 
