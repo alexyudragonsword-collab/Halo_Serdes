@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-13 · 共享时钟的 lane 间静态 skew 预算(feat/shared-cdr-skew,ROADMAP P3 #9c 静态部分)
+
+- 建:`analysis/skew.py`(`lane_curve` / `LaneCurve.window` / `shared_cdr` 三种放法);`run_statistical(phase_ui=)` 在锁定点 + 偏移处采样、相位轴居中于此
+  (`None` 原路径,`0` 逐位同原 `ber`);`initial_ffe_taps(at_ui=)`。示例 45。
+- **更正**范围评估 §4 的"读浴盆即可、不改引擎":ADC 的浴盆沿用锁定点 FFE(偏 1/4 UI 读高 21×),均衡后脉冲最大样本可能不是主光标(从浴盆挪着读 12.6×)。
+- 对时域(冻结环路停在偏移处、均衡器从该相位游标起步):混合信号 0.49–1.78×,ADC 给定该 lane 收敛的 FFE 0.98–1.26×。不从该相位起步时量到的是
+  "没适应的接收机"(PAM4 32G −3/8 UI 1.5e-1 vs 1.7e-4)—— 记入 pitfalls。`cairn/多lane建模.md` §8。
+- **发现** → ROADMAP **P1 #21**:时域 ADC 收端的 DFE 不起作用(FFE 从不计 DFE 的 MMSE 起步,联合 LMS 停在 DFE ≈ 0);DFE 感知起点下 224G 106 GBd
+  2.29e-4 → 5.2e-6,另两个带 DFE 的预设误码 → 0。未修(会动全部 ADC 时域结果)。
+- 验证:本地全量 1086 passed / 1 skipped(1074 → 1086,+10 `test_skew.py`、+2 示例参数化);指纹 846 值逐位不变;ruff、Cython(skew / analysis 包 /
+  cascade / statistical)通过;`HALO_NO_JIT=1` 下铁律 3 测试通过;示例 45 全尺寸 24 s,`derived` 95 条引用成立。
+- 上一条(#79)于 2026-10-13 合入。
+
 ## 2026-10-13 · 串扰进配置;准同步 lane(feat/xtalk-config,ROADMAP P3 #9b)
 
 - 建:`LinkConfig.crosstalk`(bank + 逐个 `AggressorConfig`,可从 Touchstone 取耦合),时域 / 流式 / 统计 / COM 从它建 aggressor;显式入参替换并警告;
