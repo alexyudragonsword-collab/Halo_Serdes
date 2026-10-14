@@ -545,6 +545,68 @@ def tx_noise_covariance(tx_pipe, h: np.ndarray, dt: float, osr: int,
     return tx_pipe.noise_rms ** 2 * acf[lag]
 
 
+def tx_jitter_sigma_binned(cfg: LinkConfig, tx_pipe, h: np.ndarray, osr: int,
+                           neighbours: tuple[int, ...] = _BINNED_NEIGHBOURS,
+                           n_pre: int = 24, n_post: int = 64) -> np.ndarray | None:
+    """Slicer noise [V] of the transmitter's white edge jitter (``tx.clock.rj_ui``)
+    per level and per pattern of the symbols at ``neighbours``, as
+    ``slicer_sigma_binned`` lays them out; None without it.
+
+    Each edge moves on its own: edge ``k`` displaced by ``eps_k`` changes the
+    waveform by ``-(b_k - b_(k-1)) eps_k`` times the impulse response of
+    everything after the DAC (``h``: driver pole, channel, receiver, FFE), so
+    the sample sees ``sum_k (b_k - b_(k-1)) eps_k h(t - kT)``. That is not a
+    shift of the sampling instant -- a common shift has the cross terms
+    ``-h_k h_(k+1)``, which nearly cancel it behind a lossy channel -- and it
+    follows the transitions: zero across a run, largest on a full-swing step
+    next to the symbol sampled. So the two edges of that symbol are fixed by
+    the binned neighbours and only the others averaged, which leaves each
+    bin close to Gaussian (one variance over all patterns read 5x
+    optimistic against the time engine, ROADMAP P2 #25). ``b`` are the
+    transmitter's levels after its PR filter and FFE.
+    """
+    rj = cfg.tx.clock.rj_ui
+    if rj <= 0.0:
+        return None
+    p = pulse_from_impulse(Waveform(h, cfg.dt), osr).y
+    pk = int(np.argmax(np.abs(p)))
+    # edge n + m reaches symbol n's sample at pk - m UI; a displacement of
+    # eps = rj UI = rj osr dt scales the per-sample impulse by rj osr
+    ms = np.arange(-n_pre, n_post + 2)
+    idx = pk - ms * osr
+    ok = (idx >= 0) & (idx < h.size)
+    g = np.zeros(ms.size)
+    g[ok] = h[idx[ok]] * rj * osr
+    # the transmitter's per-UI response: b_n = sum_j t_j a_(n-j), and the
+    # step at edge n + m is sum_c d_(m+c) a_(n-c) with d_j = t_j - t_(j-1)
+    span = 16
+    imp = np.zeros(2 * span + 1)
+    imp[span] = 1.0
+    t = tx_pipe.ffe(tx_pipe.pr_filter(imp))
+    d = np.diff(np.concatenate([[0.0], t, [0.0]]))      # d[i] is d_j for j = i - span
+    lv = np.asarray(tx_pipe.levels(np.arange(2 ** cfg.bits_per_symbol)), dtype=np.float64)
+    mu, var_a = float(lv.mean()), float(lv.var())
+    offs = (0,) + tuple(neighbours)                      # the symbols each bin fixes
+
+    def d_at(j: np.ndarray) -> np.ndarray:
+        i = j + span
+        out = np.zeros(j.shape)
+        inside = (i >= 0) & (i < d.size)
+        out[inside] = d[i[inside]]
+        return out
+
+    coef = np.stack([d_at(ms + c) for c in offs], axis=1)   # (edges, fixed symbols)
+    q = float(np.sum(d ** 2))
+    g2 = g * g
+    floor = var_a * float(np.sum(g2 * (q - np.sum(coef ** 2, axis=1))))
+    m_lv = lv.size
+    out = np.zeros((m_lv,) * len(offs))
+    for combo in np.ndindex(*out.shape):
+        a = lv[list(combo)] - mu
+        out[combo] = floor + float(np.sum(g2 * (coef @ a) ** 2))
+    return np.sqrt(out)
+
+
 def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> float:
     """sigma at the slicer of a white per-UI error of ``sigma_q`` added at the
     DAC output: sqrt(sum_k p_k^2) sigma_q with p_k the symbol response from the
@@ -700,6 +762,16 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     swing = cfg.tx.swing / 2.0  # symbol amplitude scale (levels_norm in [-1,1])
     levels_norm = _levels(cfg) / swing  # {-1,1} or {-1,-1/3,1/3,1}*rlm
+    # the transmitter's white edge jitter is noise that follows the
+    # transitions (tx_jitter_sigma_binned), binned like the optical noise;
+    # only the receiver's clock is left to smear the phase axis
+    tx_jit = tx_jitter_sigma_binned(cfg, tx_pipe, h_after_dac, osr)
+    if tx_jit is not None:
+        if pattern_sigma is not None:
+            pattern_sigma = np.sqrt(pattern_sigma ** 2 + tx_jit ** 2)
+        else:
+            base = np.zeros(levels_norm.size) if level_sigma is None else level_sigma
+            pattern_sigma = np.sqrt(base[:, None, None] ** 2 + tx_jit ** 2)
 
     peak = int(np.argmax(np.abs(pulse.y)))
     pr_active = cfg.pr.active
@@ -742,6 +814,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     span = float(np.abs(pulse.y).max()) * swing * 2.5 + 8 * noise_sigma + 1e-6
     if level_sigma is not None:
         span += 8 * float(level_sigma.max())
+    if tx_jit is not None:
+        span += 8 * float(tx_jit.max())
     if curve_mu is not None:
         span += float(np.abs(curve_mu).max()) + 8 * float(np.sqrt(curve_var.max()))
     v_centers = np.linspace(-span, span, v_bins)
@@ -1160,23 +1234,24 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
                         n_feedback: int = 0) -> tuple[float, LoopSolution | None]:
     """RMS sampling-instant jitter [UI] to smear the bathtub with, and the loop model behind it.
 
-    White clocks on both sides return their RJ in power sum and no model,
-    exactly as before profiles existed. A profile on either side (transmit
+    White clocks on both sides return the receiver's RJ and no model: the
+    transmitter's white jitter moves each edge on its own and reaches the
+    slicer as noise that follows the transitions (``tx_jitter_sigma_binned``),
+    not as a shift of the sampling instant. A profile on either side (transmit
     or receiver -- the loop tracks their difference, so they are
     interchangeable here) is integrated through the linearised CDR of the
     configured architecture (bang-bang for mixed-signal, Mueller-Muller for
     ADC, matching which kernel the time engine would run) from ``1/(N UI)``,
     the lowest offset a run of ``N`` symbols resolves, so both engines look at
-    the same band. The white-kind RJ terms either clock carries on top ride
-    through the same error response.
+    the same band. The receiver clock's white-kind RJ on top rides through
+    the same error response.
     """
     from ..tx.clock import ClockProfile
 
     clocks = (cfg.tx.clock, cfg.rx.clock)
     if all(c.kind != "profile" for c in clocks):
-        # white on both sides: the historical RJ-only smear, the two clocks'
-        # independent Gaussians adding in power
-        return float(np.hypot(cfg.tx.clock.rj_ui, cfg.rx.clock.rj_ui)), None
+        # white on both sides: the receiver's RJ smears the sampling instant
+        return float(cfg.rx.clock.rj_ui), None
     # The loop tracks the *difference* between the two clocks, so both ride
     # through the same error response and their untracked powers add.
     profs = [ClockProfile.load(c.file, f0_hz=c.f0_hz) if c.kind == "profile" else None
@@ -1186,7 +1261,7 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
     f_lo = cfg.symbol_rate / max(int(cfg.sim.n_symbols), 2)
     f_nyq = cfg.symbol_rate / 2.0
     f_white = np.linspace(f_lo, f_nyq, 2048)
-    rj_white = float(np.hypot(cfg.tx.clock.rj_ui, cfg.rx.clock.rj_ui))
+    rj_white = float(cfg.rx.clock.rj_ui)       # the transmitter's: tx_jitter_sigma_binned
 
     def untracked(err_fn) -> float:
         var = sum((p.untracked_sigma_s(err_fn, f_lo) / ui) ** 2 for p in profs if p is not None)
