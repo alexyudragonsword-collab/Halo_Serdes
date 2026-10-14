@@ -14,7 +14,7 @@
   时域 40 万符号稳态 0.0036 + 未跟踪 0.0033。指纹只动这 4 个值;时域逐位不变。
 - 新登记 ROADMAP P2 #25(白时钟发端边沿抖动过信道)、#26(MM 定时函数见顶处失锁、模型不报)。`cairn/DSP发端与PR.md` §25、
   `docs/clock_profile.md`、pitfalls 两条 + 两处更正、invariants 铁律 3 补一条。
-- 验证:ruff、Cython(linear / statistical)通过;`derived` 96 条成立;本地全量运行中(结果补在下一次提交)。
+- 验证:本地全量 1095 passed / 1 skipped(+1 `test_mm_noise_is_what_a_slow_loop_integrates`,112 GBd 测试 1 → 3 个 kp_shift);ruff、Cython(linear / statistical)通过;`derived` 96 条成立。
 - 上一条(#83)于 2026-10-14 合入。
 
 ## 2026-10-14 · 统计单跑的 ADC 代用 FFE 就是时域起点(fix/standin-ffe,ROADMAP P2 #23)
