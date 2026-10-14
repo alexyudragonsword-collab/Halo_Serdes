@@ -163,7 +163,7 @@ at the same part of the profile. The two detectors differ only in `k_pd` and
 | detector | gain | noise | how |
 |---|---|---|---|
 | bang-bang (mixed-signal) | `rho sqrt(2/pi) / sigma_e`, `sigma_e` = jitter at its input | `rho - rho^2/3` per update | fixed point on `sigma_e^2 = untracked^2 + self^2 + edge^2`; `edge` is AWGN + ISI at the edge sample over the edge slope, read off the pre-DFE pulse at the lock point |
-| Mueller-Muller (ADC) | mean slope of `x (sign x+ - sign x-)` | its variance, over `n_lanes` | seeded Monte-Carlo over random symbols on the pulse's cursor set at the lock point |
+| Mueller-Muller (ADC) | mean slope of `x (sign x+ - sign x-)` | its density at low frequency, over `n_lanes`; a short repeating pattern's data share as lines at multiples of its repetition rate | seeded Monte-Carlo over random symbols on the pulse's cursor set at the lock point; on equalised samples `x` is the slicer input -- the DFE's (and a PR target's) postcursors taken out at their lock-point values, the lock at the peak |
 
 Both read the pulse *at the lock point*, not at its peak: an NRZ pulse through
 a short channel is a 1-UI plateau whose argmax is its leading corner, and the
@@ -177,18 +177,50 @@ measurements of the recovered clock minus the Tx clock, mean removed):
 |---|---|---|
 | 16 GBd NRZ, lossy + AWGN, 5 MHz-corner 1/f² at 0.11 UI | 4 / 6 / 8 | 0.97 / 0.99 / 1.00 |
 | same, clean channel, no noise | 4 / 6 / 8 | 0.82 / 0.95 / 1.08 |
-| 112 GBd PAM4 ADC, SSPLL scaled to 200 fs | 5 / 7 / 9 | 0.82 / 1.03 / 0.80 |
+| 112 GBd PAM4 ADC, SSPLL scaled to 200 fs | 5 / 7 / 9 | 1.02 / 1.23 / 0.96 |
 
-(The ADC row is example 31's printout, 2026-10-13 full-size rerun after
-ROADMAP P1 #21 engaged the receiver's DFE; it read 0.95 / 1.22 / 0.92 on the
-2026-10-08 rerun and 0.96 / 0.96 / 0.73 before that.) The MM figure scatters
-around the model on that preset's loop (`ki_shift 15` with a tiny detector
-gain makes it integrator-dominated and underdamped). With the DFE idle it
-over-read by up to 22 % at mid gain and under-read at low; with it engaged
-the model is within 7 % at mid gain (kp_shift 6-8) and over-reads by 26-39 %
-at both ends (kp_shift 4 and 9, ROADMAP P2 #24); the bang-bang figure on a quiet clock is limited by the limit
-cycle not being white noise. On the cross-check link the two engines' BER
-agree to 1.3–1.5× with the profile clock (invariant #3 asks for 2×).
+(The ADC row is example 31's printout, 2026-10-14 full-size rerun after
+ROADMAP P2 #24: the model's detector reads the slicer input after the DFE, as
+the kernel does, and its noise is the density at low frequency that the loop
+integrates -- on PRBS13Q the receiver noise's alone, see below. Before it,
+with the DFE's postcursor left in the model's samples and the per-symbol
+variance taken for white noise, 0.82 / 1.03 / 0.80, 2026-10-13; 0.95 / 1.22 /
+0.92 on the 2026-10-08 rerun with the DFE idle, and 0.96 / 0.96 / 0.73 before
+that.) Over kp_shift 4-9 the model is 0.81-1.07x the measured on both PLL
+profiles, lowest at mid gain where the preset's loop (`ki_shift 15` with a
+tiny detector gain: integrator-dominated, underdamped) peaks. Measured with a
+frozen loop the detector's gain is 0.0276 V/UI, the model's 0.032; with the
+DFE's postcursor left in the model's samples it was 0.0195, and the CDR error
+26-39 % high at both ends of the sweep.
+
+**The Mueller-Muller detector's noise is not white.** Summed over a block,
+`x[n] (sign x[n+1] - sign x[n-1])` is `x[n] sign x[n+1] - x[n+1] sign x[n]` up
+to the two end terms: neighbours' main cursors cancel, up to the difference
+of their magnitudes on PAM4, and what a loop far slower than the symbol rate
+integrates is a fifth of the per-symbol variance on both links measured.
+Taken as white, the model read the self-noise 2-3x high against the kernel on
+random symbols. And the data's share is a function of the pattern: PRBS13Q
+repeats every 8191 symbols, so it sits on lines at multiples of 13.7 MHz at
+112 GBd -- above the loop -- and the kernel's self-noise on example 31's link
+is 0.0003-0.0008 UI against 0.0031-0.0102 UI on random symbols (kp_shift
+5-9; model 0.0008-0.0015 and 0.0037-0.0105). The model takes the period from
+`sim.pattern` (PRBS-N, up to the size where its lines crowd into a
+continuum; PRBS31 and PRQS10 count as random) and passes the lines through
+`|H|^2` one by one.
+
+Two things a linear model of this loop does not see. On the fingerprint's
+53 Gb/s link the detector's timing function (the kernel's, with a frozen
+loop, and the model's agree over +-3 samples) peaks just after the lock
+point, so the restoring force runs out half a sample late: on PRBS13Q the
+kernel holds, on random symbols it wanders off by 7.7 UI while the model
+reads 0.06 UI. And a slow loop takes long to settle: on that link at
+kp_shift 6 the time engine's error falls 0.0091 -> 0.0061 -> 0.0046 ->
+0.0036 UI over successive quarter-runs of 400k symbols (model 0.0039), so a
+short run reads its acquisition, not its tracking.
+
+The bang-bang figure on a quiet clock is limited by the limit cycle not being
+white noise. On the cross-check link the two engines' BER agree to 1.3–1.5×
+with the profile clock (invariant #3 asks for 2×).
 
 **What it cannot say.** A bang-bang loop moves at most `kp` per update on the
 half of updates that see a transition. A profile whose RMS phase *rate* inside
