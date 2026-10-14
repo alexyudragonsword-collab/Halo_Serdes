@@ -6,6 +6,23 @@
 
 ---
 
+## [未发布] — 统计单跑的 ADC 代用 FFE 就是时域起点(ROADMAP P2 #23)
+
+### 修复
+- `engine.cascade.initial_ffe_taps`(统计引擎单跑 ADC 收端的 FFE:示例 45、`analysis.skew`、应用的统计 study 与双引擎面板)是时域起点
+  求解的一份拷贝,在不含发端 FFE 的脉冲上解;224G 预设上与时域起点差 7.5 %、读高 21×。起点求解抽成 `timedomain.adc_start`,
+  时域引擎、`initial_ffe_taps`、`front_end_pulse` 与 `skew` 的锁定点共用;代用解与时域起点逐位相同,顺带用上 PR 目标与发端噪声协方差。
+
+### 变更(数会动)
+- 时域引擎逐位不变(指纹 860 值逐位相同)。统计单跑的 ADC 结果变:lane 冻结在偏移处统计 / 时域 14–25× → 0.9–1.5×。
+- 示例 45:ADC lane 锁定点 1.0e-3 → 4.8e-5,KP4 门限下窗口 0 → 0.435 UI(FFE 重解)/ 0.156 UI(沿用锁定点的)。
+- 测试:`test_standin_is_the_time_engines_start`(三个预设逐位比对);ADC 铁律 3 用例同时查代用解。
+
+### 结论(更正)
+- ROADMAP P2 #23 原写"时域 LMS 把 FFE 从起点挪得很远,代用解只是起点" —— 错:LMS 在 20 万符号里只动 0.2 %;差在代用解漏了发端 FFE。
+
+---
+
 ## [未发布] — 静态引擎的 FFE 把后光标留给 DFE(ROADMAP P2 #22)
 
 ### 修复

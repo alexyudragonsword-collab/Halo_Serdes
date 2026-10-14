@@ -15,14 +15,13 @@ keep it under a target; ``shared_cdr`` places the clock:
 
 Three links (the presets' receivers, receiver noise set so the curves stay
 above 1e-300). The ADC lane's FFE is the MMSE solution the time engine
-starts from, re-solved at each offset or held at the lock point's. That is a
-stand-in: re-solved it reads 14-25x above a time-domain lane held at the
-offset, whose LMS moves its FFE well past the start (given the FFE that lane
-converged to, the statistical engine reads 0.93-1.47x of it), so the ADC
-curve here is pessimistic and never reaches the KP4 threshold; ROADMAP P2 #23
-(cairn/多lane建模.md §8, where the time-domain cross-check is). Before
-2026-10-13 (P1 #21) the time-domain lane's DFE never engaged and the
-stand-in read 1.4-4.5x.
+starts from (and its LMS barely leaves), re-solved at each offset or held at
+the lock point's: re-solved it reads 0.9-1.5x of a time-domain lane held at
+the offset (cairn/多lane建模.md §8, where the time-domain cross-check is).
+Until 2026-10-14 the stand-in was a copy of that solve that left the Tx FFE
+out of the pulse and read 14-25x high, so this curve never reached the KP4
+threshold (ROADMAP P2 #23); before 2026-10-13 (P1 #21) the time-domain
+lane's DFE never engaged.
 
 Pass ``--quick`` for a smoke run (fewer phases).
 """

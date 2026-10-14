@@ -1056,15 +1056,16 @@ r.phase_ui, r.offsets_ui, r.ber, r.worst, r.mean
 c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch, at_ui=at))
 ```
 
-- 不是"读一次运行的浴盆":ADC 的浴盆沿用锁定点的 FFE(对时域 lane 自己收敛的 FFE 偏 1/4 UI 读高 21×,P1 #21 之前量的;
-  示例 45 用 MMSE 起点时 −1/4 / +1/4 UI 读高 13.0× / 4.4×),均衡后脉冲的最大样本也可能不是主光标。
+- 不是"读一次运行的浴盆":ADC 的浴盆沿用锁定点的 FFE(示例 45:−1/4 / +1/4 UI 读高 101.6× / 78.8×;对时域 lane 自己收敛的 FFE
+  偏 1/4 UI 读高 21× 是 P1 #21 之前量的),均衡后脉冲的最大样本也可能不是主光标。
   离开锁定点读统计结果用 `run_statistical(phase_ui=d)`。
 - 对时域(冻结环路停在偏移处,均衡器从那里的游标起步):混合信号 0.49–1.78×;ADC 给定时域 lane 在该偏移收敛的 FFE 时
-  0.93–1.47×(224G,1.5 mV,−1/4…+1/4 UI),用上面的 MMSE 起点代用 14–25× —— 时域的 LMS 把 FFE 从起点挪得很远,代用解只是
-  起点(ROADMAP P2 #23;P1 #21 让时域 ADC 收端的 DFE 起作用之前是 0.98–1.26× 与 1.4–4.5×)。
+  0.93–1.47×(224G,1.5 mV,−1/4…+1/4 UI),用上面的 MMSE 起点代用 0.9–1.5× —— 代用解就是时域引擎自己的起点
+  (`timedomain.adc_start`),LMS 几乎不离开它。2026-10-14 前代用解是一份漏了发端 FFE 的拷贝,14–25×(ROADMAP P2 #23)。
 - 不含:主 lane 跟踪抖动时从 lane 跟着走的动态部分、lane 间相关抖动(要多 lane 同时跑的时域内核;时钟抖动的平滑仍按 lane
   自己的环路算);各 lane 的串扰相位随 skew 变
   (要的话每条 lane 自己建 `cfg.crosstalk`,`shared_cdr` 收一组曲线)。
 - 示例 `examples/45_shared_cdr_skew.py`:三条链路的曲线、窗口、四条 lane 三种时钟放法;PAM4 32G 混合信号的 minmax 时钟
-  下最差 lane 是单条 lane 用自己环路时的 0.10(锁定点不在浴盆底);ADC 那条用的是代用 FFE,偏悲观、到不了 KP4 门限。
+  下最差 lane 是单条 lane 用自己环路时的 0.10(锁定点不在浴盆底);ADC 那条 FFE 跟着重解时 KP4 门限下窗口 0.435 UI,
+  沿用锁定点的 FFE 只有 0.156 UI。
   `cairn/多lane建模.md` §8。
