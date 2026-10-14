@@ -898,11 +898,18 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # optical noise; only the receiver's clock is left to smear the phase axis
     tx_jit_phi = None
     edge_jit = None
+    jit_span = 0.0
     pattern_base = pattern_sigma
     if cfg.tx.clock.rj_ui > 0.0:
         at_peak = peak - int(np.argmax(np.abs(pulse.y)))
         tx_jit_phi = [tx_edge_jitter(cfg, tx_pipe, h_after_dac, osr, offset=at_peak + int(off))
                       for off in phi_offsets]
+        # the voltage grid is sized on the UI around the pulse peak wherever
+        # the phase axis is centred, so a reading set from outside
+        # (phase_ui) lands on the same grid as the bathtub it is read from
+        around_peak = tx_jit_phi if at_peak == 0 else [
+            tx_edge_jitter(cfg, tx_pipe, h_after_dac, osr, offset=int(off)) for off in phi_offsets]
+        jit_span = float(max(t.sigma.max() for t in around_peak))
         if pattern_base is None:
             lv0 = np.zeros(levels_norm.size) if level_sigma is None else level_sigma
             pattern_base = np.broadcast_to(lv0[:, None, None], tx_jit_phi[0].sigma.shape)
@@ -911,8 +918,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     span = float(np.abs(pulse.y).max()) * swing * 2.5 + 8 * noise_sigma + 1e-6
     if level_sigma is not None:
         span += 8 * float(level_sigma.max())
-    if tx_jit_phi is not None:
-        span += 8 * float(max(t.sigma.max() for t in tx_jit_phi))
+    span += 8 * jit_span
     if curve_mu is not None:
         span += float(np.abs(curve_mu).max()) + 8 * float(np.sqrt(curve_var.max()))
     v_centers = np.linspace(-span, span, v_bins)

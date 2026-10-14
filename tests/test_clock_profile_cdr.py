@@ -281,12 +281,17 @@ def test_statistical_engine_warns_when_the_loop_would_slip(tmp_path, wander, los
         run_statistical(_lossy_link(wander, 6), channel=lossy_channel)
 
 
-def test_white_kind_keeps_its_rj_only_smear_and_no_loop_model():
+def test_white_kind_has_no_loop_model_and_smears_only_the_receivers_rj():
+    """A white clock gets no loop model. The transmitter's RJ moves each edge
+    on its own and comes in as noise (tests/test_tx_edge_jitter.py), so it
+    no longer smears the phase axis; the receiver's does."""
     cfg = dataclasses.replace(_clean_link("unused", 6),
                               tx=TxConfig(swing=1.0, clock=ClockConfig(rj_ui=0.01)))
     st = run_statistical(cfg)
-    assert st.extras["jitter_sigma_ui"] == 0.01
+    assert st.extras["jitter_sigma_ui"] == 0.0
     assert st.extras["clock_loop"] is None
+    st = run_statistical(dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, clock=ClockConfig(rj_ui=0.01))))
+    assert st.extras["jitter_sigma_ui"] == 0.01
 
 
 def test_tx_edge_offsets_replay_the_engines_draw(wander):

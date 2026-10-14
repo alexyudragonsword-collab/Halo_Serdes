@@ -278,10 +278,13 @@ def test_statistical_engine_warns_when_the_detector_is_noise_limited(tmp_path):
         run_statistical(cfg)
 
 
-def test_white_receiver_rj_adds_in_power_in_the_statistical_smear():
+def test_white_receiver_rj_smears_the_statistical_phase_axis():
+    """The receiver's white RJ moves the sampling instant and smears the
+    bathtub; the transmitter's moves each edge on its own and is noise
+    instead (ROADMAP P2 #25; until then the two added in power here)."""
     cfg = _clean_link(tx=ClockConfig(rj_ui=0.006), rx=ClockConfig(rj_ui=0.008))
     st = run_statistical(cfg)
-    assert st.extras["jitter_sigma_ui"] == pytest.approx(0.01)
+    assert st.extras["jitter_sigma_ui"] == pytest.approx(0.008)
     assert st.extras["clock_loop"] is None
     # and the kernel sampled with it: the residual carries the 0.008 UI on top of the hunting
     res = run_time_link(_clean_link(rx=ClockConfig(rj_ui=0.008)))
