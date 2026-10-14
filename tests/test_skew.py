@@ -185,7 +185,10 @@ def test_invariant3_mixed_signal_lane_off_its_lock(name, noise, offsets):
 
 def test_invariant3_adc_lane_with_the_ffe_it_converged_to():
     """Given the FFE the time-domain lane converged to at the offset, the
-    statistical engine sampling there reads its BER (cairn/多lane建模.md §8.2)."""
+    statistical engine sampling there reads its BER (cairn/多lane建模.md §8.2);
+    so does the statistical-only stand-in, the time engine's own start re-solved
+    at the offset (ROADMAP P2 #23: a copy that left the Tx FFE out read
+    14-25x high)."""
     from halo_serdes.channel import ChannelModel
 
     cfg = _preset("PAM4 224G ADC (106 GBd)", 0.0025)
@@ -196,6 +199,22 @@ def test_invariant3_adc_lane_with_the_ffe_it_converged_to():
         runs = _time_at_offset(cfg, ch, offsets)
         for d, t in zip(offsets, runs):
             assert t.ber.n_errors >= 100
-            s = run_statistical(cfg, channel=ch, ffe_taps=t.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre,
-                                phase_ui=d)
-            assert 0.5 < s.ber / t.ber.ber < 2.0, (d, s.ber, t.ber.ber)
+            for taps in (t.ffe_taps, initial_ffe_taps(cfg, ch, at_ui=d)):
+                s = run_statistical(cfg, channel=ch, ffe_taps=taps, ffe_pre=cfg.rx.ffe.n_pre,
+                                    phase_ui=d)
+                assert 0.5 < s.ber / t.ber.ber < 2.0, (d, s.ber, t.ber.ber)
+
+
+@pytest.mark.parametrize("name", ["PAM4 224G ADC (106 GBd)", "PAM4 deep-LR ADC (FFE+DFE8)",
+                                  "PAM4 100G/λ LPO (VCSEL + OM4)"])
+def test_standin_is_the_time_engines_start(name):
+    """``initial_ffe_taps`` is the FFE the time engine starts from, to the
+    bit: the 224G preset has a Tx FFE, the LPO one an optical front end."""
+    from halo_serdes.channel import ChannelModel
+
+    cfg = _preset(name, 0.0015, 4_000)
+    ch = ChannelModel.from_config(cfg)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        t = run_time_link(cfg, channel=ch)
+    assert np.array_equal(initial_ffe_taps(cfg, ch), np.asarray(t.extras["w_ffe0"]))
