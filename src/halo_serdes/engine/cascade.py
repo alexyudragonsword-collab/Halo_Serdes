@@ -162,21 +162,33 @@ def run_cascade(cfg: LinkConfig, statistical: bool = False,
     return out
 
 
-def front_end_pulse(cfg: LinkConfig, channel: ChannelModel | None = None):
-    """The pulse :func:`initial_ffe_taps` solves on: channel (both optical
-    stages, on an optical topology), CTLE and VGA, on the ``cfg.dt`` grid."""
-    from ..channel.response import pulse_from_impulse
-    from ..core.waveform import Waveform
+def _front_end_impulse(cfg: LinkConfig, channel: ChannelModel | None = None) -> np.ndarray:
+    """Channel (both optical stages, on an optical topology), CTLE and VGA,
+    on the ``cfg.dt`` grid: the time engine's front end before the Tx."""
     from .optical_stage import apply_front_end, split_impulses
 
     if channel is None:
         channel = ChannelModel.from_config(cfg)
     if getattr(channel, "optical", None) is not None:
         h1, h2 = split_impulses(cfg, channel)
-        h = np.convolve(h1, h2)
-    else:
-        h = apply_front_end(cfg, channel.response_set(cfg.dt).h.y)
-    return pulse_from_impulse(Waveform(h, cfg.dt), cfg.osr)
+        return np.convolve(h1, h2)
+    return apply_front_end(cfg, channel.response_set(cfg.dt).h.y)
+
+
+def adc_start_for(cfg: LinkConfig, channel: ChannelModel | None = None, peak_shift: int = 0):
+    """``timedomain.adc_start`` on the front end of ``cfg``: what the ADC
+    receiver equalises and where its loops start, without a time run."""
+    from ..tx.pipeline import TxPipeline
+    from .timedomain import adc_start
+
+    return adc_start(cfg, _front_end_impulse(cfg, channel), TxPipeline.from_config(cfg),
+                     peak_shift=peak_shift)
+
+
+def front_end_pulse(cfg: LinkConfig, channel: ChannelModel | None = None):
+    """The pulse the ADC receiver equalises: the front end's (channel, CTLE,
+    VGA) through the Tx FFE, on the ``cfg.dt`` grid -- ``adc_start``'s."""
+    return adc_start_for(cfg, channel).pulse
 
 
 def initial_ffe_taps(cfg: LinkConfig, channel: ChannelModel | None = None,
@@ -184,38 +196,22 @@ def initial_ffe_taps(cfg: LinkConfig, channel: ChannelModel | None = None,
     """The MMSE FFE the ADC time engine starts from, for a statistical-only run.
 
     The statistical engine takes the equaliser as given; on an ADC receiver
-    the time engine's own starting point (MMSE on the front-end pulse) is a
-    fair stand-in when no time run is available, which is how a sweep can
-    stay on the fast engine. None for a receiver without an FFE.
+    the time engine's own starting point is a fair stand-in when no time run
+    is available, which is how a sweep can stay on the fast engine: the
+    joint LMS barely leaves it (0.2 % on the 224G preset). It is the time
+    engine's own solve (``timedomain.adc_start``), not a copy: a copy that
+    left the Tx FFE out of the pulse read 14-25x high there (ROADMAP P2
+    #23). None for a receiver without an FFE.
 
     ``at_ui``: solve for a receiver that samples that far from the pulse
     peak (to the nearest sample) -- a lane whose sampling phase is set by
     another lane's clock adapts its FFE where it samples
     (``analysis.skew``).
     """
-    from ..dsp import channel_cursors, mmse_ffe
-
     fcfg = cfg.rx.ffe
     if cfg.rx.arch != "adc_dsp" or fcfg.n_pre + fcfg.n_post == 0:
         return None
-    osr = cfg.osr
-    pulse = front_end_pulse(cfg, channel)
-    peak = int(np.argmax(np.abs(pulse.y))) + int(np.round(at_ui * osr))
-    n_pre_c, n_post_c = fcfg.n_pre + 4, fcfg.n_post + 12
-    cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak)
-    n_taps = fcfg.n_pre + 1 + fcfg.n_post
-    from .statistical import adc_noise_sigma
-
-    # the time engine's own start (ROADMAP P1 #21): the DFE's postcursors
-    # left to it, the ADC's noise in the regulariser when there is a DFE --
-    # except under the precoded 1 + D composite slicer (timedomain)
-    pr = cfg.pr
-    composite = (pr.active and cfg.precode and len(pr.target) == 2 and pr.target[1] == 1.0
-                 and pr.adapt == "none")
-    n_dfe = 0 if composite else cfg.rx.dfe.n_taps
-    return mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
-                    noise_var=cfg.rx.noise_rms ** 2 + (adc_noise_sigma(cfg) ** 2 if n_dfe else 0.0),
-                    free_post=n_dfe)
+    return adc_start_for(cfg, channel, peak_shift=int(np.round(at_ui * cfg.osr))).w_ffe0
 
 
 def run_cascade_statistical(cfg: LinkConfig) -> CascadeResult | None:

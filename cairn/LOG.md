@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-14 · 统计单跑的 ADC 代用 FFE 就是时域起点(fix/standin-ffe,ROADMAP P2 #23)
+
+- **原判断更正**:ROADMAP 写"时域 LMS 把 FFE 从起点挪得很远、代用解只是起点" —— 错。时域 `w_ffe0` 与终点只差 0.2 %(20 万符号),
+  统计引擎读起点与读终点相同(4.84e-5);代用解 `initial_ffe_taps` 是起点求解的拷贝,在不含发端 FFE 的脉冲上解,差 7.5 %、读 1.03e-3。
+- 改:起点求解抽成 `timedomain.adc_start`,时域引擎 / `initial_ffe_taps` / `front_end_pulse` / skew 锁定点共用。时域指纹 860 值逐位不变;
+  六种 ADC 配置上代用解与时域起点逐位相同;lane 冻结在偏移处 14–25× → 0.9–1.5×。
+- 示例 45:ADC lane 锁定点 1.0e-3 → 4.8e-5,KP4 窗口 0.435 UI(FFE 重解)/ 0.156 UI(沿用)。应用的统计 study 与双引擎面板的 ADC 结果随之变。
+  pitfalls 加"代用的东西调同一个函数";`cairn/DSP发端与PR.md` §24、`多lane建模.md` §8 更正。
+- 验证:本地全量 1092 passed / 1 skipped(+3 `test_standin_is_the_time_engines_start`);ruff、Cython(timedomain / cascade / skew)通过;`derived` 96 条成立。
+- CI(2941172,含代码提交):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;测试矩阵(含 nojit)、examples、RTL lockstep、
+  pyinstaller 绿;PR 头 f8c1820(只改 LOG)上测试矩阵、examples、examples-full 全绿。
+- 上一条(#82)于 2026-10-14 合入。
+
 ## 2026-10-13 · 静态引擎的 FFE 把后光标留给 DFE(fix/static-dfe-start,ROADMAP P2 #22)
 
 - 改:`run_static_link` 的 FFE 原先连 DFE 的后光标一起压掉(DFE ≈ 0),改为 MMSE-DFE(`free_post = rx.dfe.n_taps`),与 P1 #21 的时域起点同一规则,

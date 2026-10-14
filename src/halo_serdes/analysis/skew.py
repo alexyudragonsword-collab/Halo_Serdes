@@ -13,9 +13,10 @@ each offset*. That is one statistical run per offset
 (``run_statistical(phase_ui=)``). The engine puts the DFE and the slicer
 levels at the phase it samples. The FFE it takes as given, so an ADC lane
 needs the FFE it adapts to at each offset (``lane_curve(ffe_taps=)``).
-Held at the lock point's instead, it read 21x high at a quarter UI on the
-224G preset (against the FFE a time-domain lane converged to there; measured
-before ROADMAP P1 #21 engaged the ADC receiver's DFE).
+Held at the lock point's instead, it reads 79-102x high a quarter UI off on
+the 224G preset at 1.5 mV (example 45; 21x against the FFE a time-domain lane
+converged to there, measured before ROADMAP P1 #21 engaged the ADC
+receiver's DFE).
 
 ``cairn/多lane建模.md`` §8 has the time-domain cross-check and its setup (a
 frozen loop held at the offset, started from the cursors there).
@@ -142,11 +143,10 @@ def _pre_ffe_lock_ui(cfg: LinkConfig, channel) -> float:
     if cfg.mm_pd_input == "ffe":
         return 0.0
     from ..cdr.linear import lock_offset_samples
-    from ..engine.cascade import front_end_pulse
+    from ..engine.cascade import adc_start_for
 
-    pulse = front_end_pulse(cfg, channel)
-    pk = int(np.argmax(np.abs(pulse.y)))
-    return lock_offset_samples(pulse.y, pk, cfg.osr, cfg.osr) / cfg.osr
+    st = adc_start_for(cfg, channel)
+    return lock_offset_samples(st.pulse.y, st.peak_rx, cfg.osr, cfg.osr) / cfg.osr
 
 
 def lane_curve(cfg: LinkConfig, channel=None, *, n_phases: int = 16,
@@ -161,11 +161,11 @@ def lane_curve(cfg: LinkConfig, channel=None, *, n_phases: int = 16,
     offset, or a function of the sampling phase (UI from the pre-FFE pulse
     peak) giving the FFE the lane adapts to there -- e.g. ``lambda at:
     engine.cascade.initial_ffe_taps(cfg, channel, at_ui=at)``, the MMSE FFE
-    the time engine starts from. Which FFE the lane's adaptation reaches is
-    the open question of ROADMAP P2 #23: that stand-in reads 14-25x above a
-    time-domain lane held at the offset on the 224G preset, whose LMS moves
-    the FFE well past its start; given the FFE that lane converged to, the
-    statistical engine reads 0.93-1.47x of it (cairn/多lane建模.md §8).
+    the time engine starts from, and its LMS barely leaves (0.2 % over 200k
+    symbols on the 224G preset): against a time-domain lane held at the
+    offset it reads 0.9-1.5x, as the FFE that lane converged to does
+    (cairn/多lane建模.md §8). Until 2026-10-14 that stand-in left the Tx FFE
+    out of the pulse and read 14-25x high (ROADMAP P2 #23).
     """
     from ..channel import ChannelModel
     from ..engine.statistical import run_statistical

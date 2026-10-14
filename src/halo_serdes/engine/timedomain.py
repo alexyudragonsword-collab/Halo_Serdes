@@ -15,6 +15,7 @@ same front half in Phase 4.
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -587,34 +588,35 @@ def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, 
             {"loop": fl, "record": rec})
 
 
-def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
-                  collect_eye: bool = False,
-                  collect_jitter: bool = False,
-                  tx_ami=None, rx_ami=None, xtalk=None,
-                  symbols: np.ndarray | None = None, progress=None) -> SimResult:
-    """ADC-based RX: light CTLE -> TI-ADC -> digital FFE/DFE -> MM-CDR.
+@dataclass(frozen=True)
+class AdcStart:
+    """Where the ADC receiver's loops start (:func:`adc_start`)."""
 
-    Primary metrics for this architecture are slicer-input SNR and SER
-    (post-EQ eye information is low); BER via the same checkers.
+    pulse: Waveform          # the pulse it equalises: the front end's, through the Tx FFE
+    peak_rx: int             # the sample its main cursor is read at, on ``pulse``
+    lead: int                # how far the Tx FFE moves the peak ahead of the front end's
+    cursors: np.ndarray      # ``pulse`` at the baud around ``peak_rx``
+    n_pre_c: int             # precursors in ``cursors``
+    target: tuple | None     # the PR target the FFE shapes to (None without PR)
+    w_ffe0: np.ndarray       # the FFE the LMS starts from
+
+
+def adc_start(cfg: LinkConfig, h: np.ndarray, tx_pipe: TxPipeline,
+              peak_shift: int = 0) -> AdcStart:
+    """The ADC receiver's start-up solve: the pulse, the PR target, the MMSE FFE.
+
+    ``h``: the front end's impulse response (channel, CTLE, VGA) before the
+    Tx; the Tx FFE is part of the pulse the receiver equalises. The time
+    engine starts from this, and ``engine.cascade.initial_ffe_taps`` hands it
+    to a statistical-only run: one function, so the stand-in is the start.
+    A copy of it that left the Tx FFE out read 14-25x high on the 224G
+    preset (ROADMAP P2 #23). ``peak_shift``: read the main cursor that many
+    samples from the pulse peak (a lane sampled off its own lock point,
+    ``analysis.skew``).
     """
-    from ..afe.adc import TiAdc
-    from ..cdr.adc_kernel import AdcRxRun
     from ..dsp import mmse_ffe, mmse_pr_target
-    from ..dsp.ffe import equalized_cursors
 
-    rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
-
-    # --- pattern, Tx (optionally 1/(1+D) precoded) ---
-    symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
-    line_symbols = _tx_symbols(cfg, symbols)
-    tx_pipe = TxPipeline.from_config(cfg)
-    h, rx_y, jitter_budget = _front_end(cfg, channel, tx_pipe, line_symbols, rng,
-                                        tx_ami, rx_ami, xtalk, collect_jitter)
-    n_wave = rx_y.size if isinstance(rx_y, np.ndarray) else rx_y.n_total
-
-    # --- pulse analysis: initial FFE (MMSE), DFE, slicer levels ---
-    # (the Tx FFE is part of the pulse the receiver equalises; see run_time_link)
     h_rx, lead = tx_pipe.receiver_view(h)
     pulse = pulse_from_impulse(Waveform(h_rx, cfg.dt), osr)
     peak_rx = int(np.argmax(np.abs(pulse.y)))
@@ -623,7 +625,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         # where the unshaped pulse peaks
         h_un, _ = tx_pipe.receiver_view(h, shaping=False)
         peak_rx = int(np.argmax(np.abs(pulse_from_impulse(Waveform(h_un, cfg.dt), osr).y)))
-    peak = peak_rx - lead
+    peak_rx += int(peak_shift)
     fcfg = cfg.rx.ffe
     n_pre_c, n_post_c = fcfg.n_pre + 4, fcfg.n_post + 12
     cursors = channel_cursors(pulse, osr, n_pre_c, n_post_c, peak_idx=peak_rx)
@@ -648,9 +650,6 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
                                 noise_cov=tx_cov)
         target = target + (0.0,) * (n_t - len(target))
     alpha = target[1] if pr.active else 0.0
-    beta = target[2] if (pr.active and n_t >= 3) else 0.0
-    gamma = target[3] if (pr.active and n_t == 4) else 0.0
-    n_dfe = cfg.rx.dfe.n_taps
     # With a DFE the start decides where the joint LMS ends: the cost is
     # flat along "the FFE leaves h1, the DFE cancels it", and neither moves
     # along it (a 3000x larger DFE step neither). An FFE that zeroes the
@@ -663,11 +662,50 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # and with the DFE engaged one test link went from 246 to 5779 errors.
     composite = (pr.active and cfg.precode and n_t == 2 and alpha == 1.0
                  and pr.adapt == "none")
-    dfe_start = 0 if composite else n_dfe
+    dfe_start = 0 if composite else cfg.rx.dfe.n_taps
     from .statistical import adc_noise_sigma
     w_ffe0 = mmse_ffe(cursors, n_pre_c, n_taps, fcfg.n_pre,
                       noise_var=cfg.rx.noise_rms ** 2 + (adc_noise_sigma(cfg) ** 2 if dfe_start else 0.0),
                       target=target, noise_cov=tx_cov, free_post=dfe_start)
+    return AdcStart(pulse, peak_rx, lead, cursors, n_pre_c, target, w_ffe0)
+
+
+def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
+                  collect_eye: bool = False,
+                  collect_jitter: bool = False,
+                  tx_ami=None, rx_ami=None, xtalk=None,
+                  symbols: np.ndarray | None = None, progress=None) -> SimResult:
+    """ADC-based RX: light CTLE -> TI-ADC -> digital FFE/DFE -> MM-CDR.
+
+    Primary metrics for this architecture are slicer-input SNR and SER
+    (post-EQ eye information is low); BER via the same checkers.
+    """
+    from ..afe.adc import TiAdc
+    from ..cdr.adc_kernel import AdcRxRun
+    from ..dsp.ffe import equalized_cursors
+
+    rng = np.random.default_rng(cfg.sim.seed)
+    osr = cfg.osr
+
+    # --- pattern, Tx (optionally 1/(1+D) precoded) ---
+    symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
+    line_symbols = _tx_symbols(cfg, symbols)
+    tx_pipe = TxPipeline.from_config(cfg)
+    h, rx_y, jitter_budget = _front_end(cfg, channel, tx_pipe, line_symbols, rng,
+                                        tx_ami, rx_ami, xtalk, collect_jitter)
+    n_wave = rx_y.size if isinstance(rx_y, np.ndarray) else rx_y.n_total
+
+    # --- pulse analysis: initial FFE (MMSE), DFE, slicer levels ---
+    st = adc_start(cfg, h, tx_pipe)
+    lead, cursors, n_pre_c, target, w_ffe0 = st.lead, st.cursors, st.n_pre_c, st.target, st.w_ffe0
+    peak = st.peak_rx - lead
+    fcfg = cfg.rx.ffe
+    pr = cfg.pr
+    n_t = len(pr.target)
+    alpha = target[1] if pr.active else 0.0
+    beta = target[2] if (pr.active and n_t >= 3) else 0.0
+    gamma = target[3] if (pr.active and n_t == 4) else 0.0
+    n_dfe = cfg.rx.dfe.n_taps
     eq_cursors, eq_pre = equalized_cursors(cursors, w_ffe0, n_pre_c, fcfg.n_pre)
     main = eq_cursors[eq_pre]
     # the DFE cancels what follows the target's controlled cursors
