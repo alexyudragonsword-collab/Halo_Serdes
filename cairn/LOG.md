@@ -14,6 +14,9 @@
 - 示例 24 / 31 / 44 / 45 统计列变(44 的准同步 0.72–0.86 → 0.72–0.91×),其余 42 个不变;指纹 25 个统计值变、时域不变。`cairn/DSP发端与PR.md` §26、
   pitfalls 两条(逐沿抖动不能线性化;`tools/fingerprint.py` 自己插 `src`)、invariants 铁律 3 补一条、`多lane建模.md` §7 / §8.3 更正。
 - 验证:本地全量 1099 passed / 1 skipped(+4 `tests/test_tx_edge_jitter.py`;两条白噪钟断言改为只含接收端 RJ);ruff、Cython(statistical)通过;`derived` 96 条成立。
+- CI(86df226,最后一个改代码的提交):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;测试矩阵(含 nojit)、examples、
+  RTL lockstep、pyinstaller、nuitka、nuitka-onefile 绿。5fa3f11(中途文档提交)的 nuitka-onefile 在 build 与冒烟都通过后 upload-artifact 时
+  runner 掉线,已在 PR 上说明、未重跑。
 - 上一条(#84)于 2026-10-14 合入。
 
 ## 2026-10-14 · MM 环路模型:检测器读 DFE 之后,噪声按低频谱密度(fix/mm-loop-model,ROADMAP P2 #24)
