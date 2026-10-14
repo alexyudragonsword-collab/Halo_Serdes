@@ -3,6 +3,22 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-14 · MM 环路模型:检测器读 DFE 之后,噪声按低频谱密度(fix/mm-loop-model,ROADMAP P2 #24)
+
+- 定位两处:模型的 MM 检测器读 DFE 之前的样本(内核读切片器输入;冻结环路实测增益 0.0276,旧模型 0.0195,扣锁定点 DFE 光标后 0.032);
+  噪声当白噪声用了逐符号方差 —— 块内相邻主光标抵消,慢环路积分的低频谱密度只有 1/5;PRBS13Q 的数据噪声是 13.7 MHz 起的谱线、在环路外,
+  时域自噪声比随机符号小一个量级。
+- 改:`mm_pd_statistics(n_feedback, n_lanes, period_levels) -> (k_pd, PdNoise)`(白底 + 码型谱线),`self_noise_ui` 逐条过 `|H|²`;统计引擎
+  `_pattern_period` 从 `sim.pattern` 取周期。示例 31 模型 / 实测 0.97–1.39× → 0.81–1.07×;112 GBd 测试 0.98 / 1.23 / 0.96(区间 0.85–1.3)。
+- 中途:只改增益的版本让指纹合成链路 σ 0.020 → 0.129 UI(该链路定时函数在锁定点后见顶,随机符号下内核失锁 7.7 UI);补上噪声后 0.0045 UI,
+  时域 40 万符号稳态 0.0036 + 未跟踪 0.0033。指纹只动这 4 个值;时域逐位不变。
+- 新登记 ROADMAP P2 #25(白时钟发端边沿抖动过信道)、#26(MM 定时函数见顶处失锁、模型不报)。`cairn/DSP发端与PR.md` §25、
+  `docs/clock_profile.md`、pitfalls 两条 + 两处更正、invariants 铁律 3 补一条。
+- 验证:本地全量 1095 passed / 1 skipped(+1 `test_mm_noise_is_what_a_slow_loop_integrates`,112 GBd 测试 1 → 3 个 kp_shift);ruff、Cython(linear / statistical)通过;`derived` 96 条成立。
+- CI(92eff58,含代码提交):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;测试矩阵(含 nojit)、examples、RTL lockstep、
+  pyinstaller 绿,nuitka / nuitka-onefile 绿(74 / 133 分钟,C 编译缓存没命中);PR 头 0443ffd(只改 LOG)上测试矩阵、examples、examples-full 全绿。
+- 上一条(#83)于 2026-10-14 合入。
+
 ## 2026-10-14 · 统计单跑的 ADC 代用 FFE 就是时域起点(fix/standin-ffe,ROADMAP P2 #23)
 
 - **原判断更正**:ROADMAP 写"时域 LMS 把 FFE 从起点挪得很远、代用解只是起点" —— 错。时域 `w_ffe0` 与终点只差 0.2 %(20 万符号),

@@ -47,6 +47,7 @@ from halo_serdes.cdr.linear import (
 )
 from halo_serdes.channel import ChannelModel
 from halo_serdes.config import ClockConfig, LinkConfig, TxConfig
+from halo_serdes.core.prbs import prbs_q_symbols
 from halo_serdes.config.schema import (
     CdrConfig, ChannelConfig, CtleConfig, DfeConfig, FfeConfig, RxConfig, SimConfig,
 )
@@ -153,19 +154,45 @@ def test_lock_offset_finds_the_plateau_middle_not_the_argmax():
 
 
 def test_mm_statistics_reduce_to_the_textbook_slope_on_an_open_eye():
-    """Clean NRZ pulse: the MM gain is (h(-T) - h(+T))' E|level| and the PD
-    variance is 2 E[x^2] (signs disagree half the time). With ISI it is not,
-    which is why the function exists -- but the clean limit has to hold."""
+    """Clean NRZ pulse: the MM gain is (h(-T) - h(+T))' E|level|. With ISI it
+    is not, which is why the function exists -- but the clean limit has to
+    hold."""
     osr = 16
     t = np.arange(-6 * osr, 6 * osr) / osr
     y = np.exp(-0.5 * (t / 0.55) ** 2)                # smooth pulse, open eye
     peak = int(np.argmax(y))
-    k_pd, var = mm_pd_statistics(y, osr, peak, np.array([-0.5, 0.5]), noise_sigma=0.0,
-                                 n_symbols=40_000)
+    k_pd, _ = mm_pd_statistics(y, osr, peak, np.array([-0.5, 0.5]), noise_sigma=0.0,
+                               n_symbols=40_000)
     slope = (y[peak + osr + 1] - y[peak + osr - 1] - y[peak - osr + 1] + y[peak - osr - 1]) / 2
     assert k_pd == pytest.approx(abs(slope) * osr * 0.5, rel=0.15)
-    e_x2 = 0.25 * float(np.sum(y[peak + np.arange(-5, 6) * osr] ** 2))
-    assert var == pytest.approx(2.0 * e_x2, rel=0.15)
+
+
+def test_mm_noise_is_what_a_slow_loop_integrates():
+    """No ISI at the baud points: x[n] (s[n+1] - s[n-1]) has per-symbol
+    variance 2 E[x^2], but in any sum over a block neighbours' main cursors
+    cancel up to their magnitudes, and a slow loop sees the noise's
+    2 sigma^2 plus, on PAM4, 2 h0^2 var|a| -- the inner and outer levels
+    not cancelling. On a repeating pattern the data's share is lines at
+    multiples of its repetition rate; the noise's stays white. The density
+    is a sum of 2 x 91 sample covariances, about +-4 % on this white a
+    sequence (-6 % on seed 0)."""
+    osr, sigma, n_lanes = 16, 0.01, 8
+    t = np.arange(-8 * osr, 8 * osr + 1) / osr
+    edge = np.isclose(np.abs(t), 1.0)                 # raised cosine, beta 0.5: zero at +-T
+    y = np.where(edge, 0.0, np.sinc(t) * np.cos(0.5 * np.pi * t) / np.where(edge, 1.0, 1.0 - t ** 2))
+    peak = int(np.argmax(y))
+    nrz, pam4 = np.array([-0.5, 0.5]), np.array([-0.5, -1 / 6, 1 / 6, 0.5])
+    _, noise = mm_pd_statistics(y, osr, peak, nrz, noise_sigma=sigma, n_lanes=n_lanes)
+    assert noise.line_power.size == 0
+    assert noise.white_var * n_lanes == pytest.approx(2 * sigma ** 2, rel=0.05)
+    _, noise = mm_pd_statistics(y, osr, peak, pam4, noise_sigma=sigma, n_lanes=n_lanes)
+    assert noise.white_var * n_lanes == pytest.approx(2 * np.var(np.abs(pam4)) + 2 * sigma ** 2, rel=0.1)
+    period = pam4[prbs_q_symbols(7)]
+    _, rep = mm_pd_statistics(y, osr, peak, pam4, noise_sigma=sigma, n_lanes=n_lanes,
+                              period_levels=period)
+    assert rep.white_var * n_lanes == pytest.approx(2 * sigma ** 2, rel=0.05)
+    assert rep.line_freq.size == 127 // 2 and rep.line_freq[0] == pytest.approx(1 / 127)
+    assert rep.line_power.sum() > 0
 
 
 # ----------------------------------------------------------- the profile
@@ -308,10 +335,15 @@ def test_jtol_runs_on_a_profile_clock(tmp_path):
 
 # ------------------------------------------------------------- ADC / MM
 
-def test_mm_loop_model_tracks_the_adc_kernel_on_the_112g_link(tmp_path):
+@pytest.mark.parametrize("kp_shift", [4, 7, 9])
+def test_mm_loop_model_tracks_the_adc_kernel_on_the_112g_link(tmp_path, kp_shift):
     """Mueller-Muller on the 112 GBd ADC link with a shipped PLL profile scaled
     to 200 fs: the model's sigma against the kernel's tracking error after the
-    acquisition transient. Measured 0.83-0.96 of the model at kp_shift 7."""
+    acquisition transient. Measured / model 0.98 / 1.23 / 0.96 at kp_shift
+    4 / 7 / 9. A model that left the DFE's postcursor in the samples the
+    detector reads and took its per-symbol variance for white noise read
+    0.75 / 1.03 / 0.80: its self-noise term, 105-318 fs here, is 7-17 fs on
+    PRBS13Q, whose data noise sits on lines above the loop (ROADMAP P2 #24)."""
     from halo_serdes_app.config_bridge import load_preset
 
     base = load_preset("PAM4 224G ADC (112 GBd stress)")
@@ -320,6 +352,7 @@ def test_mm_loop_model_tracks_the_adc_kernel_on_the_112g_link(tmp_path):
     path = prof.scaled_to_rms(200e-15, base.symbol_rate / n_sym).save(tmp_path / "sspll.yaml")
     cfg = dataclasses.replace(
         base, tx=dataclasses.replace(base.tx, clock=ClockConfig(kind="profile", file=str(path))),
+        rx=dataclasses.replace(base.rx, cdr=dataclasses.replace(base.rx.cdr, kp_shift=kp_shift)),
         sim=dataclasses.replace(base.sim, n_symbols=n_sym))
     cm = ChannelModel.from_config(cfg)
     res = run_time_link(cfg, channel=cm)
@@ -327,7 +360,7 @@ def test_mm_loop_model_tracks_the_adc_kernel_on_the_112g_link(tmp_path):
     sol = run_statistical(cfg, channel=cm, ffe_taps=res.ffe_taps,
                           ffe_pre=cfg.rx.ffe.n_pre).extras["clock_loop"]
     assert sol is not None and sol.bandwidth_hz < 5e6      # a slow, integrator-dominated loop
-    assert 0.6 < measured / (sol.sigma_ui * cfg.ui) < 1.5, (measured, sol)
+    assert 0.85 < measured / (sol.sigma_ui * cfg.ui) < 1.3, (measured, sol)
 
 
 # --------------------------------------------------------------- the GUI

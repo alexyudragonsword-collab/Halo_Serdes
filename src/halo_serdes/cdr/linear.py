@@ -52,16 +52,20 @@ The phase detectors
   the comparison too; the caller converts them to UI through the edge slope
   and passes them as ``sigma_edge_ui`` (the statistical engine reads both
   off its pulse response).
-* **Mueller-Muller** (ADC path) is linear in volts, and its gain and noise
-  are the mean slope and the variance of ``x[n] (sign x[n+1] - sign x[n-1])``
-  over random data on the pulse's cursor set at the lock point
-  (:func:`mm_pd_statistics`); the block average divides the variance by
-  ``n_lanes``.
+* **Mueller-Muller** (ADC path) is linear in volts, and its gain is the mean
+  slope of ``x[n] (sign x[n+1] - sign x[n-1])`` over random data on the
+  pulse's cursor set at the lock point (:func:`mm_pd_statistics`). Its noise
+  is not white: neighbouring outputs share their main cursors with opposite
+  signs, and what a loop far slower than the symbol rate integrates is the
+  output's density at low frequency, a fifth of its per-symbol variance on
+  the links measured -- and on a short repeating pattern not even that,
+  only lines at multiples of the pattern's repetition rate
+  (:class:`PdNoise`).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 import numpy as np
@@ -144,20 +148,45 @@ def bandwidth_hz(loop: LoopParams, k_pd: float) -> float:
     return float(f[hit[0]]) if hit.size else float(loop.f_update / 2.0)
 
 
-def self_noise_ui(loop: LoopParams, k_pd: float, pd_noise_var: float) -> float:
+@dataclass(frozen=True)
+class PdNoise:
+    """A phase detector's noise ``q`` as the loop sees it, per update.
+
+    ``white_var`` is a flat density [PD units^2 per update]; ``line_freq``
+    (fractions of ``f_update`` in (0, 1/2]) and ``line_power`` (one-sided
+    [PD units^2]) are the lines a repeating pattern puts on top of it. A loop
+    follows a line only as far as ``|H|`` reaches it, so a pattern that
+    repeats faster than the loop's bandwidth adds nothing a loop can see,
+    however large its per-symbol variance.
+    """
+
+    white_var: float
+    line_freq: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    line_power: np.ndarray = field(default_factory=lambda: np.zeros(0))
+
+
+def self_noise_ui(loop: LoopParams, k_pd: float, pd_noise: float | PdNoise) -> float:
     """RMS phase [UI] the loop acquires by following its own detector noise.
 
-    White ``q`` of variance ``pd_noise_var`` per update, through ``H / k_pd``:
+    White ``q`` of variance ``var`` per update, through ``H / k_pd``:
     ``sigma^2 = var / k_pd^2 * mean |H|^2`` over the loop's band -- the
     discrete-time noise-bandwidth integral, done on a log grid because |H|^2
-    is a low-pass occupying a sliver of the band.
+    is a low-pass occupying a sliver of the band. A :class:`PdNoise` adds
+    its lines, each through ``|H|^2 / k_pd^2`` at its own frequency. A bare
+    float is the white variance.
     """
-    if pd_noise_var <= 0 or k_pd <= 0:
+    noise = pd_noise if isinstance(pd_noise, PdNoise) else PdNoise(float(pd_noise))
+    if k_pd <= 0:
         return 0.0
-    f = _grid(loop)
-    h2 = tracking_response(f, loop, k_pd) ** 2
-    mean_h2 = float(_trapezoid(h2, f) / (loop.f_update / 2.0))
-    return float(np.sqrt(pd_noise_var * mean_h2) / k_pd)
+    var = 0.0
+    if noise.white_var > 0:
+        f = _grid(loop)
+        h2 = tracking_response(f, loop, k_pd) ** 2
+        var += noise.white_var * float(_trapezoid(h2, f) / (loop.f_update / 2.0))
+    if noise.line_power.size:
+        h = tracking_response(np.asarray(noise.line_freq) * loop.f_update, loop, k_pd)
+        var += float(np.sum(h ** 2 * noise.line_power))
+    return float(np.sqrt(var) / k_pd)
 
 
 def bb_pd_gain(sigma_e_ui: float, rho: float = 0.5) -> float:
@@ -212,12 +241,12 @@ def bb_loop_fixed_point(loop: LoopParams,
                         sigma_self_ui=float(sig_s), bandwidth_hz=bandwidth_hz(loop, k_pd))
 
 
-def mm_loop_solution(loop: LoopParams, k_pd: float, pd_noise_var: float,
+def mm_loop_solution(loop: LoopParams, k_pd: float, pd_noise: float | PdNoise,
                      untracked_ui: Callable[[Callable[[np.ndarray], np.ndarray]], float]
                      ) -> LoopSolution:
     """Operating point of a Mueller-Muller loop: linear, so no iteration."""
     sig_u = untracked_ui(lambda f: error_response(f, loop, k_pd))
-    sig_s = self_noise_ui(loop, k_pd, pd_noise_var)
+    sig_s = self_noise_ui(loop, k_pd, pd_noise)
     return LoopSolution(k_pd=float(k_pd), sigma_untracked_ui=float(sig_u),
                         sigma_self_ui=float(sig_s), bandwidth_hz=bandwidth_hz(loop, k_pd))
 
@@ -251,25 +280,60 @@ def lock_offset_samples(pulse_y: np.ndarray, peak_idx: int, osr: int, half_span:
 
 
 def mm_pd_statistics(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.ndarray,
-                     noise_sigma: float, n_symbols: int = 60_000, n_pre: int = 24,
-                     n_post: int = 64, seed: int = 0) -> tuple[float, float]:
-    """Mueller-Muller PD gain [V/UI] and per-symbol output variance [V^2] at lock.
+                     noise_sigma: float, n_symbols: int = 1 << 17, n_pre: int = 24,
+                     n_post: int = 64, seed: int = 0, n_feedback: int = 0, n_lanes: int = 1,
+                     period_levels: np.ndarray | None = None) -> tuple[float, PdNoise]:
+    """Mueller-Muller PD gain [V/UI] at lock and its noise per loop update.
 
     ``pd = x[n] (sign x[n+1] - sign x[n-1])`` on the raw samples the PD sees.
-    With an open eye this is the textbook ``(h(-T) - h(+T)) E|level|`` slope;
-    with the heavy ISI of a pre-FFE 112 GBd sample it is not even close -- the
-    sign of a neighbour correlates with every symbol in its own ISI, and the
-    first closed form tried here (slope at the peak times E|level|) was 3.7x
-    the measured gain, its variance ``2 E[x^2]`` 2.3x the measured. So the two
-    expectations are taken over random symbols on the pulse's baud-spaced
-    cursor set at the lock point (:func:`lock_offset_samples`), plus AWGN: a
-    seeded Monte-Carlo over ``n_symbols`` symbols, repeatable to the bit,
-    accurate to about a percent, and a few milliseconds of numpy. Validated
-    against the received waveform of the PAM4 112G preset: slope 0.0144 vs
-    0.0148 V/UI, variance 0.00322 vs 0.0032 V^2.
+    With an open eye the gain is the textbook ``(h(-T) - h(+T)) E|level|``
+    slope; with the heavy ISI of a pre-FFE 112 GBd sample it is not even
+    close -- the sign of a neighbour correlates with every symbol in its own
+    ISI, and the first closed form tried here (slope at the peak times
+    E|level|) was 3.7x the measured gain. So the expectations are taken over
+    random symbols on the pulse's baud-spaced cursor set at the lock point
+    (:func:`lock_offset_samples`), plus AWGN: a seeded Monte-Carlo, repeatable
+    to the bit and a fifth of a second of numpy. Validated against the
+    received waveform of the PAM4 112G preset: slope 0.0144 vs 0.0148 V/UI.
+
+    ``n_feedback``: the detector reads samples from which decision feedback
+    has taken that many postcursors -- an ADC receiver's DFE (and a PR
+    target's controlled cursors before it), the kernel's slicer input. The
+    feedback is the lock point's postcursors, fixed while the phase moves (the
+    taps adapt far slower than the loop), and the loop locks at the pulse
+    peak: what is left there has no first postcursor to balance its first
+    precursor against. Taking the samples with the DFE's postcursor still in
+    them read the gain 1.41x low on example 31's 112 GBd link (ROADMAP P2
+    #24); with it, 1.17x high (0.032 vs 0.0276 V/UI measured with a frozen
+    loop), and its timing function follows the kernel's over +-3 samples on
+    the fingerprint's 53 Gb/s link.
+
+    The noise: a loop updating every ``n_lanes`` symbols and closing far below
+    that rate integrates the output's density at low frequency, not its
+    per-symbol variance. The two differ by 5x here, because the sum of
+    ``pd`` over a block is, up to its ends, the sum of
+    ``x[n] sign x[n+1] - x[n+1] sign x[n]``: neighbours' main cursors cancel
+    and what is left is ISI and noise. Taking the variance as white read the
+    self-noise 2-3x high against the kernel on random symbols. The noise splits
+    in two:
+
+    * the receiver's noise, white, and
+    * the data's, which a repeating pattern (``period_levels``: one period
+      of the line levels, as the transmitter sends them) concentrates on lines
+      at multiples of its repetition rate. On PRBS13Q at 112 GBd the first
+      sits at 13.7 MHz, above the loop, and the kernel's self-noise is a
+      tenth of the random-data figure. Without a period (PRBS31, a pattern
+      too long to matter) the data's share is random data's density.
+
+    The cursor and noise are the samples as given: on equalised samples the
+    FFE's gain on the receiver's and the ADC's noise is not applied (2.5 %
+    on that gain).
     """
     y = np.asarray(pulse_y, dtype=np.float64)
-    c = peak_idx + int(round(lock_offset_samples(y, peak_idx, osr, osr)))
+    if n_feedback > 0:
+        c = peak_idx
+    else:
+        c = peak_idx + int(round(lock_offset_samples(y, peak_idx, osr, osr)))
     ks = np.arange(-n_pre, n_post + 1)
 
     def cursors(shift: int) -> np.ndarray:
@@ -279,25 +343,82 @@ def mm_pd_statistics(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.
         out[ok] = y[idx[ok]]
         return out
 
+    # decision feedback: the lock point's postcursors 1..n_feedback, fixed
+    fb = np.zeros(ks.size)
+    if n_feedback > 0:
+        fb[n_pre + 1: n_pre + 1 + n_feedback] = cursors(0)[n_pre + 1: n_pre + 1 + n_feedback]
+
     rng = np.random.default_rng(seed)
     levels_v = np.asarray(levels_v, dtype=np.float64)
-    pad = n_pre + n_post + 4
-    lv = levels_v[rng.integers(0, levels_v.size, size=n_symbols + pad)]
-    t = np.arange(n_symbols) + n_post + 2
-    # x[t] = sum_k cursor_k * level[t - k]: a sliding window over the symbols
-    win = np.stack([lv[t - k] for k in ks], axis=1)          # (n_symbols, n_cursors)
-    noise = rng.normal(scale=noise_sigma, size=n_symbols) if noise_sigma > 0 else 0.0
+    # x[t] = sum_k cursor_k * level[t - k]: lv carries n_post symbols of
+    # history and n_pre of lookahead around the n_symbols that are sampled
+    lv = levels_v[rng.integers(0, levels_v.size, size=n_symbols + ks.size - 1)]
+    noise = rng.normal(scale=noise_sigma, size=n_symbols) if noise_sigma > 0 else np.zeros(n_symbols)
 
-    def pd_mean_var(shift: int) -> tuple[float, float]:
-        x = win @ cursors(shift) + noise
-        pd = x[1:-1] * (np.sign(x[2:]) - np.sign(x[:-2]))
-        return float(pd.mean()), float(pd.var())
+    def samples(levels: np.ndarray, shift: int) -> np.ndarray:
+        return np.convolve(levels, cursors(shift) - fb, mode="valid")
 
-    m_plus, _ = pd_mean_var(+1)
-    m_minus, _ = pd_mean_var(-1)
-    _, var0 = pd_mean_var(0)
-    k_pd = abs(m_plus - m_minus) / 2.0 * osr
-    return k_pd, var0
+    def pd_of(x: np.ndarray) -> np.ndarray:
+        return x[1:-1] * (np.sign(x[2:]) - np.sign(x[:-2]))
+
+    k_pd = abs(pd_of(samples(lv, +1) + noise).mean()
+               - pd_of(samples(lv, -1) + noise).mean()) / 2.0 * osr
+
+    clean = samples(lv, 0)
+    noisy = clean + noise
+    span = ks.size + 2               # pairs further apart share no symbol
+    noise_s0 = _low_frequency_density(_paired(noisy) - _paired(clean), span)
+    if period_levels is None:
+        return k_pd, PdNoise(_low_frequency_density(_paired(noisy), span) / n_lanes)
+    return k_pd, PdNoise(noise_s0 / n_lanes,
+                         *_pattern_lines(np.asarray(period_levels, dtype=np.float64),
+                                         cursors(0) - fb, n_pre, n_post, n_lanes))
+
+
+def _paired(x: np.ndarray) -> np.ndarray:
+    """``x[n] sign x[n+1] - x[n+1] sign x[n]``: the MM output with its
+    neighbours' cancelling main cursors taken out. Its sums over a block
+    equal ``pd``'s up to the two end terms, so its density at low frequency
+    is ``pd``'s, from a far smaller variance."""
+    s = np.sign(x)
+    return x[:-1] * s[1:] - x[1:] * s[:-1]
+
+
+def _low_frequency_density(g: np.ndarray, span: int) -> float:
+    """Two-sided density at zero frequency [units^2 per sample] of a sequence
+    whose autocovariance ends at lag ``span``: the covariances summed."""
+    g = g - g.mean()
+    n = g.size
+    spec = np.fft.rfft(g, 2 * n)
+    acov = np.fft.irfft(np.abs(spec) ** 2)[: span + 1] / n
+    return float(max(acov[0] + 2.0 * acov[1:].sum(), 0.0))
+
+
+def _pattern_lines(period_levels: np.ndarray, cursor_set: np.ndarray, n_pre: int, n_post: int,
+                   n_lanes: int) -> tuple[np.ndarray, np.ndarray]:
+    """Lines of the block-averaged noiseless MM output on a repeating pattern.
+
+    The pattern is repeated until a whole number of blocks covers a whole
+    number of periods; over that the update sequence is periodic and its DFT
+    is the exact line spectrum, aliasing of the block average included.
+    """
+    per = period_levels.size
+    reps = n_lanes // np.gcd(per, n_lanes)
+    lv = np.tile(period_levels, reps)
+    n = lv.size
+    # circular: the history before sample 0 is the end of the pattern
+    ext = np.concatenate([lv[n - n_post:], lv, lv[:n_pre]])
+    x = np.convolve(ext, cursor_set, mode="valid")
+    s = np.sign(x)
+    pd = x * (np.roll(s, -1) - np.roll(s, 1))
+    u = pd.reshape(-1, n_lanes).mean(axis=1)
+    m = u.size
+    spec = np.fft.rfft(u - u.mean())
+    freq = np.arange(spec.size) / m
+    power = 2.0 * np.abs(spec) ** 2 / m ** 2
+    if m % 2 == 0:
+        power[-1] /= 2.0                 # the Nyquist bin is its own mirror
+    return freq[1:], power[1:]
 
 
 def _trapezoid(y: np.ndarray, x: np.ndarray) -> float:

@@ -83,10 +83,18 @@ Non-LTI approximations (each cross-checked against the time engine):
   rides through the same error response, since the loop tracks the
   difference of the two clocks; on the bang-bang loop that also means the
   bandwidth shrinks with the *total* input, so two clocks' residues do not
-  simply add there (they do on the linear Mueller-Muller loop). A loop
+  simply add there (they do on the linear Mueller-Muller loop). The
+  Mueller-Muller detector on equalised samples reads the slicer input, the
+  DFE's lock-point postcursors taken out; its noise is the density at low
+  frequency, white for the receiver's share and, for a pattern that repeats
+  (``sim.pattern`` PRBS-N short enough), lines at multiples of its
+  repetition rate for the data's -- so the self-noise follows the pattern
+  the time engine runs, a tenth on PRBS13Q of what random data gives. A loop
   driven past its slew limit slips cycles, as does a bang-bang loop whose
   detector sees more than ~0.1 UI of phase error; neither is in a linear
-  model and both raise a warning. The white kind keeps its RJ-only smear
+  model and both raise a warning. A Mueller-Muller timing function that
+  peaks just past the lock point loses lock on random data with no warning
+  (ROADMAP P2 #26). The white kind keeps its RJ-only smear
   (no CDR self-noise), which is also what keeps it byte-identical to the
   pre-profile engine;
 - crosstalk: aggressor cursor sets convolved in as independent stationary
@@ -140,7 +148,7 @@ Non-LTI approximations (each cross-checked against the time engine):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -157,7 +165,7 @@ from ..core.sampler import baud_samples, upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
 from ..tx.pipeline import TxPipeline
-from .static_link import _levels
+from .static_link import _levels, make_pattern
 
 
 @dataclass
@@ -1056,10 +1064,14 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # sampling-jitter smearing on the phase axis. White clock: the RJ sigma
     # as stated. Profile clock: what the CDR leaves of it, plus the loop's own
     # noise -- see _sampling_jitter_ui and the assumption list above.
+    # an ADC detector on the equalised samples reads the slicer input, after
+    # the decision feedback (a PR target's controlled cursors, then the DFE)
+    n_feedback = ((n_t - 1 if pr_active else 0) + n_dfe
+                  if cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "ffe" else 0)
     sigma_ui, loop_sol = _sampling_jitter_ui(
         cfg, pulse if cfg.mm_pd_input == "ffe" else
         pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr), levels_norm, swing,
-        cfg.rx.noise_rms)
+        cfg.rx.noise_rms, n_feedback=n_feedback)
     if sigma_ui > 0:
         sig_phi = sigma_ui * osr
         k = gaussian_kernel(sig_phi, 1.0)
@@ -1144,7 +1156,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
-                        swing: float, noise_sigma: float) -> tuple[float, LoopSolution | None]:
+                        swing: float, noise_sigma: float,
+                        n_feedback: int = 0) -> tuple[float, LoopSolution | None]:
     """RMS sampling-instant jitter [UI] to smear the bathtub with, and the loop model behind it.
 
     White clocks on both sides return their RJ in power sum and no model,
@@ -1182,12 +1195,16 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
 
     if cfg.rx.arch == "adc_dsp":
         peak = int(np.argmax(np.abs(pulse_pd.y)))
-        k_pd, var = mm_pd_statistics(pulse_pd.y, cfg.osr, peak, levels_norm * swing, noise_sigma)
-        var /= max(int(cfg.rx.adc.n_lanes), 1)        # block average per update
+        levels_v = levels_norm * swing
+        period = _pattern_period(cfg)
+        k_pd, pd_noise = mm_pd_statistics(
+            pulse_pd.y, cfg.osr, peak, levels_v, noise_sigma, n_feedback=n_feedback,
+            n_lanes=max(int(cfg.rx.adc.n_lanes), 1),
+            period_levels=None if period is None else levels_v[period])
         if k_pd <= 0:
             # no timing gradient: the loop does not move, nothing is tracked
             return untracked(lambda f: np.ones_like(np.asarray(f, dtype=np.float64))), None
-        sol = mm_loop_solution(loop, k_pd, var, untracked)
+        sol = mm_loop_solution(loop, k_pd, pd_noise, untracked)
     else:
         sol = bb_loop_fixed_point(
             loop, untracked,
@@ -1205,6 +1222,33 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
             "(measured: locked at 0.08, slipping at 0.14) -- the statistical engine's "
             "sampling-jitter model is noise-limited here", stacklevel=3)
     return sol.sigma_ui, sol
+
+
+def _pattern_period(cfg: LinkConfig, max_symbols: int = 1 << 21) -> np.ndarray | None:
+    """One period of the line symbols the configured pattern repeats, or None.
+
+    A loop sees a repeating pattern's data noise only as lines at multiples
+    of its repetition rate (:func:`halo_serdes.cdr.linear.mm_pd_statistics`),
+    so the Mueller-Muller model wants the period itself. PRBS-N, bit- or
+    symbol-wise, repeats every ``2**N - 1`` symbols; a 1/(1+D) precoder can
+    double that. Anything longer than ``max_symbols`` once tiled over whole
+    ADC blocks -- PRBS31, PRQS10 -- is random data to a loop and gets None.
+    """
+    import re
+
+    m = re.fullmatch(r"prbs(\d+)q?", cfg.sim.pattern.lower())
+    if m is None:
+        return None
+    per = (1 << int(m.group(1))) - 1
+    n_lanes = max(int(cfg.rx.adc.n_lanes), 1)
+    if 2 * per * n_lanes > max_symbols:
+        return None
+    sym = make_pattern(replace(cfg, sim=replace(cfg.sim, n_symbols=2 * per)))
+    if cfg.precode:
+        from ..core.mapping import precode_1plusd
+
+        sym = precode_1plusd(sym, 2 ** cfg.bits_per_symbol)
+    return sym[:per] if np.array_equal(sym[:per], sym[per:]) else sym
 
 
 def _bb_edge_noise_ui(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
