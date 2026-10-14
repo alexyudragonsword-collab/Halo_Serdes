@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-14 · MM 定时函数在锁定点附近见顶:报拐点距离、按环路游走警告(fix/mm-hump-warning,ROADMAP P2 #26)
+
+- 定位:指纹 53 Gb/s 合成链路的 MM 定时函数被均衡在锁定点压到零,0.42 个样本(0.026 UI)后见顶、顶点只高出零约 2e-4(低于模型分辨率);
+  过了拐点拉回力变弱、再过零点反向,时域环路先慢爬(+0.02 → +0.08 UI)再按平方跑走。预设拐点 0.075–0.15 UI。
+- 改:`cdr.linear.mm_hold_range_ui`(拐点距离;与 `mm_pd_statistics` 共用 `_mm_cursor_set`,后者逐位不变)、`LoopSolution.hold_range_ui` /
+  `sigma_wander_ui`(自噪声 + 带宽内跟晚的时钟),统计引擎剖面时钟 MM 分支 `hold < 8 × wander` 警告;GUI 抖动面板加一行。白噪钟不建环路,不查。
+- 标定(SSPLL 剖面,PRBS7Q–15Q × kp_shift 4–10 × 4 种子):2.8–6.9× 失锁、8.6× 起没有;随机符号 0.1–0.7×;预设 15–33×、示例 31 15–37×。
+  拿总 σ 比时示例 31 全部误报(1.6–6.7×)—— 带宽外的抖动环路不跟。更正 clock_profile.md"PRBS13Q 下内核锁住":只在白时钟下成立。
+- 数不动:指纹 860 值逐位不变,示例 31 重跑与期望一致。`cairn/DSP发端与PR.md` §27(§25 加注与更正)、pitfalls 两条、invariants 铁律 3 补一条。
+- 验证:本地全量 1103 passed / 1 skipped(+4 `tests/test_mm_hold_range.py`,`HALO_NO_JIT=1` 同样通过);ruff、Cython(linear / statistical)通过;`derived` 96 条成立。
+- 上一条(#85)于 2026-10-14 合入。
+
 ## 2026-10-14 · 发端白抖动按逐沿噪声进统计引擎(fix/tx-edge-jitter,ROADMAP P2 #25)
 
 - 定位:统计引擎把发端 `rj_ui` 当采样时刻抖动抹相位轴,时域每个边沿各自移动 —— 经信道是跟着跳变走的噪声。示例 31 白时钟统计 / 时域 0.03×,
