@@ -91,6 +91,7 @@ authoring_mode: ai_generated
 NRZ 在 7/8 UI 的 0.41 不是串扰模型的问题:那一点的统计浴盆在锁定点旁 1/16 UI 内从 4.5e-4 升到 7.6e-3,时域的 5.6e-3 只对应锁定点差半个
 采样(这个预设本身就带"边缘区"警告)。测试 `tests/test_crosstalk.py::test_invariant3_with_crosstalk_at_every_lane_skew` 用 ADC 与 PAM4 混合信号两组。
 示例 24(28 GBd NRZ,一个 FEXT + 一个 NEXT)在 −18 dB:时域 5.51e-3,统计 1.34e-1 → 3.64e-3;−22 dB 时时域 0 误码,统计 4.44e-2 → 2.1e-8。
+(2026-10-14 更正:发端 RJ 改为逐沿噪声后统计 3.67e-3 / 2.3e-8,ROADMAP P2 #25。)
 COM(`analysis/com.py`)仍按各 aggressor 自己的峰值取 —— 那是它自己的口径,不参与铁律 3。
 
 ### 4. 共享 CDR / lane 间 skew 预算
