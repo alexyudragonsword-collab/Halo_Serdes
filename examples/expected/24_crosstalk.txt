@@ -2,10 +2,10 @@
 
 == Crosstalk strength sweep (FEXT+NEXT, time engine) ==
   coupling  -40 dB : SNR 15.09 dB | time BER 0.00e+00 | stat BER 0.00e+00
-  coupling  -34 dB : SNR 14.66 dB | time BER 0.00e+00 | stat BER 1.93e-112
-  coupling  -30 dB : SNR 13.91 dB | time BER 0.00e+00 | stat BER 7.75e-30
-  coupling  -26 dB : SNR 12.47 dB | time BER 0.00e+00 | stat BER 4.24e-17
-  coupling  -22 dB : SNR 10.13 dB | time BER 0.00e+00 | stat BER 2.10e-08
-  coupling  -18 dB : SNR  6.98 dB | time BER 5.51e-03 | stat BER 3.64e-03
+  coupling  -34 dB : SNR 14.66 dB | time BER 0.00e+00 | stat BER 1.98e-55
+  coupling  -30 dB : SNR 13.91 dB | time BER 0.00e+00 | stat BER 6.08e-27
+  coupling  -26 dB : SNR 12.47 dB | time BER 0.00e+00 | stat BER 5.69e-17
+  coupling  -22 dB : SNR 10.13 dB | time BER 0.00e+00 | stat BER 2.30e-08
+  coupling  -18 dB : SNR  6.98 dB | time BER 5.51e-03 | stat BER 3.67e-03
 
 wrote examples/output/24_crosstalk.png

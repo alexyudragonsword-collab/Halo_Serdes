@@ -1,9 +1,9 @@
-white 200 fs   kp_shift=4: BER 1.29e-05 (5)  eye 10.4 mV  CDR error 201 fs (model 200)  bw nan MHz  stat BER 2.4e-07  [~s]
-white 200 fs   kp_shift=5: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 200 fs (model 200)  bw nan MHz  stat BER 2.4e-07  [~s]
-white 200 fs   kp_shift=6: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 200 fs (model 200)  bw nan MHz  stat BER 2.4e-07  [~s]
-white 200 fs   kp_shift=7: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 201 fs (model 200)  bw nan MHz  stat BER 2.4e-07  [~s]
-white 200 fs   kp_shift=8: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 202 fs (model 200)  bw nan MHz  stat BER 2.4e-07  [~s]
-white 200 fs   kp_shift=9: BER 1.03e-05 (4)  eye 10.3 mV  CDR error 203 fs (model 200)  bw nan MHz  stat BER 2.4e-07  [~s]
+white 200 fs   kp_shift=4: BER 1.29e-05 (5)  eye 10.4 mV  CDR error 201 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=5: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 200 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=6: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 200 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=7: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 201 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=8: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 202 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=9: BER 1.03e-05 (4)  eye 10.3 mV  CDR error 203 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
 SSPLL 200 fs   kp_shift=4: BER 0.00e+00 (0)  eye 11.1 mV  CDR error 155 fs (model 157)  bw 1.75 MHz  stat BER 1.8e-07  [~s]
 SSPLL 200 fs   kp_shift=5: BER 0.00e+00 (0)  eye 11.0 mV  CDR error 201 fs (model 197)  bw 0.88 MHz  stat BER 2.4e-07  [~s]
 SSPLL 200 fs   kp_shift=6: BER 0.00e+00 (0)  eye 11.0 mV  CDR error 293 fs (model 255)  bw 0.74 MHz  stat BER 4.4e-07  [~s]
@@ -21,22 +21,22 @@ CPPLL 200 fs   kp_shift=9: BER 2.84e-05 (11)  eye 10.8 mV  CDR error 609 fs (mod
 
 clock          | best kp_shift | BER at best | eye height | CDR error meas / model [fs] | loop bw
 ----------------------------------------------------------------------------------------------------
-white 200 fs   |             9 | 1.03e-05    |   10.3 mV  |    203 /    200            | nan MHz
+white 200 fs   |             9 | 1.03e-05    |   10.3 mV  |    203 /    n/a            | nan MHz
 SSPLL 200 fs   |             4 | 0.00e+00    |   11.1 mV  |    155 /    157            | 1.75 MHz
 CPPLL 200 fs   |             6 | 0.00e+00    |   11.0 mV  |    289 /    261            | 0.74 MHz
 
-The white clock's CDR error is the loop's own hunting plus untracked white noise; the
-model column for it is the rj_ui smear the statistical engine applies (no CDR model for
-kind=white, by design). For the PLL clocks the model column is the linearised loop's
+The white clock's CDR error is the loop's own hunting plus the white edge jitter it
+cannot follow; there is no model column for it: the statistical engine builds no CDR for
+kind=white and takes the transmitter's RJ edge by edge, as noise through the channel,
+not as a sampling error. For the PLL clocks the model column is the linearised loop's
 sampling-instant sigma, 0.81-1.07x the measured. Its Mueller-Muller detector reads the
 slicer input after the DFE's feedback, as the kernel does, and a loop this slow sees the
 detector noise's low-frequency density -- on PRBS13Q the receiver noise's alone, the
 pattern's share sitting on lines from 13.7 MHz up (ROADMAP P2 #24: before, up to 1.39x
 over). The statistical BER is listed for the record: 0.4-0.5x of the time engine's at
 kp_shift 8 and 1.2-2.2x at 9, a steep bathtub smeared by a sigma 0.87-0.89x and
-1.05-1.07x the measured. The white clock's few bit errors are far above what it
-expects: it smears the Tx edge jitter at the sampling instant, and the errors come where
-the sampling phase is only 1-3 sigma off -- probably each edge's own jitter through the
-channel's tail, which that smear misses (ROADMAP P2 #25). The comparison that is in
-scope is the CDR error.
+1.05-1.07x the measured. On the white clock it is 4.5e-6 against the time engine's
+4-5 errors here and 8.2e-6 over six seeds (ROADMAP P2 #25: as a sampling-instant
+smear the jitter read 2.4e-7, a thirtieth). The comparison that is in scope is the CDR
+error.
 wrote examples/output/31_pll_clock_profile.png
