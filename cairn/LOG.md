@@ -13,7 +13,7 @@
 - 余项 → ROADMAP P2 #27:白噪钟下 BB 环路自身游走(0.025–0.062 UI)统计引擎不建;实测游走加上后 0.83–0.90×。
 - 示例 24 / 31 / 44 / 45 统计列变(44 的准同步 0.72–0.86 → 0.72–0.91×),其余 42 个不变;指纹 25 个统计值变、时域不变。`cairn/DSP发端与PR.md` §26、
   pitfalls 两条(逐沿抖动不能线性化;`tools/fingerprint.py` 自己插 `src`)、invariants 铁律 3 补一条、`多lane建模.md` §7 / §8.3 更正。
-- 验证:ruff、Cython(statistical)通过;`derived` 96 条成立;本地全量运行中(结果补在下一次提交)。
+- 验证:本地全量 1099 passed / 1 skipped(+4 `tests/test_tx_edge_jitter.py`;两条白噪钟断言改为只含接收端 RJ);ruff、Cython(statistical)通过;`derived` 96 条成立。
 - 上一条(#84)于 2026-10-14 合入。
 
 ## 2026-10-14 · MM 环路模型:检测器读 DFE 之后,噪声按低频谱密度(fix/mm-loop-model,ROADMAP P2 #24)
