@@ -16,7 +16,7 @@
   `docs/clock_profile.md`、pitfalls 两条 + 两处更正、invariants 铁律 3 补一条。
 - 验证:本地全量 1095 passed / 1 skipped(+1 `test_mm_noise_is_what_a_slow_loop_integrates`,112 GBd 测试 1 → 3 个 kp_shift);ruff、Cython(linear / statistical)通过;`derived` 96 条成立。
 - CI(92eff58,含代码提交):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;测试矩阵(含 nojit)、examples、RTL lockstep、
-  pyinstaller 绿;PR 头 0443ffd(只改 LOG)上测试矩阵、examples、examples-full 全绿。
+  pyinstaller 绿,nuitka / nuitka-onefile 绿(74 / 133 分钟,C 编译缓存没命中);PR 头 0443ffd(只改 LOG)上测试矩阵、examples、examples-full 全绿。
 - 上一条(#83)于 2026-10-14 合入。
 
 ## 2026-10-14 · 统计单跑的 ADC 代用 FFE 就是时域起点(fix/standin-ffe,ROADMAP P2 #23)
