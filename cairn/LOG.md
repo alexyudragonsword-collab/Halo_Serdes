@@ -12,6 +12,8 @@
 - 示例 45:ADC lane 锁定点 1.0e-3 → 4.8e-5,KP4 窗口 0.435 UI(FFE 重解)/ 0.156 UI(沿用)。应用的统计 study 与双引擎面板的 ADC 结果随之变。
   pitfalls 加"代用的东西调同一个函数";`cairn/DSP发端与PR.md` §24、`多lane建模.md` §8 更正。
 - 验证:本地全量 1092 passed / 1 skipped(+3 `test_standin_is_the_time_engines_start`);ruff、Cython(timedomain / cascade / skew)通过;`derived` 96 条成立。
+- CI(2941172,含代码提交):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;测试矩阵(含 nojit)、examples、RTL lockstep、
+  pyinstaller 绿;PR 头 f8c1820(只改 LOG)上测试矩阵、examples、examples-full 全绿。
 - 上一条(#82)于 2026-10-14 合入。
 
 ## 2026-10-13 · 静态引擎的 FFE 把后光标留给 DFE(fix/static-dfe-start,ROADMAP P2 #22)
