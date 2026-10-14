@@ -256,8 +256,10 @@ argument, `rx_clock_offset_samples`, and add them to the loop phase before
 every data and edge sample; `phase_track` reports where the sampler actually
 fired. A CDR therefore tracks the *difference* between the two clocks, as a
 real one does, and the statistical engine puts both profiles through the same
-`|1 − H(f)|` (their untracked powers add; white RJ adds in power on both
-sides). An all-zero offset array reproduces the pre-change kernels bit for
+`|1 − H(f)|` (their untracked powers add; the receiver's white RJ rides
+through the same response, while the transmitter's moves each edge on its
+own and reaches the slicer as noise, not as a sampling shift -- see
+`tx_edge_jitter` in `engine/statistical.py`, ROADMAP P2 #25). An all-zero offset array reproduces the pre-change kernels bit for
 bit on both JIT paths — pinned by output hashes in `tests/test_rx_clock.py` and
 by the engine fingerprint over every preset — and an ideal clock draws no
 random numbers, so every older configuration is unchanged.

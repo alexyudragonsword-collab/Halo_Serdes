@@ -239,7 +239,7 @@ s = run_statistical(cfg)        # 统计:同一组 aggressor
 YAML 里同名(`crosstalk:` 下一组键,`aggressors:` 是映射的列表);表单有 bank 那几项(`aggressors` 只在 YAML)。
 `ppm` 0 是同步 lane:受扰在每个耦合脉冲的同一个相位上采样,代价随 skew 变得很厉害(示例 44 的三条链路在 8 个 skew 上差 8.9–32.2×)。
 `ppm` ≠ 0 是准同步 lane(各自参考时钟):时域按 aggressor 自己的速率保持它的符号,受扰轮流看到每个相位;统计引擎对相位求平均
-(要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.72–0.86×,时域 BER 是同步各 skew 平均的 0.85–0.97(示例 44)。
+(要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.72–0.91×,时域 BER 是同步各 skew 平均的 0.85–0.97(示例 44)。
 静态引擎不注入串扰,配置里有串扰时报错;带重定时器的拓扑是三条链路,配置的串扰说不清属于哪一段,也报错。
 
 **API 入参**:一个 `XtalkAggressor` 对象**同时**驱动时域和统计两个引擎,保证一致;显式给出时**替换**配置里的串扰(两者都有时警告):
@@ -325,6 +325,12 @@ tx:
     sj_freq: 10.0e6  # 正弦抖动频率 [Hz]
     dcd_ui: 0.01     # 占空比失真 [UI]
 ```
+
+时域引擎把这几项逐沿加到发端波形的边沿上。统计引擎里发端的 `rj_ui` 不是采样时刻抖动:
+每个边沿各自移动,经过信道成了跟着跳变走的噪声 —— 按被采符号的前后邻居分箱、它自己的
+两个边沿按阶跃响应精确算、其余线性化,逐相位(`engine/statistical.py::tx_edge_jitter`)。
+相位轴上的 RJ 模糊只剩接收端时钟的。白噪钟的 `sj_ui` / `dcd_ui` 统计引擎不建;白噪钟下
+也没有 CDR 模型,混合信号 bang-bang 环路自身的游走因此不在里面(ROADMAP P2 #27)。
 
 **PLL 相噪剖面时钟**(`kind: profile`):用 pll_simulator 导出的 L(f) + 杂散表合成
 *有色*的逐沿时间偏移,代替"一个 `rj_ui` 数字"。格式与单位约定见
@@ -1066,6 +1072,6 @@ c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch
   自己的环路算);各 lane 的串扰相位随 skew 变
   (要的话每条 lane 自己建 `cfg.crosstalk`,`shared_cdr` 收一组曲线)。
 - 示例 `examples/45_shared_cdr_skew.py`:三条链路的曲线、窗口、四条 lane 三种时钟放法;PAM4 32G 混合信号的 minmax 时钟
-  下最差 lane 是单条 lane 用自己环路时的 0.10(锁定点不在浴盆底);ADC 那条 FFE 跟着重解时 KP4 门限下窗口 0.435 UI,
+  下最差 lane 是单条 lane 用自己环路时的 0.17(锁定点不在浴盆底);ADC 那条 FFE 跟着重解时 KP4 门限下窗口 0.435 UI,
   沿用锁定点的 FFE 只有 0.156 UI。
   `cairn/多lane建模.md` §8。

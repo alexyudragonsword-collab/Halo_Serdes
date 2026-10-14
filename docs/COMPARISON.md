@@ -115,7 +115,7 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
 - ✅ **多 lane 串扰系统级** —— **本轮补齐**(`aggressor_bank`/`icn_rms`,见上);单 lane 数据仍为主。2026-10-13 量到:两个引擎在串扰下按不同相位取
   aggressor(统计取各自峰值 = 最坏相位),aggressor 延后 0…7/8 UI 时统计 / 时域 1.2–41×;同日改为在受扰 lane 的采样网格上读、ADC 先过 FFE,
   加 `XtalkAggressor.skew_s`,各 skew 下 0.79–1.21×(P2 #19);同日串扰进 `LinkConfig.crosstalk`、准同步 lane 按 ppm 建(时域按 aggressor 自己的速率、
-  统计对相位求平均,0.72–0.86×,示例 44);同日加了 FEC 映射与交织(示例 43)与共享时钟的静态 skew 预算(`analysis/skew.py`,示例 45;
+  统计对相位求平均,0.72–0.91×,示例 44;发端 RJ 改为逐沿噪声之前 0.72–0.86×);同日加了 FEC 映射与交织(示例 43)与共享时钟的静态 skew 预算(`analysis/skew.py`,示例 45;
   混合信号对时域 0.49–1.78×);链路级多 lane 的范围与余项见 `cairn/多lane建模.md`
 
 **相对 DragonPHY2**

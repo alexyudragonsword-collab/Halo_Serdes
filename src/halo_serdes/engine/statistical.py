@@ -23,7 +23,14 @@ Non-LTI approximations (each cross-checked against the time engine):
 - ADC receiver: the ADC's noise, fullscale^2/12 * 2^(-2 ENOB) (bare
   quantisation without an ENOB), joins the receiver noise at the FFE input
   (``adc_noise_sigma``); clipping and TI lane mismatch are not modelled;
-- sampling jitter: BER(phi) smeared with the RJ Gaussian on the phase axis;
+- sampling jitter: BER(phi) smeared with the receiver clock's RJ Gaussian
+  on the phase axis. The transmitter's white RJ is not a sampling shift --
+  each edge moves on its own -- and comes in as noise that follows the
+  transitions (``tx_edge_jitter``): binned by the sampled symbol's
+  neighbours, its own two edges exact, the rest linearised, per phase. White
+  SJ and DCD are not modelled; for a white clock no CDR either, so a
+  bang-bang loop's own wander is missing (0.47-0.67x at 0.06-0.09 UI of Tx
+  RJ on PAM4 32G, ROADMAP P2 #27);
 - receive-side partial response (``cfg.pr``): the controlled cursor (the
   first postcursor of the FFE-shaped pulse, whatever it is at each phase)
   leaves the ISI PDF; with a sequence detector it joins the trellis cursors
@@ -545,6 +552,154 @@ def tx_noise_covariance(tx_pipe, h: np.ndarray, dt: float, osr: int,
     return tx_pipe.noise_rms ** 2 * acf[lag]
 
 
+#: the edges whose displacement the bins treat exactly: the sampled symbol's
+#: own two (the one that starts it, the one that ends it)
+_EXACT_EDGES = (0, 1)
+
+
+@dataclass(frozen=True)
+class TxEdgeJitter:
+    """The transmitter's white edge jitter at one sampling phase, per level and
+    per pattern of the binned neighbours (``tx_edge_jitter``).
+
+    ``sigma``: its Gaussian equivalent over every edge, linearised -- for what
+    wants one number (the PR union bound's SNR, the voltage grid).
+    ``rest``: the sigma of what is left once the sampled symbol's own two
+    edges are taken out: every other edge, linearised, and the share of
+    those two edges' steps the bins do not fix (a Tx FFE's).
+    ``step``: the two own edges' steps given the bin, ``(..., 2)``.
+    ``phi`` / ``weight``: the change at the sample per unit step for each
+    displacement on a Gaussian grid, and the grid's weights.
+    """
+
+    sigma: np.ndarray
+    rest: np.ndarray
+    step: np.ndarray
+    phi: np.ndarray
+    weight: np.ndarray
+
+    def kernel(self, combo: tuple, dv: float, scale: float = 1.0) -> tuple[np.ndarray, int]:
+        """PDF on a ``dv`` grid of the two own edges' contribution for one bin,
+        voltages divided by ``scale``: ``(pdf, lo)`` with ``pdf[0]`` at bin ``lo``."""
+        out, lo = np.ones(1), 0
+        for e in range(self.phi.shape[0]):
+            x = self.step[combo + (e,)] * self.phi[e] / (scale * dv)
+            if not np.any(x):
+                continue
+            k_lo = int(np.floor(x.min()))
+            pos = x - k_lo
+            i0 = np.floor(pos).astype(np.int64)
+            frac = pos - i0
+            pdf = np.zeros(int(i0.max()) + 2)
+            np.add.at(pdf, i0, self.weight * (1.0 - frac))
+            np.add.at(pdf, i0 + 1, self.weight * frac)
+            out, lo = np.convolve(out, pdf), lo + k_lo
+        return out, lo
+
+
+def tx_edge_jitter(cfg: LinkConfig, tx_pipe, h: np.ndarray, osr: int, offset: int = 0,
+                   neighbours: tuple[int, ...] = _BINNED_NEIGHBOURS,
+                   n_pre: int = 24, n_post: int = 64, n_sigma: float = 8.0,
+                   n_eps: int = 321) -> TxEdgeJitter | None:
+    """Slicer noise of the transmitter's white edge jitter (``tx.clock.rj_ui``)
+    per level and per pattern of the symbols at ``neighbours``, as
+    ``slicer_sigma_binned`` lays them out; None without it.
+
+    Each edge moves on its own: edge ``k`` displaced by ``eps_k`` adds
+    ``(b_k - b_(k-1)) (s(t - kT - eps_k) - s(t - kT))`` at the sample, ``s``
+    the step response of everything after the DAC (``h``: driver pole,
+    channel, receiver, FFE). That is not a shift of the sampling instant --
+    a common shift has, linearised, the cross terms ``-h_k h_(k+1)``, which
+    nearly cancel it behind a lossy channel -- and it follows the
+    transitions: zero across a run, largest on a full-swing step next to
+    the symbol sampled. So the bins fix that symbol's two edges, and those
+    two are taken exactly: on a fast channel the step rises within a
+    fraction of a UI, and a 3-sigma displacement drags its steep part onto
+    the sample. Linearised they read the NRZ 16G preset's errors 29x low at
+    0.09 UI (a Monte-Carlo with the exact steps, 5.8e-5, matched the time
+    engine's 6.7e-5); exact on those two and linear on the rest matched the
+    all-exact one. One variance over all patterns read the 224G stress
+    link 5x low (ROADMAP P2 #25). ``b`` are the transmitter's levels after
+    its PR filter and FFE. ``offset``: the sample read, in samples from the
+    peak of ``h``'s pulse -- the noise grows toward the edges, which is
+    what the phase smear it replaces stood for.
+    """
+    rj = cfg.tx.clock.rj_ui
+    if rj <= 0.0:
+        return None
+    p = pulse_from_impulse(Waveform(h, cfg.dt), osr).y
+    pk = int(np.argmax(np.abs(p))) + int(offset)
+    # edge n + m reaches symbol n's sample at pk - m UI (the earlier edges,
+    # m < 0, carry the channel's tail); linearised, a displacement of
+    # eps = rj UI = rj osr dt scales the per-sample impulse by rj osr
+    ms = np.arange(-n_post - 1, n_pre + 2)
+    idx = pk - ms * osr
+    hp = np.concatenate([h, [0.0]])
+
+    def h_at(i: np.ndarray) -> np.ndarray:
+        out = np.zeros(i.shape)
+        inside = (i >= 0) & (i < hp.size)
+        out[inside] = hp[i[inside]]
+        return out
+
+    # an edge drawn later moves the sample after its boundary, an earlier
+    # one the sample before (jittered_zoh's area-conserving fill): the
+    # slope is h on one side, the next sample's on the other
+    g2 = 0.5 * (h_at(idx) ** 2 + h_at(idx + 1) ** 2) * (rj * osr) ** 2
+    # the transmitter's per-UI response: b_n = sum_j t_j a_(n-j), and the
+    # step at edge n + m is sum_c d_(m+c) a_(n-c) with d_j = t_j - t_(j-1)
+    span = 16
+    imp = np.zeros(2 * span + 1)
+    imp[span] = 1.0
+    t = tx_pipe.ffe(tx_pipe.pr_filter(imp))
+    d = np.diff(np.concatenate([[0.0], t, [0.0]]))      # d[i] is d_j for j = i - span
+    lv = np.asarray(tx_pipe.levels(np.arange(2 ** cfg.bits_per_symbol)), dtype=np.float64)
+    mu, var_a = float(lv.mean()), float(lv.var())
+    offs = (0,) + tuple(neighbours)                      # the symbols each bin fixes
+
+    def d_at(j: np.ndarray) -> np.ndarray:
+        i = j + span
+        out = np.zeros(j.shape)
+        inside = (i >= 0) & (i < d.size)
+        out[inside] = d[i[inside]]
+        return out
+
+    coef = np.stack([d_at(ms + c) for c in offs], axis=1)   # (edges, fixed symbols)
+    q = float(np.sum(d ** 2))
+    floor = var_a * float(np.sum(g2 * (q - np.sum(coef ** 2, axis=1))))
+    exact = np.isin(ms, _EXACT_EDGES)
+    shape = (lv.size,) * len(offs)
+    var_all, var_rest = np.zeros(shape), np.zeros(shape)
+    step = np.zeros(shape + (len(_EXACT_EDGES),))
+    for combo in np.ndindex(*shape):
+        mean_step = coef @ (lv[list(combo)] - mu)        # each edge's step given the bin
+        lin = g2 * mean_step ** 2
+        var_all[combo] = floor + float(np.sum(lin))
+        var_rest[combo] = floor + float(np.sum(lin[~exact]))
+        step[combo] = [mean_step[ms == m][0] for m in _EXACT_EDGES]
+    # the two own edges, exactly: the step response at the sample, displaced
+    s = np.cumsum(h)
+    sig = rj * osr                                        # displacement sigma [samples]
+    eps = np.linspace(-n_sigma, n_sigma, n_eps) * sig
+    w = np.exp(-0.5 * (eps / sig) ** 2)
+    w /= w.sum()
+    grid = np.arange(s.size)
+    phi = np.stack([np.interp(pk - m * osr - eps, grid, s, left=0.0, right=s[-1])
+                    - np.interp(pk - m * osr, grid, s, left=0.0, right=s[-1]) for m in _EXACT_EDGES])
+    return TxEdgeJitter(sigma=np.sqrt(var_all), rest=np.sqrt(var_rest), step=step, phi=phi, weight=w)
+
+
+def _convolve_at(pdf: np.ndarray, ker: np.ndarray, lo: int) -> np.ndarray:
+    """``pdf`` convolved with a kernel whose first bin sits at offset ``lo``,
+    on ``pdf``'s grid (direct: an FFT's round-off would floor the tails)."""
+    full = np.convolve(pdf, ker)
+    out = np.zeros(pdf.size)
+    a, b = max(0, lo), min(pdf.size, lo + full.size)
+    if b > a:
+        out[a:b] = full[a - lo: b - lo]
+    return out
+
+
 def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> float:
     """sigma at the slicer of a white per-UI error of ``sigma_q`` added at the
     DAC output: sqrt(sum_k p_k^2) sigma_q with p_k the symbol response from the
@@ -738,10 +893,32 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # phase axis: one UI centered on the pulse peak
     phi_offsets = np.arange(osr) - osr // 2
 
+    # the transmitter's white edge jitter is noise that follows the
+    # transitions, per phase (tx_jitter_sigma_binned), binned like the
+    # optical noise; only the receiver's clock is left to smear the phase axis
+    tx_jit_phi = None
+    edge_jit = None
+    jit_span = 0.0
+    pattern_base = pattern_sigma
+    if cfg.tx.clock.rj_ui > 0.0:
+        at_peak = peak - int(np.argmax(np.abs(pulse.y)))
+        tx_jit_phi = [tx_edge_jitter(cfg, tx_pipe, h_after_dac, osr, offset=at_peak + int(off))
+                      for off in phi_offsets]
+        # the voltage grid is sized on the UI around the pulse peak wherever
+        # the phase axis is centred, so a reading set from outside
+        # (phase_ui) lands on the same grid as the bathtub it is read from
+        around_peak = tx_jit_phi if at_peak == 0 else [
+            tx_edge_jitter(cfg, tx_pipe, h_after_dac, osr, offset=int(off)) for off in phi_offsets]
+        jit_span = float(max(t.sigma.max() for t in around_peak))
+        if pattern_base is None:
+            lv0 = np.zeros(levels_norm.size) if level_sigma is None else level_sigma
+            pattern_base = np.broadcast_to(lv0[:, None, None], tx_jit_phi[0].sigma.shape)
+
     # voltage grid sized to worst-case ISI + noise
     span = float(np.abs(pulse.y).max()) * swing * 2.5 + 8 * noise_sigma + 1e-6
     if level_sigma is not None:
         span += 8 * float(level_sigma.max())
+    span += 8 * jit_span
     if curve_mu is not None:
         span += float(np.abs(curve_mu).max()) + 8 * float(np.sqrt(curve_var.max()))
     v_centers = np.linspace(-span, span, v_bins)
@@ -810,6 +987,9 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     union_ratio = None
     for pi in [i_lock] + [i for i in range(osr) if i != i_lock]:
         off = phi_offsets[pi]
+        if tx_jit_phi is not None:
+            edge_jit = tx_jit_phi[pi]
+            pattern_sigma = np.sqrt(pattern_base ** 2 + edge_jit.sigma ** 2)
         # cursors at this phase (volts, per unit symbol level)
         idx = peak + off + np.arange(-n_pre, n_post + 1) * osr
         valid = (idx >= 0) & (idx < pulse.y.size)
@@ -955,14 +1135,23 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     acc = np.zeros(v_bins)
                     for combo in np.ndindex(*pattern_sigma.shape[1:]):
                         shift = float(np.dot(c_bin, levels_norm[list(combo)]))
-                        var = noise_sigma ** 2 + pattern_sigma[(k,) + combo] ** 2
+                        if edge_jit is None:
+                            var = noise_sigma ** 2 + pattern_sigma[(k,) + combo] ** 2
+                        else:
+                            # the own two edges come in as their exact kernel below
+                            var = (noise_sigma ** 2 + pattern_base[(k,) + combo] ** 2
+                                   + edge_jit.rest[(k,) + combo] ** 2)
                         if curve_mu is not None:
                             shift += float(curve_mu[(pi, k) + combo])
                             var += float(curve_var[(pi, k) + combo])
                         shifted = np.zeros(v_bins)
                         _shift_add(shifted, pdf, shift / dv, 1.0)
                         nk = gaussian_kernel(np.sqrt(var) / g_ev, dv)
-                        acc += (np.convolve(shifted, nk, mode="same") if nk.size > 1 else shifted) / n_pat
+                        blurred = np.convolve(shifted, nk, mode="same") if nk.size > 1 else shifted
+                        if edge_jit is not None:
+                            ek, e_lo = edge_jit.kernel((k,) + combo, dv, g_ev)
+                            blurred = _convolve_at(blurred, ek, e_lo)
+                        acc += blurred / n_pat
                     pdf_lv.append(acc / max(acc.sum(), 1e-300))
             elif level_sigma is None:
                 nk = noise_k if g_ev == 1.0 else gaussian_kernel(noise_sigma / g_ev, dv)
@@ -1160,23 +1349,24 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
                         n_feedback: int = 0) -> tuple[float, LoopSolution | None]:
     """RMS sampling-instant jitter [UI] to smear the bathtub with, and the loop model behind it.
 
-    White clocks on both sides return their RJ in power sum and no model,
-    exactly as before profiles existed. A profile on either side (transmit
+    White clocks on both sides return the receiver's RJ and no model: the
+    transmitter's white jitter moves each edge on its own and reaches the
+    slicer as noise that follows the transitions (``tx_jitter_sigma_binned``),
+    not as a shift of the sampling instant. A profile on either side (transmit
     or receiver -- the loop tracks their difference, so they are
     interchangeable here) is integrated through the linearised CDR of the
     configured architecture (bang-bang for mixed-signal, Mueller-Muller for
     ADC, matching which kernel the time engine would run) from ``1/(N UI)``,
     the lowest offset a run of ``N`` symbols resolves, so both engines look at
-    the same band. The white-kind RJ terms either clock carries on top ride
-    through the same error response.
+    the same band. The receiver clock's white-kind RJ on top rides through
+    the same error response.
     """
     from ..tx.clock import ClockProfile
 
     clocks = (cfg.tx.clock, cfg.rx.clock)
     if all(c.kind != "profile" for c in clocks):
-        # white on both sides: the historical RJ-only smear, the two clocks'
-        # independent Gaussians adding in power
-        return float(np.hypot(cfg.tx.clock.rj_ui, cfg.rx.clock.rj_ui)), None
+        # white on both sides: the receiver's RJ smears the sampling instant
+        return float(cfg.rx.clock.rj_ui), None
     # The loop tracks the *difference* between the two clocks, so both ride
     # through the same error response and their untracked powers add.
     profs = [ClockProfile.load(c.file, f0_hz=c.f0_hz) if c.kind == "profile" else None
@@ -1186,7 +1376,7 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
     f_lo = cfg.symbol_rate / max(int(cfg.sim.n_symbols), 2)
     f_nyq = cfg.symbol_rate / 2.0
     f_white = np.linspace(f_lo, f_nyq, 2048)
-    rj_white = float(np.hypot(cfg.tx.clock.rj_ui, cfg.rx.clock.rj_ui))
+    rj_white = float(cfg.rx.clock.rj_ui)       # the transmitter's: tx_jitter_sigma_binned
 
     def untracked(err_fn) -> float:
         var = sum((p.untracked_sigma_s(err_fn, f_lo) / ui) ** 2 for p in profs if p is not None)

@@ -3,6 +3,22 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-14 · 发端白抖动按逐沿噪声进统计引擎(fix/tx-edge-jitter,ROADMAP P2 #25)
+
+- 定位:统计引擎把发端 `rj_ui` 当采样时刻抖动抹相位轴,时域每个边沿各自移动 —— 经信道是跟着跳变走的噪声。示例 31 白时钟统计 / 时域 0.03×,
+  0.03–0.09 UI 下五条链路 0.00–0.10×。逐步:线性一个方差 0.21× → 按邻居分箱 0.45× → 混合信号仍 ≤0.16×:冻结环路 + 蒙特卡洛分清是
+  线性化(快信道上 3σ 的边沿把阶跃陡段拖到采样点,线性读低 29×);被采符号自己的两个边沿精确即与全部精确相同。
+- 改:`tx_edge_jitter` → `TxEdgeJitter`(逐相位、分箱、两个自身边沿的精确核直接卷积),相位轴只留接收端 RJ;电压格跨度与 `phase_ui` 无关。
+  统计 / 时域:224G ADC 0.69–1.39×,示例 31 白时钟 0.55×,PAM4 32G 混合信号 0.47–0.67×,NRZ 16G 0.38×(0.09 UI)。
+- 余项 → ROADMAP P2 #27:白噪钟下 BB 环路自身游走(0.025–0.062 UI)统计引擎不建;实测游走加上后 0.83–0.90×。
+- 示例 24 / 31 / 44 / 45 统计列变(44 的准同步 0.72–0.86 → 0.72–0.91×),其余 42 个不变;指纹 25 个统计值变、时域不变。`cairn/DSP发端与PR.md` §26、
+  pitfalls 两条(逐沿抖动不能线性化;`tools/fingerprint.py` 自己插 `src`)、invariants 铁律 3 补一条、`多lane建模.md` §7 / §8.3 更正。
+- 验证:本地全量 1099 passed / 1 skipped(+4 `tests/test_tx_edge_jitter.py`;两条白噪钟断言改为只含接收端 RJ);ruff、Cython(statistical)通过;`derived` 96 条成立。
+- CI(86df226,最后一个改代码的提交):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;测试矩阵(含 nojit)、examples、
+  RTL lockstep、pyinstaller、nuitka、nuitka-onefile 绿。5fa3f11(中途文档提交)的 nuitka-onefile 在 build 与冒烟都通过后 upload-artifact 时
+  runner 掉线,已在 PR 上说明、未重跑。
+- 上一条(#84)于 2026-10-14 合入。
+
 ## 2026-10-14 · MM 环路模型:检测器读 DFE 之后,噪声按低频谱密度(fix/mm-loop-model,ROADMAP P2 #24)
 
 - 定位两处:模型的 MM 检测器读 DFE 之前的样本(内核读切片器输入;冻结环路实测增益 0.0276,旧模型 0.0195,扣锁定点 DFE 光标后 0.032);

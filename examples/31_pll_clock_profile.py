@@ -106,6 +106,10 @@ def inner_eye_height(y_slicer: np.ndarray, levels: np.ndarray) -> float:
     return float(min(gaps)) if gaps else float("nan")
 
 
+def fs(x: float) -> str:
+    return "n/a" if np.isnan(x) else f"{x:.0f}"
+
+
 cm = ChannelModel.from_config(BASE)
 rows = []
 t_all = time.time()
@@ -124,14 +128,15 @@ for clock_name, clock in CLOCKS.items():
             "ber": res.ber.ber, "n_err": res.ber.n_errors,
             "eye_v": inner_eye_height(res.y_slicer, res.extras["levels"]),
             "resid_meas_fs": float(np.std(err)) * 1e15,
-            "resid_model_fs": (sol.sigma_ui * cfg.ui * 1e15) if sol is not None
-                              else stat.extras["jitter_sigma_ui"] * cfg.ui * 1e15,
+            # no model for a white clock: its RJ reaches the statistical
+            # engine edge by edge, as noise, not as a sampling error
+            "resid_model_fs": (sol.sigma_ui * cfg.ui * 1e15) if sol is not None else float("nan"),
             "bw_mhz": sol.bandwidth_hz / 1e6 if sol is not None else float("nan"),
             "stat_ber": stat.ber,
         })
         r = rows[-1]
         print(f"{clock_name:14s} kp_shift={kp}: BER {r['ber']:.2e} ({r['n_err']})  eye {r['eye_v'] * 1e3:.1f} mV  "
-              f"CDR error {r['resid_meas_fs']:.0f} fs (model {r['resid_model_fs']:.0f})  "
+              f"CDR error {r['resid_meas_fs']:.0f} fs (model {fs(r['resid_model_fs'])})  "
               f"bw {r['bw_mhz']:.2f} MHz  stat BER {r['stat_ber']:.1e}  [{time.time() - t0:.1f}s]")
 
 print(f"\n{len(rows)} runs in {time.time() - t_all:.0f}s\n")
@@ -141,21 +146,21 @@ for clock_name in CLOCKS:
     sub = [r for r in rows if r["clock"] == clock_name]
     best = min(sub, key=lambda r: (r["ber"], -r["eye_v"]))
     print(f"{clock_name:14s} | {best['kp_shift']:13d} | {best['ber']:.2e}    | {best['eye_v'] * 1e3:6.1f} mV  "
-          f"| {best['resid_meas_fs']:6.0f} / {best['resid_model_fs']:6.0f}            | {best['bw_mhz']:.2f} MHz")
-print("\nThe white clock's CDR error is the loop's own hunting plus untracked white noise; the\n"
-      "model column for it is the rj_ui smear the statistical engine applies (no CDR model for\n"
-      "kind=white, by design). For the PLL clocks the model column is the linearised loop's\n"
+          f"| {best['resid_meas_fs']:6.0f} / {fs(best['resid_model_fs']):>6s}            | {best['bw_mhz']:.2f} MHz")
+print("\nThe white clock's CDR error is the loop's own hunting plus the white edge jitter it\n"
+      "cannot follow; there is no model column for it: the statistical engine builds no CDR for\n"
+      "kind=white and takes the transmitter's RJ edge by edge, as noise through the channel,\n"
+      "not as a sampling error. For the PLL clocks the model column is the linearised loop's\n"
       "sampling-instant sigma, 0.81-1.07x the measured. Its Mueller-Muller detector reads the\n"
       "slicer input after the DFE's feedback, as the kernel does, and a loop this slow sees the\n"
       "detector noise's low-frequency density -- on PRBS13Q the receiver noise's alone, the\n"
       "pattern's share sitting on lines from 13.7 MHz up (ROADMAP P2 #24: before, up to 1.39x\n"
       "over). The statistical BER is listed for the record: 0.4-0.5x of the time engine's at\n"
       "kp_shift 8 and 1.2-2.2x at 9, a steep bathtub smeared by a sigma 0.87-0.89x and\n"
-      "1.05-1.07x the measured. The white clock's few bit errors are far above what it\n"
-      "expects: it smears the Tx edge jitter at the sampling instant, and the errors come where\n"
-      "the sampling phase is only 1-3 sigma off -- probably each edge's own jitter through the\n"
-      "channel's tail, which that smear misses (ROADMAP P2 #25). The comparison that is in\n"
-      "scope is the CDR error.")
+      "1.05-1.07x the measured. On the white clock it is 4.5e-6 against the time engine's\n"
+      "4-5 errors here and 8.2e-6 over six seeds (ROADMAP P2 #25: as a sampling-instant\n"
+      "smear the jitter read 2.4e-7, a thirtieth). The comparison that is in scope is the CDR\n"
+      "error.")
 
 # ---------------------------------------------------------------- figure
 fig, axes = plt.subplots(1, 3, figsize=(15, 4.6))
