@@ -84,7 +84,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 0 | 骨架 + 配置 + core + 信道层 | ✅ |
 | 1 | NRZ 32G 最小链路(ZF/MMSE FFE + 理想 DFE + MC BER) | ✅ |
 | 2 | 时域引擎 + mixed-signal 架构(自适应 DFE + BB-CDR + 抖动注入) | ✅ |
-| 3 | StatEye 统计引擎 + 双引擎交叉校验(MC 比值 1.03×) | ✅ |
+| 3 | StatEye 统计引擎 + 双引擎交叉校验(MC 比值 0.92×) | ✅ |
 | 4 | ADC-based 架构(TI-ADC + 数字 DSP + MM-CDR) | ✅ |
 | 5 | MLSD(Viterbi/滑动检测器)+ RS-FEC(KP4/KR4)+ 抖动分解 + 双架构对比 | ✅ |
 | 6 | 定点双模式(bit-true)+ RTL 黄金模型出口(lockstep 向量) | ✅ |
@@ -97,7 +97,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 JTOL、RTL lockstep、Windows 打包。
 
 关键达标指标:
-- 统计引擎 vs 蒙特卡洛交叉校验比值 **1.03×**(要求 <2×);
+- 统计引擎 vs 蒙特卡洛交叉校验比值 **0.92×**(要求 <2×;示例 04,2026-10-13 静态引擎的 FFE 改为 DFE 感知前 1.03×);
 - 10⁶ 符号 @106.25 GBd 时域全链路 **OSR16 8.1 s / OSR32 11.6 s**(要求 ≤2 min;
   本机实测,峰值内存约 0.9 GB;长跑开 `sim.stream`,10⁶ 符号 OSR32 峰值 0.33 GB、5×10⁶ 符号可跑);
 - 双架构对比复现业界结论:mixed-signal 在 Nyquist 损耗 −10 到 −15 dB 之间崩溃(−14.8 dB 时 SER 2.6e-2),

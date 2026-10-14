@@ -2,7 +2,8 @@
 
 Pipeline: pattern -> Tx (FIR, ZOH) -> channel (frequency-domain convolution)
 -> CTLE/VGA -> AWGN -> best-phase baud sampling -> FFE (ZF/MMSE from the
-equalized pulse) -> static DFE -> slicer -> checker.
+equalized pulse, the DFE's postcursors left to the DFE: an MMSE-DFE) ->
+static DFE -> slicer -> checker.
 
 No CDR and no adaptation here: the sampling phase comes from the pulse-response
 peak (serdespy shift_signal upgraded to pulse-peak alignment), and FFE/DFE
@@ -173,18 +174,24 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     user_symbols = symbols[:n_sym]       # what BER is scored against
 
     # --- FFE (MMSE; noise_var=0 -> least-squares ZF) ---
+    # The DFE's postcursors are left to the DFE (MMSE-DFE): an FFE that
+    # zeroes them too spends its taps -- and enhances noise -- on ISI the DFE
+    # would cancel for free, and the DFE then has nothing to do. The time
+    # engine's ADC receiver starts from the same rule (ROADMAP P1 #21 / P2 #22);
+    # there is no ADC noise to regularise with here, nothing quantises.
     ffe_cfg = cfg.rx.ffe
     n_taps = ffe_cfg.n_pre + 1 + ffe_cfg.n_post
+    n_dfe = cfg.rx.dfe.n_taps
     noise_var = cfg.rx.noise_rms ** 2
     from .statistical import tx_noise_covariance
     tx_cov = tx_noise_covariance(tx_pipe, h_chain * vga.gain, cfg.dt, osr, n_taps)
-    w_ffe = mmse_ffe(cursors, n_pre_c, n_taps, ffe_cfg.n_pre, noise_var=noise_var, noise_cov=tx_cov)
+    w_ffe = mmse_ffe(cursors, n_pre_c, n_taps, ffe_cfg.n_pre, noise_var=noise_var, noise_cov=tx_cov,
+                     free_post=n_dfe)
     y_ffe = apply_ffe(y_baud, w_ffe, ffe_cfg.n_pre)
 
     # --- static DFE from residual postcursors (serdespy 3_ffe_dfe recipe) ---
     eq_cursors, eq_pre = equalized_cursors(cursors, w_ffe, n_pre_c, ffe_cfg.n_pre)
     main = eq_cursors[eq_pre]
-    n_dfe = cfg.rx.dfe.n_taps
     # weights normalized to the main cursor: feedback multiplies slicer levels
     w_dfe = (eq_cursors[eq_pre + 1: eq_pre + 1 + n_dfe] / main
              if n_dfe > 0 else np.zeros(0))

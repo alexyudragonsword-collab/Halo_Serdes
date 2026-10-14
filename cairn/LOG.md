@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-13 · 静态引擎的 FFE 把后光标留给 DFE(fix/static-dfe-start,ROADMAP P2 #22)
+
+- 改:`run_static_link` 的 FFE 原先连 DFE 的后光标一起压掉(DFE ≈ 0),改为 MMSE-DFE(`free_post = rx.dfe.n_taps`),与 P1 #21 的时域起点同一规则,
+  两种架构一样;不加 ADC 噪声(静态引擎不量化)。
+- 量:NRZ 32G static 10 mV 2.56e-2 → 1.47e-3(DFE 1.03 / 0.35);224G 2.5 mV 4 → 1、112 GBd stress 4 mV 32 → 4 个误码。指纹 72 个 `static` 值变,
+  切片器 SNR 六个预设 +0.5…+2.6 dB、三个 −0.1…−0.5 dB(窗口内残余 ISI 与噪声放大都更小,差在代价不含的项上,未查)。
+- 示例 01 / 03 SNR 15.1 → 19.3 dB、内眼 6.8 → 16.2 mV,系统框图重画;示例 04 StatEye 对 MC 1.03× → 0.92×(README / SUMMARY / COMPARISON /
+  铁律 3 基线改数,旧值保留)。静态引擎对 ADC 预设仍比时域乐观约 100×(不建 ADC 量化,定位如此)。`cairn/DSP发端与PR.md` §23。
+- 验证:本地全量 1089 passed / 1 skipped(+1 `test_ffe_leaves_the_dfe_its_postcursors`);ruff、Cython(static_link)通过;`derived` 96 条成立。
+- CI(2684225,含代码提交):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;测试矩阵(含 nojit)、examples、RTL lockstep、
+  pyinstaller 绿;PR 头 f7f8d8a(只改 LOG)上测试矩阵、examples、examples-full 全绿。
+- 上一条(#81)于 2026-10-13 合入。
+
 ## 2026-10-13 · ADC 收端的 DFE 起作用(fix/adc-dfe-start,ROADMAP P1 #21)
 
 - 原因:联合 FFE/DFE 的 LMS 代价面沿"FFE 留 h1、DFE 消 h1"是平的,终点由起点决定(`dfe.mu` ×3000 抽头只动 0.01;三种起点三种终点);

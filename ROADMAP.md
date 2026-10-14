@@ -62,11 +62,9 @@ AMI GetWave 记入下方「边界」。)
 发端 17.30 → 17.10 GHz,噪声容限 −1.5…−2.4 → −1.3…−2.2 dB / −5.7…−4.5 → −5.4…−4.3 dB,结论不变;示例 36 预编码点 8.9e-6 → 7.6e-6;
 示例 37 / 38 / 42 只动 BER ≥ 0.07 的点,reach 不变。见 CHANGELOG。)
 
-### 22. 静态引擎的 ADC FFE 仍不计 DFE(2026-10-13,P1 #21 余项)
-`run_static_link` 的 ADC 收端 FFE 还是不计 DFE 的 MMSE,DFE 只消 FFE 留下的残余 → 它比 DFE 感知的同一接收机悲观一个数量级。
-**证据**(#21 的探针,DFE 感知的 FFE 换进去):224G 106 GBd 2.5 mV 1.00e-5 → 1.67e-6,112 GBd 4 mV 7.17e-5 → 5.00e-6,
-deep-LR DFE8 1.91e-3 → 2.58e-4(6–14×)。**要做的**:静态引擎的 FFE 解与时域起点同一规则(`engine.cascade.initial_ffe_taps` 已是),
-指纹与用静态引擎的示例会动。
+(2026-10-13 清空:原 #22 静态引擎的 FFE 仍不计 DFE —— 改为 MMSE-DFE(`mmse_ffe(free_post=rx.dfe.n_taps)`,两种架构同一规则)。
+NRZ 32G static 10 mV 2.56e-2 → 1.47e-3;示例 01 / 03 切片器 SNR 15.1 → 19.3 dB、内眼 6.8 → 16.2 mV;示例 04 StatEye 对 MC 1.03× → 0.92×。
+指纹 72 个 `static` 值变。见 CHANGELOG 与 `cairn/DSP发端与PR.md` §23。)
 
 ### 23. 统计引擎单跑的 ADC FFE 代用解离时域收敛点很远(2026-10-13,P1 #21 余项)
 统计引擎自己没有 FFE 自适应,单跑 ADC 收端要么调用方给 FFE,要么用 `initial_ffe_taps`(时域的起点)。#21 之后时域 LMS 把 FFE

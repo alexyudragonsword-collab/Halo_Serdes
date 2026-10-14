@@ -118,3 +118,20 @@ def test_lossy_channel_with_eq_recovers():
     res = run_static_link(cfg, collect_eye=False)
     assert res.slicer_snr_db > 15
     assert res.ber.ber < 1e-3
+
+
+def test_ffe_leaves_the_dfe_its_postcursors():
+    """The static FFE is solved as an MMSE-DFE: it leaves the DFE's
+    postcursors to the DFE (ROADMAP P2 #22). Zeroing them too, it left the
+    DFE ~0 on the NRZ 32G static preset and read 2.6e-2 at 10 mV against
+    1.5e-3."""
+    import dataclasses
+
+    from halo_serdes_app import config_bridge as cb
+
+    cfg = cb.load_preset("NRZ 32G static")
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=0.010),
+                              sim=dataclasses.replace(cfg.sim, n_symbols=100_000))
+    res = run_static_link(cfg, collect_eye=False)
+    assert res.dfe_taps[0] > 0.5
+    assert res.ber.ber < 5e-3, res.ber.ber

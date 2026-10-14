@@ -68,7 +68,7 @@ The project began with a file-by-file analysis of three open-source SerDes proje
 | 0 | 配置单源 · 信道层 / config single-source · channel | vs PyBERT 黄金冲激响应 / golden impulse |
 | 1 | NRZ 32G 最小链路 · ZF/MMSE FFE | AWGN BER = Q(A/σ) 解析对照 |
 | 2 | 时域引擎 · mixed-signal RX | ±200ppm 频偏斜坡闭式对照 |
-| 3 | StatEye 统计引擎 / statistical engine | 与蒙特卡洛比值 1.03× |
+| 3 | StatEye 统计引擎 / statistical engine | 与蒙特卡洛比值 0.92×(2026-10-13 前 1.03×) |
 | 4 | ADC-based 架构 / ADC-based RX | 10⁶ 符号 @106GBd:OSR16 8.1s / OSR32 11.6s |
 | 5 | MLSD · RS-FEC · 抖动分解 | MLSE 增益 vs 解析 d_min |
 | 6 | 定点双模式 · RTL 黄金向量 / bit-true · RTL vectors | vs 独立整数参考逐位一致 |
@@ -83,11 +83,11 @@ The traditional mixed-signal RX must open the eye in the analog domain before th
 ![32G NRZ 系统框图 / system diagram](figures/nrz32_system_diagram.png)
 
 (图由 `tools/draw_system_diagram.py` 从示例 03 的运行生成,数随代码走;`.mmd` 源与 summary.html 里的副本同时刷新。2026-10-08 前它是手画的,
-停在 2026-08 的 slicer SNR 14 dB、±17.3 mV、Kp = 1/32、CTLE "6–9 dB";现为 15.1 dB、±17.4 mV、Kp = 1/64、CTLE 峰值 6 dB(实际 3.1 dB)。/
+停在 2026-08 的 slicer SNR 14 dB、±17.3 mV、Kp = 1/32、CTLE "6–9 dB";现为 19.3 dB、±25.5 mV、Kp = 1/64、CTLE 峰值 6 dB(实际 3.1 dB);2026-10-13 静态引擎的 FFE 改为把 DFE 的后光标留给 DFE(ROADMAP P2 #22)前是 15.1 dB、±17.4 mV。/
 Drawn by `tools/draw_system_diagram.py` from a run of example 03, so its numbers follow the code; until 2026-10-08 it was hand-drawn and showed 2026-08 values.)
 
-**均衡后眼图 / Post-EQ eyes**：-32 dB 信道下均衡前眼完全闭合,FFE 后张开,FFE+DFE 后采样时刻内眼 6.8 mV。DFE 眼在 ±0.5 UI 的阶梯不连续是 UI 边界反馈切换的标志。
-Under −32 dB the pre-EQ eye is fully closed; after FFE+DFE the inner eye is 6.8 mV. The ±0.5 UI staircase is the signature of UI-boundary feedback.
+**均衡后眼图 / Post-EQ eyes**：-32 dB 信道下均衡前眼完全闭合,FFE 后张开,FFE+DFE 后采样时刻内眼 16.2 mV(2026-10-13 前静态引擎的 FFE 连 DFE 的后光标一起压掉、DFE 几乎不用,6.8 mV)。DFE 眼在 ±0.5 UI 的阶梯不连续是 UI 边界反馈切换的标志。
+Under −32 dB the pre-EQ eye is fully closed; after FFE+DFE the inner eye is 16.2 mV (6.8 mV before 2026-10-13, when the static FFE zeroed the DFE's postcursors too). The ±0.5 UI staircase is the signature of UI-boundary feedback.
 
 ![均衡后眼图 / post-EQ eyes](../examples/output/03_eq_eye_nrz32.png)
 

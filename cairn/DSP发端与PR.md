@@ -844,7 +844,22 @@ reach 以外变得多些(示例 38 的 LMS 跟踪行 42.4 dB 处 4.9e-2 → 1.5e
 **铁律 2**:混合信号收端的 DFE 一直从信道游标起步、是用上的;修之前 ADC 预设的头条 BER 偏悲观一到两个数量级,两种架构的对比
 不公平。现在两边的 DFE 都在用。
 
-**余项**:静态引擎的 FFE 仍不计 DFE(P2 #22,6–14× 悲观);统计单跑的代用 FFE 离时域收敛点很远(P2 #23);MM 环路模型在 DFE
+**余项**:静态引擎的 FFE 仍不计 DFE(P2 #22,6–14× 悲观;同日已改,§23);统计单跑的代用 FFE 离时域收敛点很远(P2 #23);MM 环路模型在 DFE
 用上后两端高估(P2 #24)。`tests/test_ffe.py::test_mmse_leaves_the_dfe_its_postcursors`、
 `tests/test_adc_rx.py::test_adc_dfe_engages`。
+
+## 23. 静态引擎的 FFE 同样把后光标留给 DFE(2026-10-13,ROADMAP P2 #22)
+
+**问题**:静态引擎(`engine/static_link.py`,链路均衡预算的快速评估)先按 MMSE 解 FFE、把 DFE 的后光标也压到 0,再从均衡后剩下的
+后光标取 DFE —— DFE 几乎没事做(NRZ 32G static 抽头 0.05 / −0.03),FFE 白白为可以无噪声消掉的 ISI 放大噪声。与 §22 的时域起点同一个缺口。
+
+**做法**:`mmse_ffe(..., free_post=rx.dfe.n_taps)`,即 MMSE-DFE;对两种架构一样(这里的 FFE 是链路的线性均衡预算,不是某个收端电路)。
+正则项不加 ADC 噪声:静态引擎不量化。PR 本来就拒绝,预编码不涉及复合判决,无例外。
+
+**结果**:NRZ 32G static 在 10 mV 下 2.56e-2 → 1.47e-3(17×,DFE 抽头 1.03 / 0.35);224G 106 GBd 2.5 mV 4 → 1 个误码,112 GBd stress 4 mV
+32 → 4。示例 01 / 03 切片器 SNR 15.1 → 19.3 dB、内眼 6.8 → 16.2 mV(系统框图随之重画);示例 04 的 MC 5.93e-4 → 4.95e-4,StatEye 对 MC
+1.03× → 0.92×(铁律 3 的"基线"数)。指纹 72 个值变,全在 `static` 一列:切片器 SNR 六个预设 +0.5…+2.6 dB,三个 −0.1…−0.5 dB
+(224G 106 GBd 无噪声时 32.4 → 31.9 dB;窗口内残余 ISI 与噪声放大都更小,差在 MMSE 代价不含的项上,未查)。
+静态引擎对 ADC 预设仍比时域乐观约 100×(224G 2.5 mV:2.5e-6 vs 2.6e-4)—— 它不建 ADC 量化,是"均衡预算"的定位,不是这一条的事。
+`tests/test_static_link.py::test_ffe_leaves_the_dfe_its_postcursors`。
 
