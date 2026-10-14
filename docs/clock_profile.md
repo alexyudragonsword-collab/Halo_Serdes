@@ -208,12 +208,26 @@ is 0.0003-0.0008 UI against 0.0031-0.0102 UI on random symbols (kp_shift
 continuum; PRBS31 and PRQS10 count as random) and passes the lines through
 `|H|^2` one by one.
 
-Two things a linear model of this loop does not see. On the fingerprint's
-53 Gb/s link the detector's timing function (the kernel's, with a frozen
-loop, and the model's agree over +-3 samples) peaks just after the lock
-point, so the restoring force runs out half a sample late: on PRBS13Q the
-kernel holds, on random symbols it wanders off by 7.7 UI while the model
-reads 0.06 UI. And a slow loop takes long to settle: on that link at
+Two things a linear model of this loop does not see on its own. On the
+fingerprint's 53 Gb/s link the detector's timing function (the kernel's, with
+a frozen loop, and the model's agree over +-3 samples) turns over 0.42
+samples (0.026 UI) after the lock point, at most 2e-4 above zero: past the
+turnover the pull back weakens, past its next zero it reverses, and the
+integrator winds the loop off for good -- on random symbols the kernel
+wanders off by 7.7 UI while the model reads 0.06 UI. Since 2026-10-14
+(ROADMAP P2 #26) the model reports how far the pull keeps growing
+(`LoopSolution.hold_range_ui`, `cdr.linear.mm_hold_range_ui`) and the
+statistical engine warns when that is under 8x the loop's own wander
+(`sigma_wander_ui`: its detector noise plus the clock it follows late inside
+its bandwidth; jitter above the bandwidth only blurs the timing function, and
+counting it warned on every one of example 31's loops, which hold). Over
+PRBS7Q-15Q and kp_shift 4-10 on the SSPLL profile, 4 seeds of 200k symbols
+each, the kernel lost lock at 2.8-6.9x and never from 8.6x; on a white clock
+it held down to 1.4x. The ADC presets turn over 0.075-0.15 UI out, 15-33x
+on random symbols; example 31's loops sit at 15-37x. A white clock has no
+loop model and so no such check. (Until then this said the kernel holds on
+PRBS13Q: on a white clock it does, 4 seeds of 4; on the profile clock it lost
+lock on 1 of 4 at kp_shift 6 and on 3 of 4 from 8.) And a slow loop takes long to settle: on that link at
 kp_shift 6 the time engine's error falls 0.0091 -> 0.0061 -> 0.0046 ->
 0.0036 UI over successive quarter-runs of 400k symbols (model 0.0039), so a
 short run reads its acquisition, not its tracking.

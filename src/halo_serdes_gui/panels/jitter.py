@@ -83,6 +83,12 @@ def _profile_section(rec: RunRecord):
             ("model: loop's own (detector) noise", _fs(sol.sigma_self_ui * cfg.ui)),
             ("model: sampling-instant sigma", _fs(sol.sigma_ui * cfg.ui)),
         ]
+        if sol.hold_range_ui is not None and sol.sigma_wander_ui:
+            # Mueller-Muller: how far the detector keeps pulling back, against
+            # the slow error that carries the loop itself (warned below 8x)
+            rows.append(("model: MM pull-back range / loop's own wander",
+                         f"{sol.hold_range_ui:.3f} UI = "
+                         f"{sol.hold_range_ui / sol.sigma_wander_ui:.1f}x"))
     else:
         rows.append(("CDR model", "run the statistical engine (engine: stat or both)"))
     if rec.sim is not None and rec.sim.extras.get("phase_track") is not None:
