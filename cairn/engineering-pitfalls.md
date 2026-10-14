@@ -329,6 +329,14 @@ slew 比值却很小。统计引擎另加一条 σ_e > 0.1 UI 的 `noise-limited
 `tests/golden/kernels_prechange.py`,同进程同输入逐位比 —— 不依赖任何人的 libm。
 (`halo_probe` 的跨平台对拍留 1e-9 容差也是同一个原因。)
 
+**发端白抖动不是采样时刻抖动,逐沿位移也不能线性化。** 每个边沿各自移动,经信道是跟着跳变走的噪声;当成采样相位模糊在
+224G ADC 链路上读低 10–100×(P2 #25)。一个平均方差的高斯又读低 5×(数据相关、尾巴厚),要按被采符号的邻居分箱。快信道(NRZ 16G、
+PAM4 32G)上还得把被采符号自己的两个边沿按阶跃响应精确算:线性化读低 29×,蒙特卡洛精确 5.8e-5 对时域 6.7e-5。量这类机理时先冻结
+CDR(kp/ki 置 2^-60、采样偏移钉住)比时域浴盆,把噪声问题和环路问题分开。
+
+**`tools/fingerprint.py` 自己把仓库的 `src` 插到 `sys.path` 最前。** 用 `PYTHONPATH=<main 的 worktree>/src` 跑它量到的仍是当前分支 ——
+两份"main / 分支"指纹一模一样(P2 #25 第一次比对)。要 main 的基线就跑 main worktree 里的那份 `tools/fingerprint.py`,或沿用合入前录的。
+
 **量 RX 时钟下的 CDR 残余,`phase_track` 已含采样偏移。** 内核报告的是实际采样位置
 (环路相位 + RX 偏移),`cdr_tracking_error_s` 只减发送时钟;别再把 RX 偏移减一次。
 

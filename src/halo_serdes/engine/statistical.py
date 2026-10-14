@@ -23,7 +23,14 @@ Non-LTI approximations (each cross-checked against the time engine):
 - ADC receiver: the ADC's noise, fullscale^2/12 * 2^(-2 ENOB) (bare
   quantisation without an ENOB), joins the receiver noise at the FFE input
   (``adc_noise_sigma``); clipping and TI lane mismatch are not modelled;
-- sampling jitter: BER(phi) smeared with the RJ Gaussian on the phase axis;
+- sampling jitter: BER(phi) smeared with the receiver clock's RJ Gaussian
+  on the phase axis. The transmitter's white RJ is not a sampling shift --
+  each edge moves on its own -- and comes in as noise that follows the
+  transitions (``tx_edge_jitter``): binned by the sampled symbol's
+  neighbours, its own two edges exact, the rest linearised, per phase. White
+  SJ and DCD are not modelled; for a white clock no CDR either, so a
+  bang-bang loop's own wander is missing (0.47-0.67x at 0.06-0.09 UI of Tx
+  RJ on PAM4 32G, ROADMAP P2 #27);
 - receive-side partial response (``cfg.pr``): the controlled cursor (the
   first postcursor of the FFE-shaped pulse, whatever it is at each phase)
   leaves the ISI PDF; with a sequence detector it joins the trellis cursors

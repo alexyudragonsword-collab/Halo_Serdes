@@ -326,6 +326,12 @@ tx:
     dcd_ui: 0.01     # 占空比失真 [UI]
 ```
 
+时域引擎把这几项逐沿加到发端波形的边沿上。统计引擎里发端的 `rj_ui` 不是采样时刻抖动:
+每个边沿各自移动,经过信道成了跟着跳变走的噪声 —— 按被采符号的前后邻居分箱、它自己的
+两个边沿按阶跃响应精确算、其余线性化,逐相位(`engine/statistical.py::tx_edge_jitter`)。
+相位轴上的 RJ 模糊只剩接收端时钟的。白噪钟的 `sj_ui` / `dcd_ui` 统计引擎不建;白噪钟下
+也没有 CDR 模型,混合信号 bang-bang 环路自身的游走因此不在里面(ROADMAP P2 #27)。
+
 **PLL 相噪剖面时钟**(`kind: profile`):用 pll_simulator 导出的 L(f) + 杂散表合成
 *有色*的逐沿时间偏移,代替"一个 `rj_ui` 数字"。格式与单位约定见
 [`docs/clock_profile.md`](clock_profile.md);随库附带 `data/clock_profiles/` 下七个
