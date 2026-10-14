@@ -12,6 +12,8 @@
 - 示例 01 / 03 SNR 15.1 → 19.3 dB、内眼 6.8 → 16.2 mV,系统框图重画;示例 04 StatEye 对 MC 1.03× → 0.92×(README / SUMMARY / COMPARISON /
   铁律 3 基线改数,旧值保留)。静态引擎对 ADC 预设仍比时域乐观约 100×(不建 ADC 量化,定位如此)。`cairn/DSP发端与PR.md` §23。
 - 验证:本地全量 1089 passed / 1 skipped(+1 `test_ffe_leaves_the_dfe_its_postcursors`);ruff、Cython(static_link)通过;`derived` 96 条成立。
+- CI(2684225,含代码提交):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;测试矩阵(含 nojit)、examples、RTL lockstep、
+  pyinstaller 绿;PR 头 f7f8d8a(只改 LOG)上测试矩阵、examples、examples-full 全绿。
 - 上一条(#81)于 2026-10-13 合入。
 
 ## 2026-10-13 · ADC 收端的 DFE 起作用(fix/adc-dfe-start,ROADMAP P1 #21)
