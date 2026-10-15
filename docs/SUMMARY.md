@@ -206,6 +206,29 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
 > the other how dirty it may be (FEC threshold). The 0.9 dB is the BER curve's slope: the inner code tolerates 31× the pre-FEC BER, which the ENOB 6.5
 > curve climbs in 4.5 dB (36.0 → 40.5) and the steeper ENOB 7.5 one in 3.6 dB (44.2 → 47.8). (Corrected 2026-10-13: +3.2 / +5.4 → +9.7 dB, 1.1 dB over the sum, while the ADC receiver's DFE never engaged.)
 
+### 448G 的调制格式杠杆 / The modulation-format lever at 448G
+
+每 lane 448 Gb/s 时还有一个杠杆:用更多电平换更低的波特率。同一净速率、同一 KP4,PAM4 跑 237 GBd、PAM6(2.5 bit/符号,corner32 对映射)190 GBd、
+PAM8 158 GBd;代价是同摆幅下电平间距窄 4.4 / 7.4 dB。示例 46 让三种格式各自在统计引擎上挑收端(21 抽头 FFE × delta / 1 + aD / 1 + aD + bD²
+× 降状态网格),再把选出的格送时域(示例 19–21 的解析信道族,reach 按 56 GHz 处损耗读):
+/ At 448 Gb/s per lane there is one more lever: more levels for less baud. Same net rate and KP4: PAM4 at 237 GBd, PAM6 (2.5 bit/symbol, the corner32
+pair map) at 190, PAM8 at 158, paying 4.4 / 7.4 dB of level spacing. Example 46 lets each format pick its receiver on the statistical engine, then runs the pick on the time engine:
+
+| 格式 / Format | 最优收端 / Best receiver | reach(KP4,时域)| pJ/b | 状态数 / States |
+|---|---|---|---|---|
+| **PAM4** 237 GBd | 1 + aD + bD²,K = 2 | **20.44 dB** | 5.97 | 16 |
+| PAM6 190 GBd | 同 / same | 19.65 dB | 6.67 | 36 |
+| PAM8 158 GBd | 同 / same | 19.38 dB | 8.41 | 64 |
+
+PAM4 赢 0.79 dB、省 0.70 pJ/b,三个种子方向一致 —— 但三者只差 1 dB 量级:更高的波特率在这条信道上大体被更宽的电平间距抵掉,赢家由收端定。
+只看 delta 收端 PAM8 领先(16.90 对 16.57 / 16.44 dB);PAM4 靠两光标 PR + 16 状态 DFSE 多拿 +4.25 dB 翻盘,而 PAM8 的同一招要 64 状态。
+发端口径:PAM4 6 bit DAC 够(reach 掉 0.03 dB),PAM6 / PAM8 要 7 bit;10 mV 发端噪声 PAM4 掉 0.12 dB、PAM8 掉 1.24 dB。
+KP4+BCH 下 PAM4 的统计 reach(20.1 dB)时域没确认 —— 工作点 pre-FEC 7e-3 处逐符号判决 SER 0.2,判决导向环路失锁。
+802.3dj 的 448G 规范值一律未核实;混合信号包络对 PAM6 / PAM8 也未标定。细节与余项见 `cairn/448G调制格式.md`。
+/ PAM4 wins by 0.79 dB and 0.70 pJ/b, consistent over three seeds -- but the three sit within about 1 dB: the higher baud is roughly paid back by the wider
+level spacing on this channel, and the receiver decides. On delta receivers alone PAM8 leads; PAM4's two-cursor PR with a 16-state DFSE buys +4.25 dB and
+turns the table, where PAM8 needs 64 states for the same move. PAM4 is fine with a 6-bit DAC, PAM6 / PAM8 want 7. The 802.3dj 448G figures are unverified.
+
 ---
 
 ## 05 · 探索四:光互联的三种切法 / Exploration IV: three ways to cut an optical link
