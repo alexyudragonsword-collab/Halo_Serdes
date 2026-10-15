@@ -198,7 +198,9 @@ def record_synthetic() -> dict:
             sim=SimConfig(n_symbols=6000, seed=11, pattern="prbs13"),
             pr=PrConfig(target=(1.0, 0.5), adapt="mmse"))
         out[f"{fmt}/time"] = _guarded(lambda: result_values(run_time_link(cfg)))
-        out[f"{fmt}/static"] = _guarded(lambda: result_values(run_static_link(cfg)))
+        # the static engine has no sequence detector: its row is the delta target
+        out[f"{fmt}/static"] = _guarded(lambda: result_values(run_static_link(
+            dataclasses.replace(cfg, pr=PrConfig()))))
         out[f"{fmt}/stat"] = _guarded(lambda: result_values(run_statistical(
             cfg, ffe_taps=initial_ffe_taps(cfg), ffe_pre=cfg.rx.ffe.n_pre)))
     print("  synthetic links", file=sys.stderr, flush=True)
