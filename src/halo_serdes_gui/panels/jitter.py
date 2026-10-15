@@ -50,6 +50,8 @@ def _profile_section(rec: RunRecord):
     number the time engine's total TIE should land on, and the loop model's
     sigma is what the sampler sees after the CDR.
     """
+    from dataclasses import replace
+
     from halo_serdes.cdr.linear import LoopParams, error_response
     from halo_serdes.tx.clock import ClockProfile
 
@@ -72,7 +74,9 @@ def _profile_section(rec: RunRecord):
     sol = rec.stat.extras.get("clock_loop") if rec.stat is not None else None
     rows = [("profile RMS, 1/(N UI) .. f0/2", _fs(prof.rms_jitter_s(f_lo, prof.f0_hz / 2.0)))]
     if sol is not None:
-        loop = LoopParams.from_config(cfg)
+        # the adaptive FFE's share of the tracking, as the engine took it
+        loop = replace(LoopParams.from_config(cfg), ffe_track=sol.ffe_track,
+                       ffe_in_loop=cfg.mm_pd_input == "ffe")
         e = error_response(f, loop, sol.k_pd)
         traces.append({"x": f, "y": l_dbc + 20.0 * np.log10(np.maximum(e, 1e-12)),
                        "name": "left on the sampler: L(f) + 20 log|1-H|", "mode": "lines",

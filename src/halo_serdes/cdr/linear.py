@@ -98,6 +98,15 @@ class LoopParams:
     kp_ui: float             # proportional step per PD unit [UI]
     ki_ui: float             # integral step per PD unit [UI]
     latency_updates: int = 0 # extra pipeline delay in loop updates
+    # An adaptive FFE takes up part of a sampling offset by itself: its LMS
+    # moves the taps along their timing derivative, ``ffe_track`` of what is
+    # left per loop update (``c += ffe_track (e - c)``), so the equalised
+    # samples see ``e - c``. With the detector on the FFE's output
+    # (``ffe_in_loop``) that is a second tracking path in parallel with the
+    # loop, in effect more proportional gain; on raw samples a high-pass
+    # after it. 0: no adaptive FFE (ROADMAP P2 #29).
+    ffe_track: float = 0.0
+    ffe_in_loop: bool = True
 
     @classmethod
     def from_config(cls, cfg) -> "LoopParams":
@@ -135,6 +144,8 @@ class LoopSolution:
     # sigma_ui^2): an underdamped loop's grows as it rings up, and a smear of
     # its mean alone reads its tail short (ErrorResponse.run_sq_at)
     sigma_over_run_ui: tuple[float, ...] | None = None
+    # the adaptive FFE's share of the tracking (LoopParams.ffe_track), per update
+    ffe_track: float = 0.0
 
     @property
     def sigma_ui(self) -> float:
@@ -156,12 +167,64 @@ def loop_gain(f: np.ndarray, loop: LoopParams, k_pd: float) -> np.ndarray:
     return out
 
 
+def _polys(loop: LoopParams, k_pd: float) -> tuple[np.ndarray, np.ndarray]:
+    """The denominator ``D`` of ``E = N / D`` and ``N - D``, polynomials in z
+    (descending), the adaptive FFE's tracking included (``LoopParams.ffe_track``).
+
+    Loop alone: ``N = (z - 1)^2 z^lat``, ``T = k (kp (z - 1) + ki z)``,
+    ``D = N + T``. The FFE on the detector's input adds ``g (z - 1) z^lat``
+    to ``D``; on raw samples ``E`` (and ``T / D``) is followed by
+    ``(z - 1) / (z - 1 + g)``. ``N - D`` is built from its own terms, not by
+    subtracting: near z = 1 both are small differences of order-1
+    coefficients.
+    """
+    lat = np.r_[1.0, np.zeros(loop.latency_updates)]
+    n = np.polymul([1.0, -2.0, 1.0], lat)
+    t = np.array([k_pd * (loop.kp_ui + loop.ki_ui), -k_pd * loop.kp_ui])
+    d = np.polyadd(n, t)
+    r = -t
+    g = float(loop.ffe_track)
+    if g > 0:
+        if loop.ffe_in_loop:
+            track = g * np.polymul([1.0, -1.0], lat)
+            d, r = np.polyadd(d, track), np.polysub(r, track)
+        else:
+            # N (z - 1) - D (z - 1 + g) = -T (z - 1) - g D
+            r = np.polysub(np.polymul(r, [1.0, -1.0]), g * d)
+            d = np.polymul(d, [1.0, g - 1.0])
+    return d, r
+
+
+def _on_circle(f: np.ndarray, loop: LoopParams, k_pd: float, which: str) -> np.ndarray:
+    """|N / D| (``which`` "e") or |T / D| ("h") on ``f`` (as ``_polys``);
+    1 / 0 outside (0, f_update / 2]. On the circle with ``z - 1`` taken
+    whole, which a polynomial in z loses near z = 1."""
+    f = np.asarray(f, dtype=np.float64)
+    inside = (f > 0) & (f <= loop.f_update / 2.0)
+    out = np.ones(f.shape) if which == "e" else np.zeros(f.shape)
+    w = TWOPI * f[inside] / loop.f_update
+    z = np.exp(1j * w)
+    zm1 = 2j * np.sin(w / 2.0) * np.exp(0.5j * w)
+    n = zm1 ** 2 * z ** loop.latency_updates
+    t = k_pd * (loop.kp_ui * zm1 + loop.ki_ui * z)
+    g = float(loop.ffe_track)
+    if loop.ffe_in_loop:
+        h = (n if which == "e" else t) / (n + t + g * zm1 * z ** loop.latency_updates)
+    else:
+        h = (n if which == "e" else t) / (n + t) * zm1 / (zm1 + g)
+    out[inside] = np.abs(h)
+    return out
+
+
 def error_response(f: np.ndarray, loop: LoopParams, k_pd: float) -> np.ndarray:
     """|E(f)| = |1 - H(f)|: the fraction of input jitter at ``f`` left on the sampler.
 
     Above ``f_update / 2`` the loop never sees the frequency as distinct and
-    the response is 1 (nothing tracked).
+    the response is 1 (nothing tracked). With an adaptive FFE
+    (``LoopParams.ffe_track``) it is what the equalised samples are left with.
     """
+    if loop.ffe_track > 0:
+        return _on_circle(f, loop, k_pd, "e")
     return np.abs(1.0 / (1.0 + loop_gain(f, loop, k_pd)))
 
 
@@ -188,15 +251,24 @@ class ErrorResponse:
         inside = (f > 0) & (f <= loop.f_update / 2.0)
         if not np.any(inside) or k <= 0:
             return None
-        # D(z) = (z - 1)^2 z^lat + k (kp (z - 1) + ki z); E = 1 + R / D
-        den = np.zeros(loop.latency_updates + 3)
-        den[:3] = (1.0, -2.0, 1.0)
-        den[-2] += k * (loop.kp_ui + loop.ki_ui)
-        den[-1] -= k * loop.kp_ui
-        poles = np.roots(den)
-        if np.any(np.abs(poles) >= 1.0):
-            return None
-        c = (k * loop.kp_ui - k * (loop.kp_ui + loop.ki_ui) * poles) / np.polyval(np.polyder(den), poles)
+        if loop.ffe_track > 0:
+            # E = N / D = 1 + (N - D) / D, the residues at D's poles (D monic)
+            den, rem = _polys(loop, k)
+            poles = np.roots(den)
+            if np.any(np.abs(poles) >= 1.0):
+                return None
+            c = np.polyval(rem, poles) / np.array(
+                [np.prod(p - np.delete(poles, i)) for i, p in enumerate(poles)])
+        else:
+            # D(z) = (z - 1)^2 z^lat + k (kp (z - 1) + ki z); E = 1 + R / D
+            den = np.zeros(loop.latency_updates + 3)
+            den[:3] = (1.0, -2.0, 1.0)
+            den[-2] += k * (loop.kp_ui + loop.ki_ui)
+            den[-1] -= k * loop.kp_ui
+            poles = np.roots(den)
+            if np.any(np.abs(poles) >= 1.0):
+                return None
+            c = (k * loop.kp_ui - k * (loop.kp_ui + loop.ki_ui) * poles) / np.polyval(np.polyder(den), poles)
         zi = np.exp(-1j * TWOPI * f[inside] / loop.f_update)[:, None]
         q = poles[None, :] * zi
         d = c[None, :] * zi / (1.0 - q)
@@ -252,7 +324,11 @@ class ErrorResponse:
 
 
 def tracking_response(f: np.ndarray, loop: LoopParams, k_pd: float) -> np.ndarray:
-    """|H(f)|: the fraction of input jitter at ``f`` the loop follows."""
+    """|H(f)|: the fraction of input jitter at ``f`` the loop follows -- and,
+    over ``k_pd``, how its detector's noise reaches the sampler (with an
+    adaptive FFE, the equalised samples)."""
+    if loop.ffe_track > 0:
+        return _on_circle(f, loop, k_pd, "h")
     gain = loop_gain(f, loop, k_pd)
     return np.abs(gain / (1.0 + gain))
 

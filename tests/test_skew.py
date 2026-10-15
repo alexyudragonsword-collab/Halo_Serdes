@@ -196,10 +196,12 @@ def _time_at_offset(cfg, channel, offsets_ui, wander=False):
 ])
 def test_invariant3_mixed_signal_lane_off_its_lock(name, noise, offsets):
     """The lane's curve against a time-domain lane held at the offset on a
-    clock that hunts as a bang-bang loop on that link does; on these two links
-    0.67-1.09 over -3/8 ... +1/4 UI on the offsets with 20 errors or more
-    (cairn/多lane建模.md §8; 0.92-1.31 before the held curve was taken between
-    samples, ROADMAP P2 #28). Until 2026-10-15 the statistical engine left the
+    clock that hunts as a bang-bang loop on that link does; over -3/8 ... +1/4
+    UI on the offsets with 20 errors or more NRZ 28G 0.67-1.09 and PAM4 32G
+    1.05-1.73, 1.3-1.7 on its early side, the hunting's model sigma 1.19x the
+    measured there (cairn/多lane建模.md §8; PAM4 0.74-1.04 before its slicer
+    thresholds were held under the smear, ROADMAP P2 #29 / #30; 0.92-1.31 before
+    the held curve was taken between samples, ROADMAP P2 #28). Until 2026-10-15 the statistical engine left the
     loop's hunting out on white clocks and the reference held the lane still,
     0.49-1.78 (ROADMAP P2 #27); the curve now reads 1.2-38x against a still
     lane, which is not what the receiver sees."""
