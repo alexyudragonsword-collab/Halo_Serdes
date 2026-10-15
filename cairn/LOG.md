@@ -15,6 +15,8 @@
   P2 #27 白时钟组 NRZ 16G 0.45–0.89×、PAM4 32G 0.99–1.01×、NRZ 28G 0.67–1.08×。指纹 10 个统计值变,时域不变。统计单跑 1.3–1.7× 慢。
 - 文档:`cairn/DSP发端与PR.md` §29(§28 加注)、pitfalls 新增三条 + 两条加注、invariants、`多lane建模.md` §3 / §7 / §8 更正、clock_profile、USAGE、COMPARISON。
 - 验证:本地全量 1120 passed / 1 skipped(+9 `tests/test_profile_run_smear.py`;首轮 USAGE 一处代码注释被链接检查误认,改后 `test_docs_fresh` 14 条通过;`HALO_NO_JIT=1` 下新文件的 7 条闭式 / 插值测试通过);ruff、Cython(linear / statistical / clock)通过;`derived` 96 条成立。
+- CI(0b4de9c,含代码提交 30551b4 —— 两个提交一起推送,CI 只在头上跑):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;
+  测试矩阵(含 nojit)、examples、examples-full、RTL lockstep、lint、import-clean、vendor-drift、pyinstaller、APK 构建绿,nuitka / nuitka-onefile 绿(117 / 73 分钟)。
 - 上一条(#87)于 2026-10-15 合入。
 
 ## 2026-10-15 · 白时钟上 bang-bang 环路的游走进统计引擎(fix/bb-white-wander,ROADMAP P2 #27)
