@@ -33,12 +33,16 @@ Non-LTI approximations (each cross-checked against the time engine):
   elsewhere stay ISI; the bathtub (``ber_phi``) re-adapts at every phase.
   Where the smear is under two samples that curve is also taken between
   samples (the pulse interpolated): a steep bathtub read linearly between
-  them came out 1.6-3.6x high half a sample off the lock. On a profile
-  clock the time engine's LMS FFE follows part of the slow wander, 1.7x
-  in BER at example 31's kp_shift 8-9 and nothing at 4-6, which this does
-  not model (ROADMAP P2 #28: example 31's link over 4-9 and two clocks,
-  0.66-1.4x against 12 seeds; with the taps re-adapted, as until then,
-  0.24-1.4x).
+  them came out 1.6-3.6x high half a sample off the lock. The PAM4
+  slicer's thresholds stay with the taps, at the main cursor of the phase
+  read, as the time engine sets its levels once: re-placed at each phase's
+  own (until 2026-10-15) the curve read the time engine frozen off the lock
+  0.70-0.74x on example 31 and 0.42-0.79x on the PAM4 32G preset, held
+  0.95-1.19x (ROADMAP P2 #29). An ADC receiver's LMS FFE takes up part
+  of a profile clock's slow wander (the coloured-clock entry): example 31's
+  link over kp_shift 4-9, two clocks and the LMS step 0-1e-2 reads 0.68-1.6x
+  against 12 seeds, the high end on 12-18 errors (the FFE left out, as until
+  then, ~12x at mu 1e-2, kp_shift 9).
   The transmitter's white RJ is not a sampling shift -- each edge moves on
   its own -- and comes in as noise that follows the transitions
   (``tx_edge_jitter``): binned by the sampled symbol's neighbours, its own
@@ -106,7 +110,15 @@ Non-LTI approximations (each cross-checked against the time engine):
   engine's 16-seed RMS 1.34-1.70x where the run reads it 0.98-0.99x. Its
   error grows over the run, so the read is the mean over points of it
   (``LoopSolution.sigma_over_run_ui``); the steady state is reported
-  (``sigma_steady_ui``) and warned when it is over 1.25x the run's. The bang-bang detector's gain is set by the
+  (``sigma_steady_ui``) and warned when it is over 1.25x the run's. An ADC
+  receiver's LMS FFE moves its taps along their timing derivative and so
+  follows the offset itself, ``n_lanes * mu * lambda'`` of what is left per
+  update (``_ffe_lms_track``; 2.4e-5 on example 31 at mu 1e-3, the time
+  engine's CDR error fitting 3e-5): with the detector on its output a
+  second tracking path beside the loop, on raw samples a high-pass after it
+  (``LoopParams.ffe_track``). Without it the model read the CDR error up to
+  1.3x high at mu 1e-2; with it 0.93-1.01x over kp_shift 4-9, two clocks
+  and mu 0-1e-2 (ROADMAP P2 #29). The bang-bang detector's gain is set by the
   jitter at its input, which here is the untracked clock, the loop's own
   hunting, and AWGN + ISI at the edge sample converted through the edge
   slope of the pre-DFE pulse (first order; a lossy channel's data-dependent
@@ -1040,10 +1052,11 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # the decision feedback (a PR target's controlled cursors, then the DFE)
     n_feedback = ((n_t - 1 if pr_active else 0) + n_dfe
                   if cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "ffe" else 0)
+    pulse_pre = pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr)
     sigma_ui, loop_sol = _sampling_jitter_ui(
-        cfg, pulse if cfg.mm_pd_input == "ffe" else
-        pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr), levels_norm, swing,
+        cfg, pulse if cfg.mm_pd_input == "ffe" else pulse_pre, levels_norm, swing,
         cfg.rx.noise_rms, n_feedback=n_feedback,
+        ffe_track=_ffe_lms_track(cfg, pulse_pre, n_dfe) if has_ffe else 0.0,
         loop=not (cfg.rx.arch == "mixed_signal" and has_ffe))
     # The smear is a sampling instant that moves (the loop's hunting and the
     # clock it leaves, the receiver's RJ), faster than the decision feedback
@@ -1056,7 +1069,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # the curve is also taken between them (``frac``, the pulse interpolated):
     # read linearly between samples a steep, convex curve came out 1.6-3.6x
     # high half a sample off the lock -- most of what example 31's profile
-    # clocks read high with the taps held (ROADMAP P2 #28).
+    # clocks read high with the taps held (ROADMAP P2 #28). The slicer's
+    # thresholds are held with the taps (P2 #29).
     held = sigma_ui > 0
     smears = (tuple(loop_sol.sigma_over_run_ui)
               if loop_sol is not None and loop_sol.sigma_over_run_ui else (sigma_ui,))
@@ -1078,6 +1092,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 tasks.append((pi, True, frac))
     fine_vals: dict[float, tuple[float, float]] = {}
     lock_dfe: dict[int, float] = {}
+    lock_main = None
     for pi, fixed, frac in tasks:
         off = phi_offsets[pi]
         if tx_jit_phi is not None:
@@ -1093,6 +1108,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             c[valid] = pulse.y[idx[valid]]
         c = c * swing
         main = c[n_pre]
+        if pi == i_lock and not fixed:
+            lock_main = main
+        # where the slicer's thresholds sit: at the main cursor of the phase
+        # read when the smear holds the receiver (fixed), else at this one.
+        # Re-placed at each phase they read the time engine frozen off the
+        # lock 0.42-0.79x on PAM4 (ROADMAP P2 #29)
+        thr_main = lock_main if fixed and lock_main is not None else main
         isi = np.delete(c, n_pre)
         # a partial-response target's controlled cursor is signal, not ISI:
         # the sequence detector resolves it (or, without one, the per-symbol
@@ -1289,13 +1311,14 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             lv = levels_norm * main
             order = np.argsort(lv)
             lv_sorted = lv[order]
+            lt = (levels_norm * thr_main)[order]
             for j in range(n_levels):
                 p_err_up = p_err_dn = 0.0
                 if j < n_levels - 1:
-                    thr = (lv_sorted[j] + lv_sorted[j + 1]) / 2.0
+                    thr = (lt[j] + lt[j + 1]) / 2.0
                     p_err_up = tail_ge(thr - lv_sorted[j], int(order[j]))
                 if j > 0:
-                    thr = (lv_sorted[j - 1] + lv_sorted[j]) / 2.0
+                    thr = (lt[j - 1] + lt[j]) / 2.0
                     p_err_dn = tail_le(thr - lv_sorted[j], int(order[j]))
                 ser += w_ev * (p_err_up + p_err_dn) / n_levels
                 nbe += w_ev * (p_err_up + p_err_dn) / n_levels  # Gray: adjacent = 1 bit
@@ -1321,10 +1344,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 for sgn in (1.0, -1.0):
                     p_j = 0.0
                     if j < n_levels - 1:
-                        thr = (lv_sorted[j] + lv_sorted[j + 1]) / 2.0
+                        thr = (lt[j] + lt[j + 1]) / 2.0
                         p_j += tail_ge(thr - lv_sorted[j] - sgn * step, int(order[j]))
                     if j > 0:
-                        thr = (lv_sorted[j - 1] + lv_sorted[j]) / 2.0
+                        thr = (lt[j - 1] + lt[j]) / 2.0
                         p_j += tail_le(thr - lv_sorted[j] - sgn * step, int(order[j]))
                     p_ep += p_j / (2 * n_levels)
             p_ep = min(p_ep, 0.99)
@@ -1495,7 +1518,8 @@ def _smeared_at(curve: np.ndarray, phi: np.ndarray, center: float, sigma: float)
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
                         swing: float, noise_sigma: float, n_feedback: int = 0,
-                        loop: bool = True) -> tuple[float, LoopSolution | None]:
+                        loop: bool = True, ffe_track: float = 0.0
+                        ) -> tuple[float, LoopSolution | None]:
     """RMS sampling-instant jitter [UI] to smear the bathtub with, and the loop model behind it.
 
     The transmitter's white jitter is not in it: it moves each edge on its
@@ -1564,6 +1588,9 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
         return float(np.sqrt(var + white ** 2))
 
     if cfg.rx.arch == "adc_dsp":
+        # the adaptive FFE takes up part of the error itself (ffe_track per
+        # update): on the detector's input a second path in the loop
+        lp = replace(lp, ffe_track=float(ffe_track), ffe_in_loop=cfg.mm_pd_input == "ffe")
         peak = int(np.argmax(np.abs(pulse_pd.y)))
         levels_v = levels_norm * swing
         period = _pattern_period(cfg)
@@ -1579,7 +1606,8 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
         # late; jitter above its bandwidth only blurs the timing function
         lagged = untracked(lambda f: error_response(f, lp, k_pd)
                            * (np.asarray(f, dtype=np.float64) <= sol.bandwidth_hz))
-        sol = replace(sol, sigma_wander_ui=float(np.hypot(sol.sigma_self_ui, lagged)),
+        sol = replace(sol, ffe_track=lp.ffe_track,
+                      sigma_wander_ui=float(np.hypot(sol.sigma_self_ui, lagged)),
                       hold_range_ui=mm_hold_range_ui(pulse_pd.y, cfg.osr, peak, levels_v,
                                                      noise_sigma, n_feedback=n_feedback))
         _warn_if_mm_cannot_hold(sol)
@@ -1728,6 +1756,50 @@ def _warn_if_mm_cannot_hold(sol: LoopSolution) -> None:
 
 #: points over the run at which an underdamped loop's error is taken
 _RUN_POINTS = 12
+
+
+def _ffe_lms_track(cfg: LinkConfig, pulse_pre: Waveform, n_dfe: int) -> float:
+    """How much of a sampling offset an ADC receiver's LMS FFE takes up per
+    loop update, ``n_lanes * mu * lambda'``.
+
+    A sampling offset ``d`` moves the FFE's optimum along its timing
+    derivative ``w'``; the LMS (``w -= mu e x`` per symbol) closes the gap
+    along it at ``mu`` times the input autocorrelation's Rayleigh quotient
+    there, ``lambda' = w'R w' / w'w'`` -- so the equalised samples see
+    ``d - c`` with ``c`` following ``d`` at that rate. ``w'`` from the time
+    engine's own start-up solve (``mmse_ffe``, the DFE's postcursors left to
+    it) one sample either side of the pulse peak, ``R`` from the pulse at
+    the symbol power plus the receiver's and the ADC's noise. On example 31's
+    link 2.4e-5 per update at mu 1e-3: the time engine's CDR error over kp_shift
+    6-9 at mu 1e-3 and 1e-2 fits 3e-5 / 3e-4 (ROADMAP P2 #29). 0 unless the
+    FFE adapts by LMS."""
+    from ..dsp import channel_cursors, mmse_ffe
+    from ..dsp.ffe import _conv_matrix
+
+    fcfg = cfg.rx.ffe
+    n_taps = fcfg.n_pre + 1 + fcfg.n_post
+    if cfg.rx.arch != "adc_dsp" or fcfg.adapt != "lms" or fcfg.mu <= 0 or n_taps < 2:
+        return 0.0
+    osr = cfg.osr
+    peak = int(np.argmax(np.abs(pulse_pre.y)))
+    n_pre_c, n_post_c = fcfg.n_pre + 4, fcfg.n_post + 12
+    power = float(np.mean(_levels(cfg) ** 2))
+    noise_var = cfg.rx.noise_rms ** 2 + adc_noise_sigma(cfg) ** 2
+
+    def cursors(shift: int) -> np.ndarray:
+        return channel_cursors(pulse_pre, osr, n_pre_c, n_post_c, peak_idx=peak + shift)
+
+    def optimum(shift: int) -> np.ndarray:
+        return mmse_ffe(cursors(shift), n_pre_c, n_taps, fcfg.n_pre, noise_var=noise_var / power,
+                        normalize=False, free_post=n_dfe)
+
+    wp = optimum(1) - optimum(-1)
+    if not np.any(wp):
+        return 0.0
+    m = _conv_matrix(cursors(0), n_taps)
+    r = power * (m.T @ m) + noise_var * np.eye(n_taps)
+    lam = float(wp @ r @ wp / (wp @ wp))
+    return float(max(int(cfg.rx.adc.n_lanes), 1) * fcfg.mu * lam)
 
 
 def _over_run(profs, er: ErrorResponse, sol: LoopSolution, first: int, last: int,

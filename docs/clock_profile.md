@@ -224,6 +224,23 @@ seeds (until then 0.24-1.42x). What is left at kp_shift 8-9: the time engine's
 LMS FFE follows part of the slow wander, 1.6-1.8x lower BER than with it
 frozen, which this does not model.
 
+(2026-10-15 update, ROADMAP P2 #29: it is modelled now, and the
+"curve reads 0.6-0.8x off the lock" registered with it was the PAM4 slicer's
+thresholds, re-placed at each phase's own main cursor -- the time engine sets
+its levels once. Held with the taps, the curve reads the time engine frozen
+off the lock 0.95-1.19x (re-placed 0.42-0.79x, example 31 and the PAM4 32G
+preset). The LMS FFE moves its taps along their timing derivative and takes
+up ``n_lanes * mu * lambda'`` of the offset per loop update
+(``lambda' = w'Rw' / w'w'``; 2.4e-5 on example 31 at mu 1e-3, where the
+time engine's CDR error fits 3e-5): with the detector on the FFE's output a
+second tracking path beside the loop, on raw samples a high-pass after it
+(`LoopParams.ffe_track`; the GUI's jitter panel draws `|E|` with it). Over
+kp_shift 4-9, both profiles and mu 0 / 1e-3 / 1e-2: 0.68-1.61x the time
+engine over 12 seeds (mu 1e-2 at kp_shift 9 was ~12x), the loop model's
+sigma 0.93-1.01x the measured CDR error. With the equalisers frozen the
+read stays 0.68-0.88x -- 0.78-0.87x at kp_shift 4 where sigma matches -- left
+with the Gaussian smear's tails, ROADMAP P2 #30.)
+
 **The Mueller-Muller detector's noise is not white.** Summed over a block,
 `x[n] (sign x[n+1] - sign x[n-1])` is `x[n] sign x[n+1] - x[n+1] sign x[n]` up
 to the two end terms: neighbours' main cursors cancel, up to the difference
@@ -283,7 +300,9 @@ bathtubs (20+ errors): NRZ 16G 0.11-0.54x before, 0.50-0.89x now; PAM4 32G
 What is left on NRZ 16G is the Gaussian: the sampler's own phase distribution
 reads 1.15-1.4x what a Gaussian of its sigma does there. (With the curve taken
 between samples, 2026-10-15: NRZ 16G 0.45-0.89x, PAM4 32G 0.99-1.01x, NRZ 28G
-0.67-1.08x.)
+0.67-1.08x. With the PAM4 slicer's thresholds held as well, ROADMAP P2 #29:
+PAM4 32G 1.03-1.13x, and deeper -- 37-119 errors over 8 M symbols -- 1.09-1.20x
+at 0.03 UI RJ and 1.31-1.40x at 0.01 UI, ROADMAP P2 #30; NRZ unchanged.)
 
 The bang-bang figure on a quiet clock is limited by the limit cycle not being
 white noise. On the cross-check link the two engines' BER agree to 1.3–1.5×
