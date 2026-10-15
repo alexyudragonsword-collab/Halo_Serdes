@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-15 · 448G/lane 调制格式比较:PAM6 / PAM8 进字母表,示例 46(feat/448g-formats)
+
+- 用户 prompt 要的 v4 文档 #20 + #37:仓库没有 #37,现有 #20 是已清空的 PAM4 0↔3 条目 —— 不删,新登记余项;P2 #31 / #32 按用户要求暂停。
+- 泛化:`modulation ∈ {nrz, pam4, pam6, pam8}`,字母表只在 `core/mapping.py`(PAM6 corner32 对映射贪心表、PAM8 Gray),`n_levels` / `bits_per_symbol`
+  替掉 9 处 `2 ** bits_per_symbol`;时域按对精确计数,统计引擎带电平占用(1/8 / 3/16)与比特距离矩阵。NRZ / PAM4 指纹 860 值 bit-identical。
+- 铁律 3:ADC PAM6 / PAM8 0.96–1.20×;混合信号 PAM6 带 DFE 0.55–0.67、无 DFE 1.45×(更短链路 2.5 / 3.9× → P2 #35),PAM8 要 CTLE,0.53–1.07×。
+- 示例 46(394 s):三格式都选 1 + aD + bD² K = 2,KP4 时域 reach PAM4 20.44 / PAM6 19.65 / PAM8 19.38 dB,PAM4 赢 0.79 dB、省 0.70 pJ/b,3 种子一致;
+  delta 收端 PAM8 领先,PAM4 靠 PR + DFSE +4.25 dB 翻盘;DAC 6 / 7 / 7 bit;KP4+BCH 下 PAM4 统计 reach 时域未确认(判决导向环路失锁,P2 #15 余项的又一例)。
+- 踩的坑:包络警告分支里的 `return` 让 `run_time_link` 返回 None(测试只看警告);统计引擎逐图样分箱 N³,PAM8 带 PR 单跑 56 s → 示例里 rj 设 0。
+- 文档:新专题 `cairn/448G调制格式.md`;USAGE §1 / §10;SUMMARY §04 小节;ROADMAP P2 #33–#35、P3 #12;pitfalls 两条;invariants;inventory;指纹加两条合成链路。
+- 验证:本地全量 1195 passed / 1 skipped(+59;`HALO_NO_JIT=1` 下三个新文件 47 项通过);ruff、Cython 13 个模块;`run_examples.py --smoke` 46 / 46;示例 00–45 的全尺寸漂移比对进行中(结果在本条下方补记)。
+
 ## 2026-10-15 · PAM4 猎振的数据噪声;门限放在接收机设电平处(fix/smear-distribution,ROADMAP P2 #30)
 
 - 拆开量(PAM4 32G / NRZ 16G / NRZ 28G 白噪钟,8–16 种子):实测相位分布换进曲线只差 0–15 %,冻结时域对照曲线对得上 —— 登记时猜的"高斯尾部"不对。
