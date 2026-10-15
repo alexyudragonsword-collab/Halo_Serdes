@@ -1024,15 +1024,18 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr), levels_norm, swing,
         cfg.rx.noise_rms, n_feedback=n_feedback,
         loop=not (cfg.rx.arch == "mixed_signal" and has_ffe))
-    # The smear moves the sampling instant faster than the decision feedback
-    # adapts: the receiver's DFE stays where it adapted, at the phase it is
-    # read at, while the loop wanders. So the phases the smear reaches are
-    # taken a second time with that phase's taps (``fixed``), the residual
-    # postcursors left as ISI; the bathtub (ber_phi) stays the static one, its
-    # DFE adapted at every phase. Re-adapting under the smear read the NRZ
-    # 16G preset 1.1-1.4x low against the time engine (ROADMAP P2 #27).
-    fixed_span = (int(min(osr // 2, np.ceil(8.0 * sigma_ui * osr)))
-                  if sigma_ui > 0 and n_dfe > 0 else 0)
+    # On white clocks the smear is a sampling instant that moves (the loop's
+    # hunting, the receiver's RJ), faster than the decision feedback adapts:
+    # the receiver's DFE stays where it adapted, at the phase it is read at.
+    # So the phases the smear reaches are taken a second time with that
+    # phase's taps (``fixed``), the residual postcursors left as ISI; the
+    # bathtub (ber_phi) stays the static one, its DFE adapted at every phase.
+    # Re-adapting under the smear read the NRZ 16G preset 1.1-1.4x low against
+    # the time engine (ROADMAP P2 #27). A profile clock keeps the re-adapted
+    # read: its untracked sigma overstates the coherent sampling shift (with
+    # the taps held, example 31 read 6.6-15x high; ROADMAP P2 #28).
+    held = sigma_ui > 0 and all(c.kind != "profile" for c in (cfg.tx.clock, cfg.rx.clock))
+    fixed_span = int(min(osr // 2, np.ceil(8.0 * sigma_ui * osr))) if held and n_dfe > 0 else 0
     lo_fix, hi_fix = max(i_lock - fixed_span, 0), min(i_lock + fixed_span, osr - 1)
     tasks = [(i_lock, False)] + [(i, False) for i in range(osr) if i != i_lock]
     if fixed_span:
@@ -1362,7 +1365,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         lock = (lag + osr / 2) % osr - osr / 2
         ber = float(np.interp(lock, phi_offsets, ber_phi))
         ser = float(np.interp(lock, phi_offsets, ser_phi))
-        if sigma_ui > 0:
+        if held:
             # the smear around the phase read, with its taps held there when
             # there is a DFE (that curve exists only where the smear reaches)
             sl = slice(lo_fix, hi_fix + 1) if fixed_span else slice(None)
