@@ -14,6 +14,8 @@
   其余不变;`test_skew` 时域参照改为冻结 + 回放自由环路的游走(0.92–1.31×)。指纹 16 个统计值变(白时钟混合信号),时域不变。
 - 文档:`cairn/DSP发端与PR.md` §28、`多lane建模.md` §3 / §7 / §8.2 / §8.3 更正、pitfalls 三条、invariants 两处、USAGE §9 与多 lane、COMPARISON、clock_profile。
 - 验证:本地全量 1111 passed / 1 skipped(+8 `tests/test_bb_white_wander.py`;`HALO_NO_JIT=1` 下统计路径两条通过);ruff、Cython(linear / statistical)通过;`derived` 96 条成立。
+- CI(60855a0,含 21324bc / 8615adf / 5162d47 —— 四个提交一起推送,CI 只在头上跑):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;
+  测试矩阵(含 nojit)、examples、examples-full、RTL lockstep、lint、import-clean、vendor-drift、pyinstaller、APK 构建绿,nuitka / nuitka-onefile 绿(81 / 122 分钟)。
 - 上一条(#86)于 2026-10-14 合入。
 
 ## 2026-10-14 · MM 定时函数在锁定点附近见顶:报拐点距离、按环路游走警告(fix/mm-hump-warning,ROADMAP P2 #26)
