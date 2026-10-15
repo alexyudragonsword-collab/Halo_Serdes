@@ -39,6 +39,15 @@ MS_LIMIT_DATA_RATE: dict[str, float] = {"nrz": 30.0e9, "pam4": 36.0e9}
 MS_HARD_MAX_BAUD = 30.0e9
 
 
+def ms_envelope(modulation: str) -> tuple[float, float] | None:
+    """(comfort, limit) data rate [bit/s] of the mixed-signal envelope, or
+    None for a format it was never calibrated on (PAM6 / PAM8: examples/12
+    measured NRZ and PAM4 only); only the hard baud ceiling applies there."""
+    if modulation in MS_COMFORT_DATA_RATE:
+        return MS_COMFORT_DATA_RATE[modulation], MS_LIMIT_DATA_RATE[modulation]
+    return None
+
+
 def _require(cond: bool, msg: str) -> None:
     """Reject an invalid config at construction.
 
@@ -156,6 +165,9 @@ class TxConfig:
     fir_n_pre: int = 0
     swing: float = 1.0                     # differential peak-to-peak [V]
     rlm: float = 1.0                       # PAM4 level mismatch ratio
+    # PAM6's 5-bits-per-pair map (core/mapping.py): "corner32" sends 32 of
+    # the 36 pairs, the four with both symbols outer left out
+    pam6_map: Literal["corner32"] = "corner32"
     bw: Optional[float] = None             # single-pole driver bandwidth [Hz]
     # DSP Tx (tx/dac.py, tx/driver.py); every default is "off"
     dac_bits: Optional[int] = None         # None = ideal (unquantised) Tx
@@ -181,6 +193,7 @@ class TxConfig:
         _require(self.swing > 0, f"tx.swing must be > 0, got {self.swing}")
         _require(0.0 < self.rlm <= 1.0,
                  f"tx.rlm is a level-mismatch ratio in (0, 1], got {self.rlm}")
+        _require_in(self.pam6_map, {"corner32"}, "tx.pam6_map")
         _require(len(self.fir_taps) >= 1, "tx.fir_taps must not be empty")
         _require(self.fir_n_pre >= 0,
                  f"tx.fir_n_pre must be >= 0, got {self.fir_n_pre}")
@@ -821,7 +834,7 @@ class CrosstalkConfig:
 class LinkConfig:
     # defaults define the product mixed-signal anchor point: 16 GBd NRZ
     # (the canonical validated configuration, well inside the comfort zone)
-    modulation: Literal["nrz", "pam4"] = "nrz"
+    modulation: Literal["nrz", "pam4", "pam6", "pam8"] = "nrz"
     symbol_rate: float = MS_DEFAULT_BAUD   # [Baud]
     osr: int = 32                       # oversampling ratio (samples per UI)
     # 1/(1+D) mod-N precoding at the Tx, undone at the Rx. Standard PAM4
@@ -843,7 +856,7 @@ class LinkConfig:
     crosstalk: CrosstalkConfig = field(default_factory=CrosstalkConfig)
 
     def __post_init__(self):
-        _require_in(self.modulation, {"nrz", "pam4"}, "modulation")
+        _require_in(self.modulation, {"nrz", "pam4", "pam6", "pam8"}, "modulation")
         # A form needs an "off" state it can express as a field value, so a
         # topology whose optics are "none" is accepted and normalised here to
         # the one representation the engines test for: topology is None.
@@ -854,7 +867,7 @@ class LinkConfig:
         # a non-positive osr silently yields a negative/infinite dt
         _require(self.osr >= 1, f"osr must be >= 1 sample/UI, got {self.osr}")
         # a DAC that cannot even hold the symbol alphabet is a typo, not a design
-        n_lv = 4 if self.modulation == "pam4" else 2
+        n_lv = self.n_levels
         _require(self.tx.dac_bits is None or 2 ** self.tx.dac_bits >= n_lv,
                  f"tx.dac_bits={self.tx.dac_bits} cannot represent {n_lv} {self.modulation} levels")
         # the mixed-signal slicer has no digital equaliser to shape a target
@@ -897,15 +910,26 @@ class LinkConfig:
     @property
     def mm_pd_input(self) -> str:
         """The MM phase detector's input with "auto" resolved: equalised
-        samples on PAM4, raw ADC samples on NRZ."""
+        samples on a multi-level format, raw ADC samples on NRZ."""
         pd = self.rx.cdr.pd_input
         if pd != "auto":
             return pd
-        return "ffe" if self.modulation == "pam4" else "adc"
+        return "ffe" if self.n_levels > 2 else "adc"
 
     @property
-    def bits_per_symbol(self) -> int:
-        return 2 if self.modulation == "pam4" else 1
+    def n_levels(self) -> int:
+        """Levels of the alphabet: 2 / 4 / 6 / 8."""
+        from ..core.mapping import n_levels_of
+
+        return n_levels_of(self.modulation)
+
+    @property
+    def bits_per_symbol(self) -> int | float:
+        """1 / 2 / 3 for NRZ / PAM4 / PAM8; 2.5 for PAM6 (five bits per pair
+        of symbols). An int wherever it is one."""
+        from ..core.mapping import bits_per_symbol_of
+
+        return bits_per_symbol_of(self.modulation)
 
     @property
     def data_rate(self) -> float:

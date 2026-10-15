@@ -183,7 +183,7 @@ def trellis_states(cfg: LinkConfig, rx: RxConfig | None = None) -> int:
     rx = cfg.rx if rx is None else rx
     if rx.mlsd.kind != "viterbi":
         return 0
-    return (2 ** cfg.bits_per_symbol) ** _state_memory(cfg, rx)
+    return cfg.n_levels ** _state_memory(cfg, rx)
 
 
 def _state_memory(cfg: LinkConfig, rx: RxConfig) -> int:
@@ -195,7 +195,7 @@ def _state_memory(cfg: LinkConfig, rx: RxConfig) -> int:
 
 def _sequence_detector(cfg: LinkConfig, rx: RxConfig, slicer_bits: int, baud: float,
                        k: PowerCoefficients, name: str) -> list[PowerBlock]:
-    n = 2 ** cfg.bits_per_symbol
+    n = cfg.n_levels
     if rx.mlsd.kind == "viterbi":
         s = trellis_states(cfg, rx)
         branches = s * n
@@ -222,7 +222,7 @@ def rx_blocks(cfg: LinkConfig, rx: RxConfig, k: PowerCoefficients,
               prefix: str = "rx") -> list[PowerBlock]:
     """One receiver's blocks [W] at ``cfg``'s symbol rate and modulation."""
     baud = cfg.symbol_rate
-    n = 2 ** cfg.bits_per_symbol
+    n = cfg.n_levels
     out = [PowerBlock(f"{prefix}.common", k.rx_common_j_per_bit * cfg.data_rate,
                       "CTLE / VGA, clocking, CDR")]
     slicer_bits = rx.adc.n_bits + 2         # FFE output word the slicer and trellis see

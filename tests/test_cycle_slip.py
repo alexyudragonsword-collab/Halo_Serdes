@@ -29,7 +29,7 @@ def _stream(n, m, p_err, seed=0):
     return ref, dec
 
 
-@pytest.mark.parametrize("m", [2, 4])
+@pytest.mark.parametrize("m", [2, 4, 6, 8])
 @pytest.mark.parametrize("step", [+1, -1, +2])
 def test_one_slip_is_found_where_it_happened(m, step):
     ref, dec = _stream(60_000, m, 1e-3)

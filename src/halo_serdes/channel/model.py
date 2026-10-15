@@ -247,8 +247,6 @@ class ChannelModel:
 
 def _tx_levels(link: LinkConfig) -> np.ndarray:
     """The driver's own levels [V] (the curve has not acted on them yet)."""
-    from ..core.mapping import nrz_levels, pam4_levels
+    from ..core.mapping import levels_for
 
-    if link.modulation == "pam4":
-        return pam4_levels(link.tx.swing, link.tx.rlm)
-    return nrz_levels(link.tx.swing)
+    return levels_for(link.modulation, link.tx.swing, link.tx.rlm)

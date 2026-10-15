@@ -54,7 +54,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.stats import poisson
 
-from ..core.mapping import gray_decode_symbols
+from ..core.mapping import gray_decode_symbols, symbols_to_bits
 from .reach import fec_threshold
 from .rs import M_BITS, post_fec_frame_error_rate
 
@@ -138,7 +138,19 @@ def bit_errors(decisions: np.ndarray, reference: np.ndarray,
         return np.flatnonzero(wrong), 2 * int(ok.sum())
     if modulation == "nrz":
         return np.flatnonzero(ok & (dec != ref)), int(ok.sum())
-    raise ValueError(f"modulation must be 'pam4' or 'nrz', got {modulation!r}")
+    if modulation == "pam8":
+        wrong = symbols_to_bits(np.where(ok, dec, 0), "pam8") != symbols_to_bits(np.where(ok, ref, 0), "pam8")
+        return np.flatnonzero(wrong), 3 * int(ok.sum())
+    if modulation == "pam6":
+        # pairs from index 0; a pair with an unscored symbol is left out,
+        # its five wire bits count as neither checked nor wrong
+        m = dec.size - dec.size % 2
+        pair_ok = ok[:m].reshape(-1, 2).all(axis=1)
+        d = symbols_to_bits(np.where(ok[:m], dec[:m], 0), "pam6") != symbols_to_bits(
+            np.where(ok[:m], ref[:m], 0), "pam6")
+        wrong = d & np.repeat(pair_ok, 5)
+        return np.flatnonzero(wrong), 5 * int(pair_ok.sum())
+    raise ValueError(f"modulation must be one of nrz, pam4, pam6, pam8, got {modulation!r}")
 
 
 def compound_fer(lam: float, pmf: np.ndarray, t: int) -> float:
@@ -242,11 +254,11 @@ class BurstProfile:
 
 
 def burst_profile(errors: np.ndarray, n_bits: int, layout: FecLayout = SEQUENTIAL,
-                  gap_symbols: int = 8, bits_per_symbol: int = 2) -> BurstProfile:
+                  gap_symbols: int = 8, bits_per_symbol: float = 2) -> BurstProfile:
     """Group a lane's bit errors into events and map each through ``layout``.
 
     Errors closer than ``gap_symbols`` symbols (``bits_per_symbol`` wire bits
-    each: 2 for PAM4, 1 for NRZ) belong to the same event."""
+    each: 2 for PAM4, 1 for NRZ, 3 for PAM8, 2.5 for PAM6) belong to the same event."""
     e = np.sort(np.asarray(errors, dtype=np.int64))
     if e.size == 0:
         none = np.zeros(0, dtype=np.int64)

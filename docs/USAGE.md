@@ -71,6 +71,14 @@ FfeConfig(adapt="lsm")  # ValueError: ffe.adapt must be one of ['lms','none','wi
 `pam4_224g_adc`(106.25 GBd 主锚点)、`pam4_224g_112g_adc`(112 GBd 压力档)、
 `pam4_deep_lr_adc`、`pam4_112g_adc_mismatch`(TI 失配)、`nrz_28g_analytic`。
 
+**调制格式**(`modulation`,2026-10-15 起四选一):`nrz` / `pam4` / `pam6` / `pam8`。
+`cfg.n_levels`(2 / 4 / 6 / 8)与 `cfg.bits_per_symbol`(1 / 2 / 2.5 / 3,只有 PAM6 是小数)是只读属性,
+码型比特数走 `core.mapping.bits_needed()`。PAM4 与 PAM8 用 Gray 码;PAM6 把 5 bit 装进两个符号(36 对里去掉 4 个角对,
+`tx.pam6_map: corner32`,表与贪心规则在 `core/mapping.py`),外层电平出现 1/8、内层 3/16,统计引擎按这个占用加权。
+`prbsNq` / `prqs10` 是 PAM4 的符号码型,pam6 / pam8 用比特码型(`prbs13` 等)。混合信号包络(`ms_envelope()`)只标定过
+NRZ / PAM4,pam6 / pam8 走混合信号时只警告"未核实",硬上限 30 GBd 仍然生效。448G/lane 的格式比较见 `examples/46`、
+`cairn/448G调制格式.md`。R_LM、TDECQ 仍是 PAM4 专属量。
+
 ---
 
 ## 2. 跑一条链路
@@ -438,7 +446,7 @@ rx:
     memory: 2          # 网格里的残余后光标数(状态数 = n_levels^(memory + PR 受控光标数))
     state_memory: 2    # 可选:降状态网格(DFSE),状态只记最近 K 个符号,其余光标按各幸存路径的判决反馈;不设 = 全网格
     seq_len: 4         # sliding 的平方误差窗
-precode: true          # 1/(1+D) mod-N 预编码
+precode: true          # 1/(1+D) mod-N 预编码(N = cfg.n_levels:2 / 4 / 6 / 8)
 ```
 
 **降状态网格(`state_memory` = K)**:网格跨 L = PR 受控光标数 + `memory` 个光标,全网格 N^L 个状态(PAM4、1 + aD + bD²、

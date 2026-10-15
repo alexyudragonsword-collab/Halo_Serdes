@@ -180,10 +180,14 @@ def test_schema_drives_a_generated_form(values):
 
 
 def test_enum_fields_carry_their_options():
+    by_path = {}
     for _sid, _title, fields in call("schema")["data"]["sections"]:
         for f in fields:
             if f["kind"] == "enum":
                 assert f.get("options"), f
+                by_path[f["path"]] = f["options"]
+    assert by_path["modulation"] == ["nrz", "pam4", "pam6", "pam8"]
+    assert by_path["tx.pam6_map"] == ["corner32"]
 
 
 def test_clock_profile_is_a_pick_list_of_the_shipped_files():

@@ -14,6 +14,7 @@ from halo_serdes.engine import run_time_link
 @pytest.mark.parametrize("mod, pd, expected", [
     ("pam4", "auto", "ffe"), ("nrz", "auto", "adc"),
     ("pam4", "adc", "adc"), ("nrz", "ffe", "ffe"),
+    ("pam6", "auto", "ffe"), ("pam8", "auto", "ffe"),
 ])
 def test_auto_resolves_by_modulation_and_explicit_wins(mod, pd, expected):
     cfg = LinkConfig(modulation=mod, rx=RxConfig(arch="adc_dsp", cdr=CdrConfig(pd_input=pd)))

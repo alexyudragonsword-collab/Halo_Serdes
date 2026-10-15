@@ -7,17 +7,14 @@ from __future__ import annotations
 import numpy as np
 
 from ..config.schema import LinkConfig
-from ..core.mapping import nrz_levels, pam4_levels
+from ..core.mapping import levels_for
 from ..core.waveform import Waveform
 from .driver import apply_single_pole  # noqa: F401  (re-exported; it lives with the driver)
 
 
 def symbols_to_voltages(symbols: np.ndarray, cfg: LinkConfig) -> np.ndarray:
     """Level indices -> voltages using the configured modulation/swing/RLM."""
-    if cfg.modulation == "pam4":
-        levels = pam4_levels(cfg.tx.swing, cfg.tx.rlm)
-    else:
-        levels = nrz_levels(cfg.tx.swing)
+    levels = levels_for(cfg.modulation, cfg.tx.swing, cfg.tx.rlm)
     return levels[np.asarray(symbols, dtype=np.int64)]
 
 

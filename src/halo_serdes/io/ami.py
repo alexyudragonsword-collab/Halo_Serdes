@@ -476,9 +476,12 @@ class NativeCom(ComAdapter):
         eq, eq_pre = equalized_cursors(cursors, w, n_pre_c, self.rx_ffe_pre)
 
         main = float(abs(eq[eq_pre])) * cfg.tx.swing
-        # PAM4 uses the RLM-reduced outer level spacing as the signal amplitude
+        # PAM4 uses the RLM-reduced outer level spacing as the signal amplitude;
+        # PAM6 / PAM8 the uniform half gap 1 / (N - 1)
         if cfg.modulation == "pam4":
             main *= cfg.tx.rlm / 3.0
+        elif cfg.modulation in ("pam6", "pam8"):
+            main /= cfg.n_levels - 1
 
         # residual ISI: precursors (all) + postcursors the reference DFE does
         # NOT cancel. In `eq` the main sits at eq_pre; postcursors follow it.
@@ -489,6 +492,11 @@ class NativeCom(ComAdapter):
         # symbol amplitude variance factor: NRZ +-1, PAM4 levels {+-1,+-1/3}
         if cfg.modulation == "pam4":
             sym_var = np.mean(np.array([1.0, 1 / 3, -1 / 3, -1.0]) ** 2)
+        elif cfg.modulation in ("pam6", "pam8"):
+            from ..core.mapping import level_probabilities, levels_for
+
+            lv = levels_for(cfg.modulation, 2.0)
+            sym_var = float(np.sum(level_probabilities(cfg.modulation) * lv ** 2))
         else:
             sym_var = 1.0
         sigma_isi = float(np.sqrt(np.sum(resid ** 2) * sym_var)) * cfg.tx.swing

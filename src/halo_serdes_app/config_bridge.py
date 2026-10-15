@@ -187,7 +187,7 @@ PATTERNS = ["prbs7", "prbs13", "prbs31", "prbs13q", "prbs31q", "prqs10"]
 # Grouped field specification. Each group -> (id, title, [fields]).
 SECTIONS: list[tuple[str, str, list[dict]]] = [
     ("link", "Link", [
-        _f("modulation", "Modulation", "enum", options=["nrz", "pam4"]),
+        _f("modulation", "Modulation", "enum", options=["nrz", "pam4", "pam6", "pam8"]),
         _f("symbol_rate", "Symbol rate [GBd]", "float", scale=1e9),
         _f("osr", "Oversampling (OSR)", "int"),
         _f("precode", "1+D precoding", "bool"),
@@ -214,6 +214,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("tx.fir_n_pre", "FIR precursors", "int"),
         _f("tx.swing", "Swing [V pp]", "float"),
         _f("tx.rlm", "RLM (PAM4)", "float"),
+        _f("tx.pam6_map", "PAM6 pair map", "enum", options=["corner32"]),
         _f("tx.bw", "Driver BW [GHz]", "opt_float", scale=1e9),
         _f("tx.dac_bits", "DAC bits (empty = ideal)", "opt_int"),
         _f("tx.dac_fs", "DAC full scale [V pp] (empty = FFE peak)", "opt_float"),
@@ -643,15 +644,17 @@ def envelope_status(cfg: LinkConfig) -> tuple[str, str]:
     {'ok','warn','crit'}; empty message when not mixed-signal or comfortable."""
     if cfg.rx.arch != "mixed_signal":
         return "ok", ""
-    from halo_serdes.config.schema import (
-        MS_COMFORT_DATA_RATE,
-        MS_HARD_MAX_BAUD,
-        MS_LIMIT_DATA_RATE,
-    )
+    from halo_serdes.config.schema import MS_HARD_MAX_BAUD, ms_envelope
     mod = cfg.modulation
-    comfort = MS_COMFORT_DATA_RATE.get(mod, 16e9)
-    limit = MS_LIMIT_DATA_RATE.get(mod, 16e9)
+    env = ms_envelope(mod)
     dr = cfg.data_rate / 1e9
+    if env is None:
+        if cfg.symbol_rate > MS_HARD_MAX_BAUD * (1 + 1e-9):
+            return "crit", (f"{cfg.symbol_rate / 1e9:.3g} GBd {mod.upper()} exceeds the "
+                            f"mixed-signal hard ceiling ({MS_HARD_MAX_BAUD/1e9:.0f} GBd) — use adc_dsp.")
+        return "warn", (f"{mod.upper()} has no calibrated mixed-signal envelope "
+                        "(未核实: NRZ and PAM4 only) — exploration runs.")
+    comfort, limit = env
     if cfg.data_rate > limit * (1 + 1e-9) or cfg.symbol_rate > MS_HARD_MAX_BAUD * (1 + 1e-9):
         return "crit", (f"{dr:.3g} Gb/s {mod.upper()} exceeds the mixed-signal "
                         f"envelope (limit {limit/1e9:.0f} Gb/s, hard ceiling "

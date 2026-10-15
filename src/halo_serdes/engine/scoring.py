@@ -101,7 +101,7 @@ def user_decisions(cfg: LinkConfig, dec: np.ndarray) -> np.ndarray:
         return dec
     from ..core.mapping import unprecode_1plusd
 
-    return unprecode_1plusd(dec, 2 ** cfg.bits_per_symbol)
+    return unprecode_1plusd(dec, cfg.n_levels)
 
 
 def warmup_symbols(cfg: LinkConfig, train_end: int, n_run: int) -> int:
@@ -258,6 +258,19 @@ def score(cfg: LinkConfig, *, dec: np.ndarray, dec_slicer: np.ndarray,
         # Gray-coded PAM4: one symbol error is not one bit error, so BER comes
         # from the checker rather than from scaling SER.
         ber = prbs_mod.symbol_checker(ref_s, dec_s, gray=True)
+    elif cfg.modulation in ("pam6", "pam8"):
+        # by the format's bit map; PAM6 by pair, the pairs anchored on the
+        # transmitted index (so a cycle slip's offset keeps them whole) and
+        # a pair missing its reference left out
+        from ..core.mapping import count_bit_errors
+
+        pos = (warmup + np.arange(dec_c.size)) if j is None else j
+        ber = count_bit_errors(ref_c, dec_c, cfg.modulation, ref_pos=pos)
+        if j is not None:
+            # error_idx counts over the scored (ok) decisions, as the other formats do
+            keep = np.cumsum(ok) - 1
+            ber = BerResult(n_checked=ber.n_checked, n_errors=ber.n_errors,
+                            error_idx=keep[ber.error_idx])
     else:
         idx = np.nonzero(dec_s != ref_s)[0]
         ber = BerResult(n_checked=dec_s.size, n_errors=idx.size, error_idx=idx)

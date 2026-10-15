@@ -112,6 +112,8 @@ def test_trellis_states_follow_the_engine(target, memory, states):
 
 def test_trellis_states_nrz_and_no_detector():
     assert trellis_states(LinkConfig(modulation="nrz", rx=adc_rx(mlsd="viterbi", memory=3))) == 8
+    assert trellis_states(LinkConfig(modulation="pam6", rx=adc_rx(mlsd="viterbi", memory=2))) == 36
+    assert trellis_states(LinkConfig(modulation="pam8", rx=adc_rx(mlsd="viterbi", memory=2))) == 64
     assert trellis_states(link(adc_rx())) == 0
     assert trellis_states(link(adc_rx(mlsd="sliding"))) == 0
 

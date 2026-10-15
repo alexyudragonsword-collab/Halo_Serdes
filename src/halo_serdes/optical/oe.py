@@ -37,7 +37,9 @@ def level_powers(cfg, modulation: str, drive_levels=None) -> np.ndarray:
     stay at P_low and P_high."""
     from .eo import static_curve
 
-    n = 4 if modulation == "pam4" else 2
+    from ..core.mapping import n_levels_of
+
+    n = n_levels_of(modulation)
     curve = static_curve(cfg)
     if curve is None and drive_levels is None:
         return cfg.p_low_w + cfg.oma_w * np.arange(n) / (n - 1)

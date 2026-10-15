@@ -299,7 +299,7 @@ def curve_pattern_offsets(cfg: LinkConfig, channel: ChannelModel,
     """
     import dataclasses
 
-    from ..core.mapping import nrz_levels, pam4_levels
+    from ..core.mapping import levels_for
     from ..tx.pipeline import TxPipeline
     from .lti import fft_filter
     from .static_link import make_pattern
@@ -317,8 +317,7 @@ def curve_pattern_offsets(cfg: LinkConfig, channel: ChannelModel,
     short = dataclasses.replace(cfg, sim=dataclasses.replace(cfg.sim, n_symbols=n))
     sym = np.asarray(_tx_symbols(cfg, make_pattern(short)), dtype=np.int64)
     n = sym.size
-    lv_drive = (pam4_levels(cfg.tx.swing, cfg.tx.rlm) if cfg.modulation == "pam4"
-                else nrz_levels(cfg.tx.swing))
+    lv_drive = levels_for(cfg.modulation, cfg.tx.swing, cfg.tx.rlm)
     lv_model = _levels(cfg)                  # the curve's image: the engine's levels
 
     def drive(levels):

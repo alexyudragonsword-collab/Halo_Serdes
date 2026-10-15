@@ -41,7 +41,7 @@ def _ms_cfg(modulation, symbol_rate, n_symbols=5_000):
 def _envelope_warnings(cfg):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        run_time_link(cfg)
+        assert run_time_link(cfg) is not None   # a warning, never a refusal
     return [str(w.message) for w in caught
             if "envelope" in str(w.message) or "marginal zone" in str(w.message)]
 
@@ -95,6 +95,21 @@ def test_beyond_limit_warns_exceeds():
     assert any("exceeds the mixed-signal envelope" in m for m in msgs)
     msgs = _envelope_warnings(_ms_cfg("pam4", 20e9))  # 40 Gb/s > 36
     assert any("exceeds the mixed-signal envelope" in m for m in msgs)
+
+
+def test_pam6_pam8_have_no_validated_envelope():
+    """The two envelopes were calibrated for NRZ and PAM4 (examples/12); a
+    PAM6 / PAM8 mixed-signal run says so once and never claims "exceeds"
+    unless the hard baud ceiling is crossed."""
+    for mod in ("pam6", "pam8"):
+        msgs = _envelope_warnings(LinkConfig(
+            modulation=mod, symbol_rate=16e9, channel=_analytic_channel(),
+            rx=RxConfig.product_mixed_signal(), sim=SimConfig(n_symbols=5_000, pattern="prbs31")))
+        assert len(msgs) == 1 and "未核实" in msgs[0] and "exceeds" not in msgs[0], msgs
+    msgs = _envelope_warnings(LinkConfig(
+        modulation="pam8", symbol_rate=32e9, channel=_analytic_channel(),
+        rx=RxConfig.product_mixed_signal(), sim=SimConfig(n_symbols=5_000, pattern="prbs31")))
+    assert any("exceeds" in m for m in msgs)
 
 
 def test_adc_arch_never_warns():

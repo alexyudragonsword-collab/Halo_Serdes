@@ -122,6 +122,10 @@ def end_to_end_ber(cfg: LinkConfig, sent: np.ndarray, decided: np.ndarray) -> Be
     n = min(sent.size, decided.size)
     if cfg.modulation == "pam4":
         return symbol_checker(sent[:n], decided[:n], gray=True)
+    if cfg.modulation in ("pam6", "pam8"):
+        from ..core.mapping import count_bit_errors
+
+        return count_bit_errors(sent[:n], decided[:n], cfg.modulation)
     idx = np.nonzero(sent[:n] != decided[:n])[0]
     return BerResult(n_checked=n, n_errors=int(idx.size), error_idx=idx)
 
