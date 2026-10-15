@@ -6,6 +6,38 @@
 
 ---
 
+## [未发布] — 448G/lane 的调制格式比较:PAM6 / PAM8 进字母表,示例 46(feat/448g-formats)
+
+### 新增
+- `modulation ∈ {nrz, pam4, pam6, pam8}`:字母表只在 `core/mapping.py` 一处 —— 均匀电平,PAM8 反射 Gray,PAM6 **corner32** 对映射
+  (5 bit 装进两个符号,36 对去掉四个角对,字按与网格邻对的汉明和贪心分配,角对解码时向内移一格;`tx.pam6_map`)。`LinkConfig.n_levels` /
+  `bits_per_symbol`(PAM6 2.5),码型比特数走 `bits_needed()`,`prbsNq` / `prqs10` 在 pam6 / pam8 上拒绝。
+- 比特计数:时域 / 静态引擎按格式精确(`count_bit_errors`:PAM6 按对、对以发端索引奇偶锚定,周跳重对齐后对仍是整的;PAM8 Gray 距离);
+  `fec/interleave.bit_errors` 同口径。统计引擎带电平占用(corner32 外层 1/8、内层 3/16)与比特距离矩阵(PAM6 为按搭档与位置平均的 B6):
+  ISI PDF、SER 求和、DFE 误码传播、眼图混合、PR 逐符号判决链、发端边沿抖动分箱、bang-bang 跳变类别;`analysis.metrics.pamN_ser_awgn`。
+- `analysis/format_compare.py`:FEC 开销下的波特率、半间距罚、赢家 / DAC 位数 / 发端噪声容限三条读数规则。
+- 示例 46 `448g_formats`:448 Gb/s 净吞吐、KP4 与 KP4+BCH 下 PAM4 237 / PAM6 190 / PAM8 158 GBd,各自在统计引擎上扫收端(21 抽头 ×
+  {delta、1 + aD K = 1、1 + aD + bD² K = 2} + 11 抽头 delta),选出的格上时域验证、三种子方向检查,DAC 位数与发端噪声容限表,三格式浴盆与交叉点。
+  结论:三格式都选 1 + aD + bD² K = 2;KP4 时域 reach PAM4 20.44 / PAM6 19.65 / PAM8 19.38 dB @ 56 GHz,PAM4 赢 0.79 dB、省 0.70 pJ/b,3 种子方向一致;
+  只看 delta 收端 PAM8 领先,PAM4 靠两光标 PR + 16 状态 DFSE 多 +4.25 dB 翻盘;DAC 位数 6 / 7 / 7;KP4+BCH 下 PAM4 的统计 reach 时域未确认(判决导向环路失锁)。
+- 测试 +59(1136 → 1195 passed / 1 skipped):`tests/test_mapping_formats.py`(19)、`tests/test_statistical_formats.py`(18,含 pam6 / pam8 在混合信号与 ADC 收端的铁律 3)、
+  `tests/test_format_compare.py`(5),power / jitter / interleave / api_json / ms_envelope / mm_pd_input / cycle_slip 各加参数。
+  指纹加两条合成 PAM6 / PAM8 ADC 链路(1 + aD,K = 1,三引擎)。
+- 新专题 `cairn/448G调制格式.md`;USAGE §1 / §10;SUMMARY §04 小节。
+
+### 修复
+- `run_time_link` 在 pam6 / pam8 混合信号"包络未核实"的警告分支里 `return` 了 None(只收集警告的测试没看见);改成 if / else,测试断言有结果。
+
+### 变更(数会动)
+- NRZ / PAM4 三引擎逐位不变:指纹原 860 个值 bit-identical(加合成链路前比对);示例 00–45 零漂移。
+- 铁律 3 在新格式上:ADC 收端 PAM6 / PAM8 0.96–1.20×;混合信号 PAM6 带 DFE 0.55–0.67×、无 DFE 1.45×(更短链路上到 3.9×,P2 #35)、
+  PAM8(需 CTLE)0.53–1.07×;示例 46 选出的格上统计 / 时域 PAM4 0.57–0.91×、PAM6 1.01–1.41×、PAM8 0.81–1.10×。
+- 混合信号包络 `ms_envelope()` 只有 NRZ / PAM4;pam6 / pam8 走混合信号只警告"未核实",硬上限 30 GBd 仍生效(P2 #34)。
+- ROADMAP:P2 #31 / #32 暂停(用户决定);新登记 P2 #33 / #34 / #35、P3 #12。开工 prompt 里"删 #20 / #37"不适用:仓库没有 #37,
+  现有 #20 是已清空的 PAM4 0↔3 计数条目,不动。
+
+---
+
 ## [未发布] — PAM4 猎振的数据噪声;门限放在接收机设电平处(ROADMAP P2 #30)
 
 ### 修复
