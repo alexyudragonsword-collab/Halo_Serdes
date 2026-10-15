@@ -1,42 +1,49 @@
-white 200 fs   kp_shift=4: BER 1.29e-05 (5)  eye 10.4 mV  CDR error 201 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
-white 200 fs   kp_shift=5: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 200 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
-white 200 fs   kp_shift=6: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 200 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
-white 200 fs   kp_shift=7: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 201 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
-white 200 fs   kp_shift=8: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 202 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
-white 200 fs   kp_shift=9: BER 1.03e-05 (4)  eye 10.3 mV  CDR error 203 fs (model n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
-SSPLL 200 fs   kp_shift=4: BER 0.00e+00 (0)  eye 11.1 mV  CDR error 155 fs (model 157)  bw 1.75 MHz  stat BER 1.8e-07  [~s]
-SSPLL 200 fs   kp_shift=5: BER 0.00e+00 (0)  eye 11.0 mV  CDR error 201 fs (model 197)  bw 0.88 MHz  stat BER 2.4e-07  [~s]
-SSPLL 200 fs   kp_shift=6: BER 0.00e+00 (0)  eye 11.0 mV  CDR error 293 fs (model 255)  bw 0.74 MHz  stat BER 4.4e-07  [~s]
-SSPLL 200 fs   kp_shift=7: BER 0.00e+00 (0)  eye 10.8 mV  CDR error 417 fs (model 340)  bw 0.72 MHz  stat BER 1.0e-06  [~s]
-SSPLL 200 fs   kp_shift=8: BER 1.03e-05 (4)  eye 10.7 mV  CDR error 533 fs (model 463)  bw 0.71 MHz  stat BER 5.2e-06  [~s]
-SSPLL 200 fs   kp_shift=9: BER 4.38e-05 (17)  eye 10.8 mV  CDR error 612 fs (model 640)  bw 0.71 MHz  stat BER 5.4e-05  [~s]
-CPPLL 200 fs   kp_shift=4: BER 0.00e+00 (0)  eye 10.9 mV  CDR error 148 fs (model 153)  bw 1.75 MHz  stat BER 1.8e-07  [~s]
-CPPLL 200 fs   kp_shift=5: BER 2.58e-06 (1)  eye 10.9 mV  CDR error 196 fs (model 199)  bw 0.88 MHz  stat BER 2.4e-07  [~s]
-CPPLL 200 fs   kp_shift=6: BER 0.00e+00 (0)  eye 11.0 mV  CDR error 289 fs (model 261)  bw 0.74 MHz  stat BER 4.6e-07  [~s]
-CPPLL 200 fs   kp_shift=7: BER 2.58e-06 (1)  eye 11.0 mV  CDR error 417 fs (model 348)  bw 0.72 MHz  stat BER 1.1e-06  [~s]
-CPPLL 200 fs   kp_shift=8: BER 1.55e-05 (6)  eye 10.9 mV  CDR error 531 fs (model 474)  bw 0.71 MHz  stat BER 6.0e-06  [~s]
-CPPLL 200 fs   kp_shift=9: BER 2.84e-05 (11)  eye 10.8 mV  CDR error 609 fs (model 652)  bw 0.71 MHz  stat BER 6.3e-05  [~s]
+white 200 fs   kp_shift=4: BER 1.29e-05 (5)  eye 10.4 mV  CDR error 201 fs (model n/a, steady n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=5: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 200 fs (model n/a, steady n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=6: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 201 fs (model n/a, steady n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=7: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 201 fs (model n/a, steady n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=8: BER 1.29e-05 (5)  eye 10.3 mV  CDR error 201 fs (model n/a, steady n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+white 200 fs   kp_shift=9: BER 1.03e-05 (4)  eye 10.3 mV  CDR error 202 fs (model n/a, steady n/a)  bw nan MHz  stat BER 4.5e-06  [~s]
+SSPLL 200 fs   kp_shift=4: BER 0.00e+00 (0)  eye 11.1 mV  CDR error 171 fs (model 156, steady 157)  bw 1.75 MHz  stat BER 4.3e-07  [~s]
+SSPLL 200 fs   kp_shift=5: BER 0.00e+00 (0)  eye 11.0 mV  CDR error 216 fs (model 192, steady 197)  bw 0.88 MHz  stat BER 6.9e-07  [~s]
+SSPLL 200 fs   kp_shift=6: BER 0.00e+00 (0)  eye 11.0 mV  CDR error 288 fs (model 239, steady 255)  bw 0.74 MHz  stat BER 1.6e-06  [~s]
+SSPLL 200 fs   kp_shift=7: BER 0.00e+00 (0)  eye 10.8 mV  CDR error 377 fs (model 292, steady 340)  bw 0.72 MHz  stat BER 5.2e-06  [~s]
+SSPLL 200 fs   kp_shift=8: BER 1.03e-05 (4)  eye 10.7 mV  CDR error 458 fs (model 339, steady 463)  bw 0.71 MHz  stat BER 1.6e-05  [~s]
+SSPLL 200 fs   kp_shift=9: BER 4.38e-05 (17)  eye 10.8 mV  CDR error 512 fs (model 372, steady 640)  bw 0.71 MHz  stat BER 3.6e-05  [~s]
+CPPLL 200 fs   kp_shift=4: BER 0.00e+00 (0)  eye 10.9 mV  CDR error 167 fs (model 152, steady 153)  bw 1.75 MHz  stat BER 4.1e-07  [~s]
+CPPLL 200 fs   kp_shift=5: BER 2.58e-06 (1)  eye 10.9 mV  CDR error 215 fs (model 194, steady 199)  bw 0.88 MHz  stat BER 7.1e-07  [~s]
+CPPLL 200 fs   kp_shift=6: BER 0.00e+00 (0)  eye 11.0 mV  CDR error 288 fs (model 245, steady 261)  bw 0.74 MHz  stat BER 1.8e-06  [~s]
+CPPLL 200 fs   kp_shift=7: BER 2.58e-06 (1)  eye 11.0 mV  CDR error 378 fs (model 299, steady 348)  bw 0.72 MHz  stat BER 6.1e-06  [~s]
+CPPLL 200 fs   kp_shift=8: BER 1.55e-05 (6)  eye 10.9 mV  CDR error 457 fs (model 347, steady 474)  bw 0.71 MHz  stat BER 1.9e-05  [~s]
+CPPLL 200 fs   kp_shift=9: BER 2.84e-05 (11)  eye 10.8 mV  CDR error 512 fs (model 380, steady 652)  bw 0.71 MHz  stat BER 4.1e-05  [~s]
 
 18 runs in ~s
 
 clock          | best kp_shift | BER at best | eye height | CDR error meas / model [fs] | loop bw
 ----------------------------------------------------------------------------------------------------
-white 200 fs   |             9 | 1.03e-05    |   10.3 mV  |    203 /    n/a            | nan MHz
-SSPLL 200 fs   |             4 | 0.00e+00    |   11.1 mV  |    155 /    157            | 1.75 MHz
-CPPLL 200 fs   |             6 | 0.00e+00    |   11.0 mV  |    289 /    261            | 0.74 MHz
+white 200 fs   |             9 | 1.03e-05    |   10.3 mV  |    202 /    n/a            | nan MHz
+SSPLL 200 fs   |             4 | 0.00e+00    |   11.1 mV  |    171 /    156            | 1.75 MHz
+CPPLL 200 fs   |             6 | 0.00e+00    |   11.0 mV  |    288 /    245            | 0.74 MHz
 
 The white clock's CDR error is the loop's own hunting plus the white edge jitter it
 cannot follow; there is no model column for it: the statistical engine builds no CDR for
 kind=white and takes the transmitter's RJ edge by edge, as noise through the channel,
 not as a sampling error. For the PLL clocks the model column is the linearised loop's
-sampling-instant sigma, 0.81-1.07x the measured. Its Mueller-Muller detector reads the
-slicer input after the DFE's feedback, as the kernel does, and a loop this slow sees the
-detector noise's low-frequency density -- on PRBS13Q the receiver noise's alone, the
-pattern's share sitting on lines from 13.7 MHz up (ROADMAP P2 #24: before, up to 1.39x
-over). The statistical BER is listed for the record: 0.4-0.5x of the time engine's at
-kp_shift 8 and 1.2-2.2x at 9, a steep bathtub smeared by a sigma 0.87-0.89x and
-1.05-1.07x the measured. On the white clock it is 4.5e-6 against the time engine's
-4-5 errors here and 8.2e-6 over six seeds (ROADMAP P2 #25: as a sampling-instant
-smear the jitter read 2.4e-7, a thirtieth). The comparison that is in scope is the CDR
-error.
+sampling-instant sigma over a run this long, the loop starting from rest, and 'steady'
+the same loop once it has rung up. From kp_shift 7 the loop is underdamped (its error
+response peaks 4-16x near 1.1 MHz) and rings up far slower than 200k symbols last, so a
+run holds 0.58-0.86x of its steady state. The measured column is one seed, and what the
+loop leaves sits within a decade of its 0.7 MHz bandwidth, a few cycles a run: one seed
+scatters 0.32-1.02 samples at kp_shift 9. This one reads 1.10-1.38x the model; the
+16-seed RMS is 1.00-1.04x (until 2026-10-15 the model was the steady state, 0.81-1.07x
+this seed's second half by chance and 1.14-1.70x over the 16 seeds at kp_shift 7-9;
+ROADMAP P2 #28). Its Mueller-Muller detector reads the slicer input after the DFE's
+feedback, as the kernel does, and a loop this slow sees the detector noise's
+low-frequency density -- on PRBS13Q the receiver noise's alone, the pattern's share
+sitting on lines from 13.7 MHz up (ROADMAP P2 #24). The statistical BER, its taps held
+at the lock point under the smear and the curve taken between samples, is 1.2-1.6x the
+time engine's 4-6 errors at kp_shift 8 and 0.8-1.4x its 11-17 at 9; over twelve seeds
+0.69-0.85x, the time engine's LMS FFE following part of the slow wander. On the white
+clock it is 4.5e-6 against the time engine's 4-5 errors here and 8.2e-6 over six seeds
+(ROADMAP P2 #25: as a sampling-instant smear the jitter read 2.4e-7, a thirtieth).
 wrote examples/output/31_pll_clock_profile.png

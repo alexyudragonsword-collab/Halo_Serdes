@@ -185,6 +185,48 @@ class ClockProfile:
                 var_phi += a_phi ** 2 / 2.0
         return float(np.sqrt(var_phi) / (TWOPI * self.f0_hz))
 
+    def run_untracked_sigma_s(self, mean_sq_fn, n_symbols: int, ui: float,
+                              max_lines: int = 50_000):
+        """RMS jitter [s] a CDR leaves over one run of ``n_symbols``, on the run's lines.
+
+        What a time-domain run of ``n_symbols`` actually holds: the
+        synthesiser (:meth:`edge_offsets_s`) puts the profile on the lines
+        ``k / (n UI)``, each of power ``S_phi(f_k) df``, and the loop starts
+        from rest. ``mean_sq_fn(f)`` is the mean square a unit sinusoid at
+        ``f`` leaves over the run's window
+        (:meth:`halo_serdes.cdr.linear.ErrorResponse.run_mean_sq`) -- or, as
+        ``(f.size, m)``, at ``m`` points of the run (``run_sq_at``), and then
+        the result is ``m`` values. Spurs, at their own offsets, likewise.
+        Past ``max_lines`` lines the rest of the band is integrated on a log
+        grid (a loop that far below them has long forgotten its start, and
+        the lines sample a smooth profile finely there).
+        :meth:`untracked_sigma_s` is the steady state of a continuous profile;
+        the two part on an underdamped loop, whose peak a run shorter than its
+        ring-up does not reach (ROADMAP P2 #28).
+        """
+        f_hi = self.f0_hz / 2.0
+        df = 1.0 / (max(int(n_symbols), 2) * ui)
+        n = int(min(np.floor(f_hi / df), max_lines))
+        if n < 1:
+            return 0.0
+        fk = np.arange(1, n + 1, dtype=np.float64) * df
+        ms = np.asarray(mean_sq_fn(fk), dtype=np.float64)
+        var_phi = np.tensordot(self.s_phi(fk), ms, axes=(0, 0)) * df
+        for (f_spur, _dbc), (_f, amp_s) in zip(self.spurs, self.spur_amplitudes_s()):
+            if df <= f_spur <= f_hi:
+                a_phi = amp_s * TWOPI * self.f0_hz
+                var_phi = var_phi + a_phi ** 2 / 2.0 * np.asarray(mean_sq_fn(np.array([f_spur])))[0]
+        f_rest = fk[-1] + df / 2.0
+        if f_rest < f_hi:
+            fr = np.geomspace(f_rest, f_hi, max(int(np.ceil(np.log10(f_hi / f_rest) * 200)), 2))
+            sr = self.s_phi(fr)
+            mr = np.asarray(mean_sq_fn(fr), dtype=np.float64)
+            y = sr[:, None] * mr if mr.ndim == 2 else sr * mr
+            # trapezoid along f (numpy renamed trapz in 2.0; spelled out)
+            var_phi = var_phi + np.sum(0.5 * (y[1:] + y[:-1]) * np.diff(fr).reshape((-1,) + (1,) * (y.ndim - 1)), axis=0)
+        out = np.sqrt(np.asarray(var_phi, dtype=np.float64)) / (TWOPI * self.f0_hz)
+        return float(out) if out.ndim == 0 else out
+
     def rms_rate_ui_per_s(self, f_lo: float, f_hi: float | None = None) -> float:
         """RMS rate of the timing wander [UI per second... in units of 1/s]: sqrt(integral (2 pi f)^2 S_t df).
 

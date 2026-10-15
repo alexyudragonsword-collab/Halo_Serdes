@@ -354,12 +354,18 @@ def test_jtol_runs_on_a_profile_clock(tmp_path):
 @pytest.mark.parametrize("kp_shift", [4, 7, 9])
 def test_mm_loop_model_tracks_the_adc_kernel_on_the_112g_link(tmp_path, kp_shift):
     """Mueller-Muller on the 112 GBd ADC link with a shipped PLL profile scaled
-    to 200 fs: the model's sigma against the kernel's tracking error after the
-    acquisition transient. Measured / model 0.98 / 1.23 / 0.96 at kp_shift
-    4 / 7 / 9. A model that left the DFE's postcursor in the samples the
-    detector reads and took its per-symbol variance for white noise read
-    0.75 / 1.03 / 0.80: its self-noise term, 105-318 fs here, is 7-17 fs on
-    PRBS13Q, whose data noise sits on lines above the loop (ROADMAP P2 #24)."""
+    to 200 fs: the model's sigma -- a run of the configured length, the loop
+    starting from rest -- against the kernel's tracking error, RMS over six
+    seeds (one seed scatters 0.32-1.02 samples at kp_shift 9: what the loop
+    leaves sits within a decade of its 0.7 MHz bandwidth, a few cycles a
+    run). Measured / model 1.06 / 1.10 / 1.09 at kp_shift 4 / 7 / 9. Until
+    2026-10-15 the model was the steady state, which reads one seed's second
+    half 0.98 / 1.23 / 0.96x but the six seeds' RMS 1.05 / 0.94 / 0.63x: at
+    kp_shift 9 the error response peaks 16x near 1.1 MHz and takes far
+    longer than the run to ring up (ROADMAP P2 #28). Before that, a
+    model that left the DFE's postcursor in the detector's samples and took
+    its per-symbol variance for white noise read 0.75 / 1.03 / 0.80 of one
+    seed (ROADMAP P2 #24)."""
     from halo_serdes_app.config_bridge import load_preset
 
     base = load_preset("PAM4 224G ADC (112 GBd stress)")
@@ -371,12 +377,20 @@ def test_mm_loop_model_tracks_the_adc_kernel_on_the_112g_link(tmp_path, kp_shift
         rx=dataclasses.replace(base.rx, cdr=dataclasses.replace(base.rx.cdr, kp_shift=kp_shift)),
         sim=dataclasses.replace(base.sim, n_symbols=n_sym))
     cm = ChannelModel.from_config(cfg)
-    res = run_time_link(cfg, channel=cm)
-    measured = float(np.std(cdr_tracking_error_s(cfg, res, skip=n_sym // 2)))
-    sol = run_statistical(cfg, channel=cm, ffe_taps=res.ffe_taps,
-                          ffe_pre=cfg.rx.ffe.n_pre).extras["clock_loop"]
+    sq = []
+    for seed in range(1, 7):
+        c = dataclasses.replace(cfg, sim=dataclasses.replace(cfg.sim, seed=seed))
+        res = run_time_link(c, channel=cm)
+        sq.append(float(np.mean(cdr_tracking_error_s(c, res) ** 2)))
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        sol = run_statistical(cfg, channel=cm, ffe_taps=res.ffe_taps,
+                              ffe_pre=cfg.rx.ffe.n_pre).extras["clock_loop"]
     assert sol is not None and sol.bandwidth_hz < 5e6      # a slow, integrator-dominated loop
-    assert 0.85 < measured / (sol.sigma_ui * cfg.ui) < 1.3, (measured, sol)
+    measured = float(np.sqrt(np.mean(sq)))
+    assert 0.85 < measured / (sol.sigma_ui * cfg.ui) < 1.2, (measured, sol)
+    rings = any("rings" in str(w.message) for w in seen)
+    assert rings == (kp_shift == 9) and (sol.sigma_steady_ui > 1.5 * sol.sigma_ui) == rings, sol
 
 
 # --------------------------------------------------------------- the GUI

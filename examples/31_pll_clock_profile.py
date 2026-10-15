@@ -23,6 +23,7 @@ shipped files (``data/clock_profiles/``) by a uniform dB shift, so their
 
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import matplotlib
@@ -49,6 +50,10 @@ from halo_serdes.config.schema import (  # noqa: E402
 from halo_serdes.engine import run_time_link  # noqa: E402
 from halo_serdes.engine.statistical import run_statistical  # noqa: E402
 from halo_serdes.tx.clock import ClockProfile  # noqa: E402
+
+# kp_shift 8-9 ring longer than the run: the statistical engine says so, and
+# the "steady" column below is what it says
+warnings.filterwarnings("ignore", message="the CDR loop rings")
 
 OUT = REPO / "examples" / "output"
 OUT.mkdir(exist_ok=True)
@@ -120,7 +125,9 @@ for clock_name, clock in CLOCKS.items():
             rx=dataclasses.replace(BASE.rx, cdr=dataclasses.replace(BASE.rx.cdr, kp_shift=kp)))
         t0 = time.time()
         res = run_time_link(cfg, channel=cm)
-        err = cdr_tracking_error_s(cfg, res, skip=N_SYMBOLS // 2)
+        # the whole scored window, as the model takes it: a loop that rings
+        # up keeps growing through the run, so its second half reads high
+        err = cdr_tracking_error_s(cfg, res)
         stat = run_statistical(cfg, channel=cm, ffe_taps=res.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
         sol = stat.extras.get("clock_loop")
         rows.append({
@@ -131,12 +138,14 @@ for clock_name, clock in CLOCKS.items():
             # no model for a white clock: its RJ reaches the statistical
             # engine edge by edge, as noise, not as a sampling error
             "resid_model_fs": (sol.sigma_ui * cfg.ui * 1e15) if sol is not None else float("nan"),
+            # the same loop once it has rung up: a longer run, the link in service
+            "steady_fs": (sol.sigma_steady_ui * cfg.ui * 1e15) if sol is not None else float("nan"),
             "bw_mhz": sol.bandwidth_hz / 1e6 if sol is not None else float("nan"),
             "stat_ber": stat.ber,
         })
         r = rows[-1]
         print(f"{clock_name:14s} kp_shift={kp}: BER {r['ber']:.2e} ({r['n_err']})  eye {r['eye_v'] * 1e3:.1f} mV  "
-              f"CDR error {r['resid_meas_fs']:.0f} fs (model {fs(r['resid_model_fs'])})  "
+              f"CDR error {r['resid_meas_fs']:.0f} fs (model {fs(r['resid_model_fs'])}, steady {fs(r['steady_fs'])})  "
               f"bw {r['bw_mhz']:.2f} MHz  stat BER {r['stat_ber']:.1e}  [{time.time() - t0:.1f}s]")
 
 print(f"\n{len(rows)} runs in {time.time() - t_all:.0f}s\n")
@@ -151,16 +160,23 @@ print("\nThe white clock's CDR error is the loop's own hunting plus the white ed
       "cannot follow; there is no model column for it: the statistical engine builds no CDR for\n"
       "kind=white and takes the transmitter's RJ edge by edge, as noise through the channel,\n"
       "not as a sampling error. For the PLL clocks the model column is the linearised loop's\n"
-      "sampling-instant sigma, 0.81-1.07x the measured. Its Mueller-Muller detector reads the\n"
-      "slicer input after the DFE's feedback, as the kernel does, and a loop this slow sees the\n"
-      "detector noise's low-frequency density -- on PRBS13Q the receiver noise's alone, the\n"
-      "pattern's share sitting on lines from 13.7 MHz up (ROADMAP P2 #24: before, up to 1.39x\n"
-      "over). The statistical BER is listed for the record: 0.4-0.5x of the time engine's at\n"
-      "kp_shift 8 and 1.2-2.2x at 9, a steep bathtub smeared by a sigma 0.87-0.89x and\n"
-      "1.05-1.07x the measured. On the white clock it is 4.5e-6 against the time engine's\n"
-      "4-5 errors here and 8.2e-6 over six seeds (ROADMAP P2 #25: as a sampling-instant\n"
-      "smear the jitter read 2.4e-7, a thirtieth). The comparison that is in scope is the CDR\n"
-      "error.")
+      "sampling-instant sigma over a run this long, the loop starting from rest, and 'steady'\n"
+      "the same loop once it has rung up. From kp_shift 7 the loop is underdamped (its error\n"
+      "response peaks 4-16x near 1.1 MHz) and rings up far slower than 200k symbols last, so a\n"
+      "run holds 0.58-0.86x of its steady state. The measured column is one seed, and what the\n"
+      "loop leaves sits within a decade of its 0.7 MHz bandwidth, a few cycles a run: one seed\n"
+      "scatters 0.32-1.02 samples at kp_shift 9. This one reads 1.10-1.38x the model; the\n"
+      "16-seed RMS is 1.00-1.04x (until 2026-10-15 the model was the steady state, 0.81-1.07x\n"
+      "this seed's second half by chance and 1.14-1.70x over the 16 seeds at kp_shift 7-9;\n"
+      "ROADMAP P2 #28). Its Mueller-Muller detector reads the slicer input after the DFE's\n"
+      "feedback, as the kernel does, and a loop this slow sees the detector noise's\n"
+      "low-frequency density -- on PRBS13Q the receiver noise's alone, the pattern's share\n"
+      "sitting on lines from 13.7 MHz up (ROADMAP P2 #24). The statistical BER, its taps held\n"
+      "at the lock point under the smear and the curve taken between samples, is 1.2-1.6x the\n"
+      "time engine's 4-6 errors at kp_shift 8 and 0.8-1.4x its 11-17 at 9; over twelve seeds\n"
+      "0.69-0.85x, the time engine's LMS FFE following part of the slow wander. On the white\n"
+      "clock it is 4.5e-6 against the time engine's 4-5 errors here and 8.2e-6 over six seeds\n"
+      "(ROADMAP P2 #25: as a sampling-instant smear the jitter read 2.4e-7, a thirtieth).")
 
 # ---------------------------------------------------------------- figure
 fig, axes = plt.subplots(1, 3, figsize=(15, 4.6))

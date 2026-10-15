@@ -83,6 +83,11 @@ def _profile_section(rec: RunRecord):
             ("model: loop's own (detector) noise", _fs(sol.sigma_self_ui * cfg.ui)),
             ("model: sampling-instant sigma", _fs(sol.sigma_ui * cfg.ui)),
         ]
+        if sol.sigma_steady_ui is not None and sol.sigma_steady_ui > 1.05 * sol.sigma_ui:
+            # an underdamped loop rings up longer than the run: the sigma above
+            # is the run's (as the time engine's), this is the link in service
+            rows.append(("model: sigma once the loop has rung up (longer run)",
+                         _fs(sol.sigma_steady_ui * cfg.ui)))
         if sol.hold_range_ui is not None and sol.sigma_wander_ui:
             # Mueller-Muller: how far the detector keeps pulling back, against
             # the slow error that carries the loop itself (warned below 8x)

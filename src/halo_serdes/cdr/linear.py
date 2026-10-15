@@ -64,6 +64,20 @@ The phase detectors
   point: :func:`mm_hold_range_ui` measures how far the pull back keeps
   growing, which a linear model cannot see and the caller compares with the
   loop's error.
+
+A run is not the steady state
+-----------------------------
+``|E|^2`` integrated against a profile is what the loop leaves once it has
+run long enough to forget its start. A time-domain run starts the loop from
+rest and lasts ``N`` UI, and its clock's jitter sits on the lines ``k/(N UI)``
+(the synthesiser's FFT bins). A well-damped loop forgets its start in a few
+bandwidth periods and the two agree; an underdamped one rings, and its
+peak takes ``~Q / (pi f)`` to build -- on example 31's ADC link at kp_shift 8-9
+(``|E|`` peaking 8-16x near 1.1 MHz) far longer than a 200k-symbol run, so the
+steady state read 1.34-1.70x the run's error. :class:`ErrorResponse` carries
+both: called, ``|E(f)|``; :meth:`ErrorResponse.run_mean_sq`, the mean square
+a sinusoid at ``f`` leaves over a window of a run that starts from rest, in
+closed form from the loop's poles (ROADMAP P2 #28).
 """
 
 from __future__ import annotations
@@ -113,6 +127,14 @@ class LoopSolution:
     # clock it follows late inside its bandwidth [UI]. None for bang-bang
     hold_range_ui: float | None = None
     sigma_wander_ui: float | None = None
+    # the error [UI] once the loop has run long enough to forget its start --
+    # sigma_ui is a run of the configured length from rest, which an
+    # underdamped loop does not ring up to (ErrorResponse.run_mean_sq)
+    sigma_steady_ui: float | None = None
+    # the RMS error [UI] at points spread over the run (their mean square is
+    # sigma_ui^2): an underdamped loop's grows as it rings up, and a smear of
+    # its mean alone reads its tail short (ErrorResponse.run_sq_at)
+    sigma_over_run_ui: tuple[float, ...] | None = None
 
     @property
     def sigma_ui(self) -> float:
@@ -141,6 +163,92 @@ def error_response(f: np.ndarray, loop: LoopParams, k_pd: float) -> np.ndarray:
     the response is 1 (nothing tracked).
     """
     return np.abs(1.0 / (1.0 + loop_gain(f, loop, k_pd)))
+
+
+@dataclass(frozen=True)
+class ErrorResponse:
+    """One loop's error response at one detector gain: ``|E(f)|`` when called.
+
+    The solvers hand this, not a bare function, to the caller's
+    ``untracked_ui``, so a caller that knows the run (the statistical engine)
+    can ask what a run starting from rest leaves (:meth:`run_mean_sq`)
+    instead of the steady state; one that only calls it gets ``|E|``.
+    """
+
+    loop: LoopParams
+    k_pd: float
+
+    def __call__(self, f: np.ndarray) -> np.ndarray:
+        return error_response(f, self.loop, self.k_pd)
+
+    def _transient(self, f: np.ndarray):
+        """``(inside, e, d, q)`` on the frequencies the loop tracks: ``G_n = e -
+        sum_i d_i q_i^n``; None if the loop is not stable or has no gain."""
+        loop, k = self.loop, self.k_pd
+        inside = (f > 0) & (f <= loop.f_update / 2.0)
+        if not np.any(inside) or k <= 0:
+            return None
+        # D(z) = (z - 1)^2 z^lat + k (kp (z - 1) + ki z); E = 1 + R / D
+        den = np.zeros(loop.latency_updates + 3)
+        den[:3] = (1.0, -2.0, 1.0)
+        den[-2] += k * (loop.kp_ui + loop.ki_ui)
+        den[-1] -= k * loop.kp_ui
+        poles = np.roots(den)
+        if np.any(np.abs(poles) >= 1.0):
+            return None
+        c = (k * loop.kp_ui - k * (loop.kp_ui + loop.ki_ui) * poles) / np.polyval(np.polyder(den), poles)
+        zi = np.exp(-1j * TWOPI * f[inside] / loop.f_update)[:, None]
+        q = poles[None, :] * zi
+        d = c[None, :] * zi / (1.0 - q)
+        return inside, 1.0 + np.sum(d, axis=1), d, q
+
+    def run_mean_sq(self, f: np.ndarray, first_update: int, last_update: int) -> np.ndarray:
+        """Mean of ``|G_n(f)|^2`` over updates ``first_update..last_update`` of a
+        run that starts from rest: a unit sinusoid switched on with the run
+        leaves ``|G_n|`` on the sampler at update ``n``.
+
+        ``E(z) = 1 + sum_i c_i / (z - p_i)`` over the loop's poles, so
+        ``G_n = E - sum_i d_i q_i^n`` with ``q_i = p_i e^{-jw}`` and
+        ``d_i = c_i e^{-jw} / (1 - q_i)``; the mean of its square over the
+        window is a sum of geometric series. Tends to ``|E|^2`` once the
+        window starts long after the loop's ring-down; 1 above
+        ``f_update / 2`` (nothing tracked), and ``|E|^2`` if the loop is not
+        stable (no run settles then).
+        """
+        f = np.asarray(f, dtype=np.float64)
+        tr = self._transient(f)
+        if tr is None:
+            return np.where((f > 0) & (f <= self.loop.f_update / 2.0), self(f) ** 2, 1.0)
+        inside, e, d, q = tr
+        n0, w = int(first_update), max(int(last_update) - int(first_update) + 1, 1)
+
+        def mean_pow(r: np.ndarray) -> np.ndarray:
+            """mean of r**n over n0 .. n0 + w - 1."""
+            near = np.abs(1.0 - r) < 1e-14
+            safe = np.where(near, 0.5, r)
+            return np.where(near, 1.0 + 0j, safe ** n0 * (1.0 - safe ** w) / ((1.0 - safe) * w))
+
+        cross = np.sum(d * mean_pow(q), axis=1)
+        quad = np.sum(d[:, :, None] * np.conj(d)[:, None, :]
+                      * mean_pow(q[:, :, None] * np.conj(q)[:, None, :]), axis=(1, 2))
+        out = np.ones_like(f)
+        out[inside] = np.maximum(np.real(np.abs(e) ** 2 - 2.0 * np.conj(e) * cross + quad), 0.0)
+        return out
+
+    def run_sq_at(self, f: np.ndarray, updates: np.ndarray) -> np.ndarray:
+        """``|G_n(f)|^2`` at each of ``updates`` (shape ``(f.size, updates.size)``):
+        how the run's error grows as an underdamped loop rings up."""
+        f = np.asarray(f, dtype=np.float64)
+        n = np.asarray(updates, dtype=np.float64)
+        tr = self._transient(f)
+        if tr is None:
+            base = np.where((f > 0) & (f <= self.loop.f_update / 2.0), self(f) ** 2, 1.0)
+            return np.repeat(base[:, None], n.size, axis=1)
+        inside, e, d, q = tr
+        out = np.ones((f.size, n.size))
+        g = e[:, None] - np.sum(d[:, :, None] * q[:, :, None] ** n[None, None, :], axis=1)
+        out[inside] = np.abs(g) ** 2
+        return out
 
 
 def tracking_response(f: np.ndarray, loop: LoopParams, k_pd: float) -> np.ndarray:
@@ -225,8 +333,9 @@ def bb_loop_fixed_point(loop: LoopParams,
     """Self-consistent operating point of a bang-bang loop.
 
     ``untracked_ui(err_fn)`` must return the RMS clock jitter [UI] left when
-    ``err_fn(f)`` is the loop's error response; the caller supplies it so this
-    module knows nothing about profiles. ``sigma_edge_ui`` is whatever else
+    ``err_fn(f)`` is the loop's error response (an :class:`ErrorResponse`,
+    which can also say what a run from rest leaves); the caller supplies it
+    so this module knows nothing about profiles. ``sigma_edge_ui`` is whatever else
     randomises the edge comparison -- AWGN and ISI at the edge sample,
     expressed in UI through the edge slope -- and enters the detector's
     effective input jitter but not the sampling error it reports (the data
@@ -263,7 +372,7 @@ def bb_loop_fixed_point(loop: LoopParams,
     k_pd, info = gain(sigma_e)
     sig_u = sig_s = 0.0
     for _ in range(n_iter):
-        sig_u = untracked_ui(lambda f, k=k_pd: error_response(f, loop, k))
+        sig_u = untracked_ui(ErrorResponse(loop, k_pd))
         # E[pd^2] less the power of the mean response (bb_pd_noise_var)
         sig_s = self_noise_ui(loop, k_pd, rho_all - info ** 2 / 3.0)
         new = float(np.hypot(sig_u, sig_s))
@@ -280,7 +389,7 @@ def mm_loop_solution(loop: LoopParams, k_pd: float, pd_noise: float | PdNoise,
                      untracked_ui: Callable[[Callable[[np.ndarray], np.ndarray]], float]
                      ) -> LoopSolution:
     """Operating point of a Mueller-Muller loop: linear, so no iteration."""
-    sig_u = untracked_ui(lambda f: error_response(f, loop, k_pd))
+    sig_u = untracked_ui(ErrorResponse(loop, k_pd))
     sig_s = self_noise_ui(loop, k_pd, pd_noise)
     return LoopSolution(k_pd=float(k_pd), sigma_untracked_ui=float(sig_u),
                         sigma_self_ui=float(sig_s), bandwidth_hz=bandwidth_hz(loop, k_pd))
