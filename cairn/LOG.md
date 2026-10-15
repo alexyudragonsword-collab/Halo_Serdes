@@ -3,6 +3,22 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-15 · 剖面时钟:运行的 σ、样本之间的曲线、DFE 保持(fix/profile-held-dfe,ROADMAP P2 #28)
+
+- 定位(示例 31 链路,12–16 种子):剖面时钟保持抽头读高 6.6–15× 拆成三件事。① 模型 σ 是稳态,欠阻尼环路(kp 7–9,|E| 峰 4–16×)在一次
+  20 万符号的运行里振铃不起来,稳态读系综 RMS 1.14–1.70×;线性模型按时域条件仿真(谱线 k/(N UI)、从静止起步)即对上。② 保持抽头的曲线在整样本
+  之间线性插值读高 1.6–3.6×(冻结时域停在 ±0.25…±0.75 个样本量过)。③ 时域 LMS FFE 在 kp 8–9 跟上一部分慢游走(BER 低 1.6–1.8×)。
+- 改:`ErrorResponse.run_mean_sq` / `run_sq_at`(极点展开闭式)、`ClockProfile.run_untracked_sigma_s`(按运行的谱线);读数取运行中 12 个点的平均;
+  稳态另报 `sigma_steady_ui`、超 1.25× 警告;平滑小于两个样本时在样本之间真算(`_pulse_at`);剖面时钟也保持抽头。结果 0.66–1.40×(此前 0.24–1.42×)。
+- 余项 ③ → ROADMAP P2 #29(仍在 2× 内)。更正:示例 31 的"模型 / 实测 0.81–1.07×"与 P2 #27 的"收端剖面 0 误码"都是 seed 3 的偶合。
+- 示例 24 / 31 / 44 / 45 统计列变(44 同步 0.67–1.15 → 0.44–1.15×,NRZ 7/8 UI 陡点回到 0.44;skew 对游走 lane 0.92–1.31 → 0.67–1.09×),其余不变;
+  P2 #27 白时钟组 NRZ 16G 0.45–0.89×、PAM4 32G 0.99–1.01×、NRZ 28G 0.67–1.08×。指纹 10 个统计值变,时域不变。统计单跑 1.3–1.7× 慢。
+- 文档:`cairn/DSP发端与PR.md` §29(§28 加注)、pitfalls 新增三条 + 两条加注、invariants、`多lane建模.md` §3 / §7 / §8 更正、clock_profile、USAGE、COMPARISON。
+- 验证:本地全量 1120 passed / 1 skipped(+9 `tests/test_profile_run_smear.py`;首轮 USAGE 一处代码注释被链接检查误认,改后 `test_docs_fresh` 14 条通过;`HALO_NO_JIT=1` 下新文件的 7 条闭式 / 插值测试通过);ruff、Cython(linear / statistical / clock)通过;`derived` 96 条成立。
+- CI(0b4de9c,含代码提交 30551b4 —— 两个提交一起推送,CI 只在头上跑):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;
+  测试矩阵(含 nojit)、examples、examples-full、RTL lockstep、lint、import-clean、vendor-drift、pyinstaller、APK 构建绿,nuitka / nuitka-onefile 绿(117 / 73 分钟)。
+- 上一条(#87)于 2026-10-15 合入。
+
 ## 2026-10-15 · 白时钟上 bang-bang 环路的游走进统计引擎(fix/bb-white-wander,ROADMAP P2 #27)
 
 - 定位:白时钟统计引擎不建 CDR,时域 BB 环路在猎 0.025–0.062 UI;陡浴盆统计 / 时域 NRZ 16G 0.11–0.54×、PAM4 32G 0.48–0.71×、NRZ 28G 0.53–0.98×。

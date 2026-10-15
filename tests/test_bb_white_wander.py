@@ -90,9 +90,11 @@ def test_the_model_hunts_as_the_kernel_does(name, lo, hi):
 ])
 def test_two_engines_agree_where_the_loop_hunts(name, rj, noise):
     """Invariant 3 on steep bathtubs, where the hunting matters: two seeds of
-    200k symbols, 0.06 UI of transmit RJ. Measured 0.78 / 1.03 / 1.02x
+    200k symbols, 0.06 UI of transmit RJ. Measured 0.78 / 1.01 / 0.98x
     (0.35 / 0.48 / 0.88x with the loop left out); over 0-0.09 UI of RJ and
-    two noise levels, 0.50-1.12x on the cases with 20 errors or more. The
+    two noise levels, 0.45-1.08x on the cases with 20 errors or more (0.78 /
+    1.03 / 1.02x and 0.50-1.12x before the curve was taken between samples,
+    ROADMAP P2 #28). The
     rest on NRZ 16G is the sampler's own phase distribution against a
     Gaussian of the same sigma (cairn/DSP发端与PR.md §28)."""
     cfg = _preset(name, rj=rj, noise=noise, n_symbols=200_000)
@@ -109,14 +111,26 @@ def test_two_engines_agree_where_the_loop_hunts(name, rj, noise):
     assert 0.5 < ratio < 2.0, (ratio, stat.ber, n_err)
 
 
-def test_the_smear_holds_the_dfe_where_it_adapted():
+def test_the_smear_holds_the_dfe_where_it_adapted(monkeypatch):
     """The loop wanders far faster than the sign-sign LMS adapts, so under
     the smear the DFE stays at the taps of the phase read and the postcursors
     it misses elsewhere stay ISI; the bathtub re-adapts at every phase. On the
-    NRZ 16G preset (four taps) the read is higher than the re-adapted
-    bathtub's smear at the same point."""
+    NRZ 16G preset (four taps) the curve the smear reads lies 3-27x above the
+    re-adapted bathtub 4-16 samples early, and the read, taken the same way
+    from both, is higher with the taps held -- by 5 % here: the smear's
+    weight sits on the late, steep side, where holding the taps changes
+    little."""
     cfg = _preset("NRZ 16G mixed-signal", rj=0.06, noise=0.012, n_symbols=200_000)
+    seen = []
+    orig = st._smeared_at
+    monkeypatch.setattr(st, "_smeared_at", lambda c, p, ce, sg: (
+        seen.append((np.array(c), np.array(p), ce, sg)), orig(c, p, ce, sg))[1])
     s = st.run_statistical(cfg)
-    lock = s.extras["lock_phase_ui"] * cfg.osr
-    readapted = float(np.interp(lock, np.asarray(s.phi_ui) * cfg.osr, s.ber_phi))
-    assert s.ber > 1.1 * readapted, (s.ber, readapted)
+    held, x, lock, sigma = seen[0]
+    # the bathtub unsmeared: the DFE re-adapted at every phase
+    monkeypatch.setattr(st, "_sampling_jitter_ui", lambda *a, **k: (0.0, None))
+    still = st.run_statistical(cfg)
+    readapted = np.interp(x, np.asarray(still.phi_ui) * cfg.osr, still.ber_phi)
+    early = x - lock <= -4.0
+    assert np.all(held[early] > 3.0 * readapted[early]), (held[early] / readapted[early]).min()
+    assert s.ber > 1.02 * orig(readapted, x, lock, sigma), (s.ber, orig(readapted, x, lock, sigma))

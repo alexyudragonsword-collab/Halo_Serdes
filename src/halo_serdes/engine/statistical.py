@@ -28,13 +28,17 @@ Non-LTI approximations (each cross-checked against the time engine):
   hunts on any clock -- its own wander, white clocks included (until
   2026-10-15 a white clock had no loop model, and the mixed-signal reading
   was 0.1-0.7x the time engine's with transmit RJ, ROADMAP P2 #27). The
-  loop moves faster than the decision feedback adapts, so on white clocks
-  the DFE stays at the taps of the phase read under the smear and the
-  postcursors it misses elsewhere stay ISI; the bathtub (``ber_phi``)
-  re-adapts at every phase. A profile clock's smear still re-adapts: with
-  the taps held example 31 read 6.6-15x high, though the time engine's
-  equalisers do not follow that wander either -- not yet explained (ROADMAP
-  P2 #28).
+  loop moves faster than the decision feedback adapts, so under the smear
+  the DFE stays at the taps of the phase read and the postcursors it misses
+  elsewhere stay ISI; the bathtub (``ber_phi``) re-adapts at every phase.
+  Where the smear is under two samples that curve is also taken between
+  samples (the pulse interpolated): a steep bathtub read linearly between
+  them came out 1.6-3.6x high half a sample off the lock. On a profile
+  clock the time engine's LMS FFE follows part of the slow wander, 1.7x
+  in BER at example 31's kp_shift 8-9 and nothing at 4-6, which this does
+  not model (ROADMAP P2 #28: example 31's link over 4-9 and two clocks,
+  0.66-1.4x against 12 seeds; with the taps re-adapted, as until then,
+  0.24-1.4x).
   The transmitter's white RJ is not a sampling shift -- each edge moves on
   its own -- and comes in as noise that follows the transitions
   (``tx_edge_jitter``): binned by the sampled symbol's neighbours, its own
@@ -94,8 +98,15 @@ Non-LTI approximations (each cross-checked against the time engine):
   is still the lane's own loop's;
 - coloured clock (``tx.clock.kind = "profile"``): the CDR is linearised
   (``cdr/linear.py``) and the smear sigma is the profile power the loop does
-  not track plus the jitter it acquires from its own detector noise, both
-  integrated from 1/(N UI). The bang-bang detector's gain is set by the
+  not track plus the jitter it acquires from its own detector noise -- the
+  profile as a run of N symbols holds it, on the lines ``k / (N UI)``, the
+  loop starting from rest. An underdamped loop's jitter peaking builds over
+  ``~Q / (pi f)``; example 31's at kp_shift 8-9 (``|E|`` 8-16x near 1.1 MHz)
+  has not rung up within 200k symbols, its steady state reading the time
+  engine's 16-seed RMS 1.34-1.70x where the run reads it 0.98-0.99x. Its
+  error grows over the run, so the read is the mean over points of it
+  (``LoopSolution.sigma_over_run_ui``); the steady state is reported
+  (``sigma_steady_ui``) and warned when it is over 1.25x the run's. The bang-bang detector's gain is set by the
   jitter at its input, which here is the untracked clock, the loop's own
   hunting, and AWGN + ISI at the edge sample converted through the edge
   slope of the pre-DFE pulse (first order; a lossy channel's data-dependent
@@ -182,7 +193,7 @@ import numpy as np
 
 from ..afe import Ctle
 from ..cdr.linear import (
-    LoopParams, LoopSolution, bb_loop_fixed_point, error_response, lock_offset_samples,
+    ErrorResponse, LoopParams, LoopSolution, bb_loop_fixed_point, error_response, lock_offset_samples,
     mm_hold_range_ui, mm_loop_solution, mm_pd_statistics,
 )
 from ..channel import ChannelModel
@@ -742,6 +753,12 @@ _PR_LOOP_LOAD_WARN = 0.08
 #: random symbols (cairn/DSP发端与PR.md §27)
 _MM_HOLD_SIGMAS = 8.0
 
+#: how far a loop's steady-state error may exceed what a run of the
+#: configured length from rest leaves before run_statistical says the run is
+#: too short to show it. Example 31's ADC loop: 1.00-1.07x to kp_shift 6,
+#: 1.17x at 7, 1.37x / 1.72x at 8 / 9 (|E| peaking 8-16x) (ROADMAP P2 #28)
+_RUN_STEADY_WARN = 1.25
+
 
 def _lock_position(cfg: LinkConfig, h_pre_ffe: np.ndarray, h_chan: np.ndarray, tx_pipe,
                    has_ffe: bool, ffe_pre: int) -> float:
@@ -1028,37 +1045,52 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr), levels_norm, swing,
         cfg.rx.noise_rms, n_feedback=n_feedback,
         loop=not (cfg.rx.arch == "mixed_signal" and has_ffe))
-    # On white clocks the smear is a sampling instant that moves (the loop's
-    # hunting, the receiver's RJ), faster than the decision feedback adapts:
-    # the receiver's DFE stays where it adapted, at the phase it is read at.
-    # So the phases the smear reaches are taken a second time with that
-    # phase's taps (``fixed``), the residual postcursors left as ISI; the
+    # The smear is a sampling instant that moves (the loop's hunting and the
+    # clock it leaves, the receiver's RJ), faster than the decision feedback
+    # adapts: the receiver's DFE stays where it adapted, at the phase it is
+    # read at. So the phases the smear reaches are taken a second time with
+    # that phase's taps (``fixed``), the residual postcursors left as ISI; the
     # bathtub (ber_phi) stays the static one, its DFE adapted at every phase.
     # Re-adapting under the smear read the NRZ 16G preset 1.1-1.4x low against
-    # the time engine (ROADMAP P2 #27). A profile clock keeps the re-adapted
-    # read: with the taps held example 31 read 6.6-15x high, though the time
-    # engine's equalisers do not follow its wander either and the held curve
-    # matches it off lock -- the Gaussian of the profile's sigma is the
-    # suspect, not yet confirmed (ROADMAP P2 #28).
-    held = sigma_ui > 0 and all(c.kind != "profile" for c in (cfg.tx.clock, cfg.rx.clock))
-    fixed_span = int(min(osr // 2, np.ceil(8.0 * sigma_ui * osr))) if held and n_dfe > 0 else 0
-    lo_fix, hi_fix = max(i_lock - fixed_span, 0), min(i_lock + fixed_span, osr - 1)
-    tasks = [(i_lock, False)] + [(i, False) for i in range(osr) if i != i_lock]
-    if fixed_span:
-        tasks += [(i, True) for i in range(lo_fix, hi_fix + 1) if i != i_lock]
-    ser_fix = np.zeros(osr)
-    ber_fix = np.zeros(osr)
+    # the time engine (ROADMAP P2 #27). Where the smear is under two samples
+    # the curve is also taken between them (``frac``, the pulse interpolated):
+    # read linearly between samples a steep, convex curve came out 1.6-3.6x
+    # high half a sample off the lock -- most of what example 31's profile
+    # clocks read high with the taps held (ROADMAP P2 #28).
+    held = sigma_ui > 0
+    smears = (tuple(loop_sol.sigma_over_run_ui)
+              if loop_sol is not None and loop_sol.sigma_over_run_ui else (sigma_ui,))
+    sub = 4 if sigma_ui * osr < 1.0 else 2 if sigma_ui * osr < 2.0 else 1
+    fine_span = (int(min(osr // 2, np.ceil(8.0 * max(smears) * osr)))
+                 if held and (n_dfe > 0 or sub > 1) else 0)
+    lo_fix, hi_fix = max(i_lock - fine_span, 0), min(i_lock + fine_span, osr - 1)
+    tasks = [(i_lock, False, 0.0)] + [(i, False, 0.0) for i in range(osr) if i != i_lock]
+    if fine_span:
+        for i in range(lo_fix, hi_fix + 1):
+            for j in range(sub if i < hi_fix else 1):
+                frac = j / sub
+                if frac > 0.5:          # per-phase quantities from the nearest sample
+                    pi, frac = i + 1, frac - 1.0
+                else:
+                    pi = i
+                if frac == 0.0 and (pi == i_lock or n_dfe == 0):
+                    continue            # the phase as computed is that point
+                tasks.append((pi, True, frac))
+    fine_vals: dict[float, tuple[float, float]] = {}
     lock_dfe: dict[int, float] = {}
-    for pi, fixed in tasks:
+    for pi, fixed, frac in tasks:
         off = phi_offsets[pi]
         if tx_jit_phi is not None:
             edge_jit = tx_jit_phi[pi]
             pattern_sigma = np.sqrt(pattern_base ** 2 + edge_jit.sigma ** 2)
         # cursors at this phase (volts, per unit symbol level)
         idx = peak + off + np.arange(-n_pre, n_post + 1) * osr
-        valid = (idx >= 0) & (idx < pulse.y.size)
-        c = np.zeros(idx.size)
-        c[valid] = pulse.y[idx[valid]]
+        if frac:
+            c = _pulse_at(pulse.y, idx + frac)
+        else:
+            valid = (idx >= 0) & (idx < pulse.y.size)
+            c = np.zeros(idx.size)
+            c[valid] = pulse.y[idx[valid]]
         c = c * swing
         main = c[n_pre]
         isi = np.delete(c, n_pre)
@@ -1308,7 +1340,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     pdf_lv, v_centers, levels_norm * main, head,
                     composite=pr_composite, precoded=cfg.precode)
                 ser_v, ber_v = s_sym, b_sym / bits_per_sym
-            ser_fix[pi], ber_fix[pi] = ser_v, ber_v
+            fine_vals[float(off + frac)] = (ser_v, ber_v)
             continue
         ser_phi[pi] = ser
         ber_phi[pi] = nbe / bits_per_sym
@@ -1331,8 +1363,14 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     # the curves the smear is read from: the phases as computed, before it
     ber_raw, ser_raw = ber_phi.copy(), ser_phi.copy()
-    if fixed_span:
-        ser_fix[i_lock], ber_fix[i_lock] = ser_phi[i_lock], ber_phi[i_lock]
+    if fine_span:
+        # the lock phase as computed, and (no DFE to hold) the other samples too
+        for i in range(lo_fix, hi_fix + 1):
+            if i == i_lock or n_dfe == 0:
+                fine_vals[float(phi_offsets[i])] = (ser_raw[i], ber_raw[i])
+        fine_x = np.array(sorted(fine_vals))
+        ser_fine = np.array([fine_vals[x][0] for x in fine_x])
+        ber_fine = np.array([fine_vals[x][1] for x in fine_x])
     if sigma_ui > 0:
         sig_phi = sigma_ui * osr
         k = gaussian_kernel(sig_phi, 1.0)
@@ -1373,11 +1411,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         ser = float(np.interp(lock, phi_offsets, ser_phi))
         if held:
             # the smear around the phase read, with its taps held there when
-            # there is a DFE (that curve exists only where the smear reaches)
-            sl = slice(lo_fix, hi_fix + 1) if fixed_span else slice(None)
-            cb, cs = (ber_fix, ser_fix) if fixed_span else (ber_raw, ser_raw)
-            ber = _smeared_at(cb[sl], phi_offsets[sl], lock, sigma_ui * osr)
-            ser = _smeared_at(cs[sl], phi_offsets[sl], lock, sigma_ui * osr)
+            # there is a DFE (that curve exists only where the smear reaches);
+            # an underdamped loop's error grows over the run as it rings up,
+            # so the read is the mean over the run's points (one if it does not)
+            x, cb, cs = ((fine_x, ber_fine, ser_fine) if fine_span
+                         else (phi_offsets, ber_raw, ser_raw))
+            ber = float(np.mean([_smeared_at(cb, x, lock, sg * osr) for sg in smears]))
+            ser = float(np.mean([_smeared_at(cs, x, lock, sg * osr) for sg in smears]))
         best = int(np.argmin(np.abs(phi_offsets - lock)))
         lock_ui = lock / osr
     loop_load = None
@@ -1423,6 +1463,23 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "pr_loop_load": loop_load})
 
 
+def _pulse_at(y: np.ndarray, pos: np.ndarray) -> np.ndarray:
+    """``y`` at fractional sample positions: Keys' cubic convolution
+    (``a = -1/2``), zero outside the array -- on a pulse sampled ``osr`` times
+    a UI, far finer than the linear interpolation between its BER values."""
+    pos = np.asarray(pos, dtype=np.float64)
+    i0 = np.floor(pos).astype(np.int64)
+    t = pos - i0
+    weights = ((-t ** 3 + 2.0 * t ** 2 - t) / 2.0, (3.0 * t ** 3 - 5.0 * t ** 2 + 2.0) / 2.0,
+               (-3.0 * t ** 3 + 4.0 * t ** 2 + t) / 2.0, (t ** 3 - t ** 2) / 2.0)
+    out = np.zeros(pos.shape)
+    for k, w in zip((-1, 0, 1, 2), weights):
+        j = i0 + k
+        ok = (j >= 0) & (j < y.size)
+        out[ok] += w[ok] * y[j[ok]]
+    return out
+
+
 def _smeared_at(curve: np.ndarray, phi: np.ndarray, center: float, sigma: float) -> float:
     """A BER curve over phase averaged over a Gaussian sampling instant:
     ``int curve(phi) N(phi; center, sigma) dphi``, the curve interpolated
@@ -1448,10 +1505,15 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
     side (transmit or receiver -- the loop tracks their difference, so they
     are interchangeable here) is integrated through the linearised CDR of the
     configured architecture (bang-bang for mixed-signal, Mueller-Muller for
-    ADC, matching which kernel the time engine would run) from ``1/(N UI)``,
-    the lowest offset a run of ``N`` symbols resolves, so both engines look at
-    the same band. The receiver clock's white-kind RJ on top rides through
-    the same error response.
+    ADC, matching which kernel the time engine would run) as a run of ``N``
+    symbols holds it: on the lines ``k / (N UI)`` the time engine's
+    synthesiser puts it on, the loop starting from rest, over the window the
+    time engine scores (``ErrorResponse.run_mean_sq``). A loop that rings
+    longer than the run never reaches its steady state in it; that is
+    reported (``sigma_steady_ui``, warned past 1.25x), and its error at
+    points over the run (``sigma_over_run_ui``) is what the read averages
+    over (ROADMAP P2 #28). The receiver clock's white-kind RJ on top rides
+    through the same error response, steady.
 
     The bang-bang loop hunts on any clock, so mixed-signal runs its model on
     white clocks too: 0.02-0.06 UI on the presets' loops, which the time
@@ -1481,9 +1543,23 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
     f_nyq = cfg.symbol_rate / 2.0
     f_white = np.linspace(f_lo, f_nyq, 2048)
     rj_white = float(cfg.rx.clock.rj_ui)       # the transmitter's: tx_edge_jitter
+    # the window the time engine scores, in loop updates: the loop starts
+    # from rest at the first symbol (training_schedule's settle onwards)
+    n_sym = max(int(cfg.sim.n_symbols), 2)
+    per_update = max(int(round(cfg.symbol_rate / lp.f_update)), 1)
+    first = min(int(cfg.sim.cdr_settle), n_sym // 4) // per_update
+    last = max(n_sym // per_update - 1, first)
 
     def untracked(err_fn) -> float:
-        var = sum((p.untracked_sigma_s(err_fn, f_lo) / ui) ** 2 for p in profs if p is not None)
+        """Clock jitter the loop leaves [UI]: over the run, from rest, on the
+        run's lines when the solver hands an ErrorResponse; the steady state
+        of a continuous profile for a bare |E| (and for the white part)."""
+        if isinstance(err_fn, ErrorResponse):
+            ms = lambda f: err_fn.run_mean_sq(f, first, last)   # noqa: E731
+            var = sum((p.run_untracked_sigma_s(ms, n_sym, ui) / ui) ** 2
+                      for p in profs if p is not None)
+        else:
+            var = sum((p.untracked_sigma_s(err_fn, f_lo) / ui) ** 2 for p in profs if p is not None)
         white = rj_white * float(np.sqrt(np.mean(np.asarray(err_fn(f_white)) ** 2)))
         return float(np.sqrt(var + white ** 2))
 
@@ -1512,6 +1588,13 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
             lp, untracked,
             transitions=_bb_transitions(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
                                         extra_edge_ui=float(cfg.tx.clock.rj_ui)))
+    # the same loop once it has forgotten its start: what a longer run, and
+    # the link in service, settles at
+    steady = float(np.hypot(untracked(lambda f, k=sol.k_pd: error_response(f, lp, k)),
+                            sol.sigma_self_ui))
+    sol = replace(sol, sigma_steady_ui=steady, sigma_over_run_ui=_over_run(
+        profs, ErrorResponse(lp, sol.k_pd), sol, first, last, n_sym, ui))
+    _warn_if_run_short_of_steady(sol, cfg)
     for p in profs:
         if p is not None:
             _warn_if_slew_limited(p, lp, f_lo, sol, cfg)
@@ -1641,6 +1724,56 @@ def _warn_if_mm_cannot_hold(sol: LoopSolution) -> None:
         "2.8-6.9x, never from 8.6x), "
         "which the linear loop model and this engine's BER do not describe -- check with "
         "the time engine on the pattern and length that matter", stacklevel=3)
+
+
+#: points over the run at which an underdamped loop's error is taken
+_RUN_POINTS = 12
+
+
+def _over_run(profs, er: ErrorResponse, sol: LoopSolution, first: int, last: int,
+              n_sym: int, ui: float) -> tuple[float, ...] | None:
+    """The RMS sampling error [UI] at ``_RUN_POINTS`` points spread over the
+    run: the profiles' share as the loop rings up from rest
+    (``ErrorResponse.run_sq_at``), scaled so its mean square is the run's,
+    the rest (white jitter, the loop's own noise) as it is. Example 31's
+    loop at kp_shift 8-9 goes from 0.36 to 0.77-0.90 samples over a 200k
+    run, and a Gaussian of the mean read the time engine 0.3-0.5x where the
+    mean over the points reads it 0.5-0.85x (ROADMAP P2 #28). None without
+    a profile (nothing rings up then)."""
+    if all(p is None for p in profs) or last <= first:
+        return None
+    pts = first + (np.arange(_RUN_POINTS) + 0.5) / _RUN_POINTS * (last - first + 1)
+    ms_mean = lambda f: er.run_mean_sq(f, first, last)    # noqa: E731
+    ms_at = lambda f: er.run_sq_at(f, pts)                 # noqa: E731
+    mean_var = sum((p.run_untracked_sigma_s(ms_mean, n_sym, ui) / ui) ** 2
+                   for p in profs if p is not None)
+    at_var = sum((np.asarray(p.run_untracked_sigma_s(ms_at, n_sym, ui)) / ui) ** 2
+                 for p in profs if p is not None)
+    if not mean_var > 0 or not np.mean(at_var) > 0:
+        return None
+    rest = max(sol.sigma_ui ** 2 - mean_var, 0.0)
+    return tuple(float(v) for v in np.sqrt(rest + at_var * (mean_var / np.mean(at_var))))
+
+
+def _warn_if_run_short_of_steady(sol: LoopSolution, cfg: LinkConfig) -> None:
+    """The smear is what a run of ``sim.n_symbols`` leaves, the loop starting
+    from rest -- what the time engine's run of that length shows. An
+    underdamped loop rings up to more than that only after ``~Q / (pi f)``;
+    when its steady state (``sigma_steady_ui``) is well above the run's the
+    BER here is the run's, and a longer run -- or the link in service --
+    is worse."""
+    steady = sol.sigma_steady_ui
+    if steady is None or steady <= _RUN_STEADY_WARN * sol.sigma_ui:
+        return
+    import warnings
+
+    warnings.warn(
+        f"the CDR loop rings: its sampling error settles at {steady:.4f} UI RMS, "
+        f"{steady / max(sol.sigma_ui, 1e-12):.2f}x the {sol.sigma_ui:.4f} UI a run of "
+        f"{int(cfg.sim.n_symbols)} symbols from rest leaves (its jitter peaking takes longer "
+        "than the run to build) -- this BER is the run's, like the time engine's; a longer "
+        "run and the link in service see more. Lower kp_shift (more damping) or run longer",
+        stacklevel=3)
 
 
 def _warn_if_slew_limited(prof, loop: LoopParams, f_lo: float, sol: LoopSolution,
