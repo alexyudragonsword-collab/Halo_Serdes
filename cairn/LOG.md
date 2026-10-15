@@ -12,7 +12,7 @@
 - 示例 46(394 s):三格式都选 1 + aD + bD² K = 2,KP4 时域 reach PAM4 20.44 / PAM6 19.65 / PAM8 19.38 dB,PAM4 赢 0.79 dB、省 0.70 pJ/b,3 种子一致;
   delta 收端 PAM8 领先,PAM4 靠 PR + DFSE +4.25 dB 翻盘;DAC 6 / 7 / 7 bit;KP4+BCH 下 PAM4 统计 reach 时域未确认(判决导向环路失锁,P2 #15 余项的又一例)。
 - 踩的坑:包络警告分支里的 `return` 让 `run_time_link` 返回 None(测试只看警告);统计引擎逐图样分箱 N³,PAM8 带 PR 单跑 56 s → 示例里 rj 设 0。
-- 文档:新专题 `cairn/448G调制格式.md`;USAGE §1 / §10;SUMMARY §04 小节;ROADMAP P2 #33–#35、P3 #12;pitfalls 两条;invariants;inventory;指纹加两条合成链路。
+- 文档:新专题 `cairn/448G调制格式.md`;USAGE §1 / §10;SUMMARY §04 小节;ROADMAP P2 #33–#35、P3 #12;pitfalls 两条;invariants;inventory;指纹加两条合成链路(860 → 980 个值,原 860 个 bit-identical)。
 - 验证:本地全量 1195 passed / 1 skipped(+59;`HALO_NO_JIT=1` 下三个新文件 47 项通过);ruff、Cython 13 个模块;`run_examples.py --smoke` 46 / 46;示例 00–45 的全尺寸漂移比对进行中(结果在本条下方补记)。
 
 ## 2026-10-15 · PAM4 猎振的数据噪声;门限放在接收机设电平处(fix/smear-distribution,ROADMAP P2 #30)

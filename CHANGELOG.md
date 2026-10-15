@@ -22,7 +22,7 @@
   只看 delta 收端 PAM8 领先,PAM4 靠两光标 PR + 16 状态 DFSE 多 +4.25 dB 翻盘;DAC 位数 6 / 7 / 7;KP4+BCH 下 PAM4 的统计 reach 时域未确认(判决导向环路失锁)。
 - 测试 +59(1136 → 1195 passed / 1 skipped):`tests/test_mapping_formats.py`(19)、`tests/test_statistical_formats.py`(18,含 pam6 / pam8 在混合信号与 ADC 收端的铁律 3)、
   `tests/test_format_compare.py`(5),power / jitter / interleave / api_json / ms_envelope / mm_pd_input / cycle_slip 各加参数。
-  指纹加两条合成 PAM6 / PAM8 ADC 链路(1 + aD,K = 1,三引擎)。
+  指纹加两条合成 PAM6 / PAM8 ADC 链路(1 + aD,K = 1,三引擎;静态引擎行跑 delta 目标):860 → 980 个值,原 860 个 bit-identical。
 - 新专题 `cairn/448G调制格式.md`;USAGE §1 / §10;SUMMARY §04 小节。
 
 ### 修复
