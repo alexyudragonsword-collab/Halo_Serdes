@@ -242,7 +242,10 @@ lock point and carry noise but no timing; the model takes the transitions by
 class. Hunting, model / measured: NRZ 1.02-1.07x, PAM4 1.04-1.3x (taking
 every sign change at the lock read 0.65-0.72x). Under the smear the DFE stays
 at the taps of the phase read -- the loop moves far faster than the sign-sign
-LMS -- while the bathtub re-adapts at every phase. Stat / time on steep
+LMS -- while the bathtub re-adapts at every phase. (Profile clocks keep the
+re-adapted read under the smear: with the taps held, example 31 read 6.6-15x
+high although its time-domain equalisers do not follow the wander either;
+not yet explained, ROADMAP P2 #28.) Stat / time on steep
 bathtubs (20+ errors): NRZ 16G 0.11-0.54x before, 0.50-0.89x now; PAM4 32G
 0.48-0.71x before, 0.99-1.03x now; NRZ 28G 0.53-0.98x before, 0.75-1.12x now.
 What is left on NRZ 16G is the Gaussian: the sampler's own phase distribution

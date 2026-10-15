@@ -28,9 +28,13 @@ Non-LTI approximations (each cross-checked against the time engine):
   hunts on any clock -- its own wander, white clocks included (until
   2026-10-15 a white clock had no loop model, and the mixed-signal reading
   was 0.1-0.7x the time engine's with transmit RJ, ROADMAP P2 #27). The
-  loop moves faster than the decision feedback adapts, so under the smear
-  the DFE stays at the taps of the phase read and the postcursors it misses
-  elsewhere stay ISI; the bathtub (``ber_phi``) re-adapts at every phase.
+  loop moves faster than the decision feedback adapts, so on white clocks
+  the DFE stays at the taps of the phase read under the smear and the
+  postcursors it misses elsewhere stay ISI; the bathtub (``ber_phi``)
+  re-adapts at every phase. A profile clock's smear still re-adapts: with
+  the taps held example 31 read 6.6-15x high, though the time engine's
+  equalisers do not follow that wander either -- not yet explained (ROADMAP
+  P2 #28).
   The transmitter's white RJ is not a sampling shift -- each edge moves on
   its own -- and comes in as noise that follows the transitions
   (``tx_edge_jitter``): binned by the sampled symbol's neighbours, its own
@@ -1032,8 +1036,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # bathtub (ber_phi) stays the static one, its DFE adapted at every phase.
     # Re-adapting under the smear read the NRZ 16G preset 1.1-1.4x low against
     # the time engine (ROADMAP P2 #27). A profile clock keeps the re-adapted
-    # read: its untracked sigma overstates the coherent sampling shift (with
-    # the taps held, example 31 read 6.6-15x high; ROADMAP P2 #28).
+    # read: with the taps held example 31 read 6.6-15x high, though the time
+    # engine's equalisers do not follow its wander either and the held curve
+    # matches it off lock -- the Gaussian of the profile's sigma is the
+    # suspect, not yet confirmed (ROADMAP P2 #28).
     held = sigma_ui > 0 and all(c.kind != "profile" for c in (cfg.tx.clock, cfg.rx.clock))
     fixed_span = int(min(osr // 2, np.ceil(8.0 * sigma_ui * osr))) if held and n_dfe > 0 else 0
     lo_fix, hi_fix = max(i_lock - fixed_span, 0), min(i_lock + fixed_span, osr - 1)
