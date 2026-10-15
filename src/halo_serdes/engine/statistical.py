@@ -23,14 +23,27 @@ Non-LTI approximations (each cross-checked against the time engine):
 - ADC receiver: the ADC's noise, fullscale^2/12 * 2^(-2 ENOB) (bare
   quantisation without an ENOB), joins the receiver noise at the FFE input
   (``adc_noise_sigma``); clipping and TI lane mismatch are not modelled;
-- sampling jitter: BER(phi) smeared with the receiver clock's RJ Gaussian
-  on the phase axis. The transmitter's white RJ is not a sampling shift --
-  each edge moves on its own -- and comes in as noise that follows the
-  transitions (``tx_edge_jitter``): binned by the sampled symbol's
-  neighbours, its own two edges exact, the rest linearised, per phase. White
-  SJ and DCD are not modelled; for a white clock no CDR either, so a
-  bang-bang loop's own wander is missing (0.47-0.67x at 0.06-0.09 UI of Tx
-  RJ on PAM4 32G, ROADMAP P2 #27);
+- sampling jitter: BER(phi) averaged over a Gaussian sampling instant on
+  the phase axis: the receiver clock's RJ, and on a bang-bang loop -- which
+  hunts on any clock -- its own wander, white clocks included (until
+  2026-10-15 a white clock had no loop model, and the mixed-signal reading
+  was 0.1-0.7x the time engine's with transmit RJ, ROADMAP P2 #27). The
+  loop moves faster than the decision feedback adapts, so on white clocks
+  the DFE stays at the taps of the phase read under the smear and the
+  postcursors it misses elsewhere stay ISI; the bathtub (``ber_phi``)
+  re-adapts at every phase. A profile clock's smear still re-adapts: with
+  the taps held example 31 read 6.6-15x high, though the time engine's
+  equalisers do not follow that wander either -- not yet explained (ROADMAP
+  P2 #28).
+  The transmitter's white RJ is not a sampling shift -- each edge moves on
+  its own -- and comes in as noise that follows the transitions
+  (``tx_edge_jitter``): binned by the sampled symbol's neighbours, its own
+  two edges exact, the rest linearised, per phase; it also randomises a
+  bang-bang detector's edges. White SJ and DCD are not modelled, nor an ADC
+  receiver's Mueller-Muller loop on white clocks (its own noise 0.0001-0.006
+  UI on the presets). The Gaussian is the remaining approximation: on the
+  NRZ 16G preset's steep bathtub the time engine's own phase distribution
+  reads 1.15-1.4x what a Gaussian of its sigma does;
 - receive-side partial response (``cfg.pr``): the controlled cursor (the
   first postcursor of the FFE-shaped pulse, whatever it is at each phase)
   leaves the ISI PDF; with a sequence detector it joins the trellis cursors
@@ -107,10 +120,11 @@ Non-LTI approximations (each cross-checked against the time engine):
   it follows late inside its bandwidth) and warned below 8x -- on the
   fingerprint's 53 Gb/s link, whose function turns over 0.026 UI out, the
   time engine lost lock at 2.8-6.9x and never from 8.6x; the ADC presets sit
-  at 15-33x on random symbols. The white kind has no loop model and so no
-  such check. The white kind keeps its RJ-only smear
-  (no CDR self-noise), which is also what keeps it byte-identical to the
-  pre-profile engine;
+  at 15-33x on random symbols. An ADC receiver on white clocks has no loop
+  model and so no such check. A bang-bang detector's transitions are taken
+  by class (``_bb_transitions``): PAM4's sign changes between unequal
+  magnitudes cross 0.14-0.15 UI off the lock point and bring noise, not
+  gain -- taken at the lock the hunting read 0.65-0.72x the kernel's;
 - crosstalk: aggressor cursor sets convolved in as independent stationary
   interference, read where the time engine's victim samples them -- on the
   victim's sampling grid at each phase, the aggressors launching on the
@@ -1002,7 +1016,40 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         x_drift.append((sets, np.mean([isi_pdf(xc, levels_norm, v_centers) for xc in sets], axis=0)))
     drift_projected = {}
     union_ratio = None
-    for pi in [i_lock] + [i for i in range(osr) if i != i_lock]:
+    # sampling-jitter smearing on the phase axis: what the CDR leaves of the
+    # clocks plus the loop's own noise -- see _sampling_jitter_ui and the
+    # assumption list above. Taken before the phases, which it decides.
+    # an ADC detector on the equalised samples reads the slicer input, after
+    # the decision feedback (a PR target's controlled cursors, then the DFE)
+    n_feedback = ((n_t - 1 if pr_active else 0) + n_dfe
+                  if cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "ffe" else 0)
+    sigma_ui, loop_sol = _sampling_jitter_ui(
+        cfg, pulse if cfg.mm_pd_input == "ffe" else
+        pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr), levels_norm, swing,
+        cfg.rx.noise_rms, n_feedback=n_feedback,
+        loop=not (cfg.rx.arch == "mixed_signal" and has_ffe))
+    # On white clocks the smear is a sampling instant that moves (the loop's
+    # hunting, the receiver's RJ), faster than the decision feedback adapts:
+    # the receiver's DFE stays where it adapted, at the phase it is read at.
+    # So the phases the smear reaches are taken a second time with that
+    # phase's taps (``fixed``), the residual postcursors left as ISI; the
+    # bathtub (ber_phi) stays the static one, its DFE adapted at every phase.
+    # Re-adapting under the smear read the NRZ 16G preset 1.1-1.4x low against
+    # the time engine (ROADMAP P2 #27). A profile clock keeps the re-adapted
+    # read: with the taps held example 31 read 6.6-15x high, though the time
+    # engine's equalisers do not follow its wander either and the held curve
+    # matches it off lock -- the Gaussian of the profile's sigma is the
+    # suspect, not yet confirmed (ROADMAP P2 #28).
+    held = sigma_ui > 0 and all(c.kind != "profile" for c in (cfg.tx.clock, cfg.rx.clock))
+    fixed_span = int(min(osr // 2, np.ceil(8.0 * sigma_ui * osr))) if held and n_dfe > 0 else 0
+    lo_fix, hi_fix = max(i_lock - fixed_span, 0), min(i_lock + fixed_span, osr - 1)
+    tasks = [(i_lock, False)] + [(i, False) for i in range(osr) if i != i_lock]
+    if fixed_span:
+        tasks += [(i, True) for i in range(lo_fix, hi_fix + 1) if i != i_lock]
+    ser_fix = np.zeros(osr)
+    ber_fix = np.zeros(osr)
+    lock_dfe: dict[int, float] = {}
+    for pi, fixed in tasks:
         off = phi_offsets[pi]
         if tx_jit_phi is not None:
             edge_jit = tx_jit_phi[pi]
@@ -1025,15 +1072,19 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 head.append(isi[n_pre + j] / main if main else 0.0)
                 isi[n_pre + j] = 0.0
         # ideal DFE removes the n_dfe postcursors after the target
+        # (with ``fixed``, the taps of the phase read: the residual stays)
         h_dfe1 = 0.0
         if n_dfe > 0:
             isi_list = list(isi)
             for d in range(n_dfe):
                 pos = n_pre + n_t - 1 + d  # index into isi (post side starts at n_pre)
                 if pos < len(isi_list):
+                    if pi == i_lock and not fixed:
+                        lock_dfe[pos] = float(isi_list[pos])
+                    tap = lock_dfe[pos] if fixed else float(isi_list[pos])
                     if d == 0:
-                        h_dfe1 = float(isi_list[pos])
-                    isi_list[pos] = 0.0
+                        h_dfe1 = tap
+                    isi_list[pos] = float(isi_list[pos]) - tap if fixed else 0.0
             isi = np.asarray(isi_list)
 
         # --- optional MLSD over the residual the DFE left behind ---
@@ -1245,9 +1296,20 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                         p_j += tail_le(thr - lv_sorted[j] - sgn * step, int(order[j]))
                     p_ep += p_j / (2 * n_levels)
             p_ep = min(p_ep, 0.99)
-            ep_factor_phi[pi] = 1.0 / (1.0 - p_ep + min(ser, 1.0))
-            ser *= ep_factor_phi[pi]
-            nbe *= ep_factor_phi[pi]
+            ep = 1.0 / (1.0 - p_ep + min(ser, 1.0))
+            if not fixed:
+                ep_factor_phi[pi] = ep
+            ser *= ep
+            nbe *= ep
+        if fixed:
+            ser_v, ber_v = ser, nbe / bits_per_sym
+            if pr_active and mlsd_mem == 0:
+                s_sym, b_sym = pr_symbol_decisions(
+                    pdf_lv, v_centers, levels_norm * main, head,
+                    composite=pr_composite, precoded=cfg.precode)
+                ser_v, ber_v = s_sym, b_sym / bits_per_sym
+            ser_fix[pi], ber_fix[pi] = ser_v, ber_v
+            continue
         ser_phi[pi] = ser
         ber_phi[pi] = nbe / bits_per_sym
         if pr_active:
@@ -1267,17 +1329,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             _shift_add(eye_col, pdf_lv[j], lv[j] / dv, 1.0 / n_levels)
         eye_pdf[:, pi] = eye_col
 
-    # sampling-jitter smearing on the phase axis. White clock: the RJ sigma
-    # as stated. Profile clock: what the CDR leaves of it, plus the loop's own
-    # noise -- see _sampling_jitter_ui and the assumption list above.
-    # an ADC detector on the equalised samples reads the slicer input, after
-    # the decision feedback (a PR target's controlled cursors, then the DFE)
-    n_feedback = ((n_t - 1 if pr_active else 0) + n_dfe
-                  if cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "ffe" else 0)
-    sigma_ui, loop_sol = _sampling_jitter_ui(
-        cfg, pulse if cfg.mm_pd_input == "ffe" else
-        pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr), levels_norm, swing,
-        cfg.rx.noise_rms, n_feedback=n_feedback)
+    # the curves the smear is read from: the phases as computed, before it
+    ber_raw, ser_raw = ber_phi.copy(), ser_phi.copy()
+    if fixed_span:
+        ser_fix[i_lock], ber_fix[i_lock] = ser_phi[i_lock], ber_phi[i_lock]
     if sigma_ui > 0:
         sig_phi = sigma_ui * osr
         k = gaussian_kernel(sig_phi, 1.0)
@@ -1316,6 +1371,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         lock = (lag + osr / 2) % osr - osr / 2
         ber = float(np.interp(lock, phi_offsets, ber_phi))
         ser = float(np.interp(lock, phi_offsets, ser_phi))
+        if held:
+            # the smear around the phase read, with its taps held there when
+            # there is a DFE (that curve exists only where the smear reaches)
+            sl = slice(lo_fix, hi_fix + 1) if fixed_span else slice(None)
+            cb, cs = (ber_fix, ser_fix) if fixed_span else (ber_raw, ser_raw)
+            ber = _smeared_at(cb[sl], phi_offsets[sl], lock, sigma_ui * osr)
+            ser = _smeared_at(cs[sl], phi_offsets[sl], lock, sigma_ui * osr)
         best = int(np.argmin(np.abs(phi_offsets - lock)))
         lock_ui = lock / osr
     loop_load = None
@@ -1361,39 +1423,64 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "pr_loop_load": loop_load})
 
 
+def _smeared_at(curve: np.ndarray, phi: np.ndarray, center: float, sigma: float) -> float:
+    """A BER curve over phase averaged over a Gaussian sampling instant:
+    ``int curve(phi) N(phi; center, sigma) dphi``, the curve interpolated
+    linearly between its phases and held at its ends (as the smear of the
+    bathtub pads them). Linear, so the read stays an average over phases --
+    a drifting aggressor is the mean of its skews' reads; in log between the
+    phases a steep bathtub would read up to ~10 % lower."""
+    x = np.linspace(center - 8.0 * sigma, center + 8.0 * sigma, 2001)
+    v = np.interp(x, np.asarray(phi, dtype=np.float64), np.asarray(curve, dtype=np.float64))
+    g = np.exp(-0.5 * ((x - center) / sigma) ** 2)
+    return float(np.sum(v * g) / np.sum(g))
+
+
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
-                        swing: float, noise_sigma: float,
-                        n_feedback: int = 0) -> tuple[float, LoopSolution | None]:
+                        swing: float, noise_sigma: float, n_feedback: int = 0,
+                        loop: bool = True) -> tuple[float, LoopSolution | None]:
     """RMS sampling-instant jitter [UI] to smear the bathtub with, and the loop model behind it.
 
-    White clocks on both sides return the receiver's RJ and no model: the
-    transmitter's white jitter moves each edge on its own and reaches the
-    slicer as noise that follows the transitions (``tx_jitter_sigma_binned``),
-    not as a shift of the sampling instant. A profile on either side (transmit
-    or receiver -- the loop tracks their difference, so they are
-    interchangeable here) is integrated through the linearised CDR of the
+    The transmitter's white jitter is not in it: it moves each edge on its
+    own and reaches the slicer as noise that follows the transitions
+    (``tx_edge_jitter``), not as a shift of the sampling instant -- though it
+    does randomise a bang-bang detector's edge samples. A profile on either
+    side (transmit or receiver -- the loop tracks their difference, so they
+    are interchangeable here) is integrated through the linearised CDR of the
     configured architecture (bang-bang for mixed-signal, Mueller-Muller for
     ADC, matching which kernel the time engine would run) from ``1/(N UI)``,
     the lowest offset a run of ``N`` symbols resolves, so both engines look at
     the same band. The receiver clock's white-kind RJ on top rides through
     the same error response.
+
+    The bang-bang loop hunts on any clock, so mixed-signal runs its model on
+    white clocks too: 0.02-0.06 UI on the presets' loops, which the time
+    engine's sampler follows (0.95-1.07x on NRZ, PAM4 1.04-1.3x). Until
+    2026-10-15 white clocks returned the receiver's RJ alone, and the
+    statistical BER was 0.1-0.5x the time engine's on the NRZ 16G preset
+    with transmit RJ (ROADMAP P2 #27). An ADC receiver on white clocks keeps
+    the receiver's RJ: its Mueller-Muller loop's own noise is 0.0001-0.001
+    UI on PRBS13Q and 0.005-0.006 UI on random symbols on the presets, and
+    its model would triple the cost of a white-clock run. ``loop`` False: a
+    mixed-signal receiver with an FFE stands for the static engine, which
+    samples at a fixed phase -- no loop to hunt.
     """
     from ..tx.clock import ClockProfile
 
     clocks = (cfg.tx.clock, cfg.rx.clock)
-    if all(c.kind != "profile" for c in clocks):
-        # white on both sides: the receiver's RJ smears the sampling instant
+    if (cfg.rx.arch == "adc_dsp" or not loop) and all(c.kind != "profile" for c in clocks):
+        # white on both sides, ADC or no loop: the receiver's RJ smears the sampling instant
         return float(cfg.rx.clock.rj_ui), None
     # The loop tracks the *difference* between the two clocks, so both ride
     # through the same error response and their untracked powers add.
     profs = [ClockProfile.load(c.file, f0_hz=c.f0_hz) if c.kind == "profile" else None
              for c in clocks]
-    loop = LoopParams.from_config(cfg)
+    lp = LoopParams.from_config(cfg)
     ui = cfg.ui
     f_lo = cfg.symbol_rate / max(int(cfg.sim.n_symbols), 2)
     f_nyq = cfg.symbol_rate / 2.0
     f_white = np.linspace(f_lo, f_nyq, 2048)
-    rj_white = float(cfg.rx.clock.rj_ui)       # the transmitter's: tx_jitter_sigma_binned
+    rj_white = float(cfg.rx.clock.rj_ui)       # the transmitter's: tx_edge_jitter
 
     def untracked(err_fn) -> float:
         var = sum((p.untracked_sigma_s(err_fn, f_lo) / ui) ** 2 for p in profs if p is not None)
@@ -1411,10 +1498,10 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
         if k_pd <= 0:
             # no timing gradient: the loop does not move, nothing is tracked
             return untracked(lambda f: np.ones_like(np.asarray(f, dtype=np.float64))), None
-        sol = mm_loop_solution(loop, k_pd, pd_noise, untracked)
+        sol = mm_loop_solution(lp, k_pd, pd_noise, untracked)
         # what moves the loop itself: its own noise and the clock it follows
         # late; jitter above its bandwidth only blurs the timing function
-        lagged = untracked(lambda f: error_response(f, loop, k_pd)
+        lagged = untracked(lambda f: error_response(f, lp, k_pd)
                            * (np.asarray(f, dtype=np.float64) <= sol.bandwidth_hz))
         sol = replace(sol, sigma_wander_ui=float(np.hypot(sol.sigma_self_ui, lagged)),
                       hold_range_ui=mm_hold_range_ui(pulse_pd.y, cfg.osr, peak, levels_v,
@@ -1422,11 +1509,12 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
         _warn_if_mm_cannot_hold(sol)
     else:
         sol = bb_loop_fixed_point(
-            loop, untracked,
-            sigma_edge_ui=_bb_edge_noise_ui(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm))
+            lp, untracked,
+            transitions=_bb_transitions(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
+                                        extra_edge_ui=float(cfg.tx.clock.rj_ui)))
     for p in profs:
         if p is not None:
-            _warn_if_slew_limited(p, loop, f_lo, sol, cfg)
+            _warn_if_slew_limited(p, lp, f_lo, sol, cfg)
     if cfg.rx.arch != "adc_dsp" and sol.sigma_ui > 0.1:
         import warnings
 
@@ -1466,17 +1554,26 @@ def _pattern_period(cfg: LinkConfig, max_symbols: int = 1 << 21) -> np.ndarray |
     return sym[:per] if np.array_equal(sym[:per], sym[per:]) else sym
 
 
-def _bb_edge_noise_ui(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
-                      levels_norm: np.ndarray, n_pre: int = 24, n_post: int = 64) -> float:
-    """What randomises the Alexander edge comparison besides clock jitter, in UI.
+def _bb_transitions(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
+                    levels_norm: np.ndarray, extra_edge_ui: float = 0.0, n_pre: int = 24,
+                    n_post: int = 64) -> tuple[tuple[float, float, float], ...]:
+    """The Alexander detector's transitions by class, for ``bb_loop_fixed_point``:
+    ``(probability per symbol, zero crossing relative to the lock point [UI],
+    edge noise [UI])``.
 
     The edge sample sits half a UI before the data sample on the raw (pre-DFE)
-    waveform, and the loop locks where, for a transition, its mean is zero:
-    where this symbol's half-cursor equals the previous symbol's
-    (``lock_offset_samples``). The slope of that difference with timing is
-    the edge slope; AWGN and the ISI of every other symbol add voltage noise
-    on top. Voltage noise over edge slope is timing noise, which the
-    bang-bang detector cannot tell from clock jitter.
+    waveform, and the detector compares signs (``cdr/kernels.py``): every
+    sign change between two symbols is a transition. The loop locks where a
+    symmetric one (+a -> -a) reads zero, where this symbol's half-cursor
+    equals the previous symbol's (``lock_offset_samples``). Its edge noise is
+    AWGN and the ISI of every other symbol over its edge slope -- voltage
+    noise over slope is timing noise, which the detector cannot tell from
+    clock jitter -- plus ``extra_edge_ui`` (the transmitter's white edge
+    jitter, which moves the edge it samples). A sign change between unequal
+    magnitudes (PAM4's +-1 <-> -+1/3) crosses zero away from the lock: where
+    ``a_new c0(tau) + a_old c1(tau)`` does, on the two cursors' linearised
+    slopes -- 0.1 UI off on the PAM4 32G preset, so almost no timing, only
+    noise. NRZ is one class, as before (2026-10-15, ROADMAP P2 #27).
     """
     y = np.asarray(pulse_pd.y, dtype=np.float64)
     peak = int(np.argmax(np.abs(y)))
@@ -1488,16 +1585,36 @@ def _bb_edge_noise_ui(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: f
     def at(i: int) -> float:
         return float(y[i]) if 0 <= i < y.size else 0.0
 
-    amp = swing * float(np.mean(np.abs(levels_norm)))
-    # d/dtau [c0(tau) - c1(tau)] * amplitude, volts per sample
-    slope = amp * ((at(e0 + 1) - at(e0 - 1)) - (at(e1 + 1) - at(e1 - 1))) / 2.0
-    if abs(slope) < 1e-18:
-        return 0.0
+    diff = (at(e0 + 1) - at(e0 - 1)) - (at(e1 + 1) - at(e1 - 1))
+    s0, s1 = (at(e0 + 1) - at(e0 - 1)) / 2.0, (at(e1 + 1) - at(e1 - 1)) / 2.0
+    c0, c1 = at(e0), at(e1)
+    tau_sym = (c1 - c0) / (s0 - s1) if s0 != s1 else 0.0     # the symmetric classes' zero
     idx = e0 + np.arange(-n_pre, n_post + 1) * osr
     others = [at(int(i)) for i in idx if 0 <= i < y.size and i not in (e0, e1)]
     isi_var = swing ** 2 * float(np.mean(levels_norm ** 2)) * float(np.sum(np.square(others)))
     sigma_v = float(np.sqrt(isi_var + noise_sigma ** 2))
-    return sigma_v / (abs(slope) * osr)
+    n = levels_norm.size
+    classes: dict[tuple[float, float], float] = {}
+    for a_old in levels_norm:
+        for a_new in levels_norm:
+            if (a_old > 0) == (a_new > 0):
+                continue
+            if a_new == -a_old:
+                # d/dtau [c0(tau) - c1(tau)] * amplitude, volts per sample
+                slope = swing * float(abs(a_old)) * diff / 2.0
+                offset = 0.0
+            else:
+                slope = swing * float(a_new * s0 + a_old * s1)
+                offset = float(-(a_new * c0 + a_old * c1) / (a_new * s0 + a_old * s1)
+                               - tau_sym) / osr if slope != 0.0 else float("inf")
+            if abs(slope) < 1e-18:
+                if offset != 0.0:
+                    continue
+                edge = float(extra_edge_ui)     # no slope to convert the voltage noise with
+            else:
+                edge = float(np.hypot(sigma_v / (abs(slope) * osr), extra_edge_ui))
+            classes[(offset, edge)] = classes.get((offset, edge), 0.0) + 1.0 / n ** 2
+    return tuple((p, offset, edge) for (offset, edge), p in classes.items())
 
 
 def _warn_if_mm_cannot_hold(sol: LoopSolution) -> None:

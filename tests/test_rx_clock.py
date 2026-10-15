@@ -280,12 +280,16 @@ def test_statistical_engine_warns_when_the_detector_is_noise_limited(tmp_path):
 
 def test_white_receiver_rj_smears_the_statistical_phase_axis():
     """The receiver's white RJ moves the sampling instant and smears the
-    bathtub; the transmitter's moves each edge on its own and is noise
-    instead (ROADMAP P2 #25; until then the two added in power here)."""
+    bathtub, on top of the loop's own hunting (ROADMAP P2 #27); the
+    transmitter's moves each edge on its own and is noise instead (ROADMAP
+    P2 #25; until then the two added in power here)."""
     cfg = _clean_link(tx=ClockConfig(rj_ui=0.006), rx=ClockConfig(rj_ui=0.008))
     st = run_statistical(cfg)
-    assert st.extras["jitter_sigma_ui"] == pytest.approx(0.008)
-    assert st.extras["clock_loop"] is None
+    sol = st.extras["clock_loop"]
+    # through the loop's error response, which peaks above 1 here: 1.11x
+    assert 1.0 < sol.sigma_untracked_ui / 0.008 < 1.2
+    assert st.extras["jitter_sigma_ui"] == pytest.approx(float(np.hypot(sol.sigma_untracked_ui,
+                                                                        sol.sigma_self_ui)))
     # and the kernel sampled with it: the residual carries the 0.008 UI on top of the hunting
     res = run_time_link(_clean_link(rx=ClockConfig(rj_ui=0.008)))
     ideal = run_time_link(_clean_link())

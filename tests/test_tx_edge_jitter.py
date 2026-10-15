@@ -70,10 +70,10 @@ def test_small_jitter_is_the_linear_power():
 def test_two_engines_agree_on_transmit_jitter(preset, rj, n_sym):
     """Invariant 3 with heavy Tx RJ. Measured stat / time over two seeds of
     200k symbols: 0.69-1.39x on the two 224G ADC presets at 0.03-0.09 UI,
-    0.47-0.67x on PAM4 32G mixed-signal at 0.06-0.09 UI (the rest there is
-    the bang-bang loop's own wander, which a white clock's model leaves
-    out: with it measured and added, 0.83-0.90x; ROADMAP P2 #27). The phase
-    smear this replaces read 0.01-0.10x."""
+    0.96-1.19x on PAM4 32G mixed-signal at 0.06-0.09 UI -- 0.47-0.67x until
+    the bang-bang loop's own wander came into a white clock's model
+    (2026-10-15, ROADMAP P2 #27). The phase smear this replaces read
+    0.01-0.10x."""
     from halo_serdes.channel import ChannelModel
     from halo_serdes_app.config_bridge import load_preset
 

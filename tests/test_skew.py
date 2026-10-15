@@ -94,16 +94,28 @@ def test_shared_cdr_rejects_bad_input():
 # ------------------------------------------------------ the statistical engine's side
 
 def test_phase_ui_reads_the_bathtub_where_it_is_defined():
-    """On a receiver without an FFE the sampling point set from outside is
-    the bathtub read at the lock point plus the offset, to rounding; at 0 it
-    is the engine's own BER."""
-    cfg = _preset("PAM4 32G mixed-signal", 0.0085)
-    s0 = run_statistical(cfg)
-    assert run_statistical(cfg, phase_ui=0.0).ber == pytest.approx(s0.ber, rel=1e-12)
+    """Without a smear on the phase axis (white clocks on an ADC receiver,
+    its FFE given) the sampling point set from outside is the bathtub read at
+    the lock point plus the offset, to rounding; at 0 it is the engine's own
+    BER. With one -- a bang-bang loop hunts on any clock (ROADMAP P2 #27) --
+    the read at the offset holds the DFE where it reads, which the bathtub,
+    re-adapted at every phase, does not; at 0 it is still the engine's own."""
+    from halo_serdes.channel import ChannelModel
+
+    cfg = _preset("PAM4 224G ADC (106 GBd)", 0.0015)
+    ch = ChannelModel.from_config(cfg)
+    kw = dict(channel=ch, ffe_taps=initial_ffe_taps(cfg, ch), ffe_pre=cfg.rx.ffe.n_pre)
+    s0 = run_statistical(cfg, **kw)
+    assert s0.extras["jitter_sigma_ui"] == 0.0
+    assert run_statistical(cfg, phase_ui=0.0, **kw).ber == pytest.approx(s0.ber, rel=1e-12)
     lock = s0.extras["lock_phase_ui"]
     for d in (-0.25, 0.1, 0.25):
         ref = np.interp((lock + d) * cfg.osr, np.asarray(s0.phi_ui) * cfg.osr, s0.ber_phi)
-        assert run_statistical(cfg, phase_ui=d).ber == pytest.approx(ref, rel=1e-9)
+        assert run_statistical(cfg, phase_ui=d, **kw).ber == pytest.approx(ref, rel=1e-9)
+    ms = _preset("PAM4 32G mixed-signal", 0.0085)
+    m0 = run_statistical(ms)
+    assert m0.extras["jitter_sigma_ui"] > 0.02
+    assert run_statistical(ms, phase_ui=0.0).ber == pytest.approx(m0.ber, rel=1e-12)
 
 
 def test_adc_lane_needs_its_ffe():
@@ -130,7 +142,7 @@ def test_adc_lane_reads_far_higher_with_the_lock_points_ffe():
 
 # ------------------------------------------------- invariant 3: against the time engine
 
-def _time_at_offset(cfg, channel, offsets_ui):
+def _time_at_offset(cfg, channel, offsets_ui, wander=False):
     """Time-domain BER of a lane sampled at its lock point plus each offset.
 
     The loop is frozen (gains 2^-60) and held there by a constant receiver
@@ -138,12 +150,25 @@ def _time_at_offset(cfg, channel, offsets_ui):
     cursors where it samples. Started from the pulse peak's, as the engine
     does when its own loop pulls in, the PAM4 32G receiver read 1.5e-1 at
     -3/8 UI against 1.7e-4: the sign-sign LMS cannot move its DFE that far
-    in a run, and its slicer levels are not adapted at all."""
+    in a run, and its slicer levels are not adapted at all.
+
+    ``wander``: on top of the offset, the hunting of the clock the lane
+    samples on -- a free-running loop's on the same link, its second half,
+    from another seed so that it is not correlated with the held lane's data.
+    A lane on another lane's clock inherits that loop's wander, which the
+    statistical engine reads in (ROADMAP P2 #27)."""
     osr = cfg.osr
     t = run_time_link(cfg, channel=channel)
     ph = np.asarray(t.extras["phase_track"], dtype=float)
     k = np.arange(ph.size)
     lock = float(np.mean((ph - k * osr)[ph.size // 2:])) - ph[0]   # from the start (the peak)
+    dev = np.zeros(1)
+    if wander:
+        w = run_time_link(dataclasses.replace(cfg, sim=dataclasses.replace(
+            cfg.sim, seed=cfg.sim.seed + 1000)), channel=channel)
+        pw = np.asarray(w.extras["phase_track"], dtype=float)
+        dev = (pw - np.arange(pw.size) * osr)[pw.size // 2:]
+        dev = dev - dev.mean()
     frozen = dataclasses.replace(cfg, rx=dataclasses.replace(
         cfg.rx, cdr=dataclasses.replace(cfg.rx.cdr, kp_shift=60, ki_shift=60)))
     clk, cur = timedomain.rx_clock_offsets_samples, timedomain.channel_cursors
@@ -151,7 +176,8 @@ def _time_at_offset(cfg, channel, offsets_ui):
     for d in offsets_ui:
         c = lock + d * osr
         sh = int(round(c))
-        timedomain.rx_clock_offsets_samples = lambda n, cfg_, rng, _c=c: np.full(n, _c)
+        timedomain.rx_clock_offsets_samples = (
+            lambda n, cfg_, rng, _c=c: _c + np.resize(dev, n))
         timedomain.channel_cursors = (lambda p, o, a, b, peak_idx=None, _s=sh:
                                       cur(p, o, a, b, peak_idx=peak_idx + _s))
         try:
@@ -159,7 +185,8 @@ def _time_at_offset(cfg, channel, offsets_ui):
         finally:
             timedomain.rx_clock_offsets_samples, timedomain.channel_cursors = clk, cur
         held = np.asarray(out[-1].extras["phase_track"], dtype=float)
-        assert np.ptp(held - np.arange(held.size) * osr) < 1e-6        # the loop stood still
+        held = held - np.arange(held.size) * osr - np.resize(dev, held.size)
+        assert np.ptp(held) < 1e-6        # the loop stood still
     return out
 
 
@@ -168,8 +195,13 @@ def _time_at_offset(cfg, channel, offsets_ui):
     ("NRZ 28G analytic (COM/xtalk)", 0.022, (-0.375, 0.25)),
 ])
 def test_invariant3_mixed_signal_lane_off_its_lock(name, noise, offsets):
-    """The lane's curve against a time-domain lane held at the offset; on
-    these two links 0.49-1.78 over -3/8 ... +1/4 UI (cairn/多lane建模.md §8)."""
+    """The lane's curve against a time-domain lane held at the offset on a
+    clock that hunts as a bang-bang loop on that link does; on these two links
+    0.92-1.31 over -3/8 ... +1/4 UI on the offsets with 20 errors or more
+    (cairn/多lane建模.md §8). Until 2026-10-15 the statistical engine left the
+    loop's hunting out on white clocks and the reference held the lane still,
+    0.49-1.78 (ROADMAP P2 #27); the curve now reads 1.2-48x against a still
+    lane, which is not what the receiver sees."""
     from halo_serdes.channel import ChannelModel
 
     cfg = _preset(name, noise, 100_000)
@@ -177,7 +209,7 @@ def test_invariant3_mixed_signal_lane_off_its_lock(name, noise, offsets):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         curve = lane_curve(cfg, ch)
-        runs = _time_at_offset(cfg, ch, offsets)
+        runs = _time_at_offset(cfg, ch, offsets, wander=True)
     for d, t in zip(offsets, runs):
         assert t.ber.n_errors >= 30, (d, t.ber.n_errors)
         assert 0.5 < float(curve.at(d)) / t.ber.ber < 2.0, (d, float(curve.at(d)), t.ber.ber)

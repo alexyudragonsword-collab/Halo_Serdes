@@ -224,13 +224,32 @@ counting it warned on every one of example 31's loops, which hold). Over
 PRBS7Q-15Q and kp_shift 4-10 on the SSPLL profile, 4 seeds of 200k symbols
 each, the kernel lost lock at 2.8-6.9x and never from 8.6x; on a white clock
 it held down to 1.4x. The ADC presets turn over 0.075-0.15 UI out, 15-33x
-on random symbols; example 31's loops sit at 15-37x. A white clock has no
-loop model and so no such check. (Until then this said the kernel holds on
+on random symbols; example 31's loops sit at 15-37x. An ADC receiver on a
+white clock has no loop model and so no such check. (Until then this said the kernel holds on
 PRBS13Q: on a white clock it does, 4 seeds of 4; on the profile clock it lost
 lock on 1 of 4 at kp_shift 6 and on 3 of 4 from 8.) And a slow loop takes long to settle: on that link at
 kp_shift 6 the time engine's error falls 0.0091 -> 0.0061 -> 0.0046 ->
 0.0036 UI over successive quarter-runs of 400k symbols (model 0.0039), so a
 short run reads its acquisition, not its tracking.
+
+**White clocks.** A bang-bang loop hunts on any clock, so since 2026-10-15
+(ROADMAP P2 #27) the mixed-signal receiver runs the same loop model on white
+clocks too: the receiver's RJ through the error response, the transmitter's
+RJ in the detector's edge noise (it randomises the edge samples; it reaches
+the slicer as edge noise, not a sampling shift). On PAM4 the detector's sign
+changes between unequal magnitudes (+-1 <-> -+1/3) cross 0.14-0.15 UI off the
+lock point and carry noise but no timing; the model takes the transitions by
+class. Hunting, model / measured: NRZ 1.02-1.07x, PAM4 1.04-1.3x (taking
+every sign change at the lock read 0.65-0.72x). Under the smear the DFE stays
+at the taps of the phase read -- the loop moves far faster than the sign-sign
+LMS -- while the bathtub re-adapts at every phase. (Profile clocks keep the
+re-adapted read under the smear: with the taps held, example 31 read 6.6-15x
+high although its time-domain equalisers do not follow the wander either;
+not yet explained, ROADMAP P2 #28.) Stat / time on steep
+bathtubs (20+ errors): NRZ 16G 0.11-0.54x before, 0.50-0.89x now; PAM4 32G
+0.48-0.71x before, 0.99-1.03x now; NRZ 28G 0.53-0.98x before, 0.75-1.12x now.
+What is left on NRZ 16G is the Gaussian: the sampler's own phase distribution
+reads 1.15-1.4x what a Gaussian of its sigma does there.
 
 The bang-bang figure on a quiet clock is limited by the limit cycle not being
 white noise. On the cross-check link the two engines' BER agree to 1.3–1.5×

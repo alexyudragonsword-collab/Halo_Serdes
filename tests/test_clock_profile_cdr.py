@@ -281,17 +281,28 @@ def test_statistical_engine_warns_when_the_loop_would_slip(tmp_path, wander, los
         run_statistical(_lossy_link(wander, 6), channel=lossy_channel)
 
 
-def test_white_kind_has_no_loop_model_and_smears_only_the_receivers_rj():
-    """A white clock gets no loop model. The transmitter's RJ moves each edge
-    on its own and comes in as noise (tests/test_tx_edge_jitter.py), so it
-    no longer smears the phase axis; the receiver's does."""
-    cfg = dataclasses.replace(_clean_link("unused", 6),
-                              tx=TxConfig(swing=1.0, clock=ClockConfig(rj_ui=0.01)))
-    st = run_statistical(cfg)
-    assert st.extras["jitter_sigma_ui"] == 0.0
-    assert st.extras["clock_loop"] is None
-    st = run_statistical(dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, clock=ClockConfig(rj_ui=0.01))))
-    assert st.extras["jitter_sigma_ui"] == 0.01
+def test_white_kind_runs_the_loop_and_tx_rj_only_randomises_its_edges():
+    """A bang-bang loop hunts on any clock, so a white clock gets the loop
+    model too (ROADMAP P2 #27; until 2026-10-15 it got none, and the
+    receiver's RJ alone smeared the phase axis). The transmitter's RJ moves
+    each edge on its own: it comes in as noise (tests/test_tx_edge_jitter.py)
+    and randomises the detector's edge samples, so the loop hunts wider, but
+    it is not clock jitter the loop leaves; the receiver's RJ is."""
+    cfg = _clean_link("unused", 6)
+    quiet = dataclasses.replace(cfg, tx=TxConfig(swing=1.0, clock=ClockConfig()))
+    st0 = run_statistical(quiet)
+    sol0 = st0.extras["clock_loop"]
+    assert sol0 is not None and sol0.sigma_untracked_ui == 0.0
+    assert st0.extras["jitter_sigma_ui"] == pytest.approx(sol0.sigma_self_ui) and sol0.sigma_self_ui > 0
+    tx = run_statistical(dataclasses.replace(cfg, tx=TxConfig(swing=1.0, clock=ClockConfig(rj_ui=0.05))))
+    assert tx.extras["clock_loop"].sigma_untracked_ui == 0.0
+    assert tx.extras["clock_loop"].sigma_self_ui > 1.05 * sol0.sigma_self_ui
+    rx = run_statistical(dataclasses.replace(quiet, rx=dataclasses.replace(quiet.rx, clock=ClockConfig(rj_ui=0.01))))
+    sol = rx.extras["clock_loop"]
+    # through the loop's error response, which peaks above 1 on this
+    # underdamped loop: 1.11x
+    assert 1.0 < sol.sigma_untracked_ui / 0.01 < 1.2
+    assert rx.extras["jitter_sigma_ui"] == pytest.approx(sol.sigma_ui)
 
 
 def test_tx_edge_offsets_replay_the_engines_draw(wander):
