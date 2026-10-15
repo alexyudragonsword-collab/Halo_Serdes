@@ -178,6 +178,7 @@ measurements of the recovered clock minus the Tx clock, mean removed):
 | 16 GBd NRZ, lossy + AWGN, 5 MHz-corner 1/f² at 0.11 UI | 4 / 6 / 8 | 0.97 / 0.99 / 1.00 |
 | same, clean channel, no noise | 4 / 6 / 8 | 0.82 / 0.95 / 1.08 |
 | 112 GBd PAM4 ADC, SSPLL scaled to 200 fs | 5 / 7 / 9 | 1.02 / 1.23 / 0.96 |
+| same, RMS over six seeds, the model a run from rest (2026-10-15) | 4 / 7 / 9 | 1.06 / 1.10 / 1.09 |
 
 (The ADC row is example 31's printout, 2026-10-14 full-size rerun after
 ROADMAP P2 #24: the model's detector reads the slicer input after the DFE, as
@@ -192,6 +193,36 @@ tiny detector gain: integrator-dominated, underdamped) peaks. Measured with a
 frozen loop the detector's gain is 0.0276 V/UI, the model's 0.032; with the
 DFE's postcursor left in the model's samples it was 0.0195, and the CDR error
 26-39 % high at both ends of the sweep.
+
+(2026-10-15 correction, ROADMAP P2 #28: the 112 GBd row above and the
+"0.81-1.07x" were one seed -- example 31's seed 3, its second half -- against
+the steady state. Over 16 seeds the steady state reads the RMS 0.97-1.05x up
+to kp_shift 6 and 1.14 / 1.34 / 1.70x at 7 / 8 / 9; one seed scatters
+0.32-1.02 samples at kp_shift 9. See the next paragraph.)
+
+**A run is not the steady state.** From kp_shift 7 example 31's loop is
+underdamped: its error response peaks 4 / 8 / 16x near 1.1 MHz (damping
+~0.02), and the peak builds over ``~Q / (pi f)`` -- far longer than 200k
+symbols (1.8 us). A time-domain run starts the loop from rest, and its clock
+sits on the lines ``k / (N UI)`` the synthesiser puts it on, so it never sees
+the peak rung up. Driven the same way, the linear loop model reproduces the
+time engine's 16-seed RMS (0.636 / 0.705 against 0.618 / 0.674 samples at
+kp_shift 8 / 9), and in closed form
+(`ErrorResponse.run_mean_sq`, `ClockProfile.run_untracked_sigma_s`) it reads
+it 1.00-1.04x over kp_shift 4-9. That is what the statistical engine now
+smears with; the steady state is reported (`LoopSolution.sigma_steady_ui`,
+the GUI's jitter panel) and warned when over 1.25x the run's -- a longer run,
+and the link in service, see it. The run's error grows as the loop rings up
+(0.36 -> 0.90 samples over the run at kp_shift 9), and a Gaussian of its mean
+reads the tail short, so the smear is averaged over twelve points of the run
+(`sigma_over_run_ui`). Under it the DFE is held at the lock point's taps, as
+on white clocks, and where the smear is under two samples the curve is
+computed between samples: read linearly between whole samples a steep bathtub
+came out 1.6-3.6x high half a sample off the lock. Example 31's link over
+kp_shift 4-9 and both PLL profiles: 0.66-1.40x the time engine's BER over 12
+seeds (until then 0.24-1.42x). What is left at kp_shift 8-9: the time engine's
+LMS FFE follows part of the slow wander, 1.6-1.8x lower BER than with it
+frozen, which this does not model.
 
 **The Mueller-Muller detector's noise is not white.** Summed over a block,
 `x[n] (sign x[n+1] - sign x[n-1])` is `x[n] sign x[n+1] - x[n+1] sign x[n]` up
@@ -242,14 +273,17 @@ lock point and carry noise but no timing; the model takes the transitions by
 class. Hunting, model / measured: NRZ 1.02-1.07x, PAM4 1.04-1.3x (taking
 every sign change at the lock read 0.65-0.72x). Under the smear the DFE stays
 at the taps of the phase read -- the loop moves far faster than the sign-sign
-LMS -- while the bathtub re-adapts at every phase. (Profile clocks keep the
-re-adapted read under the smear: with the taps held, example 31 read 6.6-15x
-high although its time-domain equalisers do not follow the wander either;
-not yet explained, ROADMAP P2 #28.) Stat / time on steep
+LMS -- while the bathtub re-adapts at every phase. (Profile clocks kept the
+re-adapted read under the smear until ROADMAP P2 #28: with the taps held,
+example 31 read 6.6-15x high, which was the steady-state sigma and the linear
+read between samples -- see "A run is not the steady state". Now held on
+both.) Stat / time on steep
 bathtubs (20+ errors): NRZ 16G 0.11-0.54x before, 0.50-0.89x now; PAM4 32G
 0.48-0.71x before, 0.99-1.03x now; NRZ 28G 0.53-0.98x before, 0.75-1.12x now.
 What is left on NRZ 16G is the Gaussian: the sampler's own phase distribution
-reads 1.15-1.4x what a Gaussian of its sigma does there.
+reads 1.15-1.4x what a Gaussian of its sigma does there. (With the curve taken
+between samples, 2026-10-15: NRZ 16G 0.45-0.89x, PAM4 32G 0.99-1.01x, NRZ 28G
+0.67-1.08x.)
 
 The bang-bang figure on a quiet clock is limited by the limit cycle not being
 white noise. On the cross-check link the two engines' BER agree to 1.3–1.5×

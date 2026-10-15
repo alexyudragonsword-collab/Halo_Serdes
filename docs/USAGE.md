@@ -239,7 +239,7 @@ s = run_statistical(cfg)        # 统计:同一组 aggressor
 YAML 里同名(`crosstalk:` 下一组键,`aggressors:` 是映射的列表);表单有 bank 那几项(`aggressors` 只在 YAML)。
 `ppm` 0 是同步 lane:受扰在每个耦合脉冲的同一个相位上采样,代价随 skew 变得很厉害(示例 44 的三条链路在 8 个 skew 上差 8.9–32.2×)。
 `ppm` ≠ 0 是准同步 lane(各自参考时钟):时域按 aggressor 自己的速率保持它的符号,受扰轮流看到每个相位;统计引擎对相位求平均
-(要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.72–0.96×,时域 BER 是同步各 skew 平均的 0.85–0.97(示例 44)。
+(要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.72–0.95×,时域 BER 是同步各 skew 平均的 0.85–0.97(示例 44)。
 静态引擎不注入串扰,配置里有串扰时报错;带重定时器的拓扑是三条链路,配置的串扰说不清属于哪一段,也报错。
 
 **API 入参**:一个 `XtalkAggressor` 对象**同时**驱动时域和统计两个引擎,保证一致;显式给出时**替换**配置里的串扰(两者都有时警告):
@@ -361,6 +361,10 @@ prof.rms_jitter_s(1e5, prof.f0_hz / 2)       # 剖面连续部分在某频带上
 **剖面时钟经过 CDR**:时域引擎直接跑环路;统计引擎用 `cdr/linear.py` 的线性化环路
 算出"环路追不上的剖面功率 + 环路自身噪声"作为采样时刻抖动 σ,代替 `rj_ui` 模糊
 (双引擎在 1/f² 时钟下 BER 仍在 2× 内;模型假设清单在 `engine/statistical.py` 顶部)。
+σ 按**一次 `sim.n_symbols` 长的运行**算:剖面放在运行的谱线 k/(N UI) 上、环路从静止起步、取时域计分的窗口 ——
+欠阻尼的环路(示例 31 的 kp_shift 8–9,误差响应在 1.1 MHz 附近尖峰 8–16×)在 20 万符号里振铃不起来,稳态比运行大 1.4–1.7×。
+稳态另报在 `sol.sigma_steady_ui`,超过运行的 1.25× 时警告:更长的运行、在用的链路看到的是它。平滑时 DFE 停在锁定点的抽头,
+σ 小于两个样本时曲线在样本之间也算(2026-10-15,ROADMAP P2 #28;此前用稳态、每相位重新适应的读法,对时域 0.24–1.42×,现在 0.66–1.40×)。
 
 ```python
 from halo_serdes.analysis.cdr_tracking import cdr_tracking_error_s
@@ -368,7 +372,8 @@ res = run_time_link(cfg, channel=ch)                 # kind: profile 的配置
 err = cdr_tracking_error_s(cfg, res)                 # 恢复时钟 − 发送时钟,逐判决 [s]
 st = run_statistical(cfg, channel=ch)
 sol = st.extras["clock_loop"]                        # 环路模型:k_pd、带宽、未追踪 σ、自噪声 σ
-print(err.std() * 1e15, sol.sigma_ui * cfg.ui * 1e15)   # 实测 vs 模型 [fs]
+print(err.std() * 1e15, sol.sigma_ui * cfg.ui * 1e15)   # 实测 vs 模型 [fs];一个种子,慢游走下单种子能差 3×,比多种子的系综
+print(sol.sigma_steady_ui * cfg.ui * 1e15)           # 环路振铃起来后(更长的运行)
 prof.scaled_to_rms(200e-15, f_lo=cfg.symbol_rate / cfg.sim.n_symbols).save("x_200fs.yaml")
 ```
 
@@ -1068,15 +1073,15 @@ c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch
 - 不是"读一次运行的浴盆":ADC 的浴盆沿用锁定点的 FFE(示例 45:−1/4 / +1/4 UI 读高 101.6× / 78.8×;对时域 lane 自己收敛的 FFE
   偏 1/4 UI 读高 21× 是 P1 #21 之前量的),均衡后脉冲的最大样本也可能不是主光标。
   离开锁定点读统计结果用 `run_statistical(phase_ui=d)`。
-- 对时域(冻结环路停在偏移处、叠上一段自由运行环路的游走,均衡器从那里的游标起步):混合信号 0.92–1.31×(2026-10-15 前统计引擎在
-  白时钟上不计 bang-bang 环路的游走、时域 lane 静止,0.49–1.78×,ROADMAP P2 #27);ADC 给定时域 lane 在该偏移收敛的 FFE 时
+- 对时域(冻结环路停在偏移处、叠上一段自由运行环路的游走,均衡器从那里的游标起步):混合信号 0.67–1.09×(2026-10-15 前统计引擎在
+  白时钟上不计 bang-bang 环路的游走、时域 lane 静止,0.49–1.78×,ROADMAP P2 #27;P2 #27 当天、曲线在样本之间也算之前 0.92–1.31×,P2 #28);ADC 给定时域 lane 在该偏移收敛的 FFE 时
   0.93–1.47×(224G,1.5 mV,−1/4…+1/4 UI),用上面的 MMSE 起点代用 0.9–1.5× —— 代用解就是时域引擎自己的起点
   (`timedomain.adc_start`),LMS 几乎不离开它。2026-10-14 前代用解是一份漏了发端 FFE 的拷贝,14–25×(ROADMAP P2 #23)。
 - 不含:主 lane 跟踪抖动时从 lane 跟着走的动态部分、lane 间相关抖动(要多 lane 同时跑的时域内核;时钟抖动的平滑仍按 lane
   自己的环路算);各 lane 的串扰相位随 skew 变
   (要的话每条 lane 自己建 `cfg.crosstalk`,`shared_cdr` 收一组曲线)。
 - 示例 `examples/45_shared_cdr_skew.py`:三条链路的曲线、窗口、四条 lane 三种时钟放法;PAM4 32G 混合信号的 minmax 时钟
-  下最差 lane 是单条 lane 用自己环路时的 1.92(2026-10-15 前 0.17 —— 那是静止采样的曲线,锁定点不在浴盆底;计入环路游走、DFE
-  保持后浴盆底抹平,KP4 门限下窗口 0.514 → 0.349 UI);ADC 那条 FFE 跟着重解时 KP4 门限下窗口 0.435 UI,
+  下最差 lane 是单条 lane 用自己环路时的 1.73(2026-10-15 前 0.17 —— 那是静止采样的曲线,锁定点不在浴盆底;计入环路游走、DFE
+  保持后浴盆底抹平,KP4 门限下窗口 0.514 → 0.360 UI;P2 #27 当天读 1.92 / 0.349 UI,样本之间线性插值读高,P2 #28);ADC 那条 FFE 跟着重解时 KP4 门限下窗口 0.435 UI,
   沿用锁定点的 FFE 只有 0.156 UI。
   `cairn/多lane建模.md` §8。
