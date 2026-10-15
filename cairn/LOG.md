@@ -3,6 +3,22 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-15 · PAM4 猎振的数据噪声;门限放在接收机设电平处(fix/smear-distribution,ROADMAP P2 #30)
+
+- 拆开量(PAM4 32G / NRZ 16G / NRZ 28G 白噪钟,8–16 种子):实测相位分布换进曲线只差 0–15 %,冻结时域对照曲线对得上 —— 登记时猜的"高斯尾部"不对。
+  ① PAM4 猎振模型 σ 读高 1.11–1.21×:偏离锁定点跳变的检测器输出由数据定、相邻跳变相消,却按白噪声全功率算。② 时域混合信号的 PAM4 电平取在脉冲
+  峰值(锁定点前 2 个样本),统计引擎门限放在锁定点,读低 0.70–0.95×。
+- 改:`cdr.linear.bb_data_noise`(随机数据低频密度 / 码型谱线)、`bb_loop_fixed_point(mean_output=, period=)`、`_bb_pairs` / `_bb_mean_output`;平滑时门限放在
+  接收机设电平的相位(`i_level`);无 DFE 的 PAM4 门限保持补上。PAM4 猎振 0.97–1.01;PAM4 32G 深 BER 0.94–1.15×,≥ 100 个错 1.04–1.12×,交叉校验 1.01–1.04×。
+- 余项 → P2 #31(时域 PAM4 电平不自适应,待定)、P2 #32(NRZ 16G 自由运行时相位与码型相关、读低 0.5–0.7×;kp_shift 8 失锁不报警)。
+- 示例 44 / 45 的 PAM4 列变(45 KP4 窗口 0.321 → 0.363 UI、minmax / 单 lane 2.94 → 1.83;skew 对游走 lane 0.71–0.99×),其余 44 个不变;指纹 4 个值变
+  (都在 PAM4 32G 预设,BER 2.2e-9 → 3.3e-10),NRZ / ADC 逐位不变。
+- 文档:`cairn/DSP发端与PR.md` §31(§28 加更正)、pitfalls 三条、invariants、`多lane建模.md` §7 / §8、clock_profile、USAGE、COMPARISON。
+- 验证:本地全量 1136 passed / 1 skipped(+4 `tests/test_bb_data_noise.py`);`HALO_NO_JIT=1` 下新文件 4 条通过;ruff、Cython(linear / statistical)通过;
+  `derived` 96 条成立。
+- 上一条(#89)于 2026-10-15 合入。合入时其 CI(3dd8d37)Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;之后测试矩阵(含 nojit)、examples、
+  full、RTL lockstep、lint、import-clean、vendor-drift、pyinstaller、APK 构建全绿;nuitka / nuitka-onefile 写这条时仍在跑。
+
 ## 2026-10-15 · 判决门限跟抽头一起保持;LMS FFE 进环路模型(fix/ffe-tracks-wander,ROADMAP P2 #29)
 
 - 用最终代码重量,原 #29 是两件事。① PAM4 判决门限按每相位主光标重放(时域电平定下后不动):冻结时域停在锁定点外,重放 0.42–0.79×、保持
