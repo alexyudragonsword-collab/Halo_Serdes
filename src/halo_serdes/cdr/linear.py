@@ -400,12 +400,49 @@ def bb_pd_noise_var(rho: float = 0.5) -> float:
     return rho - rho ** 2 / 3.0
 
 
+def bb_data_noise(mean_out: np.ndarray, period: np.ndarray | None = None) -> tuple[float, PdNoise]:
+    """What a loop sees of a bang-bang detector's data-dependent mean output.
+
+    ``mean_out[i, j]``: the detector's mean output at the lock point when a
+    symbol at level ``i`` is followed by one at level ``j`` (0 where the sign
+    does not change). PAM4's sign changes between unequal magnitudes cross
+    zero away from the lock, so their output is all but set by the data: +1
+    from the larger magnitude to the smaller, -1 back. A white model counts
+    its whole power, ``mean(mean_out^2)`` per symbol; but consecutive
+    transitions share a symbol, and what a loop far slower than the symbol
+    rate integrates is the sequence's density at low frequency, its variance
+    plus twice its lag-1 covariance on independent equiprobable levels --
+    0.125 against 0.25 on PAM4. A repeating pattern (``period``: one period
+    of the level indices) puts it on lines at multiples of the repetition
+    rate instead, nothing at zero frequency (the transitions over a period
+    balance). Returns the power a white model counts and the noise the loop
+    sees, per update of one symbol (ROADMAP P2 #30).
+    """
+    m = np.asarray(mean_out, dtype=np.float64)
+    counted = float(np.mean(m ** 2))
+    if period is None:
+        mean = float(np.mean(m))
+        var = counted - mean ** 2
+        # E[m(a0, a1) | a1] and E[m(a1, a2) | a1]: a0 and a2 are independent given a1
+        cov = float(np.mean(m.mean(axis=0) * m.mean(axis=1))) - mean ** 2
+        return counted, PdNoise(max(var + 2.0 * cov, 0.0))
+    idx = np.asarray(period, dtype=np.int64)
+    g = m[np.roll(idx, 1), idx]          # circular: the period's first symbol follows its last
+    n = g.size
+    spec = np.fft.rfft(g - g.mean())
+    power = 2.0 * np.abs(spec) ** 2 / n ** 2
+    if n % 2 == 0:
+        power[-1] /= 2.0                 # the Nyquist bin is its own mirror
+    return counted, PdNoise(0.0, np.arange(spec.size)[1:] / n, power[1:])
+
+
 def bb_loop_fixed_point(loop: LoopParams,
                         untracked_ui: Callable[[Callable[[np.ndarray], np.ndarray]], float],
                         rho: float = 0.5, sigma_edge_ui: float = 0.0,
                         n_iter: int = 60,
-                        transitions: Sequence[tuple[float, float, float]] | None = None
-                        ) -> LoopSolution:
+                        transitions: Sequence[tuple[float, float, float]] | None = None,
+                        mean_output: Callable[[float], np.ndarray] | None = None,
+                        period: np.ndarray | None = None) -> LoopSolution:
     """Self-consistent operating point of a bang-bang loop.
 
     ``untracked_ui(err_fn)`` must return the RMS clock jitter [UI] left when
@@ -429,6 +466,13 @@ def bb_loop_fixed_point(loop: LoopParams,
     magnitudes (+-1 <-> -+1/3) cross 0.1 UI off the lock and carry almost no
     timing, only noise -- taken at the full ``rho`` the gain was 2x and the
     hunting 0.65-0.72x the kernel's (ROADMAP P2 #27).
+
+    ``mean_output(sigma_e)``: the detector's mean output per pair of levels
+    (:func:`bb_data_noise`), whose power the white noise ``rho - info^2 / 3``
+    counts in full; it is replaced by what the loop sees of it -- its density
+    at low frequency on random data, ``period``'s lines on a repeating
+    pattern. Counted white, PAM4's hunting read 1.11-1.21x the time engine's
+    (ROADMAP P2 #30).
     """
     classes = ((rho, 0.0, sigma_edge_ui),) if transitions is None else tuple(transitions)
     rho_all = sum(p for p, _, _ in classes)
@@ -447,10 +491,17 @@ def bb_loop_fixed_point(loop: LoopParams,
                   loop.kp_ui)
     k_pd, info = gain(sigma_e)
     sig_u = sig_s = 0.0
+    def pd_noise(sigma_e: float, info: float) -> float | PdNoise:
+        # E[pd^2] less the power of the mean response (bb_pd_noise_var)
+        white = rho_all - info ** 2 / 3.0
+        if mean_output is None:
+            return white
+        counted, seen = bb_data_noise(mean_output(sigma_e), period)
+        return PdNoise(max(white - counted, 0.0) + seen.white_var, seen.line_freq, seen.line_power)
+
     for _ in range(n_iter):
         sig_u = untracked_ui(ErrorResponse(loop, k_pd))
-        # E[pd^2] less the power of the mean response (bb_pd_noise_var)
-        sig_s = self_noise_ui(loop, k_pd, rho_all - info ** 2 / 3.0)
+        sig_s = self_noise_ui(loop, k_pd, pd_noise(sigma_e, info))
         new = float(np.hypot(sig_u, sig_s))
         k_new, info = gain(new)
         converged = abs(k_new - k_pd) <= 1e-6 * k_pd

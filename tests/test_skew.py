@@ -99,7 +99,11 @@ def test_phase_ui_reads_the_bathtub_where_it_is_defined():
     the lock point plus the offset, to rounding; at 0 it is the engine's own
     BER. With one -- a bang-bang loop hunts on any clock (ROADMAP P2 #27) --
     the read at the offset holds the DFE where it reads, which the bathtub,
-    re-adapted at every phase, does not; at 0 it is still the engine's own."""
+    re-adapted at every phase, does not; at 0 it is still the engine's own
+    on NRZ. On PAM4 the engine's own read holds the slicer's thresholds where
+    the time engine sets its levels, at the pulse peak, while a lane read at
+    an offset has them adapted where it samples -- at 0 on the lock, two
+    samples on from the peak -- and reads lower (ROADMAP P2 #30)."""
     from halo_serdes.channel import ChannelModel
 
     cfg = _preset("PAM4 224G ADC (106 GBd)", 0.0015)
@@ -112,10 +116,14 @@ def test_phase_ui_reads_the_bathtub_where_it_is_defined():
     for d in (-0.25, 0.1, 0.25):
         ref = np.interp((lock + d) * cfg.osr, np.asarray(s0.phi_ui) * cfg.osr, s0.ber_phi)
         assert run_statistical(cfg, phase_ui=d, **kw).ber == pytest.approx(ref, rel=1e-9)
+    nrz = _preset("NRZ 16G mixed-signal", 0.018)
+    n0 = run_statistical(nrz)
+    assert n0.extras["jitter_sigma_ui"] > 0.02
+    assert run_statistical(nrz, phase_ui=0.0).ber == pytest.approx(n0.ber, rel=1e-12)
     ms = _preset("PAM4 32G mixed-signal", 0.0085)
     m0 = run_statistical(ms)
     assert m0.extras["jitter_sigma_ui"] > 0.02
-    assert run_statistical(ms, phase_ui=0.0).ber == pytest.approx(m0.ber, rel=1e-12)
+    assert 1.0 < m0.ber / run_statistical(ms, phase_ui=0.0).ber < 1.5
 
 
 def test_adc_lane_needs_its_ffe():
@@ -198,9 +206,9 @@ def test_invariant3_mixed_signal_lane_off_its_lock(name, noise, offsets):
     """The lane's curve against a time-domain lane held at the offset on a
     clock that hunts as a bang-bang loop on that link does; over -3/8 ... +1/4
     UI on the offsets with 20 errors or more NRZ 28G 0.67-1.09 and PAM4 32G
-    1.05-1.73, 1.3-1.7 on its early side, the hunting's model sigma 1.19x the
-    measured there (cairn/多lane建模.md §8; PAM4 0.74-1.04 before its slicer
-    thresholds were held under the smear, ROADMAP P2 #29 / #30; 0.92-1.31 before
+    0.71-0.99 (cairn/多lane建模.md §8; PAM4 1.05-1.73 with its hunting's sigma
+    read 1.19x high, ROADMAP P2 #30, and 0.74-1.04 before its slicer
+    thresholds were held under the smear, ROADMAP P2 #29; 0.92-1.31 before
     the held curve was taken between samples, ROADMAP P2 #28). Until 2026-10-15 the statistical engine left the
     loop's hunting out on white clocks and the reference held the lane still,
     0.49-1.78 (ROADMAP P2 #27); the curve now reads 1.2-38x against a still
