@@ -16,8 +16,10 @@
 - 文档:`cairn/DSP发端与PR.md` §31(§28 加更正)、pitfalls 三条、invariants、`多lane建模.md` §7 / §8、clock_profile、USAGE、COMPARISON。
 - 验证:本地全量 1136 passed / 1 skipped(+4 `tests/test_bb_data_noise.py`);`HALO_NO_JIT=1` 下新文件 4 条通过;ruff、Cython(linear / statistical)通过;
   `derived` 96 条成立。
+- CI(4ee8edb):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;测试矩阵(含 nojit)、examples、full、RTL lockstep、lint、import-clean、
+  vendor-drift、pyinstaller、APK 构建绿,nuitka / nuitka-onefile 绿(80 / 112 分钟)。
 - 上一条(#89)于 2026-10-15 合入。合入时其 CI(3dd8d37)Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;之后测试矩阵(含 nojit)、examples、
-  full、RTL lockstep、lint、import-clean、vendor-drift、pyinstaller、APK 构建全绿;nuitka / nuitka-onefile 写这条时仍在跑。
+  full、RTL lockstep、lint、import-clean、vendor-drift、pyinstaller、APK 构建全绿,nuitka / nuitka-onefile 绿(120 / 87 分钟)。
 
 ## 2026-10-15 · 判决门限跟抽头一起保持;LMS FFE 进环路模型(fix/ffe-tracks-wander,ROADMAP P2 #29)
 
