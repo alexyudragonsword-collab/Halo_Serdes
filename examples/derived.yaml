@@ -195,3 +195,25 @@
   quotes:
     - {doc: cairn/DSP发端与PR.md, text: "仍比同为 4 状态的 1 + aD 多 {adbd1 - ad1} dB"}
     - {doc: cairn/DSP发端与PR.md, text: "只多花 Viterbi 的 {adbd2_vit - ad1_vit} pJ/b(16 对 4 状态)"}
+
+- name: ex46 448G formats, receiver scan and transmitter needs (statistical reach, dB @ 56 GHz)
+  values:
+    delta6: {example: "46", after: "appendix: every receiver cell", line: "PAM6 21-tap, delta {} {*} {*} {*}"}
+    delta8: {example: "46", after: "appendix: every receiver cell", line: "PAM8 21-tap, delta {} {*} {*} {*}"}
+    adbd6: {example: "46", after: "appendix: every receiver cell", line: "PAM6 21-tap, 1 + aD + bD^2, K = 2 {} {*} {*} {*}"}
+    adbd8: {example: "46", after: "appendix: every receiver cell", line: "PAM8 21-tap, 1 + aD + bD^2, K = 2 {} {*} {*} {*}"}
+    ideal4: {example: "46", after: "table 3: DAC bits", line: "PAM4 {} {*} {*} {*} {*} {*} dB {*} {*} {*}"}
+    b6_4: {example: "46", after: "table 3: DAC bits", line: "PAM4 {*} {*} {} {*} {*} {*} dB {*} {*} {*}"}
+    n10_4: {example: "46", after: "table 3: DAC bits", line: "PAM4 {*} {*} {*} {*} {*} {*} dB {*} {} {*}"}
+    ideal6: {example: "46", after: "table 3: DAC bits", line: "PAM6 {} {*} {*} {*} {*} {*} dB {*} {*} {*}"}
+    b6_6: {example: "46", after: "table 3: DAC bits", line: "PAM6 {*} {*} {} {*} {*} {*} dB {*} {*} {*}"}
+    ideal8: {example: "46", after: "table 3: DAC bits", line: "PAM8 {} {*} {*} {*} {*} {*} dB {*} {*}"}
+    b6_8: {example: "46", after: "table 3: DAC bits", line: "PAM8 {*} {*} {} {*} {*} {*} dB {*} {*}"}
+    n10_8: {example: "46", after: "table 3: DAC bits", line: "PAM8 {*} {*} {*} {*} {*} {*} dB {*} {}"}
+  quotes:
+    - {doc: cairn/448G调制格式.md, text: "(PAM6 +{adbd6 - delta6}、PAM8 +{adbd8 - delta8})"}
+    - {doc: cairn/448G调制格式.md, text: "6 bit 分别掉 {ideal6 - b6_6} / {ideal8 - b6_8} dB,PAM4 只掉 {ideal4 - b6_4} dB"}
+    - {doc: cairn/448G调制格式.md, text: "PAM8 10 mV 就掉 {ideal8 - n10_8} dB,PAM4 {ideal4 - n10_4} dB"}
+    - {doc: cairn/448G调制格式.md, text: "(10 mV 已掉 {ideal8 - n10_8} dB)"}
+    - {doc: docs/SUMMARY.md, text: "6 bit DAC 够(reach 掉 {ideal4 - b6_4} dB)"}
+    - {doc: docs/SUMMARY.md, text: "10 mV 发端噪声 PAM4 掉 {ideal4 - n10_4} dB、PAM8 掉 {ideal8 - n10_8} dB"}
