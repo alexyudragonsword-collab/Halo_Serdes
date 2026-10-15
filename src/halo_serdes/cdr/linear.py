@@ -69,7 +69,7 @@ The phase detectors
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, Sequence
 
 import numpy as np
 
@@ -219,7 +219,9 @@ def bb_pd_noise_var(rho: float = 0.5) -> float:
 def bb_loop_fixed_point(loop: LoopParams,
                         untracked_ui: Callable[[Callable[[np.ndarray], np.ndarray]], float],
                         rho: float = 0.5, sigma_edge_ui: float = 0.0,
-                        n_iter: int = 60) -> LoopSolution:
+                        n_iter: int = 60,
+                        transitions: Sequence[tuple[float, float, float]] | None = None
+                        ) -> LoopSolution:
     """Self-consistent operating point of a bang-bang loop.
 
     ``untracked_ui(err_fn)`` must return the RMS clock jitter [UI] left when
@@ -232,16 +234,40 @@ def bb_loop_fixed_point(loop: LoopParams,
     ``sigma_e^2 = untracked^2 + self^2 + edge^2``; converges in a handful of
     steps (a quieter input raises the gain, which widens the loop, which
     quiets the input less than proportionally).
+
+    ``transitions``: the detector's transitions by class, ``(probability
+    per symbol, where the class crosses zero relative to the lock point [UI],
+    its edge noise [UI])``, in place of one class ``(rho, 0, sigma_edge_ui)``.
+    A class crossing ``d`` away adds ``p sqrt(2/pi) / s exp(-d^2 / 2 s^2)`` to
+    the gain (``s`` its edge noise and the loop's error together) and its
+    whole ``p`` to the output's power: PAM4's sign changes between unequal
+    magnitudes (+-1 <-> -+1/3) cross 0.1 UI off the lock and carry almost no
+    timing, only noise -- taken at the full ``rho`` the gain was 2x and the
+    hunting 0.65-0.72x the kernel's (ROADMAP P2 #27).
     """
+    classes = ((rho, 0.0, sigma_edge_ui),) if transitions is None else tuple(transitions)
+    rho_all = sum(p for p, _, _ in classes)
+
+    def gain(sigma_e: float) -> tuple[float, float]:
+        """The linearised gain and the classes' timing share at input jitter sigma_e."""
+        k = info = 0.0
+        for p, offset, edge in classes:
+            s = float(np.hypot(sigma_e, edge))
+            w = float(np.exp(-0.5 * (offset / max(s, 1e-12)) ** 2))
+            k += bb_pd_gain(s, p) * w
+            info += p * w
+        return k, info
+
     sigma_e = max(untracked_ui(lambda f: np.ones_like(np.asarray(f, dtype=np.float64))),
                   loop.kp_ui)
-    k_pd = bb_pd_gain(float(np.hypot(sigma_e, sigma_edge_ui)), rho)
+    k_pd, info = gain(sigma_e)
     sig_u = sig_s = 0.0
     for _ in range(n_iter):
         sig_u = untracked_ui(lambda f, k=k_pd: error_response(f, loop, k))
-        sig_s = self_noise_ui(loop, k_pd, bb_pd_noise_var(rho))
+        # E[pd^2] less the power of the mean response (bb_pd_noise_var)
+        sig_s = self_noise_ui(loop, k_pd, rho_all - info ** 2 / 3.0)
         new = float(np.hypot(sig_u, sig_s))
-        k_new = bb_pd_gain(float(np.hypot(new, sigma_edge_ui)), rho)
+        k_new, info = gain(new)
         converged = abs(k_new - k_pd) <= 1e-6 * k_pd
         k_pd, sigma_e = k_new, new
         if converged:

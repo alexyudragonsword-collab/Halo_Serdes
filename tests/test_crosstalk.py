@@ -343,7 +343,10 @@ def test_one_drifting_aggressor_is_the_mean_over_its_phases():
     one averaged over every phase: with one aggressor (and a PDF tail that is
     linear in it) its first-error rate is the mean of the skews'. The DFE's
     error propagation on top (``dfe_ep_factor``, ROADMAP P1 #21) is not
-    linear in the PDF; taken from the averaged one it is 0.4 % off here."""
+    linear in the PDF; taken from the averaged one it is 0.4 % off here. Nor
+    is the bang-bang loop's hunting smeared in on top (ROADMAP P2 #27): the
+    read averages phases each with its own factor, and dividing one out
+    leaves 2e-4."""
     cfg = _xt_cfg("PAM4 32G mixed-signal", 0.006, 100_000, n_fext=1, coupling_db=-30.0,
                   spread_db=0.0, seed=1, ppm=100.0)
     drift = run_statistical(cfg)
@@ -356,7 +359,7 @@ def test_one_drifting_aggressor_is_the_mean_over_its_phases():
         # the factor is the one at the nearest grid phase, the BER read
         # between two: 3e-5 apart on this link
         return s.ber / s.extras["dfe_ep_factor"]
-    assert first(drift) == pytest.approx(np.mean([first(s) for s in skews]), rel=1e-4)
+    assert first(drift) == pytest.approx(np.mean([first(s) for s in skews]), rel=1e-3)
     assert drift.ber == pytest.approx(np.mean([s.ber for s in skews]), rel=0.02)
     bers = [s.ber for s in skews]
     assert max(bers) > 2 * min(bers)                    # the phase mattered
