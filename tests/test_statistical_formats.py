@@ -26,7 +26,33 @@ from halo_serdes.engine.statistical import (
     _bb_pairs, isi_pdf, pr_symbol_decisions, run_statistical, tx_edge_jitter,
 )
 from halo_serdes.tx.pipeline import TxPipeline
-from tests.test_statistical import _cfg, _flat_channel
+
+
+def _flat_channel(f_max=128e9, n=1025):
+    """test_statistical.py's: no ISI, half the swing arrives."""
+    f = np.linspace(0.0, f_max, n)
+    return ChannelModel(np.full(n, 0.5, dtype=complex), f, name="flat")
+
+
+def _cfg(mod, noise, **kw):
+    """test_statistical.py's: 32 GBd, no CTLE / FFE, the noise given."""
+    return LinkConfig(
+        modulation=mod, symbol_rate=32e9, osr=8,
+        channel=ChannelConfig(kind="analytic"),
+        tx=TxConfig(swing=1.0),
+        rx=RxConfig(ctle=CtleConfig(enable=False),
+                    ffe=FfeConfig(n_pre=0, n_post=0),
+                    dfe=DfeConfig(n_taps=kw.get("n_dfe", 0)),
+                    noise_rms=noise),
+        sim=SimConfig(n_symbols=kw.get("n_symbols", 100_000), seed=5,
+                      pattern=kw.get("pattern", "prbs31")),
+    )
+
+
+def _gauss_pdfs(n_levels, sigma, v):
+    """test_pr.py's: the same Gaussian around every level."""
+    p = np.exp(-0.5 * (v / sigma) ** 2)
+    return [p / p.sum()] * n_levels
 
 
 def test_pamN_closed_forms():
@@ -79,8 +105,6 @@ def test_flat_channel_pam6_matches_q_with_corner32_occupancy():
 
 def test_pr_symbol_decisions_defaults_are_pam4_gray():
     """Passing PAM4's own matrix and occupancy changes nothing."""
-    from tests.test_pr import _gauss_pdfs
-
     levels = np.linspace(-1.0, 1.0, 4)
     v = np.linspace(-3.0, 3.0, 6001)
     pdfs = _gauss_pdfs(4, 0.11, v)
@@ -98,8 +122,6 @@ def test_pr_symbol_decisions_pam8_counts_gray_bits_and_pam6_its_matrix():
     neighbours' distances, 1 for PAM8's Gray code, PAM6's matrix entries
     (the chain reads its thresholds on the PDF's bins: half a bin of bias,
     a few per cent of a tail four sigma out)."""
-    from tests.test_pr import _gauss_pdfs
-
     v = np.linspace(-3.0, 3.0, 6001)
     lv8 = np.linspace(-1.0, 1.0, 8)
     ser, nbe = pr_symbol_decisions(_gauss_pdfs(8, 0.035, v), v, lv8, (1.0,), composite=False,
