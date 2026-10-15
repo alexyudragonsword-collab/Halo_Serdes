@@ -99,9 +99,16 @@ Non-LTI approximations (each cross-checked against the time engine):
   the time engine runs, a tenth on PRBS13Q of what random data gives. A loop
   driven past its slew limit slips cycles, as does a bang-bang loop whose
   detector sees more than ~0.1 UI of phase error; neither is in a linear
-  model and both raise a warning. A Mueller-Muller timing function that
-  peaks just past the lock point loses lock on random data with no warning
-  (ROADMAP P2 #26). The white kind keeps its RJ-only smear
+  model and both raise a warning. Nor is a Mueller-Muller timing function
+  that turns over close to the lock point: past the turnover the pull back
+  weakens and past its next zero the loop runs away for good, so the
+  turnover's distance (``LoopSolution.hold_range_ui``) is compared with the
+  loop's own wander (``sigma_wander_ui``: its detector noise and the clock
+  it follows late inside its bandwidth) and warned below 8x -- on the
+  fingerprint's 53 Gb/s link, whose function turns over 0.026 UI out, the
+  time engine lost lock at 2.8-6.9x and never from 8.6x; the ADC presets sit
+  at 15-33x on random symbols. The white kind has no loop model and so no
+  such check. The white kind keeps its RJ-only smear
   (no CDR self-noise), which is also what keeps it byte-identical to the
   pre-profile engine;
 - crosstalk: aggressor cursor sets convolved in as independent stationary
@@ -161,8 +168,8 @@ import numpy as np
 
 from ..afe import Ctle
 from ..cdr.linear import (
-    LoopParams, LoopSolution, bb_loop_fixed_point, lock_offset_samples, mm_loop_solution,
-    mm_pd_statistics,
+    LoopParams, LoopSolution, bb_loop_fixed_point, error_response, lock_offset_samples,
+    mm_hold_range_ui, mm_loop_solution, mm_pd_statistics,
 )
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
@@ -710,6 +717,16 @@ def dac_noise_at_slicer(sigma_q: float, h: np.ndarray, dt: float, osr: int) -> f
 #: PR loop load (per-symbol decision SER x sum c_k^2) from which run_statistical
 #: warns that the time engine's MM CDR may slip (measured 0.09-0.14, never below)
 _PR_LOOP_LOAD_WARN = 0.08
+
+#: how many of the loop's own RMS wanders (LoopSolution.sigma_wander_ui) the
+#: Mueller-Muller timing function must keep growing for before
+#: run_statistical stops warning that the time engine's loop may get over its
+#: turnover and run away. Calibrated, not derived: on the fingerprint's
+#: 53 Gb/s link with a profile clock (PRBS7Q-15Q, kp_shift 4-10, 4 seeds x
+#: 200k symbols) the time engine lost lock at 2.8-6.9x and never from 8.6x;
+#: random symbols sit at 0.1-0.7x there. The ADC presets hold at 15-33x on
+#: random symbols (cairn/DSP发端与PR.md §27)
+_MM_HOLD_SIGMAS = 8.0
 
 
 def _lock_position(cfg: LinkConfig, h_pre_ffe: np.ndarray, h_chan: np.ndarray, tx_pipe,
@@ -1395,6 +1412,14 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
             # no timing gradient: the loop does not move, nothing is tracked
             return untracked(lambda f: np.ones_like(np.asarray(f, dtype=np.float64))), None
         sol = mm_loop_solution(loop, k_pd, pd_noise, untracked)
+        # what moves the loop itself: its own noise and the clock it follows
+        # late; jitter above its bandwidth only blurs the timing function
+        lagged = untracked(lambda f: error_response(f, loop, k_pd)
+                           * (np.asarray(f, dtype=np.float64) <= sol.bandwidth_hz))
+        sol = replace(sol, sigma_wander_ui=float(np.hypot(sol.sigma_self_ui, lagged)),
+                      hold_range_ui=mm_hold_range_ui(pulse_pd.y, cfg.osr, peak, levels_v,
+                                                     noise_sigma, n_feedback=n_feedback))
+        _warn_if_mm_cannot_hold(sol)
     else:
         sol = bb_loop_fixed_point(
             loop, untracked,
@@ -1473,6 +1498,32 @@ def _bb_edge_noise_ui(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: f
     isi_var = swing ** 2 * float(np.mean(levels_norm ** 2)) * float(np.sum(np.square(others)))
     sigma_v = float(np.sqrt(isi_var + noise_sigma ** 2))
     return sigma_v / (abs(slope) * osr)
+
+
+def _warn_if_mm_cannot_hold(sol: LoopSolution) -> None:
+    """The linear Mueller-Muller model assumes the detector pulls back in
+    proportion at any error. Where its timing function turns over within a
+    few of the loop's own RMS wanders of the lock point (``hold_range_ui``
+    against ``sigma_wander_ui``) the time engine's loop gets over the
+    turnover, past the next zero the pull reverses, and its integrator winds
+    it off for good: on the fingerprint's 53 Gb/s link, turnover 0.026 UI
+    out, it ran up to 100 UI away within 200k symbols -- on every seed on
+    random symbols (0.1-0.7x), on 1-4 seeds of 4 at 2.8-6.9x on a profile
+    clock (PRBS9Q-15Q), never from 8.6x. The ADC presets sit at 15-33x on
+    random symbols, example 31's loops at 15-37x."""
+    hold, wander = sol.hold_range_ui, sol.sigma_wander_ui
+    if hold is None or wander is None or hold >= _MM_HOLD_SIGMAS * wander:
+        return
+    import warnings
+
+    warnings.warn(
+        f"the Mueller-Muller detector's pull back to its lock point stops growing "
+        f"{hold:.3f} UI out, {hold / max(wander, 1e-12):.1f}x the loop's own "
+        f"{wander:.4f} UI RMS wander (< {_MM_HOLD_SIGMAS:g}x): the time-domain loop "
+        "can get over that turnover and run away (on the link measured: lost lock at "
+        "2.8-6.9x, never from 8.6x), "
+        "which the linear loop model and this engine's BER do not describe -- check with "
+        "the time engine on the pattern and length that matter", stacklevel=3)
 
 
 def _warn_if_slew_limited(prof, loop: LoopParams, f_lo: float, sol: LoopSolution,

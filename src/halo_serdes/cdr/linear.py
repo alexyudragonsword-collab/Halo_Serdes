@@ -60,7 +60,10 @@ The phase detectors
   output's density at low frequency, a fifth of its per-symbol variance on
   the links measured -- and on a short repeating pattern not even that,
   only lines at multiples of the pattern's repetition rate
-  (:class:`PdNoise`).
+  (:class:`PdNoise`). Its timing function is linear only near the lock
+  point: :func:`mm_hold_range_ui` measures how far the pull back keeps
+  growing, which a linear model cannot see and the caller compares with the
+  loop's error.
 """
 
 from __future__ import annotations
@@ -104,6 +107,12 @@ class LoopSolution:
     sigma_untracked_ui: float  # clock jitter the loop left [UI]
     sigma_self_ui: float     # detector noise the loop followed [UI]
     bandwidth_hz: float      # -3 dB point of |E|, the tracking bandwidth
+    # how far from the lock point a Mueller-Muller detector's restoring force
+    # keeps growing [UI] (mm_hold_range_ui), and the part of the error slow
+    # enough to carry the loop itself there: its own detector noise and the
+    # clock it follows late inside its bandwidth [UI]. None for bang-bang
+    hold_range_ui: float | None = None
+    sigma_wander_ui: float | None = None
 
     @property
     def sigma_ui(self) -> float:
@@ -330,23 +339,8 @@ def mm_pd_statistics(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.
     on that gain).
     """
     y = np.asarray(pulse_y, dtype=np.float64)
-    if n_feedback > 0:
-        c = peak_idx
-    else:
-        c = peak_idx + int(round(lock_offset_samples(y, peak_idx, osr, osr)))
     ks = np.arange(-n_pre, n_post + 1)
-
-    def cursors(shift: int) -> np.ndarray:
-        idx = c + ks * osr + shift
-        ok = (idx >= 0) & (idx < y.size)
-        out = np.zeros(idx.size)
-        out[ok] = y[idx[ok]]
-        return out
-
-    # decision feedback: the lock point's postcursors 1..n_feedback, fixed
-    fb = np.zeros(ks.size)
-    if n_feedback > 0:
-        fb[n_pre + 1: n_pre + 1 + n_feedback] = cursors(0)[n_pre + 1: n_pre + 1 + n_feedback]
+    cursors, fb = _mm_cursor_set(y, osr, peak_idx, n_feedback, n_pre, n_post)
 
     rng = np.random.default_rng(seed)
     levels_v = np.asarray(levels_v, dtype=np.float64)
@@ -373,6 +367,97 @@ def mm_pd_statistics(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.
     return k_pd, PdNoise(noise_s0 / n_lanes,
                          *_pattern_lines(np.asarray(period_levels, dtype=np.float64),
                                          cursors(0) - fb, n_pre, n_post, n_lanes))
+
+
+def mm_hold_range_ui(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.ndarray,
+                     noise_sigma: float, n_feedback: int = 0, n_symbols: int = 1 << 16,
+                     n_pre: int = 24, n_post: int = 64, seed: int = 0) -> float:
+    """How far from its lock point the Mueller-Muller detector's pull back keeps growing [UI].
+
+    The linear model reads the detector's slope at the lock point
+    (:func:`mm_pd_statistics`) and assumes it holds at any error. It holds
+    only up to where the timing function -- the mean of ``x[n] (sign x[n+1]
+    - sign x[n-1])`` against a timing shift -- turns over; past that the pull
+    weakens, and where it crosses zero again the loop is pushed away and,
+    its integrator winding up, runs off for good. On the fingerprint's
+    53 Gb/s link (ADC, 0.2 m, Tx FIR -0.08 / 0.72 / -0.2) the equaliser
+    leaves the function at zero at the lock point and turning over 0.42
+    samples (0.026 UI) later, 2e-4 above zero at most -- below what this
+    model resolves, so it is the turnover's distance that is reported, not
+    whether a lock point exists. The kernel with its loop frozen at each
+    offset follows the same function to +-3 samples. The ADC presets turn
+    over 0.075-0.15 UI out.
+
+    Swept outward from the lock point a sample at a time on random symbols
+    (with the same cursors, lock point and fixed DFE feedback as
+    :func:`mm_pd_statistics`; a pattern moves the function by less than
+    this resolves), the expectation over the receiver noise taken in closed
+    form, ``E sign(x + n) = erf(x / (sqrt(2) noise_sigma))``; the turnover is
+    the vertex of the parabola through the last three samples. The nearer
+    side counts, capped at half a UI. Zero if the function does not rise
+    through the lock point, i.e. the detector pushes away from it.
+    """
+    y = np.asarray(pulse_y, dtype=np.float64)
+    cursors, fb = _mm_cursor_set(y, osr, peak_idx, n_feedback, n_pre, n_post)
+    levels_v = np.asarray(levels_v, dtype=np.float64)
+    rng = np.random.default_rng(seed)
+    lv = levels_v[rng.integers(0, levels_v.size, size=n_symbols + n_pre + n_post)]
+    if noise_sigma > 0:
+        from scipy.special import erf
+
+        def soft(x: np.ndarray) -> np.ndarray:
+            return erf(x / (np.sqrt(2.0) * noise_sigma))
+    else:
+        soft = np.sign
+    f_at: dict[int, float] = {}
+
+    def f(shift: int) -> float:
+        if shift not in f_at:
+            x = np.convolve(lv, cursors(shift) - fb, mode="valid")
+            f_at[shift] = float(np.mean(x[1:-1] * (soft(x[2:]) - soft(x[:-2]))))
+        return f_at[shift]
+
+    if f(1) <= f(-1):
+        return 0.0
+    half = osr // 2
+    reach = []
+    for step in (1, -1):
+        j = 0
+        while abs(j) < half and (f(j + step) - f(j)) * step > 0:
+            j += step
+        if abs(j) >= half:
+            reach.append(float(half))
+            continue
+        a, b, c = f(j - 1), f(j), f(j + 1)
+        den = a - 2.0 * b + c
+        reach.append(abs(j + (0.5 * (a - c) / den if den != 0.0 else 0.0)))
+    return min(reach) / osr
+
+
+def _mm_cursor_set(y: np.ndarray, osr: int, peak_idx: int, n_feedback: int, n_pre: int,
+                   n_post: int) -> tuple[Callable[[int], np.ndarray], np.ndarray]:
+    """The baud-spaced cursors a Mueller-Muller detector sees around its lock
+    point, as a function of a timing shift in samples, and the decision
+    feedback taken from them: the lock point's postcursors 1..n_feedback,
+    fixed while the phase moves (:func:`mm_pd_statistics`). Without feedback
+    the lock point is where ``h(-T) = h(+T)``; with it, the pulse peak."""
+    if n_feedback > 0:
+        c = peak_idx
+    else:
+        c = peak_idx + int(round(lock_offset_samples(y, peak_idx, osr, osr)))
+    ks = np.arange(-n_pre, n_post + 1)
+
+    def cursors(shift: int) -> np.ndarray:
+        idx = c + ks * osr + shift
+        ok = (idx >= 0) & (idx < y.size)
+        out = np.zeros(idx.size)
+        out[ok] = y[idx[ok]]
+        return out
+
+    fb = np.zeros(ks.size)
+    if n_feedback > 0:
+        fb[n_pre + 1: n_pre + 1 + n_feedback] = cursors(0)[n_pre + 1: n_pre + 1 + n_feedback]
+    return cursors, fb
 
 
 def _paired(x: np.ndarray) -> np.ndarray:
