@@ -34,11 +34,18 @@ Non-LTI approximations (each cross-checked against the time engine):
   Where the smear is under two samples that curve is also taken between
   samples (the pulse interpolated): a steep bathtub read linearly between
   them came out 1.6-3.6x high half a sample off the lock. The PAM4
-  slicer's thresholds stay with the taps, at the main cursor of the phase
-  read, as the time engine sets its levels once: re-placed at each phase's
-  own (until 2026-10-15) the curve read the time engine frozen off the lock
-  0.70-0.74x on example 31 and 0.42-0.79x on the PAM4 32G preset, held
-  0.95-1.19x (ROADMAP P2 #29). An ADC receiver's LMS FFE takes up part
+  slicer's thresholds stay with the taps, as the time engine sets its levels
+  once: re-placed at each phase's own main cursor (until 2026-10-15) the
+  curve read the time engine frozen off the lock 0.70-0.74x on example 31
+  and 0.42-0.79x on the PAM4 32G preset, held 0.95-1.20x (ROADMAP P2 #29).
+  They sit at the main cursor where the receiver set its levels: an ADC
+  receiver's LMS FFE pulls its output to them where it samples, but the
+  mixed-signal time engine takes them at the pulse peak, two samples before
+  its bang-bang loop locks on the PAM4 32G preset -- held at the lock that
+  preset read 0.70-0.95x the time engine, at the peak 0.94-1.15x (ROADMAP
+  P2 #30; whether that receiver should adapt its levels is ROADMAP P2 #31).
+  A lane read at an offset (``phase_ui``) has them adapted there, as
+  ``analysis.skew`` takes its equalisers. An ADC receiver's LMS FFE takes up part
   of a profile clock's slow wander (the coloured-clock entry): example 31's
   link over kp_shift 4-9, two clocks and the LMS step 0-1e-2 reads 0.68-1.6x
   against 12 seeds, the high end on 12-18 errors (the FFE left out, as until
@@ -147,7 +154,13 @@ Non-LTI approximations (each cross-checked against the time engine):
   model and so no such check. A bang-bang detector's transitions are taken
   by class (``_bb_transitions``): PAM4's sign changes between unequal
   magnitudes cross 0.14-0.15 UI off the lock point and bring noise, not
-  gain -- taken at the lock the hunting read 0.65-0.72x the kernel's;
+  gain -- taken at the lock the hunting read 0.65-0.72x the kernel's. That
+  noise is set by the data, +1 from the larger magnitude to the smaller and
+  -1 back, and consecutive transitions share a symbol: a loop sees half its
+  power at low frequency on random data and lines with nothing at zero
+  frequency on a repeating pattern (``bb_data_noise``). Counted white, the
+  hunting on the PAM4 32G preset read the kernel's 1.11-1.23x, now
+  0.97-1.01x (ROADMAP P2 #30);
 - crosstalk: aggressor cursor sets convolved in as independent stationary
   interference, read where the time engine's victim samples them -- on the
   victim's sampling grid at each phase, the aggressors launching on the
@@ -1072,11 +1085,27 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # clocks read high with the taps held (ROADMAP P2 #28). The slicer's
     # thresholds are held with the taps (P2 #29).
     held = sigma_ui > 0
+    # the phase whose main cursor sets the slicer's levels: the mixed-signal
+    # time engine takes them once, at the pulse peak, where its bang-bang
+    # loop does not sample (the PAM4 32G preset locks 2 samples after it);
+    # an ADC receiver's LMS FFE pulls its output to them where it samples,
+    # as does a lane read at an offset with its equalisers adapted there.
+    # Held at the lock instead, the PAM4 32G preset read 0.70-0.95x the time
+    # engine, at the peak 0.94-1.15x (ROADMAP P2 #30)
+    i_level = (int(np.argmin(np.abs(phi_offsets)))
+               if cfg.rx.arch == "mixed_signal" and phase_ui is None else i_lock)
+    # something held under the smear: DFE taps, or PAM4's thresholds
+    holds = n_dfe > 0 or levels_norm.size > 2
+
+    def as_computed(i: int) -> bool:
+        """The phase as first computed is already what the smear holds there."""
+        return not holds or (i == i_lock and i_level == i_lock)
+
     smears = (tuple(loop_sol.sigma_over_run_ui)
               if loop_sol is not None and loop_sol.sigma_over_run_ui else (sigma_ui,))
     sub = 4 if sigma_ui * osr < 1.0 else 2 if sigma_ui * osr < 2.0 else 1
     fine_span = (int(min(osr // 2, np.ceil(8.0 * max(smears) * osr)))
-                 if held and (n_dfe > 0 or sub > 1) else 0)
+                 if held and (holds or sub > 1) else 0)
     lo_fix, hi_fix = max(i_lock - fine_span, 0), min(i_lock + fine_span, osr - 1)
     tasks = [(i_lock, False, 0.0)] + [(i, False, 0.0) for i in range(osr) if i != i_lock]
     if fine_span:
@@ -1087,12 +1116,12 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     pi, frac = i + 1, frac - 1.0
                 else:
                     pi = i
-                if frac == 0.0 and (pi == i_lock or n_dfe == 0):
+                if frac == 0.0 and as_computed(pi):
                     continue            # the phase as computed is that point
                 tasks.append((pi, True, frac))
     fine_vals: dict[float, tuple[float, float]] = {}
     lock_dfe: dict[int, float] = {}
-    lock_main = None
+    main_phi: dict[int, float] = {}
     for pi, fixed, frac in tasks:
         off = phi_offsets[pi]
         if tx_jit_phi is not None:
@@ -1108,13 +1137,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             c[valid] = pulse.y[idx[valid]]
         c = c * swing
         main = c[n_pre]
-        if pi == i_lock and not fixed:
-            lock_main = main
+        if not fixed:
+            main_phi[pi] = main
         # where the slicer's thresholds sit: at the main cursor of the phase
-        # read when the smear holds the receiver (fixed), else at this one.
-        # Re-placed at each phase they read the time engine frozen off the
-        # lock 0.42-0.79x on PAM4 (ROADMAP P2 #29)
-        thr_main = lock_main if fixed and lock_main is not None else main
+        # that set the levels when the smear holds the receiver (fixed), else
+        # at this one. Re-placed at each phase they read the time engine
+        # frozen off the lock 0.42-0.79x on PAM4 (ROADMAP P2 #29)
+        thr_main = main_phi[i_level] if fixed else main
         isi = np.delete(c, n_pre)
         # a partial-response target's controlled cursor is signal, not ISI:
         # the sequence detector resolves it (or, without one, the per-symbol
@@ -1387,9 +1416,9 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # the curves the smear is read from: the phases as computed, before it
     ber_raw, ser_raw = ber_phi.copy(), ser_phi.copy()
     if fine_span:
-        # the lock phase as computed, and (no DFE to hold) the other samples too
+        # the lock phase as computed, and (nothing to hold) the other samples too
         for i in range(lo_fix, hi_fix + 1):
-            if i == i_lock or n_dfe == 0:
+            if as_computed(i):
                 fine_vals[float(phi_offsets[i])] = (ser_raw[i], ber_raw[i])
         fine_x = np.array(sorted(fine_vals))
         ser_fine = np.array([fine_vals[x][0] for x in fine_x])
@@ -1541,7 +1570,8 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
 
     The bang-bang loop hunts on any clock, so mixed-signal runs its model on
     white clocks too: 0.02-0.06 UI on the presets' loops, which the time
-    engine's sampler follows (0.95-1.07x on NRZ, PAM4 1.04-1.3x). Until
+    engine's sampler follows (0.95-1.07x on NRZ, PAM4 0.97-1.01x since its
+    data-set detector output is shaped, ROADMAP P2 #30). Until
     2026-10-15 white clocks returned the receiver's RJ alone, and the
     statistical BER was 0.1-0.5x the time engine's on the NRZ 16G preset
     with transmit RJ (ROADMAP P2 #27). An ADC receiver on white clocks keeps
@@ -1612,10 +1642,16 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
                                                      noise_sigma, n_feedback=n_feedback))
         _warn_if_mm_cannot_hold(sol)
     else:
+        # PAM4's off-lock sign changes give an output the data sets, which
+        # consecutive transitions largely cancel: through the pattern's lines
+        pairs = _bb_pairs(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
+                          extra_edge_ui=float(cfg.tx.clock.rj_ui))
         sol = bb_loop_fixed_point(
             lp, untracked,
             transitions=_bb_transitions(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
-                                        extra_edge_ui=float(cfg.tx.clock.rj_ui)))
+                                        pairs=pairs),
+            mean_output=lambda sigma_e: _bb_mean_output(pairs, levels_norm.size, sigma_e),
+            period=_pattern_period(cfg))
     # the same loop once it has forgotten its start: what a longer run, and
     # the link in service, settles at
     steady = float(np.hypot(untracked(lambda f, k=sol.k_pd: error_response(f, lp, k)),
@@ -1665,12 +1701,13 @@ def _pattern_period(cfg: LinkConfig, max_symbols: int = 1 << 21) -> np.ndarray |
     return sym[:per] if np.array_equal(sym[:per], sym[per:]) else sym
 
 
-def _bb_transitions(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
-                    levels_norm: np.ndarray, extra_edge_ui: float = 0.0, n_pre: int = 24,
-                    n_post: int = 64) -> tuple[tuple[float, float, float], ...]:
-    """The Alexander detector's transitions by class, for ``bb_loop_fixed_point``:
-    ``(probability per symbol, zero crossing relative to the lock point [UI],
-    edge noise [UI])``.
+def _bb_pairs(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
+              levels_norm: np.ndarray, extra_edge_ui: float = 0.0, n_pre: int = 24,
+              n_post: int = 64) -> dict[tuple[int, int], tuple[float, float]]:
+    """The Alexander detector's sign changes, pair by pair of levels:
+    ``{(old, new): (zero crossing relative to the lock point [UI], edge noise
+    [UI])}`` -- what ``_bb_transitions`` groups into classes and
+    ``_bb_mean_output`` reads the detector's data-dependent output from.
 
     The edge sample sits half a UI before the data sample on the raw (pre-DFE)
     waveform, and the detector compares signs (``cdr/kernels.py``): every
@@ -1704,10 +1741,9 @@ def _bb_transitions(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: flo
     others = [at(int(i)) for i in idx if 0 <= i < y.size and i not in (e0, e1)]
     isi_var = swing ** 2 * float(np.mean(levels_norm ** 2)) * float(np.sum(np.square(others)))
     sigma_v = float(np.sqrt(isi_var + noise_sigma ** 2))
-    n = levels_norm.size
-    classes: dict[tuple[float, float], float] = {}
-    for a_old in levels_norm:
-        for a_new in levels_norm:
+    pairs: dict[tuple[int, int], tuple[float, float]] = {}
+    for i_old, a_old in enumerate(levels_norm):
+        for i_new, a_new in enumerate(levels_norm):
             if (a_old > 0) == (a_new > 0):
                 continue
             if a_new == -a_old:
@@ -1724,8 +1760,42 @@ def _bb_transitions(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: flo
                 edge = float(extra_edge_ui)     # no slope to convert the voltage noise with
             else:
                 edge = float(np.hypot(sigma_v / (abs(slope) * osr), extra_edge_ui))
-            classes[(offset, edge)] = classes.get((offset, edge), 0.0) + 1.0 / n ** 2
+            pairs[(i_old, i_new)] = (offset, edge)
+    return pairs
+
+
+def _bb_transitions(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
+                    levels_norm: np.ndarray, extra_edge_ui: float = 0.0, n_pre: int = 24,
+                    n_post: int = 64, pairs: dict | None = None
+                    ) -> tuple[tuple[float, float, float], ...]:
+    """The Alexander detector's transitions by class, for ``bb_loop_fixed_point``:
+    ``(probability per symbol, zero crossing relative to the lock point [UI],
+    edge noise [UI])`` -- ``_bb_pairs`` grouped where they cross and how
+    noisily."""
+    if pairs is None:
+        pairs = _bb_pairs(pulse_pd, osr, noise_sigma, swing, levels_norm, extra_edge_ui,
+                          n_pre, n_post)
+    n = levels_norm.size
+    classes: dict[tuple[float, float], float] = {}
+    for key in pairs.values():
+        classes[key] = classes.get(key, 0.0) + 1.0 / n ** 2
     return tuple((p, offset, edge) for (offset, edge), p in classes.items())
+
+
+def _bb_mean_output(pairs: dict[tuple[int, int], tuple[float, float]], n_levels: int,
+                    sigma_e: float) -> np.ndarray:
+    """The detector's mean output at the lock point per pair of levels, for
+    ``bb_data_noise``: ``erf(offset / (sqrt 2 s))`` with ``s`` the pair's edge
+    noise and the loop's own error together -- +1 where the clock samples
+    well before a crossing (an edge equal to the old symbol: early), 0 for a
+    symmetric pair or no sign change."""
+    from scipy.special import erf
+
+    m = np.zeros((n_levels, n_levels))
+    for (i_old, i_new), (offset, edge) in pairs.items():
+        if offset != 0.0:
+            m[i_old, i_new] = float(erf(offset / (np.sqrt(2.0) * max(np.hypot(edge, sigma_e), 1e-12))))
+    return m
 
 
 def _warn_if_mm_cannot_hold(sol: LoopSolution) -> None:

@@ -304,6 +304,21 @@ between samples, 2026-10-15: NRZ 16G 0.45-0.89x, PAM4 32G 0.99-1.01x, NRZ 28G
 PAM4 32G 1.03-1.13x, and deeper -- 37-119 errors over 8 M symbols -- 1.09-1.20x
 at 0.03 UI RJ and 1.31-1.40x at 0.01 UI, ROADMAP P2 #30; NRZ unchanged.)
 
+(2026-10-15 update, ROADMAP P2 #30: that deeper excess was two things, not
+the Gaussian's tails -- the measured phase distribution in its place moves
+the read 0-15 %. PAM4's off-lock sign changes give a detector output the
+data sets, +1 from the larger magnitude to the smaller and -1 back, which
+consecutive transitions largely cancel: counted as white noise of its full
+power it read the hunting 1.11-1.23x the kernel's; taken at its
+low-frequency density, or on a repeating pattern's lines
+(`cdr.linear.bb_data_noise`), 0.97-1.01x. And the time engine sets a
+mixed-signal receiver's PAM4 levels once, at the pulse peak -- two samples
+before its bang-bang loop locks on the PAM4 32G preset -- so the smear now
+holds the thresholds there rather than at the lock: PAM4 32G 0.94-1.15x deep
+and 1.04-1.12x from 100 errors; the cross-check links 1.00-1.04x. NRZ 16G's
+0.45-0.89x is neither: its phase is correlated with the data pattern while
+the loop runs free, ROADMAP P2 #32.)
+
 The bang-bang figure on a quiet clock is limited by the limit cycle not being
 white noise. On the cross-check link the two engines' BER agree to 1.3–1.5×
 with the profile clock (invariant #3 asks for 2×).

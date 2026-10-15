@@ -5,7 +5,8 @@ time engine 0.7-0.8x at the default LMS step and up to ~12x at mu 1e-2. Two
 things, each measured against the time engine:
 
 * under the smear the PAM4 slicer's thresholds stay where they were set, at
-  the lock phase's main cursor, like the DFE (P2 #27); re-placed at each
+  the lock phase's main cursor, like the DFE (P2 #27) -- on a mixed-signal
+  receiver at the pulse peak's, where its levels are set (P2 #30); re-placed at each
   phase's own main cursor, the curve read the frozen time engine 0.70-0.74x
   1-2 samples early of the lock;
 * the LMS FFE moves its taps along their timing derivative and takes up part
@@ -221,9 +222,11 @@ def test_the_slicer_thresholds_are_held_with_the_taps(monkeypatch):
 
 def test_mixed_signal_pam4_holds_its_thresholds_too(monkeypatch):
     """The PAM4 32G preset at 6 mV, the time engine frozen (loop and DFE) 6
-    samples early and 3-4 late of its lock, its DFE taps and slicer levels
-    taken there: the held curve 1.00-1.19x over 2.4 M symbols; with the
-    thresholds re-placed at each phase 0.42-0.79x."""
+    samples early and 3-4 late of its lock, its DFE taps those of the lock
+    and its slicer levels where it sets them, at the pulse peak: the held
+    curve 1.02-1.20x over 2.4 M symbols (ROADMAP P2 #30); with the
+    thresholds re-placed at each phase 0.42-0.79x (levels and taps both at
+    the lock then, ROADMAP P2 #29)."""
     from halo_serdes.config import load_config
 
     base = load_config(str(Path(__file__).parent.parent / "configs" / "pam4_32g_ms.yaml"))
@@ -238,13 +241,17 @@ def test_mixed_signal_pam4_holds_its_thresholds_too(monkeypatch):
     frozen = dataclasses.replace(cfg, rx=dataclasses.replace(
         cfg.rx, cdr=dataclasses.replace(cfg.rx.cdr, kp_shift=60, ki_shift=60),
         dfe=dataclasses.replace(cfg.rx.dfe, adapt="none")))
-    # the time engine takes its DFE taps and levels at the pulse peak; the
-    # bang-bang loop locks two samples after it, where the held curve takes them
+    # the time engine starts its DFE at the pulse peak's cursors and its
+    # sign-sign LMS moves them to the lock's, two samples after; frozen, it
+    # is given the lock's taps, its levels staying at the peak's main cursor
     cursors = timedomain.channel_cursors
     shift = int(round(lock))
-    monkeypatch.setattr(timedomain, "channel_cursors",
-                        lambda pulse, osr, a, b, peak_idx=None: cursors(pulse, osr, a, b,
-                                                                       peak_idx=peak_idx + shift))
+
+    def lock_taps(pulse, osr, a, b, peak_idx=None):
+        at_lock = cursors(pulse, osr, a, b, peak_idx=peak_idx + shift)
+        return at_lock * (cursors(pulse, osr, a, b, peak_idx=peak_idx)[0] / at_lock[0])
+
+    monkeypatch.setattr(timedomain, "channel_cursors", lock_taps)
     held = []
     smeared = st._smeared_at
 

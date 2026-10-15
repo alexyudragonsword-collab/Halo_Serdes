@@ -66,13 +66,14 @@ def test_nrz_is_one_class_and_pam4_carries_timing_on_half_its_sign_changes(monke
 @pytest.mark.parametrize("name, lo, hi", [
     ("NRZ 16G mixed-signal", 0.9, 1.15),
     ("NRZ 28G analytic (COM/xtalk)", 0.9, 1.15),
-    ("PAM4 32G mixed-signal", 1.0, 1.35),
+    ("PAM4 32G mixed-signal", 0.9, 1.15),
 ])
 def test_the_model_hunts_as_the_kernel_does(name, lo, hi):
     """White clocks, the presets' own loops: the model's hunting against the
     time engine's sampling phase over the second half of 100k symbols. NRZ
-    1.02-1.04x; PAM4 1.23x (the class model; taking every sign change as a
-    transition at the lock read 0.65-0.72x)."""
+    1.02-1.04x; PAM4 1.01x, its off-lock sign changes' data-set output taken
+    through the pattern's lines (1.23x counted white, ROADMAP P2 #30; taking
+    every sign change as a transition at the lock read 0.65-0.72x)."""
     cfg = _preset(name)
     cm = ChannelModel.from_config(cfg)
     sol = st.run_statistical(cfg, channel=cm).extras["clock_loop"]
