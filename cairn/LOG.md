@@ -13,6 +13,9 @@
   拿总 σ 比时示例 31 全部误报(1.6–6.7×)—— 带宽外的抖动环路不跟。更正 clock_profile.md"PRBS13Q 下内核锁住":只在白时钟下成立。
 - 数不动:指纹 860 值逐位不变,示例 31 重跑与期望一致。`cairn/DSP发端与PR.md` §27(§25 加注与更正)、pitfalls 两条、invariants 铁律 3 补一条。
 - 验证:本地全量 1103 passed / 1 skipped(+4 `tests/test_mm_hold_range.py`,`HALO_NO_JIT=1` 同样通过);ruff、Cython(linear / statistical)通过;`derived` 96 条成立。
+- CI(2aff693,含代码提交 c1b3da0 —— 两个提交一起推送,CI 只在头上跑):Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures;
+  测试矩阵(含 nojit)、examples、examples-full、RTL lockstep、lint、import-clean、vendor-drift、pyinstaller、APK 构建绿,nuitka / nuitka-onefile 绿
+  (117 / 80 分钟,C 编译缓存没命中)。
 - 上一条(#85)于 2026-10-14 合入。
 
 ## 2026-10-14 · 发端白抖动按逐沿噪声进统计引擎(fix/tx-edge-jitter,ROADMAP P2 #25)
