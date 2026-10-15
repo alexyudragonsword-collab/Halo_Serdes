@@ -37,6 +37,7 @@ Cairn 初始化时 `migration_mode` 选的是 `inventory_only`:**不改写任何
 | 旧 `CLAUDE.md` 的架构不变量 + 代码/文档约定 | `cairn/architecture-invariants.md` | 完整保留并补了每条的"为什么" |
 | 旧 `CLAUDE.md` 的"容易踩的坑" + 已知限制 | `cairn/engineering-pitfalls.md` | 补了触发条件与判别方法 |
 | 旧 `CLAUDE.md` 的铁律清单 | `AGENTS.md`「项目铁律」(一行一条 + 指针) | 保持 AGENTS.md 可导航 |
+| 448G/lane 调制格式比较(2026-10-15 起) | `cairn/448G调制格式.md` | PAM6 corner32 / PAM8 字母表、两引擎比特计数口径、各格式铁律 3 比值、DAC 位数与收端扫描口径、仍是 PAM4 专属的部分 |
 
 ### 项目状态类(留在根目录,由 AGENTS.md 指向)
 
