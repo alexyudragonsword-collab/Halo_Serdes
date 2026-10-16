@@ -227,6 +227,66 @@ def test_skew_delays_the_coupling_both_engines_see():
         XtalkAggressor(coupling=a.coupling, dt=a.dt, skew_s=-1e-12)
 
 
+# ------------------------------------- the aggressor PDFs sit where the victim's does
+
+def _flat_cfg(mod, sigma, pattern):
+    from halo_serdes.config.schema import FfeConfig
+
+    return LinkConfig(
+        modulation=mod, symbol_rate=32e9, osr=8, channel=ChannelConfig(kind="analytic"),
+        tx=TxConfig(swing=1.0),
+        rx=RxConfig(ctle=CtleConfig(enable=False), ffe=FfeConfig(n_pre=0, n_post=0),
+                    dfe=DfeConfig(n_taps=0), noise_rms=sigma),
+        sim=SimConfig(n_symbols=100_000, seed=5, pattern=pattern))
+
+
+def _flat_channel(n=1025):
+    f = np.linspace(0, 128e9, n)
+    return ChannelModel(np.full(n, 0.5, dtype=complex), f, name="flat")
+
+
+@pytest.mark.parametrize("mod, sigma, pattern", [
+    ("nrz", 0.25 / 4.75, "prbs31"),
+    ("pam4", (0.25 / 3.0) / 4.0, "prbs13q"),
+])
+def test_aggressors_with_no_coupling_leave_the_statistical_ser_alone(mod, sigma, pattern):
+    """Each aggressor's ISI PDF is convolved onto the victim's on a 4096-bin
+    grid; ``np.convolve(mode="same")`` put the centre of that even grid one
+    bin late per aggressor (ROADMAP P2 #36). Eight aggressors coupling
+    nothing then read 8 % (NRZ) to 22 % (PAM4) more SER, and the
+    quasi-synchronous (drifting) path the same per lane."""
+    import dataclasses
+
+    from halo_serdes.config import CrosstalkConfig
+
+    cfg = _flat_cfg(mod, sigma, pattern)
+    ch = _flat_channel()
+    ref = run_statistical(cfg, channel=ch).ser
+    for n_agg in (1, 8):
+        aggs = [synthetic_aggressor("fext" if k % 2 == 0 else "next", -120.0, cfg.ui, cfg.dt,
+                                    seed=10 + k) for k in range(n_agg)]
+        ser = run_statistical(cfg, channel=ch, xtalk_pulses=[a.pulse(cfg.osr) for a in aggs]).ser
+        assert ser == pytest.approx(ref, rel=1e-4), (n_agg, ser, ref)
+    drifting = dataclasses.replace(cfg, crosstalk=CrosstalkConfig(
+        n_fext=4, n_next=4, coupling_db=-120.0, ppm=100.0))
+    assert run_statistical(drifting, channel=ch).ser == pytest.approx(ref, rel=1e-4)
+
+
+def test_com_with_no_coupling_is_the_com_without_aggressors():
+    """The COM's A_ni PDF has the same convolution (8192 bins): eight
+    aggressors coupling nothing cost it 0.25 dB before the centring."""
+    from halo_serdes.analysis.com import compute_com
+    from halo_serdes.channel import aggressor_bank
+    from halo_serdes_app import config_bridge as cb
+
+    cfg = cb.load_preset("PAM4 32G mixed-signal")
+    ch = ChannelModel.from_config(cfg)
+    clean = compute_com(ch, cfg).com_db
+    bank = aggressor_bank(4, 4, -120.0, cfg.ui, cfg.dt, modulation=cfg.modulation, base_seed=1)
+    nil = compute_com(ch, cfg, xtalk_pulses=[a.pulse(cfg.osr) for a in bank]).com_db
+    assert nil == pytest.approx(clean, abs=1e-3), (nil, clean)
+
+
 # ------------------------------------- crosstalk in the config; quasi-synchronous lanes
 
 def _xt_cfg(name, noise, n_symbols, **xt):

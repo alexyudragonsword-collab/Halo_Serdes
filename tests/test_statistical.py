@@ -65,6 +65,27 @@ def test_flat_channel_pam4_matches_q():
     assert abs(res.ber / (expected_ser / 2.0) - 1.0) < 0.05
 
 
+def test_convolve_centred_keeps_the_centre_where_same_mode_does_not():
+    """Two PDFs centred on bin n // 2 of an even grid: ``_convolve_centred``
+    returns their convolution centred on n // 2, ``np.convolve(mode="same")``
+    on n // 2 + 1 (one bin late, ROADMAP P2 #36); the odd-length noise
+    kernels are centred either way."""
+    from halo_serdes.engine.statistical import _convolve_centred, gaussian_kernel
+
+    n = 4096
+    a = np.zeros(n)
+    a[n // 2] = 1.0
+    b = np.zeros(n)
+    b[n // 2 - 3] = 0.25
+    b[n // 2] = 0.5
+    b[n // 2 + 3] = 0.25
+    assert np.array_equal(_convolve_centred(a, b), b)
+    assert np.argmax(np.convolve(a, b, mode="same")) == n // 2 + 1
+    nk = gaussian_kernel(2.0, 1.0)
+    assert nk.size % 2 == 1
+    assert np.argmax(np.convolve(a, nk, mode="same")) == n // 2
+
+
 def _one_post_channel(m_amp: float, c_amp: float, swing: float = 1.0) -> ChannelModel:
     """Synthetic channel whose baud cursors at the slicer are exactly
     [m_amp, c_amp] volts for outer levels (received amp = pulse * swing/2)."""

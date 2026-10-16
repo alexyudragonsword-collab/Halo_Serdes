@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-16 · 串扰 / 漂移 PDF 的卷积按中心对齐(fix/xtalk-convolve-centred,ROADMAP P2 #36)
+
+- 探针:平信道 + AWGN 上给耦合为零(−120 dB)的 aggressor,统计 SER 每个多 0.2–0.6 %,8 个多 8 %(NRZ)/ 22 %(PAM4);准同步漂移路径同;
+  COM 8 个少 0.25 dB。都是 `np.convolve(mode="same")` 在偶数网格上每卷一次晚一格(P2 #35 顺带发现时的猜测"百分之几"偏小:深尾更大)。
+- 改:`statistical.py` 四处 + `analysis/com.py` 一处换 `_convolve_centred`;高斯核是奇数长度,不动。改后耦合为零的 aggressor 逐位等于没有。
+- 数:示例 24 统计 BER 6.41e-32 … 3.90e-3 → 5.42e-32 … 3.89e-3(−18 dB 处两引擎 0.71×);示例 28 COM 各高 0.03–0.06 dB;示例 44 {EX44_LOG};
+  指纹 980 个值 0 变(预设无串扰)。
+- 验证:{VERIFY}
+- 文档:ROADMAP #36 清空;`cairn/多lane建模.md` §3 加注;pitfalls 那条补判别法(耦合为零的 aggressor 必须逐位等于没有);CHANGELOG。
+
 ## 2026-10-16 · PAM6 成对符号的 ISI 相关性(fix/pam6-ms-lock,ROADMAP P2 #35)
 
 - 先按登记的猜测查锁定相位:两引擎都锁在 +0.209 UI,时域冻结在那里读 2.4e-4、自由运行 1.9e-4 —— 不是环路。给时域喂独立同分布符号
