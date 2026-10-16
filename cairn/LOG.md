@@ -14,6 +14,10 @@
 - 踩的坑:包络警告分支里的 `return` 让 `run_time_link` 返回 None(测试只看警告);统计引擎逐图样分箱 N³,PAM8 带 PR 单跑 56 s → 示例里 rj 设 0。
 - 文档:新专题 `cairn/448G调制格式.md`;USAGE §1 / §10;SUMMARY §04 小节;ROADMAP P2 #33–#35、P3 #12;pitfalls 两条;invariants;inventory;指纹加两条合成链路(860 → 980 个值,原 860 个 bit-identical)。
 - 验证:本地全量 1195 passed / 1 skipped(+59;`HALO_NO_JIT=1` 下三个新文件 47 项通过;铁律 3 的 8 个交叉格随后标 `needs_jit` —— CI 的 3.10 nojit 腿带着它们超过 45 分钟上限被取消,3.11 nojit 33–41 分钟);ruff、Cython 13 个模块;`run_examples.py --smoke` 46 / 46;示例 00–45 全尺寸零漂移(47 / 47 跑通,`derived` 全部成立;46 的期望输出 accept 入库,全量 364 s)。
+- CI(PR #91,头 9cc3970):测试矩阵 jit 16–20 分钟、3.11 nojit 28、3.10 nojit 35–43 分钟(上限 45:交叉格标 `needs_jit` 之前 3.10 nojit 被取消,
+  `test.yml` 的注里就是这条老账)、examples 17、examples-full 28 分钟(00–46 在 CI 上零漂移)、RTL lockstep、lint、import-clean、vendor-drift 全绿;
+  Android(c338693,此后 src 未变)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures,APK 与编译版 APK 构建绿;pyinstaller 3、nuitka 119、
+  nuitka-onefile 129 分钟绿。两次返工:`from tests.` 导入让裸 `pytest` 收集失败(pitfalls)、示例 46 的 `[Ns total]` 没被漂移工具掩掉。
 
 ## 2026-10-15 · PAM4 猎振的数据噪声;门限放在接收机设电平处(fix/smear-distribution,ROADMAP P2 #30)
 
