@@ -101,4 +101,4 @@ format  receiver                        reach [dB]  states   Viterbi pJ/b   rece
   PAM8  21-tap, 1 + aD + bD^2, K = 2     19.41                 64       4.71            8.41
   PAM8  11-tap, delta                    16.56                 64       4.39            7.91
 
-saved examples/output/46_448g_formats.png  (whole run) [361s]
+saved examples/output/46_448g_formats.png  (whole run) [~s]
