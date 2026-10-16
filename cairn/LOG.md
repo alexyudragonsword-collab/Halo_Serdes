@@ -13,6 +13,10 @@
 - 验证:本地全量 1202 passed / 1 skipped(+3);`HALO_NO_JIT=1` 下 crosstalk / statistical / com 三个文件 75 passed;ruff;Cython(statistical / com);
   指纹 980 个值 bit-identical;示例 24 / 28 / 44 的期望重 accept(45 不变),`derived` 12 个数 102 处成立。
 - 文档:ROADMAP #36 清空;`cairn/多lane建模.md` §3 加注;pitfalls 那条补判别法(耦合为零的 aggressor 必须逐位等于没有);CHANGELOG。
+- CI(PR #93,头 6f6484f):测试矩阵两套 jit 11–22 分钟、3.11 nojit 20–31、3.10 nojit 24–42 分钟,examples 10–18、examples-full 23 分钟(85dd594 上抓到
+  本地漏跑的示例 26),lint、import-clean、RTL lockstep 绿;Android(a8d0842)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(5 / 4 / 5 分钟);
+  pyinstaller 3、nuitka 83、nuitka-onefile 130 分钟绿。`vendor-drift` 红过三轮:兄弟仓库 pll_simulator 当天转私有,默认 GITHUB_TOKEN 拉不到
+  ("Repository not found");workflow 改为优先用 secret `PLL_SIMULATOR_TOKEN`、无则退回默认 token,用户随后把仓库改回公开,re-run 绿。
 
 ## 2026-10-16 · PAM6 成对符号的 ISI 相关性(fix/pam6-ms-lock,ROADMAP P2 #35)
 
