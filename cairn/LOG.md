@@ -3,6 +3,24 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-16 · PAM6 成对符号的 ISI 相关性(fix/pam6-ms-lock,ROADMAP P2 #35)
+
+- 先按登记的猜测查锁定相位:两引擎都锁在 +0.209 UI,时域冻结在那里读 2.4e-4、自由运行 1.9e-4 —— 不是环路。给时域喂独立同分布符号
+  (占用同 corner32):SER 1.34e-3 / 2.97e-3 / 2.13e-3(0.10 / 0.15 / 0.12 m),与统计平滑读数 1.33e-3 / 3.00e-3 / 2.19e-3 几乎相同;
+  corner32 本身把 SER 压到 4.7e-4 / 1.88e-3 / 1.14e-3。一步把"引擎差"和"数据差"分开。
+- 改:`core.mapping.neighbour_conditional`(外层的搭档在内层四个里均匀、内层的六个均匀);统计引擎逐电平建 ±1 光标的 ISI(`_pair_isi_pdfs`),
+  卷积按网格中心对齐(`np.convolve(mode="same")` 偶数网格偏一格,平信道闭式差 4–7 %)。三格 SER 1.04–1.19×、BER 1.30–1.37×;DFE 格 0.63、
+  ADC 0.96–1.20 不动;指纹只有合成 PAM6 的 2 个 1e-16 量级的值动。
+- 余项:B6 按符号的比特矩阵(P2 #33,BER 比 SER 多 1.1–1.3×);串扰 PDF 的 `same` 卷积同样偏一格(新登记 P2 #36);带 DFE 的 PAM6 格 0.63× 未查。
+- 文档:ROADMAP #35 清空(登记时的猜测标为推翻)、`cairn/448G调制格式.md` §2 / §3 / §7、pitfalls 两条、CHANGELOG。
+- 验证:本地全量 1198 passed / 1 skipped(+3);`HALO_NO_JIT=1` 下两个格式测试文件 36 passed / 8 skipped(交叉格 `needs_jit`);ruff、Cython
+  (mapping / statistical);指纹 980 个值只有合成 PAM6 的 2 个 1e-16 量级的数动;示例 00–46 不变(本地一次用未对齐的中间版本跑出示例 46 的 0.01–0.03 dB 假漂移并 accept 进库,CI examples-full 抓回,
+  用当前代码重跑与旧期望逐行相同;教训:accept 前确认跑的是提交的代码),`derived` 12 个数 102 处成立。
+- CI(PR #92,头 f0e69e5):测试矩阵两套各跑一遍,jit 11–20 分钟、3.11 nojit 20、3.10 nojit 29 / 42 分钟(第二条离 45 分钟上限只剩 3 分钟,
+  nojit 腿的余量已经很薄)、examples 14–18、examples-full 23 分钟(抓回示例 46 的假漂移后 00–46 零漂移)、RTL lockstep、lint、import-clean、
+  vendor-drift 全绿;Android(ba521ad,此后 src 未变)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(4 / 4 / 5 分钟,APK 2、编译版 8 分钟);
+  pyinstaller 3、nuitka 104、nuitka-onefile 129 分钟绿。
+
 ## 2026-10-15 · 448G/lane 调制格式比较:PAM6 / PAM8 进字母表,示例 46(feat/448g-formats)
 
 - 用户 prompt 要的 v4 文档 #20 + #37:仓库没有 #37,现有 #20 是已清空的 PAM4 0↔3 条目 —— 不删,新登记余项;P2 #31 / #32 按用户要求暂停。

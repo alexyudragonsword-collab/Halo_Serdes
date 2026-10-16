@@ -204,6 +204,51 @@ def test_dfse_kernel_runs_six_levels():
     assert np.array_equal(viterbi_mlsd(y, lv, cur), sym)
 
 
+def test_pair_isi_pdfs_average_back_to_the_independent_one():
+    """Per level the +-1 cursors' ISI is conditioned on the pair partner;
+    weighted by the occupancy the per-level PDFs are the independent one,
+    and an outer level's PDF has no mass at the partner's extreme shifts."""
+    from halo_serdes.core.mapping import neighbour_conditional
+    from halo_serdes.engine.statistical import _pair_isi_pdfs
+
+    v = np.linspace(-1, 1, 2001)
+    lv = np.linspace(-1.0, 1.0, 6)
+    p6, cond = level_probabilities("pam6"), neighbour_conditional("pam6")
+    per_level, free = _pair_isi_pdfs(np.array([0.1, 0.3]), lv, v, p6, cond)
+    assert np.allclose(sum(pk * w for pk, w in zip(per_level, p6)), free, atol=1e-12)
+    assert np.allclose(free, isi_pdf(np.array([0.1, 0.3]), lv, v, p6), atol=1e-12)
+    # outer level 0: the partner (at +0.3 half the time) is never +-1, so the
+    # far shift 0.3 * 1 + 0.1 * 1 = 0.4 carries less mass than for an inner one
+    far = np.argmin(np.abs(v - 0.4))
+    assert per_level[0][far] < 0.5 * per_level[2][far]
+
+
+def test_pam6_pairs_lower_the_mixed_signal_ser_against_independent_symbols(monkeypatch):
+    """ROADMAP P2 #35: on the 16 GBd mixed-signal link without a DFE the
+    +-1 cursors carry the ISI, and the pair partner never being an outer
+    level for an outer symbol makes errors rarer. The time engine on
+    corner32 read 1.6-2.8x below itself on i.i.d. symbols (0.10-0.15 m);
+    the engine conditioned on the partner follows it, the independent model
+    does not."""
+    import halo_serdes.engine.statistical as st_mod
+
+    cfg = LinkConfig(
+        modulation="pam6", symbol_rate=16e9, osr=32,
+        channel=ChannelConfig(kind="analytic", length_m=0.10, rdc=2.0, r_skin=1.5e-3,
+                              loss_tangent=0.01),
+        tx=TxConfig(swing=1.0),
+        rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=False), dfe=DfeConfig(n_taps=0),
+                    noise_rms=0.004),
+        sim=SimConfig(n_symbols=100_000, seed=3, pattern="prbs13"))
+    cm = ChannelModel.from_config(cfg)
+    paired = run_statistical(cfg, channel=cm)
+    monkeypatch.setattr(st_mod, "neighbour_conditional", lambda m: None)
+    independent = run_statistical(cfg, channel=cm)
+    assert 2.0 < independent.ser / paired.ser < 3.5, (independent.ser, paired.ser)
+    # the time engine measured 4.7e-4 (corner32) and 1.3e-3 (i.i.d.) here
+    assert 3e-4 < paired.ser < 7e-4 and 1e-3 < independent.ser < 1.7e-3
+
+
 # ---- invariant #3: both engines within 2x -----------------------------------
 
 @needs_jit
@@ -218,8 +263,8 @@ def test_mixed_signal_cross_check_within_2x(mod, length_m, noise, n_dfe, ctle_db
     the ratio, not a skip.
 
     Measured (cairn/448G调制格式.md §3): PAM6 with the DFE 0.55-0.67, without
-    it 1.45 at this length and up to 3.9 on shorter ones -- the bang-bang
-    lock point against a steep bathtub, ROADMAP P2 #35; PAM8 0.53-1.07."""
+    it 1.30-1.37 once the +-1 cursors' ISI is conditioned on the pair
+    partner (1.45-3.9 before, ROADMAP P2 #35); PAM8 0.53-1.07."""
     cfg = LinkConfig(
         modulation=mod, symbol_rate=16e9, osr=32,
         channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=2.0,
