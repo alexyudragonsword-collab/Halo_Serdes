@@ -239,3 +239,23 @@ def test_pam6_partner_conditional_matches_the_table_and_the_occupancy():
     assert np.allclose(joint, joint.T)
     for mod in ("nrz", "pam4", "pam8"):
         assert mp.neighbour_conditional(mod) is None
+
+
+def test_pam6_pair_bit_distance_is_the_matrix_before_averaging():
+    """``pair_bit_distance`` per position and partner averages, over the
+    positions and the partner conditional, to ``bit_distance_matrix``; a
+    right decision costs nothing, a corner is never sent, and the cost of
+    an outer level's error does depend on the partner (that is the point)."""
+    from halo_serdes.core.mapping import (
+        _PAM6_CORNERS, bit_distance_matrix, neighbour_conditional, pair_bit_distance)
+
+    D, C, B = pair_bit_distance("pam6"), neighbour_conditional("pam6"), bit_distance_matrix("pam6")
+    assert D.shape == (2, 6, 6, 6)
+    avg = 0.5 * (np.einsum("km,kmj->kj", C, D[0]) + np.einsum("km,kmj->kj", C, D[1]))
+    assert np.allclose(avg, B)
+    assert np.all(D[:, np.arange(6), :, np.arange(6)] == 0)
+    for k, m in _PAM6_CORNERS:
+        assert not D[0, k, m].any() and not D[1, m, k].any()
+    assert D[0, 0, :, 1].min() != D[0, 0, :, 1].max()
+    for mod in ("nrz", "pam4", "pam8"):
+        assert pair_bit_distance(mod) is None

@@ -214,13 +214,72 @@ def test_pair_isi_pdfs_average_back_to_the_independent_one():
     v = np.linspace(-1, 1, 2001)
     lv = np.linspace(-1.0, 1.0, 6)
     p6, cond = level_probabilities("pam6"), neighbour_conditional("pam6")
-    per_level, free = _pair_isi_pdfs(np.array([0.1, 0.3]), lv, v, p6, cond)
+    per_level, free, free_pos = _pair_isi_pdfs(np.array([0.1, 0.3]), lv, v, p6, cond)
     assert np.allclose(sum(pk * w for pk, w in zip(per_level, p6)), free, atol=1e-12)
     assert np.allclose(free, isi_pdf(np.array([0.1, 0.3]), lv, v, p6), atol=1e-12)
+    # the free neighbour per position: c(+1) alone for the first, c(-1) for the second
+    assert np.allclose(free_pos[0], isi_pdf(np.array([0.3]), lv, v, p6), atol=1e-12)
+    assert np.allclose(free_pos[1], isi_pdf(np.array([0.1]), lv, v, p6), atol=1e-12)
     # outer level 0: the partner (at +0.3 half the time) is never +-1, so the
     # far shift 0.3 * 1 + 0.1 * 1 = 0.4 carries less mass than for an inner one
     far = np.argmin(np.abs(v - 0.4))
     assert per_level[0][far] < 0.5 * per_level[2][far]
+
+
+def _one_post_channel(m_amp: float, c_amp: float, swing: float = 1.0) -> ChannelModel:
+    """test_statistical.py's: baud cursors at the slicer exactly [m_amp, c_amp]
+    volts for the outer levels."""
+    f = np.linspace(0, 128e9, 1025)
+    ui = 1 / 32e9
+    H = (m_amp + c_amp * np.exp(-2j * np.pi * f * ui)) / (swing / 2.0)
+    return ChannelModel(H, f, name="1post")
+
+
+def test_pam6_bits_follow_the_partner_the_error_came_with():
+    """One post-cursor, AWGN: a PAM6 symbol errs mostly when the symbol
+    before it pushes it over a threshold. In the pair's second position
+    that symbol is its partner, so the bits the error costs are not the
+    partner-averaged ``bit_distance_matrix`` but the pair's own
+    (``pair_bit_distance``): B6 read 1.17-1.34 bits per error on the
+    mixed-signal cells where the checker counted 1.01-1.06 (ROADMAP P2 #33).
+    Closed form against the engine, and the B6 figure shown to differ."""
+    from halo_serdes.core.mapping import neighbour_conditional, pair_bit_distance
+
+    m_amp, c_amp, sigma = 0.25, 0.02, 0.012
+    cfg = _cfg("pam6", sigma, pattern="prbs13")
+    res = run_statistical(cfg, channel=_one_post_channel(m_amp, c_amp))
+    a = np.array([-1.0, -0.6, -0.2, 0.2, 0.6, 1.0])          # pam6 levels, normalised
+    p6, cond, D = level_probabilities("pam6"), neighbour_conditional("pam6"), pair_bit_distance("pam6")
+    B6 = bit_distance_matrix("pam6")
+    half = 0.2 * m_amp
+
+    def tails(shift):
+        up = qfunc((half - shift) / sigma)
+        dn = qfunc((half + shift) / sigma)
+        return up, dn
+
+    ser = ber = ber_b6 = 0.0
+    for k in range(6):
+        for m in range(6):
+            w = 0.5 * p6[k] * cond[k, m]
+            if w == 0.0:
+                continue
+            # second position: the partner came before, on the post-cursor
+            up, dn = tails(c_amp * a[m])
+            up, dn = (up if k < 5 else 0.0), (dn if k > 0 else 0.0)
+            ser += w * (up + dn)
+            ber += w * (up * D[1, k, m, min(k + 1, 5)] + dn * D[1, k, m, max(k - 1, 0)])
+            ber_b6 += w * (up * B6[k, min(k + 1, 5)] + dn * B6[k, max(k - 1, 0)])
+            # first position: the symbol before is free, the partner after is not seen here
+            for i in range(6):
+                up, dn = tails(c_amp * a[i])
+                up, dn = (up if k < 5 else 0.0), (dn if k > 0 else 0.0)
+                ser += w * p6[i] * (up + dn)
+                ber += w * p6[i] * (up * D[0, k, m, min(k + 1, 5)] + dn * D[0, k, m, max(k - 1, 0)])
+                ber_b6 += w * p6[i] * (up * B6[k, min(k + 1, 5)] + dn * B6[k, max(k - 1, 0)])
+    assert res.ser == pytest.approx(ser, rel=0.05), (res.ser, ser)
+    assert res.ber == pytest.approx(ber / 2.5, rel=0.05), (res.ber, ber / 2.5)
+    assert abs(ber_b6 / ber - 1.0) > 0.08, (ber_b6, ber)    # the per-symbol stand-in is off here
 
 
 def test_pam6_pairs_lower_the_mixed_signal_ser_against_independent_symbols(monkeypatch):
@@ -262,9 +321,10 @@ def test_mixed_signal_cross_check_within_2x(mod, length_m, noise, n_dfe, ctle_db
     the swing between levels), so it gets the CTLE. A failure here reports
     the ratio, not a skip.
 
-    Measured (cairn/448G调制格式.md §3): PAM6 with the DFE 0.55-0.67, without
-    it 1.30-1.37 once the +-1 cursors' ISI is conditioned on the pair
-    partner (1.45-3.9 before, ROADMAP P2 #35); PAM8 0.53-1.07."""
+    Measured (cairn/448G调制格式.md §3): PAM6 with the DFE 0.55-0.58, without
+    it 1.05-1.18 once the +-1 cursors' ISI is conditioned on the pair
+    partner (1.45-3.9 before, ROADMAP P2 #35) and the bits counted per pair
+    (1.30-1.37 before, P2 #33); PAM8 0.53-1.07."""
     cfg = LinkConfig(
         modulation=mod, symbol_rate=16e9, osr=32,
         channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=2.0,
