@@ -12,7 +12,8 @@
   比特不对称 —— 验证靠统计 bits/SER 1.02 / 1.05 / 1.06 / 1.12 对时域 1.01 / 1.04 / 1.06 / 1.12)。
 - 数:混合信号无 DFE BER 比 1.37 / 1.35 / 1.30 → 1.05 / 1.13 / 1.18×,带 DFE 0.61 → 0.58×,ADC delta 1.03×;ADC 1 + aD 1.20×(PR 路径仍 B6,P3 #12)。
   示例 46 只动 PAM6 delta 格(ADC,FFE 把 ±1 光标压平)的末位:11 抽头 delta reach 16.40 → 16.39 dB、DAC 表 16.55 / 16.45 / 16.02 → 16.54 / 16.46 / 16.03(6 bit 的代价 0.12 → 0.11 dB),PR 格一位不动。
-- 验证:{VERIFY33}
+- 验证:本地全量 1204 passed / 1 skipped(+2);`HALO_NO_JIT=1` 下三个格式 / 统计测试文件 69 passed / 8 skipped;ruff;Cython(statistical / mapping);
+  指纹 980 个值 bit-identical(合成 PAM6 链路走 PR 路径);示例 46 两次全尺寸运行逐行相同后 accept,`derived` 12 个数 102 处成立。
 - 文档:ROADMAP #33 清空、P3 #12 加 PR 路径一条;`cairn/448G调制格式.md` §2 / §3 / §7;pitfalls 一条;CHANGELOG。
 
 ## 2026-10-16 · 串扰 / 漂移 PDF 的卷积按中心对齐(fix/xtalk-convolve-centred,ROADMAP P2 #36)
