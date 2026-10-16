@@ -16,6 +16,10 @@
 - 验证:本地全量 1198 passed / 1 skipped(+3);`HALO_NO_JIT=1` 下两个格式测试文件 36 passed / 8 skipped(交叉格 `needs_jit`);ruff、Cython
   (mapping / statistical);指纹 980 个值只有合成 PAM6 的 2 个 1e-16 量级的数动;示例 00–46 不变(本地一次用未对齐的中间版本跑出示例 46 的 0.01–0.03 dB 假漂移并 accept 进库,CI examples-full 抓回,
   用当前代码重跑与旧期望逐行相同;教训:accept 前确认跑的是提交的代码),`derived` 12 个数 102 处成立。
+- CI(PR #92,头 f0e69e5):测试矩阵两套各跑一遍,jit 11–20 分钟、3.11 nojit 20、3.10 nojit 29 / 42 分钟(第二条离 45 分钟上限只剩 3 分钟,
+  nojit 腿的余量已经很薄)、examples 14–18、examples-full 23 分钟(抓回示例 46 的假漂移后 00–46 零漂移)、RTL lockstep、lint、import-clean、
+  vendor-drift 全绿;Android(ba521ad,此后 src 未变)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(4 / 4 / 5 分钟,APK 2、编译版 8 分钟);
+  pyinstaller 3、nuitka 104、nuitka-onefile 129 分钟绿。
 
 ## 2026-10-15 · 448G/lane 调制格式比较:PAM6 / PAM8 进字母表,示例 46(feat/448g-formats)
 
