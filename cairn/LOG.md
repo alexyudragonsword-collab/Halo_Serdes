@@ -15,6 +15,9 @@
 - 验证:本地全量 1204 passed / 1 skipped(+2);`HALO_NO_JIT=1` 下三个格式 / 统计测试文件 69 passed / 8 skipped;ruff;Cython(statistical / mapping);
   指纹 980 个值 bit-identical(合成 PAM6 链路走 PR 路径);示例 46 两次全尺寸运行逐行相同后 accept,`derived` 12 个数 102 处成立。
 - 文档:ROADMAP #33 清空、P3 #12 加 PR 路径一条;`cairn/448G调制格式.md` §2 / §3 / §7;pitfalls 一条;CHANGELOG。
+- CI(PR #94,头 76c3726):测试矩阵 jit 10–12 分钟、3.11 nojit 37、3.10 nojit 41 分钟(上限 45,余量仍薄),examples 18、examples-full 28 分钟,
+  lint、import-clean、RTL lockstep、vendor-drift(pll_simulator 公开后 7 秒)全绿;Android(5c82d24)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures
+  (4 / 4 / 5 分钟);pyinstaller 3、nuitka 118、nuitka-onefile 127 分钟绿。
 
 ## 2026-10-16 · 串扰 / 漂移 PDF 的卷积按中心对齐(fix/xtalk-convolve-centred,ROADMAP P2 #36)
 
