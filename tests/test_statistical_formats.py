@@ -263,8 +263,8 @@ def test_mixed_signal_cross_check_within_2x(mod, length_m, noise, n_dfe, ctle_db
     the ratio, not a skip.
 
     Measured (cairn/448G调制格式.md §3): PAM6 with the DFE 0.55-0.67, without
-    it 1.45 at this length and up to 3.9 on shorter ones -- the bang-bang
-    lock point against a steep bathtub, ROADMAP P2 #35; PAM8 0.53-1.07."""
+    it 1.30-1.37 once the +-1 cursors' ISI is conditioned on the pair
+    partner (1.45-3.9 before, ROADMAP P2 #35); PAM8 0.53-1.07."""
     cfg = LinkConfig(
         modulation=mod, symbol_rate=16e9, osr=32,
         channel=ChannelConfig(kind="analytic", length_m=length_m, rdc=2.0,

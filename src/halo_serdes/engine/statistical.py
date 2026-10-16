@@ -291,6 +291,15 @@ def isi_pdf(cursor_amps: np.ndarray, levels_norm: np.ndarray,
     return pdf
 
 
+def _convolve_centred(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """``a * b`` on ``a``'s grid, both centred on bin ``n // 2`` as ``isi_pdf``
+    lays its PDFs out. ``np.convolve(mode="same")`` puts the centre of an
+    even-length grid one bin late -- a systematic shift of one ``dv`` per
+    convolution, 4-7 % of SER four sigma out on a flat channel."""
+    ic = a.size // 2
+    return np.convolve(a, b)[ic: ic + a.size]
+
+
 def _pair_isi_pdfs(c_pair: np.ndarray, levels_norm: np.ndarray, v_centers: np.ndarray,
                    level_probs: np.ndarray, cond: np.ndarray) -> tuple[list[np.ndarray], np.ndarray]:
     """The ISI of the two neighbouring cursors ``c_pair`` = (c(-1), c(+1))
@@ -307,9 +316,9 @@ def _pair_isi_pdfs(c_pair: np.ndarray, levels_norm: np.ndarray, v_centers: np.nd
     for k in range(levels_norm.size):
         part_p = isi_pdf(np.array([c_p]), levels_norm, v_centers, cond[k])
         part_m = isi_pdf(np.array([c_m]), levels_norm, v_centers, cond[k])
-        per_level.append(0.5 * (np.convolve(part_p, free_m, mode="same")
-                                + np.convolve(free_p, part_m, mode="same")))
-    return per_level, np.convolve(free_p, free_m, mode="same")
+        per_level.append(0.5 * (_convolve_centred(part_p, free_m)
+                                + _convolve_centred(free_p, part_m)))
+    return per_level, _convolve_centred(free_p, free_m)
 
 
 def _pr_patterns(families: tuple[str, ...], max_len: int) -> list[np.ndarray]:
@@ -1311,9 +1320,9 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         pdf_isi = pdf
         pdf_isi_lv = None
         if pair_pdf is not None:
-            pdf_isi_lv = [np.convolve(pdf, pk, mode="same") for pk in pair_pdf[0]]
+            pdf_isi_lv = [_convolve_centred(pdf, pk) for pk in pair_pdf[0]]
             # the partial-response events project the independent-symbol PDF
-            pdf_isi = np.convolve(pdf, pair_pdf[1], mode="same")
+            pdf_isi = _convolve_centred(pdf, pair_pdf[1])
 
         def projected_isi(d_ev: np.ndarray) -> np.ndarray:
             """The ISI PDF error event d_ev sees. The detector takes it when
