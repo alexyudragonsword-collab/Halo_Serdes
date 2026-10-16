@@ -10,7 +10,8 @@
 - 改:`statistical.py` 四处 + `analysis/com.py` 一处换 `_convolve_centred`;高斯核是奇数长度,不动。改后耦合为零的 aggressor 逐位等于没有。
 - 数:示例 24 统计 BER 6.41e-32 … 3.90e-3 → 5.42e-32 … 3.89e-3(−18 dB 处两引擎 0.71×);示例 28 COM 各高 0.03–0.06 dB;示例 44 统计 / 时域 同步 24 次 0.44–1.15× → 0.44–1.11×、准同步 0.72–0.95× → 0.70–0.93×(统计读数低 1–4 %,时域不变);
   指纹 980 个值 0 变(预设无串扰)。
-- 验证:{VERIFY}
+- 验证:本地全量 1202 passed / 1 skipped(+3);`HALO_NO_JIT=1` 下 crosstalk / statistical / com 三个文件 75 passed;ruff;Cython(statistical / com);
+  指纹 980 个值 bit-identical;示例 24 / 28 / 44 的期望重 accept(45 不变),`derived` 12 个数 102 处成立。
 - 文档:ROADMAP #36 清空;`cairn/多lane建模.md` §3 加注;pitfalls 那条补判别法(耦合为零的 aggressor 必须逐位等于没有);CHANGELOG。
 
 ## 2026-10-16 · PAM6 成对符号的 ISI 相关性(fix/pam6-ms-lock,ROADMAP P2 #35)
