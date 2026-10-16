@@ -5,19 +5,21 @@ format   bit/sym   KP4 GBd   KP4+BCH GBd   Nyquist GHz (KP4)   half-gap vs PAM4
   PAM8       3.0    158.05      187.45           79.0         +7.4 dB
 thresholds: KP4 pre-FEC BER <= 2.19e-04, KP4+BCH pre-FEC BER <= 6.86e-03
 loss ladder @ 56 GHz: 4cm:6.1 6cm:9.1 8cm:12.1 10cm:15.2 12cm:18.2 14cm:21.2 16cm:24.3 18cm:27.3 20cm:30.3 24cm:36.4 28cm:42.4 dB
+
 receiver scan (statistical engine, KP4): reach [dB @ 56 GHz], trellis states, receiver pJ/b
   PAM4  21-tap, delta                   16.44                   16    5.81 pJ/b  [~s]
   PAM4  21-tap, 1 + aD, K = 1           19.20                    4    5.28 pJ/b  [~s]
   PAM4  21-tap, 1 + aD + bD^2, K = 2    20.69                   16    5.97 pJ/b  [~s]
   PAM4  11-tap, delta                   16.34                   16    5.54 pJ/b  [~s]
-  PAM6  21-tap, delta                   16.56                   36    6.44 pJ/b  [~s]
+  PAM6  21-tap, delta                   16.57                   36    6.44 pJ/b  [~s]
   PAM6  21-tap, 1 + aD, K = 1           18.84                    6    4.68 pJ/b  [~s]
   PAM6  21-tap, 1 + aD + bD^2, K = 2    19.54                   36    6.67 pJ/b  [~s]
-  PAM6  11-tap, delta                   16.39                   36    6.22 pJ/b  [~s]
+  PAM6  11-tap, delta                   16.40                   36    6.22 pJ/b  [~s]
   PAM8  21-tap, delta                   16.90                   64    8.10 pJ/b  [~s]
   PAM8  21-tap, 1 + aD, K = 1           19.06                    8    4.35 pJ/b  [~s]
   PAM8  21-tap, 1 + aD + bD^2, K = 2    19.41                   64    8.41 pJ/b  [~s]
   PAM8  11-tap, delta                   16.56                   64    7.91 pJ/b  [~s]
+
 chosen receivers on the time engine (KP4): per point loss, stat BER, time BER, stat / time
   PAM4 / 21-tap, 1 + aD + bD^2, K = 2: time reach 20.44 dB   (stat 20.69)  [~s]
        18.2 dB   stat  1.53e-06   time  3.40e-06   stat/time  0.45  (2 errors)
@@ -37,11 +39,13 @@ chosen receivers on the time engine (KP4): per point loss, stat BER, time BER, s
        19.3 dB   stat  1.88e-04   time  2.00e-04   stat/time  0.94
        19.7 dB   stat  3.62e-04   time  3.75e-04   stat/time  0.97
        21.2 dB   stat  2.00e-03   time  2.11e-03   stat/time  0.95
+
 concatenated code (KP4+BCH, higher baud): statistical reach of the chosen cell, one time-engine point
   PAM4   281.2 GBd  reach  20.11 dB               check @ 20.1 dB: stat 6.64e-03  time 1.24e-01 (72778 errors)  stat/time 0.05  -- NOT confirmed  [~s]
         the time engine's decision-directed loops do not hold at this operating point (the statistical engine's pr_loop_load warning); the statistical reach stands unconfirmed
   PAM6   224.9 GBd  reach  19.43 dB               check @ 19.3 dB: stat 6.33e-03  time 7.87e-03 (5786 errors)  stat/time 0.80  [~s]
   PAM8   187.5 GBd  reach  19.77 dB               check @ 19.7 dB: stat 6.54e-03  time 7.04e-03 (6208 errors)  stat/time 0.93  [~s]
+
 table 1: 448 Gb/s per lane, best receiver per format
 format  receiver                        reach KP4 [dB]  KP4+BCH  own-Nyquist loss*  stat/time    pJ/b  states
   PAM4  21-tap, 1 + aD + bD^2, K = 2       20.44       20.11?       39.5 dB      0.57-0.91    5.97     16
@@ -49,6 +53,7 @@ format  receiver                        reach KP4 [dB]  KP4+BCH  own-Nyquist los
   PAM8  21-tap, 1 + aD + bD^2, K = 2       19.38       19.77        26.2 dB      0.81-1.10    8.41     64
   * at the format's own Nyquist (118 / 95 / 79 GHz), extrapolated by the analytic model -- 未核实
   ? statistical reach the time engine did not confirm (its loops let go at that operating point)
+
 winner (KP4, time engine): PAM4 with 21-tap, 1 + aD + bD^2, K = 2 -- +0.79 dB over PAM6, -0.70 pJ/b
 seeds at the winner's reach (20.4 dB): BER PAM4 vs PAM6
   seed 3: 1.84e-04 (108)  vs  7.84e-04 (576)  -> same
@@ -57,6 +62,7 @@ seeds at the winner's reach (20.4 dB): BER PAM4 vs PAM6
 direction consistent on 3 of 3 seeds
 PAM4 with receiver PR + DFSE (21-tap, 1 + aD + bD^2, K = 2): +4.25 dB over its delta receiver (statistical); on delta receivers alone PAM8 leads (16.90 dB) -- PR + DFSE turns the table
 transmitter-side PR (example 37) is not in the scan: it trades Tx swing for the same target
+
 table 2: BER against loss @ 56 GHz, chosen receivers (statistical engine, KP4 baud)
   loss [dB]       PAM4       PAM6       PAM8
       6.1     0.00e+00   0.00e+00  1.50e-130
@@ -73,23 +79,26 @@ table 2: BER against loss @ 56 GHz, chosen receivers (statistical engine, KP4 ba
   PAM4 / PAM6: no crossing on the grid
   PAM4 / PAM8: curves cross at 25.1 dB
   PAM6 / PAM8: curves cross at 21.6 dB
+
 table 3: DAC bits and transmitter noise (21-tap delta receiver, statistical reach, KP4)
 format      ideal     7 bit     6 bit     5 bit   bits needed (0.1 dB)   SNDR @ needed      0 mV    10 mV    20 mV   noise for -0.5 dB
   PAM4      16.44     16.43     16.41     16.31            6             40.2 dB     16.44    16.32    15.77   10 mV  [~s]
-  PAM6      16.56     16.54     16.44     15.99            7             41.6 dB     16.56    16.12    14.21   10 mV  [~s]
+  PAM6      16.57     16.55     16.45     16.02            7             41.6 dB     16.57    16.14    14.23   10 mV  [~s]
   PAM8      16.90     16.85     16.69     15.44            7             41.9 dB     16.90    15.66       --   0 mV  [~s]
+
 appendix: every receiver cell (statistical engine, KP4)
 format  receiver                        reach [dB]  states   Viterbi pJ/b   receiver pJ/b
   PAM4  21-tap, delta                    16.44                 16       0.87            5.81
   PAM4  21-tap, 1 + aD, K = 1            19.20                  4       0.33            5.28
   PAM4  21-tap, 1 + aD + bD^2, K = 2     20.69                 16       1.02            5.97
   PAM4  11-tap, delta                    16.34                 16       0.87            5.54
-  PAM6  21-tap, delta                    16.56                 36       2.24            6.44
+  PAM6  21-tap, delta                    16.57                 36       2.24            6.44
   PAM6  21-tap, 1 + aD, K = 1            18.84                  6       0.48            4.68
   PAM6  21-tap, 1 + aD + bD^2, K = 2     19.54                 36       2.47            6.67
-  PAM6  11-tap, delta                    16.39                 36       2.24            6.22
+  PAM6  11-tap, delta                    16.40                 36       2.24            6.22
   PAM8  21-tap, delta                    16.90                 64       4.39            8.10
   PAM8  21-tap, 1 + aD, K = 1            19.06                  8       0.65            4.35
   PAM8  21-tap, 1 + aD + bD^2, K = 2     19.41                 64       4.71            8.41
   PAM8  11-tap, delta                    16.56                 64       4.39            7.91
+
 saved examples/output/46_448g_formats.png  (whole run) [~s]
