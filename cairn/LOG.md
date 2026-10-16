@@ -14,6 +14,9 @@
   指纹:合成 PAM6 / PAM8 链路 2 mV 时统计 BER 下溢为 0、对本条与 P2 #33 都不敏感,噪声提到 10 mV 后 30 个合成行的值动,预设 860 个 bit-identical;
   示例 46 两次全尺寸运行逐行相同后 accept,`derived` 12 个数 102 处成立。
 - 文档:ROADMAP P3 #12 那条改为已做(余下的近似写明);`cairn/448G调制格式.md` §2 / §3;CHANGELOG。
+- CI(PR #95,头 5e4d6a2):测试矩阵 jit 12–19 分钟、3.10 nojit 23、3.11 nojit 37 分钟,examples 18、examples-full 30 分钟,lint、import-clean、
+  RTL lockstep、vendor-drift 全绿;Android(00be298)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(4 / 5 / 5 分钟);
+  pyinstaller 2、nuitka 117、nuitka-onefile 123 分钟绿。
 
 ## 2026-10-16 · PAM6 比特按对:搭档已知时的代价(fix/pam6-pair-ber,ROADMAP P2 #33)
 
