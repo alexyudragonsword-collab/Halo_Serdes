@@ -226,6 +226,7 @@ from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
 from ..core.mapping import (
     GRAY_BIT_DISTANCE, bit_distance_matrix, level_probabilities, neighbour_conditional,
+    pair_bit_distance,
 )
 from ..core.sampler import baud_samples, upsampled_taps
 from ..core.waveform import Waveform
@@ -304,24 +305,28 @@ def _convolve_centred(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def _pair_isi_pdfs(c_pair: np.ndarray, levels_norm: np.ndarray, v_centers: np.ndarray,
-                   level_probs: np.ndarray, cond: np.ndarray) -> tuple[list[np.ndarray], np.ndarray]:
+                   level_probs: np.ndarray, cond: np.ndarray
+                   ) -> tuple[list[np.ndarray], np.ndarray, tuple[np.ndarray, np.ndarray]]:
     """The ISI of the two neighbouring cursors ``c_pair`` = (c(-1), c(+1))
     when the symbols come in pairs (PAM6's corner32 map): per transmitted
-    level ``k`` the partner -- the right neighbour half the time, the left
-    one the other half -- is drawn from ``cond[k]`` and the other neighbour
-    from the occupancy. Returns the per-level PDFs and the unconditional one
-    (the partner drawn from the occupancy too, what independent symbols
-    give)."""
+    level ``k`` the partner is drawn from ``cond[k]`` and the other
+    neighbour from the occupancy. A symbol in the pair's first position has
+    its partner after it, on the pre-cursor c(-1), and the free neighbour
+    before it on c(+1); in the second position the other way round, each
+    half the time. Returns the per-level PDFs, the unconditional one (the
+    partner drawn from the occupancy too, what independent symbols give)
+    and the free neighbour's PDF per position -- ``(c(+1) alone, c(-1)
+    alone)`` -- for the bit count that knows the partner (ROADMAP P2 #33)."""
     c_m, c_p = float(c_pair[0]), float(c_pair[1])
     free_m = isi_pdf(np.array([c_m]), levels_norm, v_centers, level_probs)
     free_p = isi_pdf(np.array([c_p]), levels_norm, v_centers, level_probs)
     per_level = []
     for k in range(levels_norm.size):
-        part_p = isi_pdf(np.array([c_p]), levels_norm, v_centers, cond[k])
-        part_m = isi_pdf(np.array([c_m]), levels_norm, v_centers, cond[k])
-        per_level.append(0.5 * (_convolve_centred(part_p, free_m)
-                                + _convolve_centred(free_p, part_m)))
-    return per_level, _convolve_centred(free_p, free_m)
+        part_m = isi_pdf(np.array([c_m]), levels_norm, v_centers, cond[k])   # first position
+        part_p = isi_pdf(np.array([c_p]), levels_norm, v_centers, cond[k])   # second position
+        per_level.append(0.5 * (_convolve_centred(part_m, free_p)
+                                + _convolve_centred(part_p, free_m)))
+    return per_level, _convolve_centred(free_p, free_m), (free_p, free_m)
 
 
 def _pr_patterns(families: tuple[str, ...], max_len: int) -> list[np.ndarray]:
@@ -985,6 +990,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # aggressors' levels stay equiprobable, as the time engine draws them
     level_probs = level_probabilities(cfg.modulation)
     bit_dist = bit_distance_matrix(cfg.modulation)
+    pair_bits = pair_bit_distance(cfg.modulation)
     # PAM6's pairs: the partner's level depends on this one's (an outer
     # symbol is never paired with an outer one), so the +-1 cursors' ISI is
     # per level. Taken as independent, the time engine read 1.6-2.8x below
@@ -1299,6 +1305,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             isi = isi.copy()
             isi[pos] = 0.0
         pair_pdf = None                     # the +-1 cursors per level (PAM6 pairs)
+        c_pair = None
         if pair_cond is not None and pattern_sigma is None:
             pos = [n_pre - 1, n_pre]        # c(-1), c(+1) with the main cursor removed
             c_pair = np.array([isi[q] for q in pos])
@@ -1322,10 +1329,19 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             pdf = _convolve_centred(pdf, x_pdf)
         pdf_isi = pdf
         pdf_isi_lv = None
+        pdf_isi_pos = None
         if pair_pdf is not None:
             pdf_isi_lv = [_convolve_centred(pdf, pk) for pk in pair_pdf[0]]
             # the partial-response events project the independent-symbol PDF
             pdf_isi = _convolve_centred(pdf, pair_pdf[1])
+            # everything but the partner, per position: the partner's level
+            # enters the slicer tails as a shift, so the bits its error costs
+            # can be the pair's own (pair_bits) rather than the mean over
+            # partners -- a symbol errs with the partners that push it over
+            # the threshold, and those are not the ones that cost the most
+            # (B6 read 1.17-1.34 bits per PAM6 error, the checker 1.01-1.06)
+            pdf_isi_pos = [_convolve_centred(pdf, fp) for fp in pair_pdf[2]]
+        pair_noisy: dict = {}
 
         def projected_isi(d_ev: np.ndarray) -> np.ndarray:
             """The ISI PDF error event d_ev sees. The detector takes it when
@@ -1389,6 +1405,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     for pk in pdf_isi_lv:
                         q = np.convolve(pk, nk, mode="same") if nk.size > 1 else pk
                         pdf_lv.append(q / max(q.sum(), 1e-300))
+                    pair_noisy["pos"] = []
+                    for pk in pdf_isi_pos:
+                        q = np.convolve(pk, nk, mode="same") if nk.size > 1 else pk
+                        pair_noisy["pos"].append(q / max(q.sum(), 1e-300))
                 else:
                     if nk.size > 1:
                         pdf = np.convolve(pdf, nk, mode="same")
@@ -1406,25 +1426,52 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         nbe = 0.0
         pdf_eye = None
         for i_ev, (g_ev, w_ev) in enumerate(events):
+            pair_noisy.pop("pos", None)
             pdf_lv = noisy(g_ev, None if ev_diffs is None else projected_isi(ev_diffs[i_ev]))
+            pos_lv = pair_noisy.get("pos")
 
             # tail CDFs per level
             cdf_up = [np.cumsum(p[::-1])[::-1] for p in pdf_lv]   # P(x >= v)
             cdf_dn = [np.cumsum(p) for p in pdf_lv]               # P(x <= v)
 
-            def tail_ge(v: float, j: int) -> float:
+            def tail_ge(v: float, j: int, cdf=cdf_up) -> float:
                 i = int(np.searchsorted(v_centers, v))
-                return float(cdf_up[j][i]) if i < v_bins else 0.0
+                return float(cdf[j][i]) if i < v_bins else 0.0
 
-            def tail_le(v: float, j: int) -> float:
+            def tail_le(v: float, j: int, cdf=cdf_dn) -> float:
                 i = int(np.searchsorted(v_centers, v)) - 1
-                return float(cdf_dn[j][i]) if i >= 0 else 0.0
+                return float(cdf[j][i]) if i >= 0 else 0.0
 
             # SER/BER over levels: distance to adjacent thresholds = |main|*gap/2
             lv = levels_norm * main
             order = np.argsort(lv)
             lv_sorted = lv[order]
             lt = (levels_norm * thr_main)[order]
+            if pos_lv is not None:
+                # PAM6 pairs: the partner's level is a shift of the slicer
+                # tails, the bits its error costs the pair's own (P2 #33)
+                pos_up = [np.cumsum(p[::-1])[::-1] for p in pos_lv]
+                pos_dn = [np.cumsum(p) for p in pos_lv]
+                for j in range(n_levels):
+                    s_j = int(order[j])
+                    thr_up = (lt[j] + lt[j + 1]) / 2.0 - lv_sorted[j] if j < n_levels - 1 else None
+                    thr_dn = (lt[j - 1] + lt[j]) / 2.0 - lv_sorted[j] if j > 0 else None
+                    for pi_pos in (0, 1):
+                        c_part = float(c_pair[0] if pi_pos == 0 else c_pair[1])
+                        for m in range(n_levels):
+                            w_km = 0.5 * float(level_probs[s_j] * pair_cond[s_j, m])
+                            if w_km == 0.0:
+                                continue
+                            shift = c_part * float(levels_norm[m])
+                            p_up = tail_ge(thr_up - shift, pi_pos, pos_up) if thr_up is not None else 0.0
+                            p_dn = tail_le(thr_dn - shift, pi_pos, pos_dn) if thr_dn is not None else 0.0
+                            b_up = float(pair_bits[pi_pos, s_j, m, int(order[j + 1])]) if p_up else 0.0
+                            b_dn = float(pair_bits[pi_pos, s_j, m, int(order[j - 1])]) if p_dn else 0.0
+                            ser += w_ev * w_km * (p_up + p_dn)
+                            nbe += w_ev * w_km * (p_up * b_up + p_dn * b_dn)
+                if pdf_eye is None:
+                    pdf_eye = pdf_lv
+                continue
             for j in range(n_levels):
                 s_j = int(order[j])
                 p_err_up = p_err_dn = 0.0

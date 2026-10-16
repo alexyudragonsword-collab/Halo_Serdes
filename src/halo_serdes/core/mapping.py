@@ -293,6 +293,30 @@ def bit_distance_matrix(modulation: str) -> np.ndarray:
     return d
 
 
+def pair_bit_distance(modulation: str) -> np.ndarray | None:
+    """``D[pos, k, m, j]``: bits in error when a PAM6 symbol sent as level
+    ``k`` with partner ``m`` -- the pair being ``(k, m)`` at ``pos`` 0 (first
+    position) or ``(m, k)`` at ``pos`` 1 -- is decided as ``j`` with the
+    partner right; the corners decoded inward as the checker does. None for
+    the formats whose bits sit on one symbol. Averaged over ``pos`` and over
+    ``m`` by ``neighbour_conditional`` it is ``bit_distance_matrix``; the
+    statistical engine uses it unaveraged, because which partner a symbol
+    errs with is not uniform (ROADMAP P2 #33)."""
+    if modulation != "pam6":
+        return None
+    d = np.zeros((2, 6, 6, 6))
+    for k in range(6):
+        for m in range(6):
+            for pos in (0, 1):
+                sent = (k, m) if pos == 0 else (m, k)
+                if sent in _PAM6_CORNERS:
+                    continue                                   # never sent
+                for j in range(6):
+                    got = (j, m) if pos == 0 else (m, j)
+                    d[pos, k, m, j] = bin(int(PAM6_DECODE[sent]) ^ int(PAM6_DECODE[got])).count("1")
+    return d
+
+
 def count_bit_errors(ref_symbols: np.ndarray, rx_symbols: np.ndarray, modulation: str,
                      ref_pos: np.ndarray | None = None):
     """Bit errors between a reference and a decided symbol stream, as the

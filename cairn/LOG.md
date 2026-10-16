@@ -3,6 +3,22 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-16 · PAM6 比特按对:搭档已知时的代价(fix/pam6-pair-ber,ROADMAP P2 #33)
+
+- 探针:四个混合信号格的时域判决流按对解码,每个符号错实际 1.01–1.06 比特、B6 预期 1.17–1.34(ratio 1.33 / 1.22 / 1.10 / 1.07),
+  统计 BER/SER 的倍数正好是 B6 的期望;两个符号同时错 0 次。登记时的"两符号误码相关性"不是主因 —— 是出错事件的搭档分布偏向代价低的那些。
+- 改:`core.mapping.pair_bit_distance`(位置 × 发 × 搭档 × 判 的精确比特);统计引擎切片路径按(位置、电平、搭档)分解,搭档电平是门限的平移,
+  `_pair_isi_pdfs` 另给每个位置"除搭档外"的 PDF;第一位置的搭档在后、走预光标 c(−1),第二位置的在前、走 c(+1)(#35 的 per-level 混合对此对称,
+  比特不对称 —— 验证靠统计 bits/SER 1.02 / 1.05 / 1.06 / 1.12 对时域 1.01 / 1.04 / 1.06 / 1.12)。
+- 数:混合信号无 DFE BER 比 1.37 / 1.35 / 1.30 → 1.05 / 1.13 / 1.18×,带 DFE 0.61 → 0.58×,ADC delta 1.03×;ADC 1 + aD 1.20×(PR 路径仍 B6,P3 #12)。
+  示例 46 只动 PAM6 delta 格(ADC,FFE 把 ±1 光标压平)的末位:11 抽头 delta reach 16.40 → 16.39 dB、DAC 表 16.55 / 16.45 / 16.02 → 16.54 / 16.46 / 16.03(6 bit 的代价 0.12 → 0.11 dB),PR 格一位不动。
+- 验证:本地全量 1204 passed / 1 skipped(+2);`HALO_NO_JIT=1` 下三个格式 / 统计测试文件 69 passed / 8 skipped;ruff;Cython(statistical / mapping);
+  指纹 980 个值 bit-identical(合成 PAM6 链路走 PR 路径);示例 46 两次全尺寸运行逐行相同后 accept,`derived` 12 个数 102 处成立。
+- 文档:ROADMAP #33 清空、P3 #12 加 PR 路径一条;`cairn/448G调制格式.md` §2 / §3 / §7;pitfalls 一条;CHANGELOG。
+- CI(PR #94,头 76c3726):测试矩阵 jit 10–12 分钟、3.11 nojit 37、3.10 nojit 41 分钟(上限 45,余量仍薄),examples 18、examples-full 28 分钟,
+  lint、import-clean、RTL lockstep、vendor-drift(pll_simulator 公开后 7 秒)全绿;Android(5c82d24)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures
+  (4 / 4 / 5 分钟);pyinstaller 3、nuitka 118、nuitka-onefile 127 分钟绿。
+
 ## 2026-10-16 · 串扰 / 漂移 PDF 的卷积按中心对齐(fix/xtalk-convolve-centred,ROADMAP P2 #36)
 
 - 探针:平信道 + AWGN 上给耦合为零(−120 dB)的 aggressor,统计 SER 每个多 0.2–0.6 %,8 个多 8 %(NRZ)/ 22 %(PAM4);准同步漂移路径同;
