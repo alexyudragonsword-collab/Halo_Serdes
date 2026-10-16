@@ -376,3 +376,9 @@ def test_adc_cross_check_within_2x(mod, length_m, pr):
     stat = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
     ratio = stat.ber / mc.ber.ber
     assert 0.5 < ratio < 2.0, (mod, length_m, pr, stat.ber, mc.ber.ber, ratio)
+    if mod == "pam6":
+        # bits per symbol error: the pairs' words in both engines (P2 #33 on
+        # the slicer path, P3 #12 under the sequence detector; B6 read 1.16x
+        # the checker on the 1 + aD cell)
+        per_err = (stat.ber / stat.ser) / (mc.ber.ber / mc.ser)
+        assert 0.92 < per_err < 1.08, (pr, stat.ber / stat.ser * 2.5, mc.ber.ber / mc.ser * 2.5)

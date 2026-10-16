@@ -226,7 +226,7 @@ from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
 from ..core.mapping import (
     GRAY_BIT_DISTANCE, bit_distance_matrix, level_probabilities, neighbour_conditional,
-    pair_bit_distance,
+    pair_bit_distance, pair_event_bits, pair_word_bits,
 )
 from ..core.sampler import baud_samples, upsampled_taps
 from ..core.waveform import Waveform
@@ -508,7 +508,9 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
 def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
                         head, composite: bool, precoded: bool,
                         bit_dist: np.ndarray | None = None,
-                        level_probs: np.ndarray | None = None) -> tuple[float, float]:
+                        level_probs: np.ndarray | None = None,
+                        pair_cond: np.ndarray | None = None,
+                        pair_words: np.ndarray | None = None) -> tuple[float, float]:
     """(SER, bit errors per symbol) of the per-symbol decisions a receive
     partial-response target leaves the LMS and the CDR, or the detector
     itself when there is no sequence detector.
@@ -536,7 +538,12 @@ def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
     as evenly spaced. Bits per wrong symbol follow the checker: the Hamming
     distance of the two symbols' Gray codes (``GRAY_BIT_DISTANCE``), or
     ``bit_dist`` (``core.mapping.bit_distance_matrix``); the symbols are
-    equiprobable unless ``level_probs`` says otherwise.
+    equiprobable unless ``level_probs`` says otherwise. With ``pair_cond``
+    and ``pair_words`` (PAM6's corner32 pairs, not precoded) a pair is
+    scored once, when its second symbol is decided: the first symbol's
+    error is the chain's state, its level the second's partner
+    (``neighbour_conditional``, the levels the state allows), and the bits
+    are the two words' (``pair_word_bits``) -- half a pair per symbol.
     """
     n = lv.size
     bd = GRAY_BIT_DISTANCE if bit_dist is None else np.asarray(bit_dist, dtype=np.float64)
@@ -587,12 +594,26 @@ def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
     for k, st in enumerate(states):
         offset = step * float(np.dot(h, st)) if depth else 0.0
         dist = np.zeros(vals.size)               # P(error = e) at this state
+        pairwise = pair_words is not None and pair_cond is not None and not precoded
+        st0 = int(st[0]) if depth else 0
         for j in range(n):
             p = decide(j, ls, ls[j] + offset)
             w_j = float(pw[sym[j]])
+            if pairwise:
+                # the symbol before (sorted m, decided m - st0) as this one's partner
+                ms = [m for m in range(n) if 0 <= m - st0 < n]
+                w_m = np.array([pair_cond[sym[j], sym[m]] for m in ms])
+                w_m = w_m / w_m.sum() if w_m.sum() > 0 else w_m
             for d in range(n):
                 dist[j - d + n - 1] += p[d] * w_j
-                if not precoded and j != d:
+                if precoded or p[d] == 0.0:
+                    continue
+                if pairwise:
+                    for m, wm in zip(ms, w_m):
+                        b = float(pair_words[sym[m], sym[j], sym[m - st0], sym[d]])
+                        if b and wm:
+                            b_err[k] += 0.5 * p[d] * w_j * wm * b
+                elif j != d:
                     b_err[k] += p[d] * bits(sym[j], sym[d]) * w_j
         for e, pe in zip(vals, dist):
             nxt = ((int(e),) + st[:-1]) if depth else ()
@@ -991,6 +1012,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     level_probs = level_probabilities(cfg.modulation)
     bit_dist = bit_distance_matrix(cfg.modulation)
     pair_bits = pair_bit_distance(cfg.modulation)
+    pair_words = pair_word_bits(cfg.modulation)
     # PAM6's pairs: the partner's level depends on this one's (an outer
     # symbol is never paired with an outer one), so the +-1 cursors' ISI is
     # per level. Taken as independent, the time engine read 1.6-2.8x below
@@ -1265,6 +1287,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # detector works a partial-response target (pr_error_events)
         events = [(g_mlsd, 1.0)]
         ev_diffs = None
+        ev_pats = None
         if pr_active and mlsd_mem > 0:
             half_gap = 0.5 * abs(main) * float(np.min(np.diff(np.sort(levels_norm))))
             fams = (("alternating", "constant") if min(cfg.pr.target[2:], default=0.0) < 0.0
@@ -1295,6 +1318,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                                    for u, e in zip(union, events)]
                 events = [(g_e, w_e * r) for (g_e, w_e), r in zip(events, union_ratio)]
             ev_diffs = pr_event_differences(cur, fams, state_memory=k_state)
+            ev_pats = _pr_patterns(fams, 12)
 
         if pattern_sigma is not None:
             # the binned neighbours leave the random ISI and become a shift
@@ -1484,6 +1508,18 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     thr = (lt[j - 1] + lt[j]) / 2.0
                     p_err_dn = tail_le(thr - lv_sorted[j], s_j)
                     b_dn = float(bit_dist[s_j, int(order[j - 1])])
+                if pair_bits is not None and ev_pats is not None and not cfg.precode:
+                    # PAM6 pairs under a sequence detector: the event's bits are
+                    # those of the pairs it touches (an alternating pair moves
+                    # its word diagonally, less than two single steps), per
+                    # symbol error since w_ev carries the event's error count
+                    pat = ev_pats[i_ev]
+                    if p_err_up:
+                        step = int(order[j + 1]) - s_j
+                        b_up = pair_event_bits(tuple(step * int(e) for e in pat), s_j) / pat.size
+                    if p_err_dn:
+                        step = int(order[j - 1]) - s_j
+                        b_dn = pair_event_bits(tuple(step * int(e) for e in pat), s_j) / pat.size
                 ser += w_ev * (p_err_up + p_err_dn) * level_probs[s_j]
                 nbe += w_ev * (p_err_up * b_up + p_err_dn * b_dn) * level_probs[s_j]
             if pdf_eye is None:
@@ -1526,7 +1562,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 s_sym, b_sym = pr_symbol_decisions(
                     pdf_lv, v_centers, levels_norm * main, head,
                     composite=pr_composite, precoded=cfg.precode,
-                    bit_dist=bit_dist, level_probs=level_probs)
+                    bit_dist=bit_dist, level_probs=level_probs,
+                    pair_cond=pair_cond, pair_words=pair_words)
                 ser_v, ber_v = s_sym, b_sym / bits_per_sym
             fine_vals[float(off + frac)] = (ser_v, ber_v)
             continue
@@ -1538,7 +1575,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             s_sym, b_sym = pr_symbol_decisions(
                 pdf_lv if mlsd_mem == 0 else noisy(1.0), v_centers, levels_norm * main, head,
                 composite=pr_composite, precoded=cfg.precode,
-                bit_dist=bit_dist, level_probs=level_probs)
+                bit_dist=bit_dist, level_probs=level_probs,
+                pair_cond=pair_cond, pair_words=pair_words)
             ser_sym_phi[pi], ber_sym_phi[pi] = s_sym, b_sym / bits_per_sym
             head_energy_phi[pi] = float(np.sum(np.square(head[1:])))
             if mlsd_mem == 0:
