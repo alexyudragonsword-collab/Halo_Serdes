@@ -13,7 +13,9 @@
   ADC 0.96–1.20 不动;指纹只有合成 PAM6 的 2 个 1e-16 量级的值动。
 - 余项:B6 按符号的比特矩阵(P2 #33,BER 比 SER 多 1.1–1.3×);串扰 PDF 的 `same` 卷积同样偏一格(新登记 P2 #36);带 DFE 的 PAM6 格 0.63× 未查。
 - 文档:ROADMAP #35 清空(登记时的猜测标为推翻)、`cairn/448G调制格式.md` §2 / §3 / §7、pitfalls 两条、CHANGELOG。
-- 验证:{TBD_P35_VERIFY}
+- 验证:本地全量 1198 passed / 1 skipped(+3);`HALO_NO_JIT=1` 下两个格式测试文件 36 passed / 8 skipped(交叉格 `needs_jit`);ruff、Cython
+  (mapping / statistical);指纹 980 个值只有合成 PAM6 的 2 个 1e-16 量级的数动;示例 46 重跑 PAM6 统计列动 0.01–0.03 dB、期望输出与引用它的
+  文档已更新,`derived` 12 个数 102 处成立;其余示例只走未改的路径(CI examples-full 复核)。
 
 ## 2026-10-15 · 448G/lane 调制格式比较:PAM6 / PAM8 进字母表,示例 46(feat/448g-formats)
 
