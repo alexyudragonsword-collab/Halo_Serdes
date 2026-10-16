@@ -295,7 +295,10 @@ def _convolve_centred(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """``a * b`` on ``a``'s grid, both centred on bin ``n // 2`` as ``isi_pdf``
     lays its PDFs out. ``np.convolve(mode="same")`` puts the centre of an
     even-length grid one bin late -- a systematic shift of one ``dv`` per
-    convolution, 4-7 % of SER four sigma out on a flat channel."""
+    convolution, 4-7 % of SER four sigma out on a flat channel, and 8 % (NRZ)
+    to 22 % (PAM4) of SER with eight aggressors whose coupling is nil. The
+    odd-length noise kernels (``gaussian_kernel``) are not affected: ``same``
+    centres those."""
     ic = a.size // 2
     return np.convolve(a, b)[ic: ic + a.size]
 
@@ -1314,9 +1317,9 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             if xc.size:
                 xc = xc[np.abs(xc) >= 1e-4 * np.abs(xc).max()]
             xcs.append(xc)
-            pdf = np.convolve(pdf, isi_pdf(xc, levels_norm, v_centers), mode="same")
+            pdf = _convolve_centred(pdf, isi_pdf(xc, levels_norm, v_centers))
         for _, x_pdf in x_drift:
-            pdf = np.convolve(pdf, x_pdf, mode="same")
+            pdf = _convolve_centred(pdf, x_pdf)
         pdf_isi = pdf
         pdf_isi_lv = None
         if pair_pdf is not None:
@@ -1337,15 +1340,15 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             pdf = isi_pdf(np.correlate(d_ev, c_full, "full") / dd, levels_norm, v_centers,
                           level_probs)
             for xc in xcs:
-                pdf = np.convolve(pdf, isi_pdf(np.correlate(d_ev, xc, "full") / dd,
-                                               levels_norm, v_centers), mode="same")
+                pdf = _convolve_centred(pdf, isi_pdf(np.correlate(d_ev, xc, "full") / dd,
+                                                     levels_norm, v_centers))
             for k, (sets, _) in enumerate(x_drift):
                 key = (k, d_ev.tobytes())
                 if key not in drift_projected:   # independent of the victim's phase
                     drift_projected[key] = np.mean(
                         [isi_pdf(np.correlate(d_ev, xc, "full") / dd, levels_norm, v_centers)
                          for xc in sets], axis=0)
-                pdf = np.convolve(pdf, drift_projected[key], mode="same")
+                pdf = _convolve_centred(pdf, drift_projected[key])
             return pdf
 
         def noisy(g_ev: float, pdf_base: np.ndarray | None = None) -> list:

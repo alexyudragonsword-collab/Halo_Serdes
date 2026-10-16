@@ -104,11 +104,16 @@ jobs:
         with:
           path: Halo_Serdes
       - name: Checkout pll_simulator (pinned)
+        # pll_simulator is private: the default GITHUB_TOKEN cannot read it, so
+        # the repository secret PLL_SIMULATOR_TOKEN (a fine-grained PAT with
+        # Contents: read on pll_simulator) does; without the secret this falls
+        # back to the default token, which fails on a private sibling.
         uses: actions/checkout@v4
         with:
           repository: alexyudragonsword-collab/pll_simulator
           ref: 931cfaf48aaaf693eefa7088d41c608ee3450b97
           path: _siblings/pll_simulator
+          token: ${{ secrets.PLL_SIMULATOR_TOKEN || github.token }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

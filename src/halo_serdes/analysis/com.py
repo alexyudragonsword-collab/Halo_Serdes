@@ -54,7 +54,8 @@ from ..config.schema import LinkConfig
 from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.ffe import _conv_matrix
-from ..engine.statistical import _shift_add, adc_noise_sigma, gaussian_kernel, isi_pdf
+from ..engine.statistical import (_convolve_centred, _shift_add, adc_noise_sigma, gaussian_kernel,
+                                  isi_pdf)
 from ..engine.static_link import _levels
 
 
@@ -292,7 +293,7 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
     dv = v[1] - v[0]
     pdf = isi_pdf(b["resid"], levels_norm, v)
     for ac in b["agg"]:
-        pdf = np.convolve(pdf, isi_pdf(ac, levels_norm, v), mode="same")
+        pdf = _convolve_centred(pdf, isi_pdf(ac, levels_norm, v))
     gk = gaussian_kernel(float(np.hypot(b["sig_n"], b["sig_rj_v"])), dv)
     if gk.size > 1:
         pdf = np.convolve(pdf, gk, mode="same")

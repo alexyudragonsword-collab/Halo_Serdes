@@ -3,6 +3,21 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-16 · 串扰 / 漂移 PDF 的卷积按中心对齐(fix/xtalk-convolve-centred,ROADMAP P2 #36)
+
+- 探针:平信道 + AWGN 上给耦合为零(−120 dB)的 aggressor,统计 SER 每个多 0.2–0.6 %,8 个多 8 %(NRZ)/ 22 %(PAM4);准同步漂移路径同;
+  COM 8 个少 0.25 dB。都是 `np.convolve(mode="same")` 在偶数网格上每卷一次晚一格(P2 #35 顺带发现时的猜测"百分之几"偏小:深尾更大)。
+- 改:`statistical.py` 四处 + `analysis/com.py` 一处换 `_convolve_centred`;高斯核是奇数长度,不动。改后耦合为零的 aggressor 逐位等于没有。
+- 数:示例 24 统计 BER 6.41e-32 … 3.90e-3 → 5.42e-32 … 3.89e-3(−18 dB 处两引擎 0.71×);示例 28 COM 各高 0.03–0.06 dB、示例 26 一点 −1.96 → −1.94 dB(本地漏跑,CI examples-full 抓到);示例 44 统计 / 时域 同步 24 次 0.44–1.15× → 0.44–1.11×、准同步 0.72–0.95× → 0.70–0.93×(统计读数低 1–4 %,时域不变);
+  指纹 980 个值 0 变(预设无串扰)。
+- 验证:本地全量 1202 passed / 1 skipped(+3);`HALO_NO_JIT=1` 下 crosstalk / statistical / com 三个文件 75 passed;ruff;Cython(statistical / com);
+  指纹 980 个值 bit-identical;示例 24 / 28 / 44 的期望重 accept(45 不变),`derived` 12 个数 102 处成立。
+- 文档:ROADMAP #36 清空;`cairn/多lane建模.md` §3 加注;pitfalls 那条补判别法(耦合为零的 aggressor 必须逐位等于没有);CHANGELOG。
+- CI(PR #93,头 6f6484f):测试矩阵两套 jit 11–22 分钟、3.11 nojit 20–31、3.10 nojit 24–42 分钟,examples 10–18、examples-full 23 分钟(85dd594 上抓到
+  本地漏跑的示例 26),lint、import-clean、RTL lockstep 绿;Android(a8d0842)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(5 / 4 / 5 分钟);
+  pyinstaller 3、nuitka 83、nuitka-onefile 130 分钟绿。`vendor-drift` 红过三轮:兄弟仓库 pll_simulator 当天转私有,默认 GITHUB_TOKEN 拉不到
+  ("Repository not found");workflow 改为优先用 secret `PLL_SIMULATOR_TOKEN`、无则退回默认 token,用户随后把仓库改回公开,re-run 绿。
+
 ## 2026-10-16 · PAM6 成对符号的 ISI 相关性(fix/pam6-ms-lock,ROADMAP P2 #35)
 
 - 先按登记的猜测查锁定相位:两引擎都锁在 +0.209 UI,时域冻结在那里读 2.4e-4、自由运行 1.9e-4 —— 不是环路。给时域喂独立同分布符号
