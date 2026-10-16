@@ -14,7 +14,7 @@ receiver scan (statistical engine, KP4): reach [dB @ 56 GHz], trellis states, re
   PAM6  21-tap, delta                   16.57                   36    6.44 pJ/b  [~s]
   PAM6  21-tap, 1 + aD, K = 1           18.84                    6    4.68 pJ/b  [~s]
   PAM6  21-tap, 1 + aD + bD^2, K = 2    19.54                   36    6.67 pJ/b  [~s]
-  PAM6  11-tap, delta                   16.40                   36    6.22 pJ/b  [~s]
+  PAM6  11-tap, delta                   16.39                   36    6.22 pJ/b  [~s]
   PAM8  21-tap, delta                   16.90                   64    8.10 pJ/b  [~s]
   PAM8  21-tap, 1 + aD, K = 1           19.06                    8    4.35 pJ/b  [~s]
   PAM8  21-tap, 1 + aD + bD^2, K = 2    19.41                   64    8.41 pJ/b  [~s]
@@ -83,7 +83,7 @@ table 2: BER against loss @ 56 GHz, chosen receivers (statistical engine, KP4 ba
 table 3: DAC bits and transmitter noise (21-tap delta receiver, statistical reach, KP4)
 format      ideal     7 bit     6 bit     5 bit   bits needed (0.1 dB)   SNDR @ needed      0 mV    10 mV    20 mV   noise for -0.5 dB
   PAM4      16.44     16.43     16.41     16.31            6             40.2 dB     16.44    16.32    15.77   10 mV  [~s]
-  PAM6      16.57     16.55     16.45     16.02            7             41.6 dB     16.57    16.14    14.23   10 mV  [~s]
+  PAM6      16.57     16.54     16.46     16.03            7             41.6 dB     16.57    16.14    14.23   10 mV  [~s]
   PAM8      16.90     16.85     16.69     15.44            7             41.9 dB     16.90    15.66       --   0 mV  [~s]
 
 appendix: every receiver cell (statistical engine, KP4)
@@ -95,7 +95,7 @@ format  receiver                        reach [dB]  states   Viterbi pJ/b   rece
   PAM6  21-tap, delta                    16.57                 36       2.24            6.44
   PAM6  21-tap, 1 + aD, K = 1            18.84                  6       0.48            4.68
   PAM6  21-tap, 1 + aD + bD^2, K = 2     19.54                 36       2.47            6.67
-  PAM6  11-tap, delta                    16.40                 36       2.24            6.22
+  PAM6  11-tap, delta                    16.39                 36       2.24            6.22
   PAM8  21-tap, delta                    16.90                 64       4.39            8.10
   PAM8  21-tap, 1 + aD, K = 1            19.06                  8       0.65            4.35
   PAM8  21-tap, 1 + aD + bD^2, K = 2     19.41                 64       4.71            8.41
