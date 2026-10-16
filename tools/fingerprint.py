@@ -184,7 +184,10 @@ def record_synthetic() -> dict:
                 out["cascade"] = _guarded(lambda: _cascade_values(run_cascade(oc3)))
     # the 448G formats (2026-10-15): the ADC receiver with a 1 + aD target
     # and a reduced-state trellis on PAM6 (corner32 pairs) and PAM8, all
-    # three engines plus the statistical engine's own starting FFE
+    # three engines plus the statistical engine's own starting FFE. The
+    # noise is 10 mV so the statistical BER is finite (7e-11 / 2e-6): at
+    # 2 mV it underflowed to 0 and the row saw nothing of the PAM6 bit
+    # accounting (2026-10-16, ROADMAP P2 #33 / P3 #12)
     from halo_serdes.config.schema import FfeConfig, MlsdConfig, PrConfig
     from halo_serdes.engine.cascade import initial_ffe_taps
 
@@ -194,7 +197,7 @@ def record_synthetic() -> dict:
             channel=ChannelConfig(kind="analytic", length_m=0.15),
             tx=TxConfig(swing=1.0, fir_taps=(-0.06, 1.0, -0.12), fir_n_pre=1),
             rx=RxConfig(arch="adc_dsp", ffe=FfeConfig(n_pre=3, n_post=7, adapt="lms", mu=3e-5),
-                        mlsd=MlsdConfig(kind="viterbi", memory=1, state_memory=1), noise_rms=2e-3),
+                        mlsd=MlsdConfig(kind="viterbi", memory=1, state_memory=1), noise_rms=1e-2),
             sim=SimConfig(n_symbols=6000, seed=11, pattern="prbs13"),
             pr=PrConfig(target=(1.0, 0.5), adapt="mmse"))
         out[f"{fmt}/time"] = _guarded(lambda: result_values(run_time_link(cfg)))
