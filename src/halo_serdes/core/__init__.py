@@ -12,6 +12,7 @@ from .mapping import (
     level_probabilities,
     levels_for,
     n_levels_of,
+    neighbour_conditional,
     nrz_levels,
     pam4_levels,
     pam6_levels,
@@ -30,6 +31,6 @@ __all__ = [
     "gray_encode_bits", "gray_decode_symbols", "pam4_levels", "nrz_levels",
     "bits_to_nrz_symbols", "bits_to_pam4_symbols",
     "FORMATS", "n_levels_of", "bits_per_symbol_of", "levels_for", "pam6_levels", "pam8_levels",
-    "level_probabilities", "bits_needed", "bits_to_symbols", "symbols_to_bits",
+    "level_probabilities", "neighbour_conditional", "bits_needed", "bits_to_symbols", "symbols_to_bits",
     "bit_distance_matrix", "count_bit_errors",
 ]

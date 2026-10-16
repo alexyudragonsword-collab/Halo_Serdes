@@ -224,7 +224,9 @@ from ..cdr.linear import (
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
-from ..core.mapping import GRAY_BIT_DISTANCE, bit_distance_matrix, level_probabilities
+from ..core.mapping import (
+    GRAY_BIT_DISTANCE, bit_distance_matrix, level_probabilities, neighbour_conditional,
+)
 from ..core.sampler import baud_samples, upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
@@ -287,6 +289,27 @@ def isi_pdf(cursor_amps: np.ndarray, levels_norm: np.ndarray,
             _shift_add(new, pdf, c * a / dv, float(pa))
         pdf = new
     return pdf
+
+
+def _pair_isi_pdfs(c_pair: np.ndarray, levels_norm: np.ndarray, v_centers: np.ndarray,
+                   level_probs: np.ndarray, cond: np.ndarray) -> tuple[list[np.ndarray], np.ndarray]:
+    """The ISI of the two neighbouring cursors ``c_pair`` = (c(-1), c(+1))
+    when the symbols come in pairs (PAM6's corner32 map): per transmitted
+    level ``k`` the partner -- the right neighbour half the time, the left
+    one the other half -- is drawn from ``cond[k]`` and the other neighbour
+    from the occupancy. Returns the per-level PDFs and the unconditional one
+    (the partner drawn from the occupancy too, what independent symbols
+    give)."""
+    c_m, c_p = float(c_pair[0]), float(c_pair[1])
+    free_m = isi_pdf(np.array([c_m]), levels_norm, v_centers, level_probs)
+    free_p = isi_pdf(np.array([c_p]), levels_norm, v_centers, level_probs)
+    per_level = []
+    for k in range(levels_norm.size):
+        part_p = isi_pdf(np.array([c_p]), levels_norm, v_centers, cond[k])
+        part_m = isi_pdf(np.array([c_m]), levels_norm, v_centers, cond[k])
+        per_level.append(0.5 * (np.convolve(part_p, free_m, mode="same")
+                                + np.convolve(free_p, part_m, mode="same")))
+    return per_level, np.convolve(free_p, free_m, mode="same")
 
 
 def _pr_patterns(families: tuple[str, ...], max_len: int) -> list[np.ndarray]:
@@ -950,6 +973,12 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # aggressors' levels stay equiprobable, as the time engine draws them
     level_probs = level_probabilities(cfg.modulation)
     bit_dist = bit_distance_matrix(cfg.modulation)
+    # PAM6's pairs: the partner's level depends on this one's (an outer
+    # symbol is never paired with an outer one), so the +-1 cursors' ISI is
+    # per level. Taken as independent, the time engine read 1.6-2.8x below
+    # this engine on the mixed-signal receiver, where those cursors carry
+    # the ISI (ROADMAP P2 #35); the ADC receiver's FFE flattens them
+    pair_cond = neighbour_conditional(cfg.modulation)
 
     peak = int(np.argmax(np.abs(pulse.y)))
     pr_active = cfg.pr.active
@@ -1257,7 +1286,16 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             c_bin = np.array([isi[p] for p in pos])
             isi = isi.copy()
             isi[pos] = 0.0
-        pdf = isi_pdf(isi, levels_norm, v_centers, level_probs)
+        pair_pdf = None                     # the +-1 cursors per level (PAM6 pairs)
+        if pair_cond is not None and pattern_sigma is None:
+            pos = [n_pre - 1, n_pre]        # c(-1), c(+1) with the main cursor removed
+            c_pair = np.array([isi[q] for q in pos])
+            isi_rest = isi.copy()
+            isi_rest[pos] = 0.0
+            pdf = isi_pdf(isi_rest, levels_norm, v_centers, level_probs)
+            pair_pdf = _pair_isi_pdfs(c_pair, levels_norm, v_centers, level_probs, pair_cond)
+        else:
+            pdf = isi_pdf(isi, levels_norm, v_centers, level_probs)
         xcs = []
         for xy in x_slicer:
             # every one of the aggressor's cursors the victim's sampling
@@ -1271,6 +1309,11 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         for _, x_pdf in x_drift:
             pdf = np.convolve(pdf, x_pdf, mode="same")
         pdf_isi = pdf
+        pdf_isi_lv = None
+        if pair_pdf is not None:
+            pdf_isi_lv = [np.convolve(pdf, pk, mode="same") for pk in pair_pdf[0]]
+            # the partial-response events project the independent-symbol PDF
+            pdf_isi = np.convolve(pdf, pair_pdf[1], mode="same")
 
         def projected_isi(d_ev: np.ndarray) -> np.ndarray:
             """The ISI PDF error event d_ev sees. The detector takes it when
@@ -1329,10 +1372,16 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     pdf_lv.append(acc / max(acc.sum(), 1e-300))
             elif level_sigma is None:
                 nk = noise_k if g_ev == 1.0 else gaussian_kernel(noise_sigma / g_ev, dv)
-                if nk.size > 1:
-                    pdf = np.convolve(pdf, nk, mode="same")
-                pdf = pdf / max(pdf.sum(), 1e-300)
-                pdf_lv = [pdf] * n_levels
+                if pdf_isi_lv is not None and pdf_base is None:
+                    pdf_lv = []
+                    for pk in pdf_isi_lv:
+                        q = np.convolve(pk, nk, mode="same") if nk.size > 1 else pk
+                        pdf_lv.append(q / max(q.sum(), 1e-300))
+                else:
+                    if nk.size > 1:
+                        pdf = np.convolve(pdf, nk, mode="same")
+                    pdf = pdf / max(pdf.sum(), 1e-300)
+                    pdf_lv = [pdf] * n_levels
             else:
                 pdf_lv = []
                 for sk in level_sigma:

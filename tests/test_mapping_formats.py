@@ -223,3 +223,19 @@ def test_precode_mod_n_round_trips():
     for n in (6, 8):
         s = np.random.default_rng(n).integers(0, n, 500)
         assert np.array_equal(mp.unprecode_1plusd(mp.precode_1plusd(s, n), n), s)
+
+
+def test_pam6_partner_conditional_matches_the_table_and_the_occupancy():
+    """An outer symbol's partner is never outer; an inner one's is uniform;
+    weighted by the occupancy the rows give the occupancy back; the other
+    formats have independent symbols."""
+    c = mp.neighbour_conditional("pam6")
+    assert c.shape == (6, 6) and np.allclose(c.sum(axis=1), 1.0)
+    assert np.allclose(c[0], [0, 0.25, 0.25, 0.25, 0.25, 0]) and np.allclose(c[5], c[0])
+    assert np.allclose(c[1:5], 1.0 / 6.0)
+    p = mp.level_probabilities("pam6")
+    assert np.allclose(p @ c, p)
+    joint = p[:, None] * c                         # a pair read either way round
+    assert np.allclose(joint, joint.T)
+    for mod in ("nrz", "pam4", "pam8"):
+        assert mp.neighbour_conditional(mod) is None

@@ -192,6 +192,26 @@ def level_probabilities(modulation: str) -> np.ndarray:
     return counts / counts.sum()
 
 
+def neighbour_conditional(modulation: str) -> np.ndarray | None:
+    """``C[k, j]``: how often the other symbol of a PAM6 pair is level ``j``
+    when this one is ``k`` -- None for the formats whose symbols are
+    independent. The corner32 map never pairs an outer level with an outer
+    one, so an outer symbol's partner is uniform over the inner four and an
+    inner symbol's over all six; averaged over ``level_probabilities`` the
+    rows give back the occupancy. Each symbol's partner is its right
+    neighbour in the pair's first position and its left one in the second,
+    equally often. The statistical engine conditions the +-1 cursors' ISI
+    on it: taken as independent, the time engine's SER on the mixed-signal
+    receiver read 1.6-2.8x below it (ROADMAP P2 #35)."""
+    if modulation != "pam6":
+        return None
+    cond = np.zeros((6, 6))
+    for k in range(6):
+        cond[k] += np.bincount(_PAM6_WORD_V[_PAM6_WORD_U == k], minlength=6)
+        cond[k] += np.bincount(_PAM6_WORD_U[_PAM6_WORD_V == k], minlength=6)
+    return cond / cond.sum(axis=1, keepdims=True)
+
+
 def bits_needed(n_symbols: int, modulation: str) -> int:
     """Bits that ``bits_to_symbols`` consumes to make at least ``n_symbols``."""
     if modulation == "pam6":
