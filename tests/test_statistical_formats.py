@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from halo_serdes.analysis.metrics import pam4_ser_awgn, pamN_ser_awgn, qfunc
+from halo_serdes.cdr.adc_kernel import _adc_rx_py, adc_rx
 from halo_serdes.channel import ChannelModel
 from halo_serdes.config import LinkConfig
 from halo_serdes.config.schema import (
@@ -26,6 +27,12 @@ from halo_serdes.engine.statistical import (
     _bb_pairs, isi_pdf, pr_symbol_decisions, run_statistical, tx_edge_jitter,
 )
 from halo_serdes.tx.pipeline import TxPipeline
+
+# the invariant-3 cells run 300-400k symbols on the time engine: minutes each
+# through the pure-Python kernels, and the 3.10 nojit CI leg ran past its
+# 45-minute cap with them (PR #91); the closed forms above run on both
+needs_jit = pytest.mark.skipif(adc_rx is _adc_rx_py,
+                               reason="engine-level cross-check; minutes through the pure-Python kernels")
 
 
 def _flat_channel(f_max=128e9, n=1025):
@@ -199,6 +206,7 @@ def test_dfse_kernel_runs_six_levels():
 
 # ---- invariant #3: both engines within 2x -----------------------------------
 
+@needs_jit
 @pytest.mark.parametrize("mod,length_m,noise,n_dfe,ctle_db", [
     ("pam6", 0.2, 0.005, 2, None), ("pam6", 0.15, 0.006, 0, None),
     ("pam8", 0.15, 0.004, 2, 4.0), ("pam8", 0.12, 0.003, 0, 4.0)])
@@ -247,6 +255,7 @@ def _adc_cfg(mod, length_m, pr=None, memory=1, n_sym=300_000):
         sim=SimConfig(n_symbols=n_sym, seed=3, pattern="prbs13"), pr=pr or PrConfig())
 
 
+@needs_jit
 @pytest.mark.parametrize("mod,length_m,pr", [
     ("pam6", 0.18, None), ("pam8", 0.15, None),
     ("pam6", 0.20, PrConfig(target=(1.0, 0.5), adapt="mmse")),
