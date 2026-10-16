@@ -221,7 +221,7 @@ pair map) at 190, PAM8 at 158, paying 4.4 / 7.4 dB of level spacing. Example 46 
 | PAM8 158 GBd | 同 / same | 19.38 dB | 8.41 | 64 |
 
 PAM4 赢 0.79 dB、省 0.70 pJ/b,三个种子方向一致 —— 但三者只差 1 dB 量级:更高的波特率在这条信道上大体被更宽的电平间距抵掉,赢家由收端定。
-只看 delta 收端 PAM8 领先(16.90 对 16.57 / 16.44 dB);PAM4 靠两光标 PR + 16 状态 DFSE 多拿 +4.25 dB 翻盘,而 PAM8 的同一招要 64 状态。
+只看 delta 收端 PAM8 领先(16.90 对 16.56 / 16.44 dB);PAM4 靠两光标 PR + 16 状态 DFSE 多拿 +4.25 dB 翻盘,而 PAM8 的同一招要 64 状态。
 发端口径:PAM4 6 bit DAC 够(reach 掉 0.03 dB),PAM6 / PAM8 要 7 bit;10 mV 发端噪声 PAM4 掉 0.12 dB、PAM8 掉 1.24 dB。
 KP4+BCH 下 PAM4 的统计 reach(20.1 dB)时域没确认 —— 工作点 pre-FEC 7e-3 处逐符号判决 SER 0.2,判决导向环路失锁。
 802.3dj 的 448G 规范值一律未核实;混合信号包络对 PAM6 / PAM8 也未标定。细节与余项见 `cairn/448G调制格式.md`。
