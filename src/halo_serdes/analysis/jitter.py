@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import math
+
 import numpy as np
 from scipy.optimize import curve_fit
 
@@ -248,11 +250,11 @@ def pattern_period(pattern: str, modulation: str) -> int:
     if p.startswith("prbs"):
         order = int(p[4:])
         period_bits = 2 ** order - 1
-        if modulation == "pam4":
-            # 2 bits/symbol; period_bits is odd so full period is 2*period_bits
-            # bits == (2^N-1) symbols only after two LFSR laps -> lcm handling
-            return period_bits  # symbol pattern realigns every 2^N-1 symbols
-        return period_bits
+        # the map takes g bits to s symbols (NRZ 1 -> 1, PAM4 2 -> 1, PAM8
+        # 3 -> 1, PAM6 5 -> 2); the symbols repeat once a whole number of
+        # groups covers a whole number of LFSR laps
+        g, s = {"nrz": (1, 1), "pam4": (2, 1), "pam6": (5, 2), "pam8": (3, 1)}[modulation]
+        return period_bits // math.gcd(period_bits, g) * s
     raise ValueError(f"no known period for pattern {pattern!r}")
 
 

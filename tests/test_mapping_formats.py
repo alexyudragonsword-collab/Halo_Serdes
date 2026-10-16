@@ -1,0 +1,225 @@
+"""PAM6 and PAM8 join NRZ and PAM4: alphabets, bit mappings, bit-error counting.
+
+448G/lane format comparison (``examples/46_448g_formats.py``). The level
+count and bits per symbol come from ``modulation`` alone (invariant 1); PAM8
+is 3-bit Gray per symbol, PAM6 maps 5 bits onto a pair of symbols (32 of the
+36 pairs, the four corner pairs left out). NRZ and PAM4 paths are untouched:
+the fingerprint and every expected example output stay bit-identical.
+"""
+
+import dataclasses
+
+import numpy as np
+import pytest
+
+from halo_serdes.config import LinkConfig
+from halo_serdes.config.schema import RxConfig, SimConfig, TxConfig, ms_envelope
+from halo_serdes.core import mapping as mp
+from halo_serdes.core.prbs import symbol_checker
+from halo_serdes.engine.static_link import _levels, make_pattern
+
+FORMATS = ("nrz", "pam4", "pam6", "pam8")
+
+
+# ------------------------------------------------------------------ config
+
+def test_n_levels_and_bits_per_symbol():
+    expect = {"nrz": (2, 1), "pam4": (4, 2), "pam6": (6, 2.5), "pam8": (8, 3)}
+    for m, (n, b) in expect.items():
+        cfg = LinkConfig(modulation=m)
+        assert cfg.n_levels == n and cfg.bits_per_symbol == b
+        assert isinstance(cfg.n_levels, int)
+        if m != "pam6":
+            assert isinstance(cfg.bits_per_symbol, int)
+        assert cfg.data_rate == pytest.approx(cfg.symbol_rate * b)
+        assert mp.n_levels_of(m) == n and mp.bits_per_symbol_of(m) == b
+
+
+def test_pam5_rejected_pam6_pam8_accepted():
+    with pytest.raises(ValueError, match="modulation"):
+        LinkConfig(modulation="pam5")
+    for m in ("pam6", "pam8"):
+        assert LinkConfig(modulation=m).modulation == m
+
+
+@pytest.mark.parametrize("mod, bad, good", [("pam6", 2, 3), ("pam8", 2, 3), ("pam4", 1, 2)])
+def test_dac_bits_must_hold_the_alphabet(mod, bad, good):
+    with pytest.raises(ValueError, match="dac_bits"):
+        LinkConfig(modulation=mod, tx=TxConfig(dac_bits=bad))
+    LinkConfig(modulation=mod, tx=TxConfig(dac_bits=good))
+
+
+def test_pam6_map_is_validated_and_defaults_to_corner32():
+    assert TxConfig().pam6_map == "corner32"
+    with pytest.raises(ValueError, match="pam6_map"):
+        TxConfig(pam6_map="x")
+
+
+def test_mm_pd_input_auto_is_the_equalised_sample_above_two_levels():
+    for m, exp in (("nrz", "adc"), ("pam4", "ffe"), ("pam6", "ffe"), ("pam8", "ffe")):
+        assert LinkConfig(modulation=m, rx=RxConfig(arch="adc_dsp")).mm_pd_input == exp
+
+
+def test_ms_envelope_is_known_for_nrz_pam4_only():
+    assert ms_envelope("nrz") == (24e9, 30e9) and ms_envelope("pam4") == (32e9, 36e9)
+    assert ms_envelope("pam6") is None and ms_envelope("pam8") is None
+
+
+# ------------------------------------------------------------------ levels
+
+def test_levels_are_uniform_and_symmetric():
+    assert mp.pam6_levels(2.0) == pytest.approx([-1, -0.6, -0.2, 0.2, 0.6, 1])
+    assert mp.pam8_levels(2.0) == pytest.approx(np.arange(-7, 8, 2) / 7.0)
+    for m in FORMATS:
+        lv = mp.levels_for(m, 1.0)
+        assert lv.size == mp.n_levels_of(m)
+        assert np.all(np.diff(lv) > 0) and lv[0] == -0.5 and lv[-1] == 0.5
+        assert np.allclose(np.diff(lv), np.diff(lv)[0])
+        assert np.all(lv != 0.0)                       # the sign detectors need no level at 0
+        assert np.array_equal(_levels(LinkConfig(modulation=m)), lv)
+    assert np.array_equal(mp.levels_for("pam4", 1.0, 0.9), mp.pam4_levels(1.0, 0.9))
+    assert np.array_equal(mp.levels_for("nrz", 1.0), mp.nrz_levels(1.0))
+
+
+def test_level_probabilities():
+    for m in ("nrz", "pam4", "pam8"):
+        p = mp.level_probabilities(m)
+        assert p.size == mp.n_levels_of(m) and np.allclose(p, 1.0 / p.size)
+    p6 = mp.level_probabilities("pam6")
+    assert p6 == pytest.approx([1 / 8, 3 / 16, 3 / 16, 3 / 16, 3 / 16, 1 / 8])
+
+
+# ------------------------------------------------------------------ PAM8 Gray
+
+def test_pam8_gray_adjacent_levels_differ_in_one_bit():
+    d = mp.bit_distance_matrix("pam8")
+    assert d.shape == (8, 8) and np.all(np.diag(d) == 0) and np.array_equal(d, d.T)
+    assert np.all(np.diag(d, 1) == 1)
+    bits = np.random.default_rng(1).integers(0, 2, 3 * 1000)
+    sym = mp.bits_to_symbols(bits, "pam8")
+    assert sym.min() >= 0 and sym.max() <= 7 and sym.size == 1000
+    assert np.array_equal(mp.symbols_to_bits(sym, "pam8"), bits)
+    assert np.array_equal(mp.bit_distance_matrix("pam4"), mp.GRAY_BIT_DISTANCE)
+    assert np.array_equal(mp.bit_distance_matrix("nrz"), [[0, 1], [1, 0]])
+
+
+# ------------------------------------------------------------------ PAM6 corner32
+
+CORNERS = {(0, 0), (0, 5), (5, 0), (5, 5)}
+
+
+def test_pam6_corner32_table():
+    words = mp.PAM6_PAIR_WORDS
+    assert len(words) == 32 and len(set(words)) == 32
+    assert not (set(words) & CORNERS)
+    assert all(0 <= u < 6 and 0 <= v < 6 for u, v in words)
+    assert tuple(mp._derive_pam6_corner32()) == tuple(words)
+    # the greedy rule keeps grid neighbours close in Hamming distance
+    dist = []
+    code = {pair: w for w, pair in enumerate(words)}
+    for (u, v), w in code.items():
+        for du, dv in ((1, 0), (0, 1)):
+            nb = (u + du, v + dv)
+            if nb in code:
+                dist.append(bin(w ^ code[nb]).count("1"))
+    assert np.mean(dist) < 1.6, np.mean(dist)
+
+
+@pytest.mark.parametrize("bad, good", [((0, 0), (0, 1)), ((0, 5), (0, 4)), ((5, 0), (5, 1)), ((5, 5), (5, 4))])
+def test_pam6_invalid_pair_decodes_with_the_second_symbol_moved_inward(bad, good):
+    assert mp.PAM6_DECODE[bad] == mp.PAM6_DECODE[good]
+    assert mp.PAM6_PAIR_WORDS[mp.PAM6_DECODE[good]] == good
+
+
+def test_pam6_roundtrip_and_occupancy():
+    bits = np.random.default_rng(2).integers(0, 2, 5 * 4000)
+    sym = mp.bits_to_symbols(bits, "pam6")
+    assert sym.size == 8000 and sym.min() >= 0 and sym.max() <= 5
+    assert np.array_equal(mp.symbols_to_bits(sym, "pam6"), bits)
+    assert mp.symbols_to_bits(sym[:-1], "pam6").size == bits.size - 5     # a trailing single symbol is dropped
+    cfg = LinkConfig(modulation="pam6", sim=SimConfig(n_symbols=200_000, pattern="prbs13"))
+    occ = np.bincount(make_pattern(cfg), minlength=6) / 200_000
+    assert occ == pytest.approx(mp.level_probabilities("pam6"), abs=0.01)
+
+
+def test_pam6_effective_bit_distance_matrix():
+    b = mp.bit_distance_matrix("pam6")
+    assert b.shape == (6, 6) and np.all(np.diag(b) == 0) and np.all(b >= 0)
+    # one entry by hand: symbol 2 decided as 3, averaged over the partner and the position
+    code = {pair: w for w, pair in enumerate(mp.PAM6_PAIR_WORDS)}
+    acc = []
+    for first in (True, False):
+        ks = [k for k in range(6) if ((2, k) if first else (k, 2)) in code]
+        for k in ks:
+            sent = (2, k) if first else (k, 2)
+            got = (3, k) if first else (k, 3)
+            acc.append(bin(code[sent] ^ mp.PAM6_DECODE[got]).count("1"))
+    assert b[2, 3] == pytest.approx(np.mean(acc))
+
+
+# ------------------------------------------------------------------ counting
+
+def test_count_bit_errors_pam6_counts_exact_pairs():
+    code = {pair: w for w, pair in enumerate(mp.PAM6_PAIR_WORDS)}
+    ref = np.array([1, 2, 3, 4, 2, 2, 1, 1, 4])      # four pairs and a trailing symbol
+    rx = ref.copy()
+    rx[0] = 2                                        # first symbol of pair 0
+    rx[5] = 3                                        # second symbol of pair 2
+    r = mp.count_bit_errors(ref, rx, "pam6")
+    exp = bin(code[(1, 2)] ^ code[(2, 2)]).count("1") + bin(code[(2, 2)] ^ code[(2, 3)]).count("1")
+    assert r.n_checked == 20 and r.n_errors == exp
+    assert list(r.error_idx) == [0, 5]
+    # pairs follow the transmitted index: shifted by one position, the pairs re-form
+    r = mp.count_bit_errors(ref, rx, "pam6", ref_pos=np.arange(9) + 1)
+    assert r.n_checked == 20
+    exp = bin(code[(2, 3)] ^ code[(2, 3)]).count("1") + bin(code[(4, 2)] ^ code[(4, 3)]).count("1")
+    assert r.n_errors == exp
+    # a reference of -1 takes its pair out
+    ref2 = ref.copy()
+    ref2[1] = -1
+    assert mp.count_bit_errors(ref2, rx, "pam6").n_checked == 15
+
+
+def test_count_bit_errors_matches_the_checkers_on_nrz_pam4_pam8():
+    rng = np.random.default_rng(3)
+    ref = rng.integers(0, 4, 5000)
+    rx = np.where(rng.random(5000) < 0.05, rng.integers(0, 4, 5000), ref)
+    a, b = mp.count_bit_errors(ref, rx, "pam4"), symbol_checker(ref, rx, gray=True)
+    assert (a.n_checked, a.n_errors) == (b.n_checked, b.n_errors) and np.array_equal(a.error_idx, b.error_idx)
+    ref = rng.integers(0, 2, 1000)
+    rx = ref ^ (rng.random(1000) < 0.1)
+    r = mp.count_bit_errors(ref, rx, "nrz")
+    assert r.n_checked == 1000 and r.n_errors == int(np.sum(ref != rx))
+    ref = rng.integers(0, 8, 1000)
+    rx = np.where(rng.random(1000) < 0.1, rng.integers(0, 8, 1000), ref)
+    r = mp.count_bit_errors(ref, rx, "pam8")
+    assert r.n_checked == 3000
+    assert r.n_errors == int(np.sum(mp.symbols_to_bits(ref, "pam8") != mp.symbols_to_bits(rx, "pam8")))
+
+
+# ------------------------------------------------------------------ patterns
+
+@pytest.mark.parametrize("mod, n_lv", [("pam6", 6), ("pam8", 8)])
+def test_make_pattern_for_the_new_formats(mod, n_lv):
+    cfg = LinkConfig(modulation=mod, sim=SimConfig(n_symbols=30_000, pattern="prbs13"))
+    s = make_pattern(cfg)
+    assert s.size == 30_000 and s.min() == 0 and s.max() == n_lv - 1
+    assert mp.bits_needed(30_000, mod) >= 30_000 * mp.bits_per_symbol_of(mod)
+    for q in ("prbs13q", "prqs10"):
+        with pytest.raises(ValueError, match="PAM4"):
+            make_pattern(dataclasses.replace(cfg, sim=SimConfig(n_symbols=100, pattern=q)))
+
+
+def test_pattern_period_for_the_new_formats():
+    from halo_serdes.analysis import pattern_period
+
+    assert pattern_period("prbs13", "pam6") == 2 * 8191
+    assert pattern_period("prbs13", "pam8") == 8191
+    assert pattern_period("prbs20", "pam8") == (2 ** 20 - 1) // 3
+    assert pattern_period("prbs13", "pam4") == 8191 and pattern_period("prbs7", "nrz") == 127
+
+
+def test_precode_mod_n_round_trips():
+    for n in (6, 8):
+        s = np.random.default_rng(n).integers(0, n, 500)
+        assert np.array_equal(mp.unprecode_1plusd(mp.precode_1plusd(s, n), n), s)

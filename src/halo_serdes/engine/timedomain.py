@@ -96,7 +96,7 @@ def _tx_symbols(cfg: LinkConfig, symbols: np.ndarray) -> np.ndarray:
         return symbols
     from ..core.mapping import precode_1plusd
 
-    return precode_1plusd(symbols, 2 ** cfg.bits_per_symbol)
+    return precode_1plusd(symbols, cfg.n_levels)
 
 
 def _residual_ratios(eq_cursors: np.ndarray, eq_pre: int, n_dfe: int,
@@ -400,38 +400,49 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     if cfg.rx.arch == "adc_dsp":
         return _run_adc_link(cfg, channel, collect_eye, collect_jitter,
                              tx_ami, rx_ami, xtalk, symbols, progress)
-    from ..config.schema import (
-        MS_COMFORT_DATA_RATE,
-        MS_HARD_MAX_BAUD,
-        MS_LIMIT_DATA_RATE,
-    )
+    from ..config.schema import MS_HARD_MAX_BAUD, ms_envelope
 
-    comfort = MS_COMFORT_DATA_RATE.get(cfg.modulation, 16.0e9)
-    limit = MS_LIMIT_DATA_RATE.get(cfg.modulation, 16.0e9)
     tol = 1 + 1e-9
     mod = cfg.modulation.upper()
-    if cfg.data_rate > limit * tol or cfg.symbol_rate > MS_HARD_MAX_BAUD * tol:
+    env = ms_envelope(cfg.modulation)
+    if env is None:
+        # no calibrated envelope for this format (examples/12 measured NRZ
+        # and PAM4): say so, and keep only the hard baud ceiling
         import warnings
 
         warnings.warn(
-            f"mixed_signal arch at {cfg.data_rate / 1e9:.3g} Gb/s {mod} "
-            f"exceeds the mixed-signal envelope (absolute limit "
-            f"{limit / 1e9:.0f} Gb/s {mod} / hard ceiling "
-            f"{MS_HARD_MAX_BAUD / 1e9:.0f} GBd): the eye closes on the "
-            "reference channel and/or unmodeled circuit walls apply — use "
-            "rx.arch='adc_dsp' (exploration runs allowed, results outside "
-            "the supported envelope)",
-            stacklevel=2)
-    elif cfg.data_rate > comfort * tol:
-        import warnings
+            f"mixed_signal arch on {mod}: the mixed-signal envelope is calibrated "
+            "for NRZ and PAM4 only -- 此格式的包络未核实 (unverified); only the hard "
+            f"ceiling of {MS_HARD_MAX_BAUD / 1e9:.0f} GBd applies", stacklevel=2)
+        if cfg.symbol_rate > MS_HARD_MAX_BAUD * tol:
+            warnings.warn(
+                f"mixed_signal arch at {cfg.symbol_rate / 1e9:.3g} GBd {mod} exceeds the "
+                f"mixed-signal envelope's hard ceiling ({MS_HARD_MAX_BAUD / 1e9:.0f} GBd) -- use "
+                "rx.arch='adc_dsp' (exploration runs allowed)", stacklevel=2)
+    else:
+        comfort, limit = env
+        if cfg.data_rate > limit * tol or cfg.symbol_rate > MS_HARD_MAX_BAUD * tol:
+            import warnings
 
-        warnings.warn(
-            f"mixed_signal arch at {cfg.data_rate / 1e9:.3g} Gb/s {mod} is "
-            f"in the marginal zone (comfort {comfort / 1e9:.0f} Gb/s, "
-            f"absolute limit {limit / 1e9:.0f} Gb/s {mod}): post-DFE eye "
-            "margin on the reference channel drops below ~25% of the level "
-            "spacing — expect FEC-dependent operation and verify per channel",
-            stacklevel=2)
+            warnings.warn(
+                f"mixed_signal arch at {cfg.data_rate / 1e9:.3g} Gb/s {mod} "
+                f"exceeds the mixed-signal envelope (absolute limit "
+                f"{limit / 1e9:.0f} Gb/s {mod} / hard ceiling "
+                f"{MS_HARD_MAX_BAUD / 1e9:.0f} GBd): the eye closes on the "
+                "reference channel and/or unmodeled circuit walls apply — use "
+                "rx.arch='adc_dsp' (exploration runs allowed, results outside "
+                "the supported envelope)",
+                stacklevel=2)
+        elif cfg.data_rate > comfort * tol:
+            import warnings
+
+            warnings.warn(
+                f"mixed_signal arch at {cfg.data_rate / 1e9:.3g} Gb/s {mod} is "
+                f"in the marginal zone (comfort {comfort / 1e9:.0f} Gb/s, "
+                f"absolute limit {limit / 1e9:.0f} Gb/s {mod}): post-DFE eye "
+                "margin on the reference channel drops below ~25% of the level "
+                "spacing — expect FEC-dependent operation and verify per channel",
+                stacklevel=2)
     if cfg.numeric.mode == "fixed":
         raise ValueError("numeric.mode='fixed' is the ADC receiver's digital back end; "
                          "the mixed-signal receiver's DFE and CDR are analog (rx.arch='adc_dsp')")

@@ -30,7 +30,7 @@ from ..afe import Ctle, Vga
 from ..channel import ChannelModel
 from ..config.schema import LinkConfig
 from ..core import prbs as prbs_mod
-from ..core.mapping import nrz_levels, pam4_levels
+from ..core.mapping import levels_for
 from ..core.sampler import sample_baud
 from ..core.waveform import Waveform
 from ..dsp import apply_ffe, channel_cursors, dfe_static, mmse_ffe
@@ -41,9 +41,15 @@ from .scoring import score
 
 
 def make_pattern(cfg: LinkConfig) -> np.ndarray:
-    """Pattern name -> symbol index stream (NRZ: 0/1, PAM4: 0..3)."""
+    """Pattern name -> symbol index stream (NRZ: 0/1, PAM4: 0..3, PAM6: 0..5,
+    PAM8: 0..7). The quaternary patterns (``prbsNq``, ``prqs10``) are PAM4's
+    own; the other formats take a PRBS bit stream through their bit map."""
     name = cfg.sim.pattern.lower()
     n = cfg.sim.n_symbols
+    quaternary = (name.startswith("prbs") and name.endswith("q")) or name == "prqs10"
+    if quaternary and cfg.modulation in ("pam6", "pam8"):
+        raise ValueError(f"pattern {cfg.sim.pattern!r} is a PAM4 symbol pattern; "
+                         f"{cfg.modulation} takes a PRBS bit stream (prbs13, prbs31, ...)")
     if name.startswith("prbs") and name.endswith("q"):
         order = int(name[4:-1])
         return prbs_mod.prbs_q_symbols(order, n)
@@ -51,6 +57,11 @@ def make_pattern(cfg: LinkConfig) -> np.ndarray:
         return prbs_mod.prqs10(n)
     if name.startswith("prbs"):
         order = int(name[4:])
+        if cfg.modulation in ("pam6", "pam8"):
+            from ..core.mapping import bits_needed, bits_to_symbols
+
+            bits = prbs_mod.prbs_bits(order, bits_needed(n, cfg.modulation))
+            return bits_to_symbols(bits, cfg.modulation)[:n]
         bits = prbs_mod.prbs_bits(order, n * cfg.bits_per_symbol)
         if cfg.modulation == "pam4":
             from ..core.mapping import bits_to_pam4_symbols
@@ -73,7 +84,7 @@ def check_symbols(cfg: LinkConfig, symbols: np.ndarray) -> np.ndarray:
         raise ValueError("symbols must be a non-empty 1-D array of symbol indices")
     if not np.issubdtype(arr.dtype, np.integer):
         raise TypeError(f"symbols must be integer symbol indices, got dtype {arr.dtype}")
-    m = 2 ** cfg.bits_per_symbol
+    m = cfg.n_levels
     if arr.min() < 0 or arr.max() >= m:
         raise ValueError(f"symbols must lie in [0, {m}) for {cfg.modulation}, "
                          f"got [{arr.min()}, {arr.max()}]")
@@ -90,10 +101,7 @@ def _levels(cfg: LinkConfig) -> np.ndarray:
     (``tx/builder.py``); only what the receiver and the statistical engine
     assume changes.
     """
-    if cfg.modulation == "pam4":
-        lv = pam4_levels(cfg.tx.swing, cfg.tx.rlm)
-    else:
-        lv = nrz_levels(cfg.tx.swing)
+    lv = levels_for(cfg.modulation, cfg.tx.swing, cfg.tx.rlm)
     if cfg.topology is not None and cfg.topology.optical.li_compression > 0.0:
         from ..optical import static_curve
 
@@ -123,7 +131,7 @@ def run_static_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     if cfg.precode:
         from ..core.mapping import precode_1plusd
 
-        line_symbols = precode_1plusd(symbols, 2 ** cfg.bits_per_symbol)
+        line_symbols = precode_1plusd(symbols, cfg.n_levels)
     tx_pipe = TxPipeline.from_config(cfg)
     tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(line_symbols))
 

@@ -95,6 +95,20 @@ def test_bit_errors_skip_symbols_without_a_reference():
     assert n == 2 and list(err) == [0]
 
 
+def test_bit_errors_for_pam6_pairs_and_pam8_gray():
+    from halo_serdes.core import mapping as mp
+
+    # PAM8: one symbol decided one level off costs one Gray bit, at that symbol's bit position
+    err, n = bit_errors(np.array([0, 1, 7, 6]), np.array([0, 0, 7, 7]), modulation="pam8")
+    assert n == 12 and len(err) == 2 and {e // 3 for e in err} == {1, 3}
+    # PAM6: pairs anchored at even indices; a pair whose reference has a -1 is not checked
+    code = {pair: w for w, pair in enumerate(mp.PAM6_PAIR_WORDS)}
+    ref = np.array([1, 2, 3, 4, 2, -1])
+    dec = np.array([1, 3, 3, 4, 2, 2])
+    err, n = bit_errors(dec, ref, modulation="pam6")
+    assert n == 10 and len(err) == bin(code[(1, 2)] ^ code[(1, 3)]).count("1") and all(e < 5 for e in err)
+
+
 _ADC = LinkConfig(modulation="pam4", symbol_rate=53.125e9, osr=16,
                   channel=ChannelConfig(kind="analytic", length_m=0.1, rdc=5.0, r_skin=2e-3),
                   rx=RxConfig(arch="adc_dsp", noise_rms=0.045, ffe=FfeConfig(n_pre=2, n_post=6),

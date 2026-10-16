@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..core.mapping import nrz_levels, pam4_levels
+from ..core.mapping import levels_for, nrz_levels, pam4_levels
 from ..core.sampler import baud_samples, hold
 from ..core.waveform import Waveform
 from .response import pulse_from_impulse
@@ -118,9 +118,14 @@ class XtalkAggressor:
         if mod == "pam4":
             lv = pam4_levels(self.swing)
             sym = rng.integers(0, 4, size=n_sym)
-        else:
+        elif mod == "nrz":
             lv = nrz_levels(self.swing)
             sym = rng.integers(0, 2, size=n_sym)
+        else:
+            # PAM6 / PAM8: uniform over the levels (PAM6's pair map sends the
+            # outer ones less often; an aggressor is not modelled that finely)
+            lv = levels_for(mod, self.swing)
+            sym = rng.integers(0, lv.size, size=n_sym)
         return lv[sym]
 
 
@@ -208,10 +213,7 @@ def icn_rms(aggressors, osr: int, *, modulation: str = "nrz") -> float:
     """
     if not aggressors:
         return 0.0
-    if modulation == "pam4":
-        lv = pam4_levels(1.0)
-    else:
-        lv = nrz_levels(1.0)
+    lv = levels_for(modulation, 1.0)
     sym_var = float(np.mean(lv ** 2))          # normalized level variance
     power = 0.0
     for agg in aggressors:

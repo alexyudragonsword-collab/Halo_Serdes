@@ -68,6 +68,8 @@ def test_pattern_period():
     assert pattern_period("prbs7", "nrz") == 127
     assert pattern_period("prbs31", "nrz") == 2 ** 31 - 1
     assert pattern_period("prbs13q", "pam4") == 2 ** 13 - 1
+    assert pattern_period("prbs13", "pam6") == 2 * (2 ** 13 - 1)
+    assert pattern_period("prbs13", "pam8") == 2 ** 13 - 1
     assert pattern_period("prqs10", "pam4") == 1023
 
 

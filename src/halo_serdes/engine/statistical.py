@@ -224,7 +224,7 @@ from ..cdr.linear import (
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
-from ..core.mapping import GRAY_BIT_DISTANCE
+from ..core.mapping import GRAY_BIT_DISTANCE, bit_distance_matrix, level_probabilities
 from ..core.sampler import baud_samples, upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
@@ -270,18 +270,21 @@ def _shift_add(dst: np.ndarray, src: np.ndarray, shift_bins: float, weight: floa
 
 
 def isi_pdf(cursor_amps: np.ndarray, levels_norm: np.ndarray,
-            v_centers: np.ndarray) -> np.ndarray:
-    """Distribution of sum_k c_k * a_k over equiprobable symbol levels."""
+            v_centers: np.ndarray, level_probs: np.ndarray | None = None) -> np.ndarray:
+    """Distribution of sum_k c_k * a_k over the symbol levels: equiprobable,
+    or sent as often as ``level_probs`` says (PAM6's corner32 map sends its
+    outer levels less often, ``core.mapping.level_probabilities``)."""
     dv = v_centers[1] - v_centers[0]
     pdf = np.zeros(v_centers.size)
     pdf[v_centers.size // 2] = 1.0  # delta at 0 (grid is symmetric)
     m = levels_norm.size
+    w = np.full(m, 1.0 / m) if level_probs is None else np.asarray(level_probs, dtype=np.float64)
     for c in cursor_amps:
         if abs(c) < dv * 1e-6:
             continue
         new = np.zeros_like(pdf)
-        for a in levels_norm:
-            _shift_add(new, pdf, c * a / dv, 1.0 / m)
+        for a, pa in zip(levels_norm, w):
+            _shift_add(new, pdf, c * a / dv, float(pa))
         pdf = new
     return pdf
 
@@ -372,6 +375,10 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
     n symbols counts the first n + K samples of its difference
     (``dsp.mlsd.mlse_min_distance_sq``); the survivors' feedback errors are
     not in it.
+
+    The symbols are taken as equiprobable here, PAM6's corner32 map included
+    (its outer levels are sent 1/8 of the time against 3/16): the support
+    weights of long events are an approximation for it.
     """
     from scipy.special import ndtr, ndtri
 
@@ -459,7 +466,9 @@ def pr_error_events(cursors: np.ndarray, noise_acf: np.ndarray, n_levels: int,
 
 
 def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
-                        head, composite: bool, precoded: bool) -> tuple[float, float]:
+                        head, composite: bool, precoded: bool,
+                        bit_dist: np.ndarray | None = None,
+                        level_probs: np.ndarray | None = None) -> tuple[float, float]:
     """(SER, bit errors per symbol) of the per-symbol decisions a receive
     partial-response target leaves the LMS and the CDR, or the detector
     itself when there is no sequence detector.
@@ -485,9 +494,13 @@ def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
     ``pdf_lv`` is the ISI + noise PDF per transmitted level (on
     ``v_centers``) and ``lv`` the levels at the slicer; the levels are taken
     as evenly spaced. Bits per wrong symbol follow the checker: the Hamming
-    distance of the two symbols' Gray codes (``GRAY_BIT_DISTANCE``).
+    distance of the two symbols' Gray codes (``GRAY_BIT_DISTANCE``), or
+    ``bit_dist`` (``core.mapping.bit_distance_matrix``); the symbols are
+    equiprobable unless ``level_probs`` says otherwise.
     """
     n = lv.size
+    bd = GRAY_BIT_DISTANCE if bit_dist is None else np.asarray(bit_dist, dtype=np.float64)
+    pw = np.full(n, 1.0 / n) if level_probs is None else np.asarray(level_probs, dtype=np.float64)
     order = np.argsort(lv)
     ls = lv[order]
     sym = order                                  # sorted index -> symbol index
@@ -503,8 +516,8 @@ def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
         f = np.where(i >= 0, cdf[j][np.clip(i, 0, v_centers.size - 1)], 0.0)
         return np.diff(np.concatenate([[0.0], f, [1.0]]))
 
-    def bits(u: int, v: int) -> int:
-        return int(GRAY_BIT_DISTANCE[int(u), int(v)])
+    def bits(u: int, v: int) -> float:
+        return float(bd[int(u), int(v)])
 
     if composite:
         comp = 2 * ls[0] + step * np.arange(2 * n - 1)
@@ -514,11 +527,12 @@ def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
         for j in range(n):                       # current symbol, sorted
             for i in range(n):                   # previous one
                 c = j + i
+                w_ji = float(pw[sym[j]] * pw[sym[i]])
                 p = decide(j, comp, comp[c])
-                ser += (1.0 - p[c]) / n ** 2
+                ser += (1.0 - p[c]) * w_ji
                 for k in range(2 * n - 1):
                     if k != c:
-                        nbe += p[k] * bits(c_sym[c] % n, c_sym[k] % n) / n ** 2
+                        nbe += p[k] * bits(c_sym[c] % n, c_sym[k] % n) * w_ji
         return float(ser), float(nbe)
 
     h = np.asarray(head, dtype=float)[1:]
@@ -535,10 +549,11 @@ def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
         dist = np.zeros(vals.size)               # P(error = e) at this state
         for j in range(n):
             p = decide(j, ls, ls[j] + offset)
+            w_j = float(pw[sym[j]])
             for d in range(n):
-                dist[j - d + n - 1] += p[d] / n
+                dist[j - d + n - 1] += p[d] * w_j
                 if not precoded and j != d:
-                    b_err[k] += p[d] * bits(sym[j], sym[d]) / n
+                    b_err[k] += p[d] * bits(sym[j], sym[d]) * w_j
         for e, pe in zip(vals, dist):
             nxt = ((int(e),) + st[:-1]) if depth else ()
             trans[k, index[nxt]] += pe
@@ -548,7 +563,7 @@ def pr_symbol_decisions(pdf_lv: list, v_centers: np.ndarray, lv: np.ndarray,
                 delta = (int(e) + (st[0] if depth else 0)) % n
                 if delta:
                     p_err[k] += pe
-                    b_err[k] += pe * float(np.mean([bits(u, (u - delta) % n) for u in range(n)]))
+                    b_err[k] += pe * float(sum(pw[u] * bits(u, (u - delta) % n) for u in range(n)))
             elif e:
                 p_err[k] += pe
     # stationary distribution of the error chain
@@ -710,8 +725,10 @@ def tx_edge_jitter(cfg: LinkConfig, tx_pipe, h: np.ndarray, osr: int, offset: in
     imp[span] = 1.0
     t = tx_pipe.ffe(tx_pipe.pr_filter(imp))
     d = np.diff(np.concatenate([[0.0], t, [0.0]]))      # d[i] is d_j for j = i - span
-    lv = np.asarray(tx_pipe.levels(np.arange(2 ** cfg.bits_per_symbol)), dtype=np.float64)
-    mu, var_a = float(lv.mean()), float(lv.var())
+    lv = np.asarray(tx_pipe.levels(np.arange(cfg.n_levels)), dtype=np.float64)
+    pw = level_probabilities(cfg.modulation)
+    mu = float(np.sum(pw * lv))
+    var_a = float(np.sum(pw * (lv - mu) ** 2))
     offs = (0,) + tuple(neighbours)                      # the symbols each bin fixes
 
     def d_at(j: np.ndarray) -> np.ndarray:
@@ -928,6 +945,11 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     swing = cfg.tx.swing / 2.0  # symbol amplitude scale (levels_norm in [-1,1])
     levels_norm = _levels(cfg) / swing  # {-1,1} or {-1,-1/3,1/3,1}*rlm
+    # how often each level is sent and the bits a wrong neighbour costs: 1/N
+    # and one (Gray) but for PAM6's corner32 map (core/mapping.py); the
+    # aggressors' levels stay equiprobable, as the time engine draws them
+    level_probs = level_probabilities(cfg.modulation)
+    bit_dist = bit_distance_matrix(cfg.modulation)
 
     peak = int(np.argmax(np.abs(pulse.y)))
     pr_active = cfg.pr.active
@@ -1235,7 +1257,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             c_bin = np.array([isi[p] for p in pos])
             isi = isi.copy()
             isi[pos] = 0.0
-        pdf = isi_pdf(isi, levels_norm, v_centers)
+        pdf = isi_pdf(isi, levels_norm, v_centers, level_probs)
         xcs = []
         for xy in x_slicer:
             # every one of the aggressor's cursors the victim's sampling
@@ -1260,7 +1282,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             where the residual is not small (cairn/DSP发端与PR.md §19)."""
             dd = float(np.dot(d_ev, d_ev))
             c_full = np.insert(isi, n_pre, 0.0)           # symbol order, main slot empty
-            pdf = isi_pdf(np.correlate(d_ev, c_full, "full") / dd, levels_norm, v_centers)
+            pdf = isi_pdf(np.correlate(d_ev, c_full, "full") / dd, levels_norm, v_centers,
+                          level_probs)
             for xc in xcs:
                 pdf = np.convolve(pdf, isi_pdf(np.correlate(d_ev, xc, "full") / dd,
                                                levels_norm, v_centers), mode="same")
@@ -1281,10 +1304,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             # the slicer order, not which symbol carried the most light)
             if pattern_sigma is not None:
                 pdf_lv = []
-                n_pat = n_levels ** len(_BINNED_NEIGHBOURS)
                 for k in range(n_levels):
                     acc = np.zeros(v_bins)
                     for combo in np.ndindex(*pattern_sigma.shape[1:]):
+                        w_pat = float(np.prod(level_probs[list(combo)]))
                         shift = float(np.dot(c_bin, levels_norm[list(combo)]))
                         if edge_jit is None:
                             var = noise_sigma ** 2 + pattern_sigma[(k,) + combo] ** 2
@@ -1302,7 +1325,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                         if edge_jit is not None:
                             ek, e_lo = edge_jit.kernel((k,) + combo, dv, g_ev)
                             blurred = _convolve_at(blurred, ek, e_lo)
-                        acc += blurred / n_pat
+                        acc += blurred * w_pat
                     pdf_lv.append(acc / max(acc.sum(), 1e-300))
             elif level_sigma is None:
                 nk = noise_k if g_ev == 1.0 else gaussian_kernel(noise_sigma / g_ev, dv)
@@ -1342,15 +1365,19 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             lv_sorted = lv[order]
             lt = (levels_norm * thr_main)[order]
             for j in range(n_levels):
+                s_j = int(order[j])
                 p_err_up = p_err_dn = 0.0
+                b_up = b_dn = 0.0                # bits the neighbour decided costs
                 if j < n_levels - 1:
                     thr = (lt[j] + lt[j + 1]) / 2.0
-                    p_err_up = tail_ge(thr - lv_sorted[j], int(order[j]))
+                    p_err_up = tail_ge(thr - lv_sorted[j], s_j)
+                    b_up = float(bit_dist[s_j, int(order[j + 1])])
                 if j > 0:
                     thr = (lt[j - 1] + lt[j]) / 2.0
-                    p_err_dn = tail_le(thr - lv_sorted[j], int(order[j]))
-                ser += w_ev * (p_err_up + p_err_dn) / n_levels
-                nbe += w_ev * (p_err_up + p_err_dn) / n_levels  # Gray: adjacent = 1 bit
+                    p_err_dn = tail_le(thr - lv_sorted[j], s_j)
+                    b_dn = float(bit_dist[s_j, int(order[j - 1])])
+                ser += w_ev * (p_err_up + p_err_dn) * level_probs[s_j]
+                nbe += w_ev * (p_err_up * b_up + p_err_dn * b_dn) * level_probs[s_j]
             if pdf_eye is None:
                 pdf_eye = pdf_lv if ev_diffs is None else noisy(g_ev)
         pdf_lv = pdf_eye
@@ -1364,7 +1391,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             # after a correct one fails with s, the ideal-DFE SER, after a
             # wrong one with p, so it is wrong s / (1 - p + s) of the time --
             # s / (1 - p) while errors are rare, never past 1 on a closed
-            # eye. Each one bit (Gray). First DFE tap only. With the ADC's
+            # eye. Each the bits the first one cost. First DFE tap only. With the ADC's
             # DFE engaged (ROADMAP P1 #21; tap 0.57) the time engine read
             # 1.8-2.9x this engine's ideal-DFE BER.
             step = float(np.min(np.diff(np.sort(levels_norm)))) * h_dfe1
@@ -1378,7 +1405,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     if j > 0:
                         thr = (lt[j - 1] + lt[j]) / 2.0
                         p_j += tail_le(thr - lv_sorted[j] - sgn * step, int(order[j]))
-                    p_ep += p_j / (2 * n_levels)
+                    p_ep += p_j * level_probs[int(order[j])] / 2.0
             p_ep = min(p_ep, 0.99)
             ep = 1.0 / (1.0 - p_ep + min(ser, 1.0))
             if not fixed:
@@ -1390,7 +1417,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             if pr_active and mlsd_mem == 0:
                 s_sym, b_sym = pr_symbol_decisions(
                     pdf_lv, v_centers, levels_norm * main, head,
-                    composite=pr_composite, precoded=cfg.precode)
+                    composite=pr_composite, precoded=cfg.precode,
+                    bit_dist=bit_dist, level_probs=level_probs)
                 ser_v, ber_v = s_sym, b_sym / bits_per_sym
             fine_vals[float(off + frac)] = (ser_v, ber_v)
             continue
@@ -1401,7 +1429,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             # sequence detector they are the detector, error propagation and all
             s_sym, b_sym = pr_symbol_decisions(
                 pdf_lv if mlsd_mem == 0 else noisy(1.0), v_centers, levels_norm * main, head,
-                composite=pr_composite, precoded=cfg.precode)
+                composite=pr_composite, precoded=cfg.precode,
+                bit_dist=bit_dist, level_probs=level_probs)
             ser_sym_phi[pi], ber_sym_phi[pi] = s_sym, b_sym / bits_per_sym
             head_energy_phi[pi] = float(np.sum(np.square(head[1:])))
             if mlsd_mem == 0:
@@ -1410,7 +1439,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         # marginal slicer PDF (mixture over transmitted levels) for the eye
         eye_col = np.zeros(v_bins)
         for j in range(n_levels):
-            _shift_add(eye_col, pdf_lv[j], lv[j] / dv, 1.0 / n_levels)
+            _shift_add(eye_col, pdf_lv[j], lv[j] / dv, float(level_probs[j]))
         eye_pdf[:, pi] = eye_col
 
     # the curves the smear is read from: the phases as computed, before it
@@ -1644,12 +1673,13 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
     else:
         # PAM4's off-lock sign changes give an output the data sets, which
         # consecutive transitions largely cancel: through the pattern's lines
+        level_probs = level_probabilities(cfg.modulation)
         pairs = _bb_pairs(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
-                          extra_edge_ui=float(cfg.tx.clock.rj_ui))
+                          extra_edge_ui=float(cfg.tx.clock.rj_ui), level_probs=level_probs)
         sol = bb_loop_fixed_point(
             lp, untracked,
             transitions=_bb_transitions(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
-                                        pairs=pairs),
+                                        pairs=pairs, level_probs=level_probs),
             mean_output=lambda sigma_e: _bb_mean_output(pairs, levels_norm.size, sigma_e),
             period=_pattern_period(cfg))
     # the same loop once it has forgotten its start: what a longer run, and
@@ -1697,13 +1727,14 @@ def _pattern_period(cfg: LinkConfig, max_symbols: int = 1 << 21) -> np.ndarray |
     if cfg.precode:
         from ..core.mapping import precode_1plusd
 
-        sym = precode_1plusd(sym, 2 ** cfg.bits_per_symbol)
+        sym = precode_1plusd(sym, cfg.n_levels)
     return sym[:per] if np.array_equal(sym[:per], sym[per:]) else sym
 
 
 def _bb_pairs(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
               levels_norm: np.ndarray, extra_edge_ui: float = 0.0, n_pre: int = 24,
-              n_post: int = 64) -> dict[tuple[int, int], tuple[float, float]]:
+              n_post: int = 64, level_probs: np.ndarray | None = None
+              ) -> dict[tuple[int, int], tuple[float, float]]:
     """The Alexander detector's sign changes, pair by pair of levels:
     ``{(old, new): (zero crossing relative to the lock point [UI], edge noise
     [UI])}`` -- what ``_bb_transitions`` groups into classes and
@@ -1739,7 +1770,9 @@ def _bb_pairs(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
     tau_sym = (c1 - c0) / (s0 - s1) if s0 != s1 else 0.0     # the symmetric classes' zero
     idx = e0 + np.arange(-n_pre, n_post + 1) * osr
     others = [at(int(i)) for i in idx if 0 <= i < y.size and i not in (e0, e1)]
-    isi_var = swing ** 2 * float(np.mean(levels_norm ** 2)) * float(np.sum(np.square(others)))
+    pw = (np.full(levels_norm.size, 1.0 / levels_norm.size) if level_probs is None
+          else np.asarray(level_probs, dtype=np.float64))
+    isi_var = swing ** 2 * float(np.sum(pw * levels_norm ** 2)) * float(np.sum(np.square(others)))
     sigma_v = float(np.sqrt(isi_var + noise_sigma ** 2))
     pairs: dict[tuple[int, int], tuple[float, float]] = {}
     for i_old, a_old in enumerate(levels_norm):
@@ -1766,7 +1799,8 @@ def _bb_pairs(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
 
 def _bb_transitions(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
                     levels_norm: np.ndarray, extra_edge_ui: float = 0.0, n_pre: int = 24,
-                    n_post: int = 64, pairs: dict | None = None
+                    n_post: int = 64, pairs: dict | None = None,
+                    level_probs: np.ndarray | None = None
                     ) -> tuple[tuple[float, float, float], ...]:
     """The Alexander detector's transitions by class, for ``bb_loop_fixed_point``:
     ``(probability per symbol, zero crossing relative to the lock point [UI],
@@ -1774,11 +1808,12 @@ def _bb_transitions(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: flo
     noisily."""
     if pairs is None:
         pairs = _bb_pairs(pulse_pd, osr, noise_sigma, swing, levels_norm, extra_edge_ui,
-                          n_pre, n_post)
+                          n_pre, n_post, level_probs)
     n = levels_norm.size
+    pw = np.full(n, 1.0 / n) if level_probs is None else np.asarray(level_probs, dtype=np.float64)
     classes: dict[tuple[float, float], float] = {}
-    for key in pairs.values():
-        classes[key] = classes.get(key, 0.0) + 1.0 / n ** 2
+    for (i_old, i_new), key in pairs.items():
+        classes[key] = classes.get(key, 0.0) + float(pw[i_old] * pw[i_new])
     return tuple((p, offset, edge) for (offset, edge), p in classes.items())
 
 

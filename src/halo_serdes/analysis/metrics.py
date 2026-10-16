@@ -39,6 +39,21 @@ def pam4_ser_awgn(outer_amplitude: float, sigma: float, rlm: float = 1.0) -> flo
     return float(1.5 * qfunc(d / sigma))
 
 
+def pamN_ser_awgn(n_levels: int, outer_amplitude: float, sigma: float,
+                  level_probs: np.ndarray | None = None) -> float:
+    """Analytic N-level PAM symbol error rate over AWGN with nearest-level
+    slicing on evenly spaced levels: the inner levels have two thresholds at
+    d = A / (N - 1), the outer ones one, so SER = sum_k p_k n_k Q(d / sigma)
+    -- 2 (N - 1) / N on equiprobable symbols (PAM4's 3/2, PAM8's 7/4), and
+    7/4 for PAM6 under the corner32 map's occupancy
+    (``core.mapping.level_probabilities``) against 5/3 equiprobable."""
+    n = int(n_levels)
+    p = np.full(n, 1.0 / n) if level_probs is None else np.asarray(level_probs, dtype=np.float64)
+    thresholds = np.where((np.arange(n) == 0) | (np.arange(n) == n - 1), 1.0, 2.0)
+    d = outer_amplitude / (n - 1)
+    return float(np.sum(p * thresholds) * qfunc(d / sigma))
+
+
 def ber_confidence(n_errors: int, n_bits: int, z: float = 1.96) -> tuple[float, float]:
     """Wilson interval for a measured BER."""
     if n_bits == 0:
