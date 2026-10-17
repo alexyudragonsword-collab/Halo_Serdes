@@ -483,3 +483,76 @@ def test_com_reads_the_config_aggressors():
                     xtalk_pulses=[x.pulse(cfg.osr) for x in aggressors_from_config(cfg)]).com_db
     assert a == pytest.approx(b)
     assert a < compute_com(cm, dataclasses.replace(cfg, crosstalk=type(cfg.crosstalk)())).com_db
+
+
+# ------------------------------------- PAM6 aggressors send the corner32 pair stream
+
+def _levels_of(volts, modulation, swing=1.0):
+    from halo_serdes.core.mapping import levels_for
+
+    lv = levels_for(modulation, swing)
+    return np.argmin(np.abs(volts[:, None] - lv[None, :]), axis=1)
+
+
+def test_pam6_aggressor_sends_the_corner32_stream_and_pam8_stays_uniform():
+    """A PAM6 aggressor is another lane of the same link: it sends the pair
+    map's stream (outer levels 1/8 of the time, inner 3/16, never two outer
+    ones in a pair), not six equiprobable levels (ROADMAP P3 #12; drawn
+    uniform until 2026-10-17, second moment 0.467 against 0.4). PAM8 stays
+    uniform over its eight."""
+    from halo_serdes.core.mapping import level_probabilities
+
+    ui, osr = 1 / 16e9, 8
+    agg = synthetic_aggressor("fext", -30.0, ui, ui / osr, modulation="pam6", seed=4)
+    sym = _levels_of(agg.symbol_volts(200_000 * osr, osr), "pam6")
+    occ = np.bincount(sym, minlength=6) / sym.size
+    assert np.allclose(occ, level_probabilities("pam6"), atol=0.006), occ
+    n = sym.size - sym.size % 2
+    outer = np.isin(sym[:n].reshape(-1, 2), (0, 5))
+    assert not np.any(outer[:, 0] & outer[:, 1])              # no corner pair
+    sym8 = _levels_of(synthetic_aggressor("next", -30.0, ui, ui / osr, modulation="pam8",
+                                          seed=4).symbol_volts(200_000 * osr, osr), "pam8")
+    assert np.allclose(np.bincount(sym8, minlength=8) / sym8.size, 1 / 8, atol=0.006)
+
+
+def test_icn_scales_with_the_second_moment_of_the_levels_as_sent():
+    """ICN = RSS of cursor power x the per-symbol variance: 1 for NRZ, 5/9
+    for PAM4, 3/7 for PAM8 and 0.4 for PAM6 under the corner32 occupancy
+    (0.467 if the outer levels were sent as often as the inner ones)."""
+    from halo_serdes.channel import aggressor_bank, icn_rms
+    from halo_serdes.core.mapping import levels_for, symbol_variance
+
+    ui, osr = 1 / 53.125e9, 32
+    bank = aggressor_bank(2, 2, -30.0, ui, ui / osr, modulation="pam6", spread_db=0.0, base_seed=2)
+    ref = icn_rms(bank, osr, modulation="nrz") ** 2
+    for mod, var in (("pam4", 5 / 9), ("pam8", 3 / 7), ("pam6", 0.4)):
+        assert icn_rms(bank, osr, modulation=mod) ** 2 / ref == pytest.approx(var, rel=1e-9), mod
+        assert symbol_variance(levels_for(mod), mod) == pytest.approx(var, rel=1e-12)
+    lv6 = levels_for("pam6")
+    assert np.mean(lv6 ** 2) == pytest.approx(0.4 + 1 / 15, rel=1e-12)      # the uniform 0.467
+
+
+def test_statistical_pam6_aggressor_cursor_is_weighed_by_the_occupancy():
+    """A flat victim with one aggressor cursor ``c``: SER = sum over the
+    aggressor's level m of p_m x 7/8 [Q((d - c a_m) / sigma) + Q((d + c a_m)
+    / sigma)], p_m the corner32 occupancy. The uniform weights read 24 %
+    more here, as they send the outer levels -- the big offsets -- 1/6 of
+    the time instead of 1/8."""
+    from halo_serdes.analysis.metrics import qfunc
+    from halo_serdes.core.mapping import level_probabilities, levels_for
+    from halo_serdes.core.waveform import Waveform
+
+    d, sigma, c = 0.25 / 5.0, (0.25 / 5.0) / 4.0, 0.04       # half gap at the slicer
+    cfg = _flat_cfg("pam6", sigma, "prbs13")
+    osr = cfg.osr
+    rect = Waveform(np.r_[np.zeros(osr), np.full(osr, c), np.zeros(osr)], cfg.dt)
+    ser = run_statistical(cfg, channel=_flat_channel(), xtalk_pulses=[rect]).ser
+    a = levels_for("pam6")                                      # the engine's levels_norm, +-1
+    x = c * (cfg.tx.swing / 2.0) * a                            # the cursor per aggressor level
+
+    def closed(p):
+        return float(np.sum(p * 7 / 8 * (qfunc((d - x) / sigma) + qfunc((d + x) / sigma))))
+
+    occupancy, uniform = closed(level_probabilities("pam6")), closed(np.full(6, 1 / 6))
+    assert uniform / occupancy > 1.15, (uniform, occupancy)
+    assert ser == pytest.approx(occupancy, rel=0.05), (ser, occupancy, uniform)

@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-17 · PAM6 串扰 aggressor 发 corner32 对流(fix/pam6-xtalk-occupancy,ROADMAP P3 #12 的一条)
+
+- 探针(main 的 worktree 跑旧、本分支跑新):aggressor 从均匀 6 电平改成 corner32 对流后两引擎 SER 同降 0.78–0.93×(二阶矩 0.4 / 0.467),
+  统计 / 时域几乎不动(混合信号 1.03–1.08×、ADC 1.03–1.09×、准同步 0.95–0.97×);旧统计对真实对流读高 1.17–1.27×。ICN ×0.926(−0.67 dB);
+  PAM6 COM 无串扰 +0.04 / +0.26 dB、带 bank +0.29 / +0.54 dB。第一轮探针耦合取太强(SER 0.2–0.5)看不出工作区间,重取 −56…−36 dB。
+- 改:`XtalkAggressor.symbol_volts` pam6 走 `bits_to_symbols`;统计引擎五处 aggressor `isi_pdf` 带 `level_probs`;`core.mapping.symbol_variance`
+  进 `icn_rms` 与 COM(σ_XT、σ_ISI、A_ni PDF)。仍近似:aggressor 相邻光标的对相关(统计按独立占用)。
+- 验证:本地全量 1210 passed / 1 skipped(+5,26.6 分钟);`HALO_NO_JIT=1` 下新测试绿(混合信号串扰铁律 3 一条 22.5 s);ruff;Cython(mapping / crosstalk /
+  statistical / com);指纹 980 个值 bit-identical;示例 24 / 26 / 28 / 44 / 46 零漂移。
+- 文档:ROADMAP P3 #12 串扰那条改为已做;CHANGELOG;`cairn/448G调制格式.md` §2 / §7;`cairn/多lane建模.md` §7;USAGE §7 一句。
+- CI:PR 开出后补。
+
 ## 2026-10-16 · PAM6 PR 路径的比特也按对(fix/pam6-pr-pair-bits,ROADMAP P3 #12 的一条)
 
 - 探针:ADC 1 + aD + Viterbi 格时域每个符号错 1.02 比特、统计 1.19(B6);不是搭档条件(该路径 c(+1) 由检测器分辨,搭档几乎不推门限),

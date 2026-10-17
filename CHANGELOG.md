@@ -6,6 +6,24 @@
 
 ---
 
+## [未发布] — PAM6 串扰 aggressor 发 corner32 对流(ROADMAP P3 #12 的一条)
+
+### 修复
+- PAM6 的串扰 aggressor 此前按 6 电平均匀抽取(时域)/ 均匀的 ISI PDF(统计)/ 均匀的二阶矩(ICN、COM),与受扰 lane 自己的 corner32 占用
+  (外层 1/8、内层 3/16)不一致。aggressor 是同一条链路的另一 lane,现发同一对流:时域符号经 `bits_to_symbols` 抽(`XtalkAggressor.symbol_volts`),
+  统计引擎 aggressor 光标的五处 ISI PDF(同步、准同步平均、事件投影)按 `level_probabilities` 加权,ICN 与 COM 的 σ_XT 用 `core.mapping.symbol_variance`
+  (0.4 对 0.467;等概率格式上就是 `mean(levels²)`),COM 里受扰 lane 自己的 σ_ISI 与 A_ni PDF 也按占用。
+
+### 变更(数会动)
+- 只动 PAM6 带串扰的链路与 PAM6 的 COM。两引擎各自从均匀改到占用(main 的 worktree 跑旧、本分支跑新):混合信号 16 GBd 无 DFE 四 aggressor
+  −44 / −40 / −36 dB 时域 SER 0.85 / 0.82 / 0.81×、统计 0.86 / 0.82 / 0.81×;ADC 112 GBd(示例 38 收端)−56 / −52 / −46 dB 时域 0.87 / 0.85 / 0.78×、
+  统计 0.93 / 0.87 / 0.80×。统计 / 时域:混合信号 1.03–1.07 → 1.03–1.08×,ADC 1.00–1.04 → 1.03–1.09×,准同步 200 ppm 0.96 → 0.95–0.97×;
+  旧统计引擎对真实对流会读高 1.17–1.27×。ICN 一律 ×0.926(−0.67 dB)。PAM6 的 COM:无串扰 +0.04(ADC 0.18 m)/ +0.26 dB(混合信号 0.10 m),带 bank +0.29 / +0.44–0.54 dB。
+- 仍近似:aggressor 对流里相邻光标的对相关(角对不出现)统计引擎没建,按独立占用;ADC 上比值上移的 2–5 % 方向与之一致,未单独隔离。
+- NRZ / PAM4 / PAM8 三引擎与 COM 逐位不变;指纹 980 个值 bit-identical;示例 24 / 26 / 28 / 44 / 46 零漂移(示例里没有 PAM6 带串扰的链路)。
+- 测试 +5:aggressor 流的占用与无角对(PAM8 仍均匀)、ICN 按四格式的二阶矩(PAM6 0.4)、平坦受扰 lane 上单光标 aggressor 的闭式
+  (均匀权重读高 25 %)、PAM6 带串扰的铁律 3 两收端(混合信号 −40 dB 1.01×,ADC −52 dB 1.06×)。
+
 ## [未发布] — PAM6 的 PR 路径比特也按对(ROADMAP P3 #12 的一条)
 
 ### 修复

@@ -233,8 +233,14 @@ PCS 层的 deskew、对齐标记锁定与 lane 重排是数字协议行为,不�
 ### 12. PAM6 / PAM8 仍缺的 PAM4 专属量(2026-10-15,448G 调制格式比较余项)
 - R_LM(`tx.rlm`、`core/static_curve.rlm`、`analysis/tx_metrics.py`)与 TDECQ(`analysis/tdecq.py`)按 802.3 的 PAM4 定义写,pam6 / pam8 上
   仍按 PAM4 门控;802.3dj 对 PAM4 以外格式有没有对应定义**未核实**,先不编。
-- 串扰 aggressor 在 PAM6 上按 6 电平均匀抽取(`channel/crosstalk.py`、统计引擎的 aggressor ISI PDF),与受害 lane 的 corner32 占用
-  (外层 1/8、内层 3/16)不一致;ICN 同样按均匀算。差在二阶矩(0.467 对 0.4),量级 0.7 dB 以内,没量过。
+- (2026-10-17 已做:串扰 aggressor 在 PAM6 上发 corner32 对流 —— 时域 aggressor 的符号经 `bits_to_symbols` 抽(外层 1/8、内层 3/16、无角对),
+  统计引擎 aggressor 光标的五处 ISI PDF(同步、准同步平均、事件投影)按占用加权,ICN 与 COM 的 σ_XT 用占用二阶矩(`core.mapping.symbol_variance`,
+  0.4 对均匀 0.467),COM 里受扰 lane 自己的 σ_ISI 与 A_ni PDF 也按占用。量到(main 跑旧、本分支跑新):两引擎各自从均匀改到占用 SER 同降 ——
+  混合信号 16 GBd 无 DFE 四 aggressor −44 / −40 / −36 dB 时域 0.85 / 0.82 / 0.81×、统计 0.86 / 0.82 / 0.81×,ADC 112 GBd −56 / −52 / −46 dB
+  时域 0.87 / 0.85 / 0.78×、统计 0.93 / 0.87 / 0.80×;统计 / 时域几乎不动(混合信号 1.03–1.07 → 1.03–1.08×,ADC 1.00–1.04 → 1.03–1.09×,准同步 0.96 → 0.95–0.97×),
+  旧统计引擎对真实对流会读高 1.17–1.27×;ICN 一律 ×0.926(−0.67 dB);PAM6 的 COM 无串扰 +0.04(ADC 0.18 m)/ +0.26 dB(混合信号 0.10 m),带 bank +0.29 / +0.44–0.54 dB。
+  仍近似:aggressor 对流里相邻光标的对相关(角对不出现)统计引擎没建、按独立占用;ADC 上比值上移的 2–5 % 方向与之一致,未单独隔离。
+  NRZ / PAM4 / PAM8 逐位不变,指纹 980 个值 bit-identical。见 CHANGELOG 与 `cairn/448G调制格式.md` §2。)
 - 发端 PR 主方案、新 FEC、多 lane 的 448G 版本不在示例 46 里(开工时定的边界)。
 - (2026-10-16 已做:统计引擎 PR 路径的 PAM6 比特也按对 —— 序列检测的每个误码事件按它触碰到的对算字距(`pair_event_bits`:交替的两符号事件
   落在一对里是字的对角移动,比两个单步少),逐符号判决链在对的第二位置用状态里前一个符号的错与自己的错查对的字距(`pair_word_bits`)。

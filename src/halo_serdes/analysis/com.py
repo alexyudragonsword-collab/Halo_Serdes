@@ -51,6 +51,7 @@ from ..afe import Ctle
 from ..channel import ChannelModel
 from ..channel.response import pulse_from_impulse
 from ..config.schema import LinkConfig
+from ..core.mapping import level_probabilities, symbol_variance
 from ..core.sampler import upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.ffe import _conv_matrix
@@ -188,7 +189,11 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
 
     # normalized symbol levels and per-symbol variance
     levels_norm = _levels(cfg) / (cfg.tx.swing / 2.0)      # {-1,1} or 4-PAM
-    sym_var = float(np.mean(levels_norm ** 2))
+    # as often as each level is sent: 1/N but for PAM6's corner32 map
+    # (core/mapping.py), whose second moment is 0.4 against the uniform 0.467
+    # -- the victim's residual ISI and the aggressors' cursors alike
+    level_probs = level_probabilities(cfg.modulation)
+    sym_var = symbol_variance(levels_norm, cfg.modulation)
     lv_sorted = np.sort(levels_norm)
     half_gap = float(np.min(np.diff(lv_sorted))) / 2.0     # inner-eye half spacing
 
@@ -291,9 +296,9 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
             + 1e-6)
     v = np.linspace(-span, span, p.v_bins)
     dv = v[1] - v[0]
-    pdf = isi_pdf(b["resid"], levels_norm, v)
+    pdf = isi_pdf(b["resid"], levels_norm, v, level_probs)
     for ac in b["agg"]:
-        pdf = _convolve_centred(pdf, isi_pdf(ac, levels_norm, v))
+        pdf = _convolve_centred(pdf, isi_pdf(ac, levels_norm, v, level_probs))
     gk = gaussian_kernel(float(np.hypot(b["sig_n"], b["sig_rj_v"])), dv)
     if gk.size > 1:
         pdf = np.convolve(pdf, gk, mode="same")
