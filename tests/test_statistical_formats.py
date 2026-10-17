@@ -382,3 +382,53 @@ def test_adc_cross_check_within_2x(mod, length_m, pr):
         # the checker on the 1 + aD cell)
         per_err = (stat.ber / stat.ser) / (mc.ber.ber / mc.ser)
         assert 0.92 < per_err < 1.08, (pr, stat.ber / stat.ser * 2.5, mc.ber.ber / mc.ser * 2.5)
+
+
+# ---- invariant #3 with PAM6 crosstalk: the aggressors send the pair stream too ----
+
+def _pam6_bank(cfg, coupling_db):
+    from halo_serdes.channel import aggressor_bank
+
+    return aggressor_bank(2, 2, coupling_db, cfg.ui, cfg.dt, modulation="pam6", base_seed=1)
+
+
+def test_mixed_signal_pam6_crosstalk_cross_check_within_2x():
+    """ROADMAP P3 #12: PAM6 aggressors drawn uniform over six levels read
+    0.81-0.86x more SER in both engines than the corner32 stream they send
+    (second moment 0.467 against 0.4), and an engine on either model against
+    the other 1.17-1.27x. Both now take the occupancy: the 16 GBd
+    mixed-signal link without a DFE, four aggressors at -40 dB (12x the
+    clean SER), 1.01x."""
+    cfg = LinkConfig(
+        modulation="pam6", symbol_rate=16e9, osr=32,
+        channel=ChannelConfig(kind="analytic", length_m=0.10, rdc=2.0, r_skin=1.5e-3,
+                              loss_tangent=0.01),
+        tx=TxConfig(swing=1.0),
+        rx=RxConfig(arch="mixed_signal", ctle=CtleConfig(enable=False), dfe=DfeConfig(n_taps=0),
+                    noise_rms=0.004),
+        sim=SimConfig(n_symbols=200_000, seed=3, pattern="prbs13"))
+    cm = ChannelModel.from_config(cfg)
+    bank = _pam6_bank(cfg, -40.0)
+    with pytest.warns(UserWarning, match="未核实"):
+        clean = run_time_link(cfg, channel=cm)
+        mc = run_time_link(cfg, channel=cm, xtalk=bank)
+    assert mc.ber.n_errors > 300 and mc.ser > 2.0 * clean.ser, (mc.ser, clean.ser)
+    stat = run_statistical(cfg, channel=cm, xtalk_pulses=[a.pulse(cfg.osr) for a in bank])
+    ratio = stat.ser / mc.ser
+    assert 0.5 < ratio < 2.0, (stat.ser, mc.ser, ratio)
+
+
+@needs_jit
+def test_adc_pam6_crosstalk_cross_check_within_2x():
+    """The ADC receiver of example 38 at 112 GBd, PAM6, four aggressors at
+    -52 dB (crosstalk 3x the clean SER): 1.06x SER / 1.08x BER with both
+    engines on the corner32 occupancy (ROADMAP P3 #12)."""
+    cfg = _adc_cfg("pam6", 0.18, n_sym=300_000)
+    cm = ChannelModel.from_config(cfg)
+    bank = _pam6_bank(cfg, -52.0)
+    mc = run_time_link(cfg, channel=cm, xtalk=bank)
+    assert mc.ber.n_errors > 500, mc.ber.n_errors
+    stat = run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre,
+                           xtalk_pulses=[a.pulse(cfg.osr) for a in bank])
+    ratio = stat.ser / mc.ser
+    assert 0.5 < ratio < 2.0, (stat.ser, mc.ser, ratio)

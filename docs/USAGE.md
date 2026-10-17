@@ -267,6 +267,8 @@ s = run_statistical(cfg, channel=ch,
 (同步 lane 的 lane 间 skew,秒,≥ 0,取最近的采样点),两个引擎同用。串扰代价随 skew 变得很厉害(4 个 aggressor 的例子里 4.7–32×),
 扫 skew 用 `dataclasses.replace(a, skew_s=x * cfg.ui)`。准同步 lane 给 `XtalkAggressor.ppm`;统计引擎要看到 ppm 就传
 `run_statistical(cfg, xtalk=[...])`(aggressor 本身),`xtalk_pulses` 只带脉冲、按同步 lane 算。
+aggressor 发受扰 lane 的调制格式:PAM6 发 corner32 对流(外层电平 1/8、内层 3/16),统计引擎的 aggressor ISI PDF、`icn_rms` 与 COM 的 σ_XT
+按同一占用(二阶矩 0.4;2026-10-17 前按 6 电平均匀,0.467,两引擎读高 1.1–1.3×)。
 
 **多 lane 环境**(N 个 FEXT + M 个 NEXT,逐 lane 独立数据与耦合抖动):
 

@@ -1007,8 +1007,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     swing = cfg.tx.swing / 2.0  # symbol amplitude scale (levels_norm in [-1,1])
     levels_norm = _levels(cfg) / swing  # {-1,1} or {-1,-1/3,1/3,1}*rlm
     # how often each level is sent and the bits a wrong neighbour costs: 1/N
-    # and one (Gray) but for PAM6's corner32 map (core/mapping.py); the
-    # aggressors' levels stay equiprobable, as the time engine draws them
+    # and one (Gray) but for PAM6's corner32 map (core/mapping.py). The
+    # aggressors send the victim's format, so their cursors' ISI PDFs take
+    # the same occupancy (uniform until 2026-10-17; the pair correlation
+    # between an aggressor's own neighbouring cursors is left out)
     level_probs = level_probabilities(cfg.modulation)
     bit_dist = bit_distance_matrix(cfg.modulation)
     pair_bits = pair_bit_distance(cfg.modulation)
@@ -1146,7 +1148,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         for ph in range(osr):
             xc = baud_samples(xy, osr, ph) * swing      # cursors of a response, not symbols
             sets.append(xc[np.abs(xc) >= 1e-4 * np.abs(xc).max()] if xc.size else xc)
-        x_drift.append((sets, np.mean([isi_pdf(xc, levels_norm, v_centers) for xc in sets], axis=0)))
+        x_drift.append((sets, np.mean([isi_pdf(xc, levels_norm, v_centers, level_probs)
+                                       for xc in sets], axis=0)))
     drift_projected = {}
     union_ratio = None
     # sampling-jitter smearing on the phase axis: what the CDR leaves of the
@@ -1348,7 +1351,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             if xc.size:
                 xc = xc[np.abs(xc) >= 1e-4 * np.abs(xc).max()]
             xcs.append(xc)
-            pdf = _convolve_centred(pdf, isi_pdf(xc, levels_norm, v_centers))
+            pdf = _convolve_centred(pdf, isi_pdf(xc, levels_norm, v_centers, level_probs))
         for _, x_pdf in x_drift:
             pdf = _convolve_centred(pdf, x_pdf)
         pdf_isi = pdf
@@ -1381,12 +1384,13 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                           level_probs)
             for xc in xcs:
                 pdf = _convolve_centred(pdf, isi_pdf(np.correlate(d_ev, xc, "full") / dd,
-                                                     levels_norm, v_centers))
+                                                     levels_norm, v_centers, level_probs))
             for k, (sets, _) in enumerate(x_drift):
                 key = (k, d_ev.tobytes())
                 if key not in drift_projected:   # independent of the victim's phase
                     drift_projected[key] = np.mean(
-                        [isi_pdf(np.correlate(d_ev, xc, "full") / dd, levels_norm, v_centers)
+                        [isi_pdf(np.correlate(d_ev, xc, "full") / dd, levels_norm, v_centers,
+                                 level_probs)
                          for xc in sets], axis=0)
                 pdf = _convolve_centred(pdf, drift_projected[key])
             return pdf

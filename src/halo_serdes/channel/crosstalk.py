@@ -25,7 +25,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..core.mapping import levels_for, nrz_levels, pam4_levels
+from ..core.mapping import (bits_needed, bits_to_symbols, levels_for, nrz_levels, pam4_levels,
+                            symbol_variance)
 from ..core.sampler import baud_samples, hold
 from ..core.waveform import Waveform
 from .response import pulse_from_impulse
@@ -41,7 +42,8 @@ class XtalkAggressor:
         dt: sample step of ``coupling`` [s].
         kind: ``'fext'`` or ``'next'`` (label/metadata).
         swing: aggressor Tx peak-to-peak swing [V] (defaults to the victim's).
-        modulation: ``'nrz'`` or ``'pam4'`` for the aggressor data.
+        modulation: ``'nrz'``, ``'pam4'``, ``'pam6'`` (the corner32 pair
+            stream, as the victim sends it) or ``'pam8'`` for the aggressor data.
         seed: RNG seed for the aggressor's independent random data.
         label: display name.
         skew_s: how much later than the victim the aggressor launches its
@@ -121,10 +123,16 @@ class XtalkAggressor:
         elif mod == "nrz":
             lv = nrz_levels(self.swing)
             sym = rng.integers(0, 2, size=n_sym)
-        else:
-            # PAM6 / PAM8: uniform over the levels (PAM6's pair map sends the
-            # outer ones less often; an aggressor is not modelled that finely)
+        elif mod == "pam6":
+            # the corner32 pair stream the victim lane sends too
+            # (core/mapping.py): the outer levels 1/8 of the time, the inner
+            # 3/16, never two outer ones in a pair. Drawn uniform over the
+            # six until 2026-10-17 (second moment 0.467 against 0.4)
             lv = levels_for(mod, self.swing)
+            bits = rng.integers(0, 2, size=bits_needed(n_sym, mod))
+            sym = bits_to_symbols(bits, mod)[:n_sym]
+        else:
+            lv = levels_for(mod, self.swing)      # PAM8: uniform over the eight
             sym = rng.integers(0, lv.size, size=n_sym)
         return lv[sym]
 
@@ -214,7 +222,9 @@ def icn_rms(aggressors, osr: int, *, modulation: str = "nrz") -> float:
     if not aggressors:
         return 0.0
     lv = levels_for(modulation, 1.0)
-    sym_var = float(np.mean(lv ** 2))          # normalized level variance
+    # normalized level variance, as often as each level is sent (PAM6's
+    # corner32 map: 0.4, not the uniform 0.467)
+    sym_var = symbol_variance(lv, modulation)
     power = 0.0
     for agg in aggressors:
         p = agg.pulse(osr).y

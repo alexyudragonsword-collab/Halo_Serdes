@@ -192,6 +192,19 @@ def level_probabilities(modulation: str) -> np.ndarray:
     return counts / counts.sum()
 
 
+def symbol_variance(levels_norm: np.ndarray, modulation: str) -> float:
+    """Mean square of the normalised level sent -- what the ICN and the COM
+    scale a coupling pulse's cursor power by. ``mean(levels ** 2)`` for the
+    equiprobable formats (bit for bit what they always were); PAM6's is
+    weighted by ``level_probabilities``: 0.4 against 0.467 uniform, as the
+    corner32 map sends the outer levels 1/8 of the time instead of 1/6."""
+    lv = np.asarray(levels_norm, dtype=np.float64)
+    p = level_probabilities(modulation)
+    if p.size != lv.size or np.all(p == p[0]):
+        return float(np.mean(lv ** 2))
+    return float(np.sum(p * np.sort(lv) ** 2))
+
+
 def neighbour_conditional(modulation: str) -> np.ndarray | None:
     """``C[k, j]``: how often the other symbol of a PAM6 pair is level ``j``
     when this one is ``k`` -- None for the formats whose symbols are
