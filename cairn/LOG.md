@@ -3,6 +3,21 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-16 · PAM6 PR 路径的比特也按对(fix/pam6-pr-pair-bits,ROADMAP P3 #12 的一条)
+
+- 探针:ADC 1 + aD + Viterbi 格时域每个符号错 1.02 比特、统计 1.19(B6);不是搭档条件(该路径 c(+1) 由检测器分辨,搭档几乎不推门限),
+  是多符号事件:交替的两符号事件落在一对里是字的对角移动,corner32 下 1.7–2.4 比特,不是两个单步的 2.4–2.9。
+- 改:`pair_event_bits`(事件按触碰到的对算字距,起步位置各半,其余符号按允许移动的发送字取)进事件路径,每错比特 = 事件比特 / 事件长度
+  (w_ev 已含错数);判决链(`pr_symbol_decisions`)在第二位置用状态里前一个错与自己的错查 `pair_word_bits`,每符号半对。
+- 数:ADC 1 + aD + Viterbi BER 比 1.20 → 1.05×(SER 1.03,每错比特 1.19 → 1.04 对时域 1.02);逐符号判决链(ADC 1 + aD,无序列检测)0.20 / 0.24 m 的每错比特 1.19 → 0.99 对时域 0.99 / 1.00,BER 比 1.42 / 1.22 → 1.18 / 1.02×(SER 1.19 / 1.03);示例 46 的 PAM6 PR 格动了:1 + aD K = 1 统计 reach 18.84 → 18.90 dB,1 + aD + bD² K = 2 19.54 → 19.64 dB(时域 19.65,统计 / 时域 1.01–1.41 → 0.88–1.25×),PR + DFSE 相对 delta 的收益 +2.97 → +3.07 dB,KP4+BCH 统计 reach 19.43 → 19.62 dB,PAM6 / PAM8 浴盆交叉 21.6 → 23.8 dB;PAM4 / PAM8 与 PAM6 的 delta 格不动。
+- 验证:本地全量 1205 passed / 1 skipped(+1);`HALO_NO_JIT=1` 下四个相关测试文件 116 passed / 40 skipped;ruff;Cython(statistical / mapping);
+  指纹:合成 PAM6 / PAM8 链路 2 mV 时统计 BER 下溢为 0、对本条与 P2 #33 都不敏感,噪声提到 10 mV 后 30 个合成行的值动,预设 860 个 bit-identical;
+  示例 46 两次全尺寸运行逐行相同后 accept,`derived` 12 个数 102 处成立。
+- 文档:ROADMAP P3 #12 那条改为已做(余下的近似写明);`cairn/448G调制格式.md` §2 / §3;CHANGELOG。
+- CI(PR #95,头 5e4d6a2):测试矩阵 jit 12–19 分钟、3.10 nojit 23、3.11 nojit 37 分钟,examples 18、examples-full 30 分钟,lint、import-clean、
+  RTL lockstep、vendor-drift 全绿;Android(00be298)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(4 / 5 / 5 分钟);
+  pyinstaller 2、nuitka 117、nuitka-onefile 123 分钟绿。
+
 ## 2026-10-16 · PAM6 比特按对:搭档已知时的代价(fix/pam6-pair-ber,ROADMAP P2 #33)
 
 - 探针:四个混合信号格的时域判决流按对解码,每个符号错实际 1.01–1.06 比特、B6 预期 1.17–1.34(ratio 1.33 / 1.22 / 1.10 / 1.07),

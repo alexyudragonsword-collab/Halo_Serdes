@@ -259,3 +259,41 @@ def test_pam6_pair_bit_distance_is_the_matrix_before_averaging():
     assert D[0, 0, :, 1].min() != D[0, 0, :, 1].max()
     for mod in ("nrz", "pam4", "pam8"):
         assert pair_bit_distance(mod) is None
+
+
+def test_pam6_event_bits_are_the_pairs_words_the_event_touches():
+    """A one-symbol event costs ``bit_distance_matrix``'s entry; an
+    alternating two-symbol event costs less than two single steps because
+    the pair it lands in moves its word diagonally; a brute-force count over
+    the sent words reproduces one case; ``pair_word_bits`` is the table."""
+    from halo_serdes.core.mapping import (
+        _PAM6_CORNERS, PAM6_DECODE, bit_distance_matrix, pair_event_bits, pair_word_bits)
+
+    B = bit_distance_matrix("pam6")
+    for j in range(5):
+        assert pair_event_bits((1,), j) == pytest.approx(B[j, j + 1])
+        assert pair_event_bits((-1,), j + 1) == pytest.approx(B[j + 1, j])
+    for j in range(5):
+        assert pair_event_bits((1, -1), j) < B[j, j + 1] + max(B[k, k - 1] for k in range(1, 6))
+    # brute force: first symbol 2 moving +1 as the pair's first position, the
+    # second symbol moving -1, averaged with the second-position alignment
+    def popc(x):
+        return bin(int(x)).count("1")
+    first = [popc(PAM6_DECODE[2, v] ^ PAM6_DECODE[3, v - 1]) for v in range(1, 6) if (2, v) not in _PAM6_CORNERS]
+    second = []
+    for u in range(6):                       # partner before, unmoved
+        if (u, 2) in _PAM6_CORNERS or not 0 <= u <= 5:
+            continue
+        second.append(popc(PAM6_DECODE[u, 2] ^ PAM6_DECODE[u, 3]))
+    nxt = []                                  # the -1 symbol opens the next pair
+    for u in range(1, 6):
+        for v in range(6):
+            if (u, v) in _PAM6_CORNERS:
+                continue
+            nxt.append(popc(PAM6_DECODE[u, v] ^ PAM6_DECODE[u - 1, v]))
+    expect = 0.5 * (np.mean(first) + np.mean(second) + np.mean(nxt))
+    assert pair_event_bits((1, -1), 2) == pytest.approx(expect)
+    W = pair_word_bits("pam6")
+    assert W.shape == (6, 6, 6, 6) and W[1, 2, 1, 2] == 0 and not W[0, 0].any()
+    assert W[1, 2, 1, 3] == popc(PAM6_DECODE[1, 2] ^ PAM6_DECODE[1, 3])
+    assert pair_event_bits((1,), 0) > 0 and pair_word_bits("pam4") is None

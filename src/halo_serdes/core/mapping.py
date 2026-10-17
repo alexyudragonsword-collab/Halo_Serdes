@@ -317,6 +317,75 @@ def pair_bit_distance(modulation: str) -> np.ndarray | None:
     return d
 
 
+def _pair_move_bits(mu: int, mv: int, u_fixed: int | None = None,
+                    v_fixed: int | None = None) -> float:
+    """Mean bits a PAM6 pair's word changes by when its symbols move by
+    ``(mu, mv)`` level steps, over the 32 sent words that allow the move
+    (one symbol fixed when given); 0.0 when none does."""
+    acc = []
+    for u in range(6):
+        if u_fixed is not None and u != u_fixed:
+            continue
+        for v in range(6):
+            if v_fixed is not None and v != v_fixed:
+                continue
+            if (u, v) in _PAM6_CORNERS or not (0 <= u + mu <= 5 and 0 <= v + mv <= 5):
+                continue
+            acc.append(bin(int(PAM6_DECODE[u, v]) ^ int(PAM6_DECODE[u + mu, v + mv])).count("1"))
+    return float(np.mean(acc)) if acc else 0.0
+
+
+def pair_event_bits(moves: tuple[int, ...], first_level: int) -> float:
+    """Bits a PAM6 error event costs: ``moves`` is the level step of each
+    consecutive symbol in error (the first one sent as ``first_level``),
+    the pairs it touches scored by their words (``PAM6_DECODE``, corners
+    decoded inward) and summed. The event starts in the pair's first or
+    second position equally often; the other symbols' levels are drawn
+    from the sent words that allow the move, the pairs being independent.
+    A one-symbol event gives back ``bit_distance_matrix``'s entry; an
+    alternating two-symbol one within a pair moves the word diagonally,
+    which for corner32 costs less than two single steps (ROADMAP P3 #12)."""
+    moves = tuple(int(m) for m in moves)
+    if not moves:
+        return 0.0
+    total = 0.0
+    for parity in (0, 1):
+        # the error positions laid on the pair grid: position 0 of a pair is
+        # even; the event's first symbol sits at index `parity`
+        seq = ([0] if parity == 1 else []) + list(moves)
+        if len(seq) % 2:
+            seq.append(0)
+        first_at = parity
+        for p0 in range(0, len(seq), 2):
+            mu, mv = seq[p0], seq[p0 + 1]
+            if mu == 0 and mv == 0:
+                continue
+            u_fix = first_level if p0 == first_at else None
+            v_fix = first_level if p0 + 1 == first_at else None
+            total += _pair_move_bits(mu, mv, u_fix, v_fix)
+    return total / 2.0
+
+
+def pair_word_bits(modulation: str) -> np.ndarray | None:
+    """``W[u, v, u2, v2]``: bits between the words of the sent PAM6 pair
+    ``(u, v)`` and the decided one ``(u2, v2)`` (corners decoded inward);
+    zero rows for the corners that are never sent. None for the other
+    formats. The per-symbol decision chain of a partial-response target
+    scores a pair with it once its second symbol is decided (ROADMAP P3 #12)."""
+    if modulation != "pam6":
+        return None
+    w = np.zeros((6, 6, 6, 6))
+    for u in range(6):
+        for v in range(6):
+            if (u, v) in _PAM6_CORNERS:
+                continue
+            sent = int(PAM6_DECODE[u, v])
+            for u2 in range(6):
+                for v2 in range(6):
+                    w[u, v, u2, v2] = bin(sent ^ int(PAM6_DECODE[u2, v2])).count("1")
+    return w
+
+
 def count_bit_errors(ref_symbols: np.ndarray, rx_symbols: np.ndarray, modulation: str,
                      ref_pos: np.ndarray | None = None):
     """Bit errors between a reference and a decided symbol stream, as the
