@@ -3,6 +3,21 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-17 · pam6 / pam8 的混合信号包络标定(fix/pam6-pam8-ms-envelope,ROADMAP P2 #34)
+
+- 探针(示例 12 的判据:Whisper 背板、CTLE 四档择优 + 4 抽头 unrolled DFE、判决后最窄子眼 > 0,PAM6 / PAM8 以 1 GBd 步长):最后开眼 PAM6 13 GBd
+  (32.5 Gb/s,12.4 mV,−16.1 dB)、PAM8 11 GBd(33 Gb/s,1.5 mV,−14.5 dB),对 PAM4 −20.4 dB 差 4.3 / 5.9 dB(电平代价 4.4 / 7.4);眼高 / 电平间距
+  PAM6 12 GBd 0.28(= PAM4 16 GBd 的 0.28)、PAM8 8 GBd 0.42、9 GBd 0.24。0.2 m 解析走线 PAM6 19 GBd、PAM8 14 GBd。
+- 定档:舒适 PAM6 30 / PAM8 24 Gb/s,极限 32.5 / 33 Gb/s,硬顶 30 GBd 不变;`ms_envelope()` 四格式都有,"未核实"警告不再出现(None 分支留给未知格式)。
+- 判据修正:PAM6 在 Whisper 14 GBd 闭眼后 15 GBd 又"开" 0.1 mV(4 万样本最小值的涨落),"最后一个开眼点"会错判到 37.5 Gb/s;示例 12 的极限
+  改为"第一次闭眼之前的最后一个开眼点",NRZ / PAM4 不变。登记 #34 时猜"包络大概率远低于 PAM4":按波特 13 / 11 对 18 GBd 成立,按比特率只低 3–4 Gb/s。
+- 改:schema 两张表 + 注释;timedomain / config_bridge 的 None 分支措辞;示例 12 加 PAM6 / PAM8 两条曲线(1 GBd 步长)并 accept,`derived.yaml` 登记
+  pam6 / pam8 的闭眼损耗(README 引用);test_ms_envelope 的 pam6 / pam8 用例改为三档断言(+1 参数化),formats 的两处 `pytest.warns` 改为 "exceeds"。
+- 验证:本地全量 1211 passed / 1 skipped(+1;第一遍 1 红是 `test_mapping_formats` 里断言 pam6 / pam8 为 None 的旧用例,改为四格式断言后绿);ruff;
+  Cython(schema / timedomain);指纹 980 个值 bit-identical;示例 12 全尺寸重跑两次后 accept,`derived` 104 处引用成立;示例 00–11 / 13–46 未动。
+- 文档:ROADMAP #34 清空;CHANGELOG;README 包络表加 PAM6 / PAM8 列;USAGE §1;SUMMARY §04 / 448G 段;COMPARISON;`cairn/448G调制格式.md` §6 / §7。
+- CI:PR 开出后补。
+
 ## 2026-10-17 · PAM6 串扰 aggressor 发 corner32 对流(fix/pam6-xtalk-occupancy,ROADMAP P3 #12 的一条)
 
 - 探针(main 的 worktree 跑旧、本分支跑新):aggressor 从均匀 6 电平改成 corner32 对流后两引擎 SER 同降 0.78–0.93×(二阶矩 0.4 / 0.467),
@@ -13,7 +28,9 @@
 - 验证:本地全量 1210 passed / 1 skipped(+5,26.6 分钟);`HALO_NO_JIT=1` 下新测试绿(混合信号串扰铁律 3 一条 22.5 s);ruff;Cython(mapping / crosstalk /
   statistical / com);指纹 980 个值 bit-identical;示例 24 / 26 / 28 / 44 / 46 零漂移。
 - 文档:ROADMAP P3 #12 串扰那条改为已做;CHANGELOG;`cairn/448G调制格式.md` §2 / §7;`cairn/多lane建模.md` §7;USAGE §7 一句。
-- CI:PR 开出后补。
+- CI(PR #96,头 88bb14c;两条 test 工作流各跑一遍):测试矩阵 jit 13–20 分钟、3.10 nojit 21 / 41 分钟(一次离 45 分钟上限只差 4 分钟,运行器负载;新加的混合信号串扰测试 nojit 22 s)、
+  3.11 nojit 28 / 33 分钟,examples 9 / 17、examples-full 28 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(4 / 5 / 5 分钟);
+  pyinstaller 3、nuitka-onefile 74 分钟绿,nuitka 合并时仍在跑(≥ 106 分钟,未等它)。
 
 ## 2026-10-16 · PAM6 PR 路径的比特也按对(fix/pam6-pr-pair-bits,ROADMAP P3 #12 的一条)
 

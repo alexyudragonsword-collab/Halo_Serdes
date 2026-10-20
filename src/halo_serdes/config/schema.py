@@ -18,14 +18,16 @@ SCHEMA_VERSION = 1
 # ---------------------------------------------------------------------------
 # Product mixed-signal envelope (CTLE + DFE + BB-CDR, no RX FFE) — three
 # tiers, calibrated by the limit sweep on the Whisper reference backplane
-# (examples/12; closure loss ~-30 dB NRZ / ~-20.5 dB PAM4, the 9.5 dB gap
-# being the PAM4 level penalty):
+# (examples/12; closure loss -30.2 dB NRZ / -20.4 dB PAM4 / -16.1 dB PAM6 /
+# -14.5 dB PAM8 -- the gaps are the level penalties, 20 log10 of 3, 5, 7):
 #
 #   default anchor : 16 GBd (canonical validated configs, ample margin)
-#   comfort zone   : NRZ <= 24 Gb/s, PAM4 <= 32 Gb/s
+#   comfort zone   : NRZ <= 24 Gb/s, PAM4 <= 32, PAM6 <= 30, PAM8 <= 24 Gb/s
 #                    (post-DFE eye >= ~25% of level spacing on Whisper)
-#   absolute limit : NRZ <= 30 Gb/s, PAM4 <= 36 Gb/s
-#                    (last-open points; a few-mV eye — expect FEC territory)
+#   absolute limit : NRZ <= 30 Gb/s, PAM4 <= 36, PAM6 <= 32.5, PAM8 <= 33 Gb/s
+#                    (last-open points; a few-mV eye — expect FEC territory;
+#                    PAM6 / PAM8 swept in 1 GBd steps on 2026-10-17, the
+#                    mixed-signal receiver is 12-13 / 10-11 GBd there)
 #   hard ceiling   : 30 GBd symbol rate regardless of modulation — proxy for
 #                    the circuit walls this behavioral model does NOT capture
 #                    (CTLE gain-bandwidth, slicer aperture, clock path), which
@@ -34,15 +36,16 @@ SCHEMA_VERSION = 1
 # comfort < rate <= limit: the time engine warns "marginal"; beyond the limit
 # or ceiling it warns "exceeds" — ADC/DSP is the supported path there.
 MS_DEFAULT_BAUD = 16.0e9
-MS_COMFORT_DATA_RATE: dict[str, float] = {"nrz": 24.0e9, "pam4": 32.0e9}
-MS_LIMIT_DATA_RATE: dict[str, float] = {"nrz": 30.0e9, "pam4": 36.0e9}
+MS_COMFORT_DATA_RATE: dict[str, float] = {"nrz": 24.0e9, "pam4": 32.0e9, "pam6": 30.0e9, "pam8": 24.0e9}
+MS_LIMIT_DATA_RATE: dict[str, float] = {"nrz": 30.0e9, "pam4": 36.0e9, "pam6": 32.5e9, "pam8": 33.0e9}
 MS_HARD_MAX_BAUD = 30.0e9
 
 
 def ms_envelope(modulation: str) -> tuple[float, float] | None:
-    """(comfort, limit) data rate [bit/s] of the mixed-signal envelope, or
-    None for a format it was never calibrated on (PAM6 / PAM8: examples/12
-    measured NRZ and PAM4 only); only the hard baud ceiling applies there."""
+    """(comfort, limit) data rate [bit/s] of the mixed-signal envelope --
+    all four formats are calibrated by examples/12 (PAM6 / PAM8 since
+    2026-10-17, ROADMAP P2 #34); None only for a format the tables do not
+    know, where the hard baud ceiling alone applies."""
     if modulation in MS_COMFORT_DATA_RATE:
         return MS_COMFORT_DATA_RATE[modulation], MS_LIMIT_DATA_RATE[modulation]
     return None

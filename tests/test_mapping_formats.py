@@ -60,9 +60,12 @@ def test_mm_pd_input_auto_is_the_equalised_sample_above_two_levels():
         assert LinkConfig(modulation=m, rx=RxConfig(arch="adc_dsp")).mm_pd_input == exp
 
 
-def test_ms_envelope_is_known_for_nrz_pam4_only():
+def test_ms_envelope_is_known_for_all_four_formats():
+    """PAM6 / PAM8 calibrated 2026-10-17 (ROADMAP P2 #34, examples/12); an
+    unknown format is the only None."""
     assert ms_envelope("nrz") == (24e9, 30e9) and ms_envelope("pam4") == (32e9, 36e9)
-    assert ms_envelope("pam6") is None and ms_envelope("pam8") is None
+    assert ms_envelope("pam6") == (30e9, 32.5e9) and ms_envelope("pam8") == (24e9, 33e9)
+    assert ms_envelope("pam5") is None
 
 
 # ------------------------------------------------------------------ levels

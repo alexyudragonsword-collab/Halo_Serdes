@@ -316,8 +316,9 @@ def test_pam6_pairs_lower_the_mixed_signal_ser_against_independent_symbols(monke
     ("pam8", 0.15, 0.004, 2, 4.0), ("pam8", 0.12, 0.003, 0, 4.0)])
 def test_mixed_signal_cross_check_within_2x(mod, length_m, noise, n_dfe, ctle_db):
     """The mixed-signal receiver at 16 GBd on the short analytic channel of
-    ``test_statistical.py``, PAM6 and PAM8 (the envelope is PAM4's; the run
-    only warns). PAM8's eye is closed there without equalisation (1/7 of
+    ``test_statistical.py``, PAM6 and PAM8 (16 GBd is past their calibrated
+    mixed-signal envelopes, 32.5 / 33 Gb/s; the run warns "exceeds" and goes
+    on). PAM8's eye is closed there without equalisation (1/7 of
     the swing between levels), so it gets the CTLE. A failure here reports
     the ratio, not a skip.
 
@@ -335,8 +336,8 @@ def test_mixed_signal_cross_check_within_2x(mod, length_m, noise, n_dfe, ctle_db
                     dfe=DfeConfig(n_taps=n_dfe), noise_rms=noise),
         sim=SimConfig(n_symbols=400_000, seed=3, pattern="prbs13"))
     cm = ChannelModel.from_config(cfg)
-    with pytest.warns(UserWarning, match="未核实"):
-        mc = run_time_link(cfg, channel=cm)
+    with pytest.warns(UserWarning, match="exceeds the mixed-signal envelope"):
+        mc = run_time_link(cfg, channel=cm)       # 40 / 48 Gb/s, past the 32.5 / 33 limits
     assert mc.ber.n_errors > 100, mc.ber.n_errors
     stat = run_statistical(cfg, channel=cm)
     ratio = stat.ber / mc.ber.ber
@@ -398,7 +399,9 @@ def test_mixed_signal_pam6_crosstalk_cross_check_within_2x():
     (second moment 0.467 against 0.4), and an engine on either model against
     the other 1.17-1.27x. Both now take the occupancy: the 16 GBd
     mixed-signal link without a DFE, four aggressors at -40 dB (12x the
-    clean SER), 1.01x."""
+    clean SER), 1.01x. 16 GBd PAM6 is past the calibrated envelope (32.5
+    Gb/s): the run warns "exceeds" and goes on, as the invariant-3 probes
+    always did."""
     cfg = LinkConfig(
         modulation="pam6", symbol_rate=16e9, osr=32,
         channel=ChannelConfig(kind="analytic", length_m=0.10, rdc=2.0, r_skin=1.5e-3,
@@ -409,7 +412,7 @@ def test_mixed_signal_pam6_crosstalk_cross_check_within_2x():
         sim=SimConfig(n_symbols=200_000, seed=3, pattern="prbs13"))
     cm = ChannelModel.from_config(cfg)
     bank = _pam6_bank(cfg, -40.0)
-    with pytest.warns(UserWarning, match="未核实"):
+    with pytest.warns(UserWarning, match="exceeds the mixed-signal envelope"):
         clean = run_time_link(cfg, channel=cm)
         mc = run_time_link(cfg, channel=cm, xtalk=bank)
     assert mc.ber.n_errors > 300 and mc.ser > 2.0 * clean.ser, (mc.ser, clean.ser)

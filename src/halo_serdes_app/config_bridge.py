@@ -653,7 +653,7 @@ def envelope_status(cfg: LinkConfig) -> tuple[str, str]:
             return "crit", (f"{cfg.symbol_rate / 1e9:.3g} GBd {mod.upper()} exceeds the "
                             f"mixed-signal hard ceiling ({MS_HARD_MAX_BAUD/1e9:.0f} GBd) — use adc_dsp.")
         return "warn", (f"{mod.upper()} has no calibrated mixed-signal envelope "
-                        "(未核实: NRZ and PAM4 only) — exploration runs.")
+                        "(未核实) — exploration runs.")
     comfort, limit = env
     if cfg.data_rate > limit * (1 + 1e-9) or cfg.symbol_rate > MS_HARD_MAX_BAUD * (1 + 1e-9):
         return "crit", (f"{dr:.3g} Gb/s {mod.upper()} exceeds the mixed-signal "

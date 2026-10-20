@@ -75,8 +75,9 @@ FfeConfig(adapt="lsm")  # ValueError: ffe.adapt must be one of ['lms','none','wi
 `cfg.n_levels`(2 / 4 / 6 / 8)与 `cfg.bits_per_symbol`(1 / 2 / 2.5 / 3,只有 PAM6 是小数)是只读属性,
 码型比特数走 `core.mapping.bits_needed()`。PAM4 与 PAM8 用 Gray 码;PAM6 把 5 bit 装进两个符号(36 对里去掉 4 个角对,
 `tx.pam6_map: corner32`,表与贪心规则在 `core/mapping.py`),外层电平出现 1/8、内层 3/16,统计引擎按这个占用加权。
-`prbsNq` / `prqs10` 是 PAM4 的符号码型,pam6 / pam8 用比特码型(`prbs13` 等)。混合信号包络(`ms_envelope()`)只标定过
-NRZ / PAM4,pam6 / pam8 走混合信号时只警告"未核实",硬上限 30 GBd 仍然生效。448G/lane 的格式比较见 `examples/46`、
+`prbsNq` / `prqs10` 是 PAM4 的符号码型,pam6 / pam8 用比特码型(`prbs13` 等)。混合信号包络(`ms_envelope()`)四种格式都由示例 12
+标定:舒适区 / 绝对极限 PAM6 30 / 32.5 Gb/s(12 / 13 GBd)、PAM8 24 / 33 Gb/s(8 / 11 GBd),硬上限 30 GBd 不分格式
+(2026-10-17 前 pam6 / pam8 只警告"未核实")。448G/lane 的格式比较见 `examples/46`、
 `cairn/448G调制格式.md`。R_LM、TDECQ 仍是 PAM4 专属量。
 
 ---
