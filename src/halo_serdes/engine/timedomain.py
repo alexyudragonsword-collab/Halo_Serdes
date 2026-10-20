@@ -406,13 +406,13 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     mod = cfg.modulation.upper()
     env = ms_envelope(cfg.modulation)
     if env is None:
-        # no calibrated envelope for this format (examples/12 measured NRZ
-        # and PAM4): say so, and keep only the hard baud ceiling
+        # no calibrated envelope for this format (examples/12 covers NRZ,
+        # PAM4, PAM6 and PAM8): say so, and keep only the hard baud ceiling
         import warnings
 
         warnings.warn(
-            f"mixed_signal arch on {mod}: the mixed-signal envelope is calibrated "
-            "for NRZ and PAM4 only -- 此格式的包络未核实 (unverified); only the hard "
+            f"mixed_signal arch on {mod}: no calibrated mixed-signal envelope for this "
+            "format -- 此格式的包络未核实 (unverified); only the hard "
             f"ceiling of {MS_HARD_MAX_BAUD / 1e9:.0f} GBd applies", stacklevel=2)
         if cfg.symbol_rate > MS_HARD_MAX_BAUD * tol:
             warnings.warn(

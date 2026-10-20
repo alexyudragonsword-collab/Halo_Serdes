@@ -1,7 +1,7 @@
 """Product mixed-signal envelope: three tiers calibrated by examples/12.
 
-    default anchor 16 GBd | comfort NRZ 24 / PAM4 32 Gb/s |
-    absolute limit NRZ 30 / PAM4 36 Gb/s | hard ceiling 30 GBd
+    default anchor 16 GBd | comfort NRZ 24 / PAM4 32 / PAM6 30 / PAM8 24 Gb/s |
+    absolute limit NRZ 30 / PAM4 36 / PAM6 32.5 / PAM8 33 Gb/s | hard ceiling 30 GBd
 """
 
 import pathlib
@@ -48,12 +48,14 @@ def _envelope_warnings(cfg):
 
 def test_constants_are_consistent():
     assert MS_DEFAULT_BAUD == 16e9
-    assert MS_COMFORT_DATA_RATE == {"nrz": 24e9, "pam4": 32e9}
-    assert MS_LIMIT_DATA_RATE == {"nrz": 30e9, "pam4": 36e9}
+    assert MS_COMFORT_DATA_RATE == {"nrz": 24e9, "pam4": 32e9, "pam6": 30e9, "pam8": 24e9}
+    assert MS_LIMIT_DATA_RATE == {"nrz": 30e9, "pam4": 36e9, "pam6": 32.5e9, "pam8": 33e9}
     assert MS_HARD_MAX_BAUD == 30e9
     # comfort < limit per modulation; NRZ limit coincides with the ceiling
-    for m in ("nrz", "pam4"):
+    for m in ("nrz", "pam4", "pam6", "pam8"):
         assert MS_COMFORT_DATA_RATE[m] < MS_LIMIT_DATA_RATE[m]
+    # the limits sit at the same closing loss once the level penalty is paid:
+    # Whisper's last open eye at -30.2 / -20.4 / -16.1 / -14.5 dB (examples/12)
 
 
 def test_default_linkconfig_is_16g_nrz():
@@ -97,19 +99,26 @@ def test_beyond_limit_warns_exceeds():
     assert any("exceeds the mixed-signal envelope" in m for m in msgs)
 
 
-def test_pam6_pam8_have_no_validated_envelope():
-    """The two envelopes were calibrated for NRZ and PAM4 (examples/12); a
-    PAM6 / PAM8 mixed-signal run says so once and never claims "exceeds"
-    unless the hard baud ceiling is crossed."""
-    for mod in ("pam6", "pam8"):
-        msgs = _envelope_warnings(LinkConfig(
-            modulation=mod, symbol_rate=16e9, channel=_analytic_channel(),
+@pytest.mark.parametrize("mod, comfort_baud, marginal_baud, beyond_baud", [
+    ("pam6", 12e9, 13e9, 14e9),     # 30 / 32.5 / 35 Gb/s
+    ("pam8", 8e9, 10e9, 12e9),      # 24 / 30 / 36 Gb/s
+])
+def test_pam6_pam8_tiers(mod, comfort_baud, marginal_baud, beyond_baud):
+    """PAM6 / PAM8 calibrated on 2026-10-17 (ROADMAP P2 #34) the way NRZ and
+    PAM4 were: Whisper's last open post-DFE eye at 13 GBd PAM6 (12.4 mV,
+    -16.1 dB) and 11 GBd PAM8 (1.5 mV, -14.5 dB), comfort where the eye is
+    still >= ~25 % of the level spacing (12 GBd PAM6 0.28, 8 GBd PAM8 0.42;
+    9 GBd PAM8 is 0.24). No "未核实" warning any more."""
+    def run(baud):
+        return _envelope_warnings(LinkConfig(
+            modulation=mod, symbol_rate=baud, channel=_analytic_channel(),
             rx=RxConfig.product_mixed_signal(), sim=SimConfig(n_symbols=5_000, pattern="prbs31")))
-        assert len(msgs) == 1 and "未核实" in msgs[0] and "exceeds" not in msgs[0], msgs
-    msgs = _envelope_warnings(LinkConfig(
-        modulation="pam8", symbol_rate=32e9, channel=_analytic_channel(),
-        rx=RxConfig.product_mixed_signal(), sim=SimConfig(n_symbols=5_000, pattern="prbs31")))
-    assert any("exceeds" in m for m in msgs)
+    assert run(comfort_baud) == []
+    msgs = run(marginal_baud)
+    assert any("marginal zone" in m for m in msgs) and not any("exceeds" in m for m in msgs), msgs
+    msgs = run(beyond_baud)
+    assert any("exceeds the mixed-signal envelope" in m for m in msgs), msgs
+    assert not any("未核实" in m for m in msgs)
 
 
 def test_adc_arch_never_warns():

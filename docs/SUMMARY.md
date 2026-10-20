@@ -103,8 +103,8 @@ The last open eyes are NRZ at −30.2 dB and PAM4 at −20.4 dB: 9.8 dB apart (1
 
 ![mixed-signal 上限扫描 / limit sweep](../examples/output/12_ms_limit_sweep.png)
 
-据此定出三层产品级包络(框架默认):**NRZ ≤16 Gb/s / PAM4 ≤32 Gb/s**(默认锚点),舒适区 NRZ 24 / PAM4 32,绝对极限 NRZ 30 / PAM4 36,**30 GBd 硬顶**(代表未建模的电路墙:CTLE 增益带宽、判决器孔径、时钟分发抖动)。
-This calibrated a three-tier envelope (framework default): NRZ ≤16 / PAM4 ≤32 Gb/s anchor; comfort 24/32; limit 30/36; **30 GBd hard ceiling** (unmodeled circuit walls).
+据此定出三层产品级包络(框架默认):**NRZ ≤16 Gb/s / PAM4 ≤32 Gb/s**(默认锚点),舒适区 NRZ 24 / PAM4 32,绝对极限 NRZ 30 / PAM4 36,**30 GBd 硬顶**(代表未建模的电路墙:CTLE 增益带宽、判决器孔径、时钟分发抖动)。2026-10-17 同一扫描(1 GBd 步长)补了 PAM6 / PAM8:最后开眼 13 / 11 GBd(−16.1 / −14.5 dB),舒适区 30 / 24 Gb/s、绝对极限 32.5 / 33 Gb/s。
+This calibrated a three-tier envelope (framework default): NRZ ≤16 / PAM4 ≤32 Gb/s anchor; comfort 24/32; limit 30/36; **30 GBd hard ceiling** (unmodeled circuit walls). The same sweep (1 GBd steps) added PAM6 / PAM8 on 2026-10-17: last open eye at 13 / 11 GBd (−16.1 / −14.5 dB), comfort 30 / 24 Gb/s, limit 32.5 / 33 Gb/s.
 
 **自适应与时钟恢复 / Adaptation & clock recovery**
 
@@ -224,7 +224,7 @@ PAM4 赢 0.79 dB、省 0.70 pJ/b,三个种子方向一致 —— 但三者只差
 只看 delta 收端 PAM8 领先(16.90 对 16.57 / 16.44 dB);PAM4 靠两光标 PR + 16 状态 DFSE 多拿 +4.25 dB 翻盘,而 PAM8 的同一招要 64 状态。
 发端口径:PAM4 6 bit DAC 够(reach 掉 0.03 dB),PAM6 / PAM8 要 7 bit;10 mV 发端噪声 PAM4 掉 0.12 dB、PAM8 掉 1.24 dB。
 KP4+BCH 下 PAM4 的统计 reach(20.1 dB)时域没确认 —— 工作点 pre-FEC 7e-3 处逐符号判决 SER 0.2,判决导向环路失锁。
-802.3dj 的 448G 规范值一律未核实;混合信号包络对 PAM6 / PAM8 也未标定。细节与余项见 `cairn/448G调制格式.md`。
+802.3dj 的 448G 规范值一律未核实;混合信号包络对 PAM6 / PAM8 于 2026-10-17 标定(示例 12:极限 32.5 / 33 Gb/s)。细节与余项见 `cairn/448G调制格式.md`。
 / PAM4 wins by 0.79 dB and 0.70 pJ/b, consistent over three seeds -- but the three sit within about 1 dB: the higher baud is roughly paid back by the wider
 level spacing on this channel, and the receiver decides. On delta receivers alone PAM8 leads; PAM4's two-cursor PR with a 16-state DFSE buys +4.25 dB and
 turns the table, where PAM8 needs 64 states for the same move. PAM4 is fine with a 6-bit DAC, PAM6 / PAM8 want 7. The 802.3dj 448G figures are unverified.

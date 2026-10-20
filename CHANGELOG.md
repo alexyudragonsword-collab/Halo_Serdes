@@ -6,6 +6,21 @@
 
 ---
 
+## [未发布] — pam6 / pam8 的混合信号包络标定(ROADMAP P2 #34)
+
+### 新增
+- `ms_envelope()` 的 PAM6 / PAM8 两档:舒适区 30 / 24 Gb/s(12 / 8 GBd),绝对极限 32.5 / 33 Gb/s(13 / 11 GBd),硬顶 30 GBd 不变。
+  按示例 12 的判据(Whisper 背板,CTLE 四档择优 + 4 抽头 unrolled DFE,判决后最窄子眼 > 0)以 1 GBd 步长扫:最后开眼 PAM6 13 GBd(12.4 mV,−16.1 dB)、
+  PAM8 11 GBd(1.5 mV,−14.5 dB),对 PAM4 的 −20.4 dB 差 4.3 / 5.9 dB(电平代价 4.4 / 7.4 dB);舒适区按眼高 ≥ ~25 % 电平间距(PAM6 12 GBd 0.28,与 PAM4 16 GBd 同;PAM8 8 GBd 0.42)。
+- 示例 12 加 PAM6(20 Gb/s 起,2.5 Gb/s 步)/ PAM8(18 Gb/s 起,3 Gb/s 步)两条曲线;0.2 m 解析走线上最后开眼 19 / 14 GBd。`derived.yaml` 登记两个闭眼损耗,README 引用。
+
+### 变更
+- pam6 / pam8 走混合信号不再警告"未核实";16 GBd 的 PAM6 / PAM8(40 / 48 Gb/s)落在"exceeds"区,照跑只告警(铁律 3 测试的两处 `pytest.warns` 随之改)。
+  None 分支留给表外格式,措辞不再写"NRZ and PAM4 only"。
+- 示例 12 的"极限"改为**第一次闭眼之前**的最后一个开眼点:PAM6 在 Whisper 14 GBd 闭眼后 15 GBd 又"开" 0.1 mV(4 万样本最小值的涨落),旧规则会报 37.5 Gb/s。
+  NRZ / PAM4 的四个极限点不变;示例 12 的 Gb/s 列改为 `g` 格式以容纳 32.5。
+- 测试 +1(`test_pam6_pam8_tiers` 参数化两格式,替换"未核实"用例)。数值引擎没动:指纹与示例 00–11 / 13–46 不变。
+
 ## [未发布] — PAM6 串扰 aggressor 发 corner32 对流(ROADMAP P3 #12 的一条)
 
 ### 修复

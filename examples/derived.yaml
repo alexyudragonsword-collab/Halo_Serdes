@@ -15,8 +15,12 @@
   values:
     nrz: {example: "12", line: "NRZ @ Whisper backplane: {*} Gb/s ({*} GBd, {} dB@Nyq"}
     pam4: {example: "12", line: "PAM4 @ Whisper backplane: {*} Gb/s ({*} GBd, {} dB@Nyq"}
+    pam6: {example: "12", line: "PAM6 @ Whisper backplane: {*} Gb/s ({*} GBd, {} dB@Nyq"}
+    pam8: {example: "12", line: "PAM8 @ Whisper backplane: {*} Gb/s ({*} GBd, {} dB@Nyq"}
   quotes:
     - {doc: README.md, text: "最后一个开眼点 NRZ {nrz} dB、PAM4 {pam4} dB,相差 {nrz - pam4} dB"}
+    - {doc: README.md, text: "加 PAM6 {pam6} dB、PAM8 {pam8} dB(1 GBd 步长)"}
+    - {doc: README.md, text: "对 PAM4 差 {pam6 - pam4} / {pam8 - pam4} dB,电平代价"}
     - {doc: docs/SUMMARY.md, text: "最后一个开眼点 NRZ {nrz} dB、PAM4 {pam4} dB,相差 {nrz - pam4} dB"}
     - {doc: docs/SUMMARY.md, text: "NRZ at {nrz} dB and PAM4 at {pam4} dB: {nrz - pam4} dB apart"}
     - {doc: docs/summary.html, text: "最后一个开眼点 NRZ {nrz} dB、PAM4 {pam4} dB,相差 {nrz - pam4} dB"}

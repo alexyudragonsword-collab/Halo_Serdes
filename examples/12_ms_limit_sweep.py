@@ -1,7 +1,9 @@
 """Probe the mixed-signal envelope: sweep data rate until the eye closes.
 
-NRZ from 16 Gb/s in 2 Gb/s steps; PAM4 from 32 Gb/s in 4 Gb/s steps (both
-are 1 GBd steps — the architecture's real axis is symbol rate). Product RX
+NRZ from 16 Gb/s in 2 Gb/s steps and PAM4 from 32 Gb/s in 4 Gb/s steps (2 GBd
+steps — the architecture's real axis is symbol rate); PAM6 from 20 Gb/s in
+2.5 Gb/s steps and PAM8 from 18 Gb/s in 3 Gb/s steps (1 GBd steps, added
+2026-10-17 for ROADMAP P2 #34: their eyes close within a few GBd). Product RX
 partition throughout: CTLE (best of 4 peaking gears per point) + 4-tap DFE
 (tap-1 unrolled) + no RX FFE. Two reference channels:
 
@@ -10,7 +12,9 @@ partition throughout: CTLE (best of 4 peaking gears per point) + 4-tap DFE
 
 "Eye open" criterion: worst-case post-DFE inner eye (min PAM4 sub-eye) > 0
 at the sampling instant over 3000 noisy traces. The sweep stops after the
-eye stays closed for two consecutive steps.
+eye stays closed for two consecutive steps, and the limit is the last open
+eye BEFORE the first closure: PAM6 on Whisper closes at 14 GBd and "reopens"
+by 0.1 mV at 15 GBd -- a fluctuation of the 40k-sample minimum, not an eye.
 """
 
 import sys
@@ -35,6 +39,7 @@ from halo_serdes.config import LinkConfig  # noqa: E402
 from halo_serdes.config.schema import (  # noqa: E402
     ChannelConfig, CtleConfig, DfeConfig, RxConfig, SimConfig, TxConfig,
 )
+from halo_serdes.core.mapping import bits_per_symbol_of  # noqa: E402
 from halo_serdes.core.waveform import Waveform  # noqa: E402
 from halo_serdes.dsp import channel_cursors, dfe_static  # noqa: E402
 from halo_serdes.engine.static_link import _levels, make_pattern  # noqa: E402
@@ -68,7 +73,7 @@ def measure_inner_eye(modulation: str, symbol_rate: float, ch_cfg: ChannelConfig
                     dfe=DfeConfig(n_taps=4, tap1_mode="unrolled"),
                     noise_rms=NOISE),
         sim=SimConfig(n_symbols=N_SYM, seed=17,
-                      pattern="prbs13q" if modulation == "pam4" else "prbs31"),
+                      pattern="prbs13q" if modulation == "pam4" else "prbs31"),  # bit PRBS for PAM6 / PAM8
     )
     channel = ChannelModel.from_config(cfg)
     rng = np.random.default_rng(cfg.sim.seed)
@@ -121,7 +126,7 @@ def measure_inner_eye(modulation: str, symbol_rate: float, ch_cfg: ChannelConfig
 
 def sweep(modulation: str, start_gbps: float, step_gbps: float, ch_name: str,
           ch_cfg: ChannelConfig, max_points: int = 26):
-    bits = 2 if modulation == "pam4" else 1
+    bits = bits_per_symbol_of(modulation)
     rows = []
     closed_streak = 0
     rate = start_gbps
@@ -140,7 +145,7 @@ def sweep(modulation: str, start_gbps: float, step_gbps: float, ch_name: str,
         loss = cm.loss_at(fs / 2)
         rows.append((rate, best_eye, best_ser, best_peak, loss))
         state = "OPEN " if best_eye > 0 else "closed"
-        print(f"  {modulation.upper():4s} {rate:5.0f} Gb/s ({fs / 1e9:4.0f} GBd, "
+        print(f"  {modulation.upper():4s} {rate:5g} Gb/s ({fs / 1e9:4.0f} GBd, "
               f"{loss:6.1f} dB@Nyq): eye={best_eye * 1e3:7.1f} mV [{state}] "
               f"SER={best_ser:.1e} (CTLE {best_peak:.0f} dB)")
         closed_streak = closed_streak + 1 if best_eye <= 0 else 0
@@ -155,10 +160,12 @@ for ch_name, ch_cfg in CHANNELS.items():
     print(f"== {ch_name} ==")
     results[("nrz", ch_name)] = sweep("nrz", 16, 2, ch_name, ch_cfg)
     results[("pam4", ch_name)] = sweep("pam4", 32, 4, ch_name, ch_cfg)
+    results[("pam6", ch_name)] = sweep("pam6", 20, 2.5, ch_name, ch_cfg)
+    results[("pam8", ch_name)] = sweep("pam8", 18, 3, ch_name, ch_cfg)
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.4))
-styles = {"nrz": "o-", "pam4": "s--"}
+styles = {"nrz": "o-", "pam4": "s--", "pam6": "^-.", "pam8": "v:"}
 colors = {"Whisper backplane": "C0", "Analytic trace 0.2m": "C2"}
 for (mod, ch_name), rows in results.items():
     r = np.array([[x[0], x[1]] for x in rows])
@@ -170,7 +177,7 @@ axes[0].set(xlabel="Data rate [Gb/s]", ylabel="Worst inner eye post-DFE [mV]",
 axes[0].legend(fontsize=8)
 
 for (mod, ch_name), rows in results.items():
-    r = np.array([[x[0] / (2 if mod == "pam4" else 1), x[1]] for x in rows])
+    r = np.array([[x[0] / bits_per_symbol_of(mod), x[1]] for x in rows])
     axes[1].plot(r[:, 0], np.maximum(r[:, 1], -0.005) * 1e3, styles[mod],
                  color=colors[ch_name], label=f"{mod.upper()} @ {ch_name}")
 axes[1].axhline(0, color="r", lw=1)
@@ -182,13 +189,17 @@ for ax in axes:
 fig.tight_layout()
 fig.savefig(OUT / "12_ms_limit_sweep.png", dpi=130)
 
-print("== Limit (last point with an open eye) ==")
+print("== Limit (last open eye before the first closure) ==")
 for (mod, ch_name), rows in results.items():
-    open_rows = [r for r in rows if r[1] > 0]
+    open_rows = []
+    for r in rows:
+        if r[1] <= 0:
+            break
+        open_rows.append(r)
     if open_rows:
         last = open_rows[-1]
-        fs = last[0] / (2 if mod == "pam4" else 1)
-        print(f"  {mod.upper():4s} @ {ch_name}: {last[0]:.0f} Gb/s "
+        fs = last[0] / bits_per_symbol_of(mod)
+        print(f"  {mod.upper():4s} @ {ch_name}: {last[0]:.1f} Gb/s "
               f"({fs:.0f} GBd, {last[4]:.1f} dB@Nyq, eye {last[1] * 1e3:.1f} mV)")
     else:
         print(f"  {mod.upper():4s} @ {ch_name}: closed at start")
