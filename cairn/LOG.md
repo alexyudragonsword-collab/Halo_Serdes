@@ -16,7 +16,9 @@
   预设的时域行与 PAM4 32G 统计 BER);示例全跑一遍 02 / 07 / 09 / 10 / 13 / 44 末位动并 accept,其余 41 个不变,`derived` 104 处成立。
   坑:4 路并行示例 + 全量测试 + 指纹同时跑,示例 43(400 万符号)被杀报 FAIL,单跑 682 s 逐行同期望 —— 并行跑挂了先单跑再下结论。
 - 文档:ROADMAP #31 清空;CHANGELOG;`cairn/DSP发端与PR.md` §30 余项;invariants / pitfalls 的 P2 #31 句;USAGE。
-- CI:PR 开出后补。
+- CI(PR #98,头 bd886b5;两条 test 工作流各跑一遍):测试矩阵 jit 16–21 分钟、3.10 nojit 42 / 42 分钟(两次都离 45 分钟上限只差 3 分钟 —— 该动手了:
+  把最重的 nojit 用例标 needs_jit 或提上限)、3.11 nojit 22 / 37 分钟,examples 9 / 14、examples-full 21 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;
+  Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(4 / 3 / 4 分钟);pyinstaller 3、nuitka 32(缓存命中)、nuitka-onefile 129 分钟绿。
 
 ## 2026-10-17 · pam6 / pam8 的混合信号包络标定(fix/pam6-pam8-ms-envelope,ROADMAP P2 #34)
 
