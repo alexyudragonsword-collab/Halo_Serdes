@@ -123,3 +123,65 @@ def test_numba_matches_pure_python():
     out_py = _run(y, 2_500, w_dfe=np.zeros(1), mu=1e-3, kernel=_ms_rx_py)
     for a, b in zip(out_jit, out_py):
         assert np.allclose(a, b, rtol=1e-12, atol=1e-12)
+
+
+# ------------------------------------- slicer-level adaptation (dLev, ROADMAP P2 #31)
+
+LEVELS4 = np.array([-0.5, -1 / 6, 1 / 6, 0.5])
+
+
+def _pam4_wave(n_sym: int, gain: float, seed: int = 0):
+    """PAM4 ZOH waveform whose amplitude is ``gain`` x the nominal levels."""
+    rng = np.random.default_rng(seed)
+    sym = rng.integers(0, 4, size=n_sym)
+    y = jittered_zoh(LEVELS4[sym] * gain, OSR, np.zeros(n_sym + 1), UI)
+    return sym, np.concatenate([np.zeros(4 * OSR), y, np.zeros(4 * OSR)])
+
+
+def _ms_args(y, n_sym, levels, w_dfe=np.zeros(0), mu=0.0, kp_shift=5, ki_shift=11):
+    kp, ki = OSR * 2.0 ** (-kp_shift), OSR * 2.0 ** (-ki_shift)
+    return (y, OSR, float(4 * OSR + OSR / 2), n_sym, np.array(levels, dtype=float), w_dfe, mu,
+            100, kp, ki, 0.0, 1.0, np.full(n_sym, -1, dtype=np.int64), 0, 0, 0,
+            np.zeros(len(levels)), np.zeros(n_sym))
+
+
+def test_levels_follow_the_sampled_amplitude():
+    """dLev: started at the nominal levels on a waveform 0.8x as large, the
+    four levels converge to 0.8x (sign-sign, batched every n_ave symbols);
+    with mu_lev = 0 they are the ones given, untouched."""
+    from halo_serdes.cdr.kernels import MsRxRun
+
+    sym, y = _pam4_wave(60_000, gain=0.8, seed=5)
+    run = MsRxRun(*_ms_args(y, 59_000, LEVELS4), mu_lev=2e-3)
+    run.advance(59_000)
+    assert np.allclose(run.levels, LEVELS4 * 0.8, atol=0.01), run.levels
+    dec = run.result()[0]
+    assert np.mean(dec[-20_000:] != sym[dec.size - 20_000: dec.size]) < 1e-3
+    frozen = MsRxRun(*_ms_args(y, 59_000, LEVELS4))
+    frozen.advance(59_000)
+    assert np.array_equal(frozen.levels, LEVELS4)
+
+
+def test_level_adaptation_is_chunk_invariant_and_matches_pure_python():
+    """The level update is batched on the absolute symbol count, so any
+    chunking of the run gives the same decisions and levels; numba and the
+    pure-Python core agree bit for bit."""
+    from halo_serdes.cdr.kernels import MsRxRun, _ms_rx_core_py
+
+    _, y = _pam4_wave(6_000, gain=0.85, seed=6)
+    whole = MsRxRun(*_ms_args(y, 5_500, LEVELS4, w_dfe=np.zeros(1), mu=1e-3), mu_lev=1e-3)
+    whole.advance(5_500)
+    chunked = MsRxRun(*_ms_args(y, 5_500, LEVELS4, w_dfe=np.zeros(1), mu=1e-3), mu_lev=1e-3)
+    k = 0
+    while not chunked.finished:
+        k = chunked.advance(k + 777)
+    assert np.array_equal(whole.levels, chunked.levels)
+    assert np.array_equal(whole.result()[0], chunked.result()[0])
+    if ms_rx is _ms_rx_py:
+        pytest.skip("numba not active")
+    py = MsRxRun(*_ms_args(y, 5_500, LEVELS4, w_dfe=np.zeros(1), mu=1e-3), mu_lev=1e-3,
+                 core=_ms_rx_core_py)
+    py.advance(5_500)
+    assert np.allclose(py.levels, whole.levels, rtol=1e-12, atol=1e-12)
+    for a, b in zip(py.result(), whole.result()):
+        assert np.allclose(a, b, rtol=1e-12, atol=1e-12)

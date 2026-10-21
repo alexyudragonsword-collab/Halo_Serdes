@@ -1185,9 +1185,15 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # an ADC receiver's LMS FFE pulls its output to them where it samples,
     # as does a lane read at an offset with its equalisers adapted there.
     # Held at the lock instead, the PAM4 32G preset read 0.70-0.95x the time
-    # engine, at the peak 0.94-1.15x (ROADMAP P2 #30)
+    # engine, at the peak 0.94-1.15x (ROADMAP P2 #30). Since 2026-10-21 the
+    # time engine's levels follow the sampled amplitude when they adapt
+    # (DfeConfig.level_adapt, P2 #31), so the thresholds sit at the lock
+    # point's main cursor again, as for the ADC receiver
+    adapts_levels = (cfg.rx.arch == "mixed_signal" and cfg.rx.dfe.adapt != "none"
+                     and cfg.rx.dfe.level_adapt == "sign_sign")
     i_level = (int(np.argmin(np.abs(phi_offsets)))
-               if cfg.rx.arch == "mixed_signal" and phase_ui is None else i_lock)
+               if cfg.rx.arch == "mixed_signal" and phase_ui is None and not adapts_levels
+               else i_lock)
     # something held under the smear: DFE taps, or PAM4's thresholds
     holds = n_dfe > 0 or levels_norm.size > 2
 

@@ -222,11 +222,13 @@ def test_the_slicer_thresholds_are_held_with_the_taps(monkeypatch):
 
 def test_mixed_signal_pam4_holds_its_thresholds_too(monkeypatch):
     """The PAM4 32G preset at 6 mV, the time engine frozen (loop and DFE) 6
-    samples early and 3-4 late of its lock, its DFE taps those of the lock
-    and its slicer levels where it sets them, at the pulse peak: the held
-    curve 1.02-1.20x over 2.4 M symbols (ROADMAP P2 #30); with the
-    thresholds re-placed at each phase 0.42-0.79x (levels and taps both at
-    the lock then, ROADMAP P2 #29)."""
+    samples early and 3-4 late of its lock, its DFE taps and slicer levels
+    those of the lock -- where the adapting receiver's levels end up (dLev,
+    ROADMAP P2 #31) and where the statistical engine holds its thresholds
+    since: the held curve within 0.85-1.3x over 2.4 M symbols. Until
+    2026-10-21 the frozen levels stayed at the pulse peak's main cursor, as
+    the time engine then set them, 1.02-1.20x (ROADMAP P2 #30); with the
+    thresholds re-placed at each phase 0.42-0.79x (ROADMAP P2 #29)."""
     from halo_serdes.config import load_config
 
     base = load_config(str(Path(__file__).parent.parent / "configs" / "pam4_32g_ms.yaml"))
@@ -241,15 +243,14 @@ def test_mixed_signal_pam4_holds_its_thresholds_too(monkeypatch):
     frozen = dataclasses.replace(cfg, rx=dataclasses.replace(
         cfg.rx, cdr=dataclasses.replace(cfg.rx.cdr, kp_shift=60, ki_shift=60),
         dfe=dataclasses.replace(cfg.rx.dfe, adapt="none")))
-    # the time engine starts its DFE at the pulse peak's cursors and its
-    # sign-sign LMS moves them to the lock's, two samples after; frozen, it
-    # is given the lock's taps, its levels staying at the peak's main cursor
+    # the time engine starts its DFE and levels at the pulse peak's cursors
+    # and its sign-sign LMS moves both to the lock's, two samples after;
+    # frozen, it is given the lock's cursors outright (taps and levels)
     cursors = timedomain.channel_cursors
     shift = int(round(lock))
 
     def lock_taps(pulse, osr, a, b, peak_idx=None):
-        at_lock = cursors(pulse, osr, a, b, peak_idx=peak_idx + shift)
-        return at_lock * (cursors(pulse, osr, a, b, peak_idx=peak_idx)[0] / at_lock[0])
+        return cursors(pulse, osr, a, b, peak_idx=peak_idx + shift)
 
     monkeypatch.setattr(timedomain, "channel_cursors", lock_taps)
     held = []

@@ -507,6 +507,9 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     kp, ki, clamp = cdr_gains(cfg.rx.cdr, osr)
 
     mu = cfg.rx.dfe.mu if cfg.rx.dfe.adapt != "none" else 0.0
+    # slicer levels follow the sampled amplitude (dLev, DfeConfig.level_adapt):
+    # the step is relative to the main cursor, as the taps are
+    mu_lev = mu * abs(main) if cfg.rx.dfe.level_adapt == "sign_sign" else 0.0
 
     # per-branch comparator offsets for the unrolled tap-1 slicer bank
     if tap1_unrolled and cfg.rx.dfe.comparator_offset_sigma > 0:
@@ -520,13 +523,15 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     if collect_eye and not isinstance(rx_y, np.ndarray):
         rx_y.keep_head(int(phase0) % osr + osr + 2000 * 2 * osr)
-    dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = _run_rx(MsRxRun(
+    run = MsRxRun(
         rx_y if isinstance(rx_y, np.ndarray) else np.zeros(0), osr, float(peak), n_sym,
         levels.astype(np.float64), np.asarray(w_dfe0, dtype=np.float64),
         float(mu), LMS_BATCH_SYMBOLS, float(kp), float(ki), float(clamp),
         float(sum_alpha), sched.reference, int(train_end), int(settle),
-        int(tap1_unrolled), branch_off, rx_clk), rx_y, cfg, progress)
+        int(tap1_unrolled), branch_off, rx_clk, mu_lev=float(mu_lev))
+    dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = _run_rx(run, rx_y, cfg, progress)
     jitter_budget = _stream_jitter(cfg, rx_y, jitter_budget)
+    levels0, levels = levels, run.levels          # the adapted levels score the run
 
     n_run = dec.size
     warm = warmup_symbols(cfg, train_end, n_run)
@@ -554,7 +559,8 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         ffe_taps=None, dfe_taps=w_dfe, sample_phase=int(phase0) % osr,
         eye_data=eye, y_slicer=sc.y_slicer,
         extras={"phase_track": phase, "pd_hist": pd_hist, "main_cursor": main,
-                "levels": levels, "warmup": warm, "w_dfe0": np.asarray(w_dfe0),
+                "levels": levels, "levels0": levels0, "warmup": warm,
+                "w_dfe0": np.asarray(w_dfe0),
                 "settle": settle, "train_end": train_end,
                 "w_dfe_hist": w_dfe_hist, "n_ave": LMS_BATCH_SYMBOLS,
                 "jitter_budget": jitter_budget,

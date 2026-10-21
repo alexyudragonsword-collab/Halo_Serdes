@@ -3,6 +3,21 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-21 · 混合信号判决电平自适应 dLev(fix/ms-pam4-level-adapt,ROADMAP P2 #31)
+
+- 定了:加 dLev(`DfeConfig.level_adapt`,默认 `sign_sign`),不再把"电平定在脉冲峰值"的悲观写进文档了事。内核按判决误差的符号逐批
+  (n_ave)更新判决电平,步长 mu × |主光标|,只在 DFE 自适应时跑,交叉即撤销;统计引擎门限放回锁定点主光标。
+- 探针(main 的 worktree 跑旧、本分支跑新;PAM4 32G 预设,4–8 种子 × 50 万):电平 0.1853 → 0.1837 V(锁定点在峰值后 2 个样本,幅度低 0.9 %);
+  时域 BER 噪声 0.005 + rj 0.03 时 0.79×、0.004 + rj 0.06 时 0.88×、0.008 / 0.012 时 0.94 / 0.99×;统计同向 0.71 / 0.84 / 0.92 / 0.98×,
+  统计 / 时域 0.79–1.13×;预设统计 BER 3.3e-10 → 1.4e-10。越深差越大,与登记时的 1.3–1.8× 一致。NRZ 预设电平动 0.1–0.7 %,BER 不变。
+  预设噪声 + rj 0.03 那一点 400 万符号只有 3 个错,新旧逐个相同 —— 深点要拿错数说话,不能拿它比。
+- 验证:本地全量 1212 passed + 2 红(都是把 PAM4 电平钉在峰值的旧断言:`test_skew` 的 phase_ui 读数、`test_ffe_tracks_wander` 的冻结参照,改后绿,
+  计 1214 / 1 skipped,+3);`HALO_NO_JIT=1` 内核 / 分块 / 配置测试绿;ruff;Cython(kernels / timedomain / statistical / schema);指纹 980 里 33 处动(混合信号
+  预设的时域行与 PAM4 32G 统计 BER);示例全跑一遍 02 / 07 / 09 / 10 / 13 / 44 末位动并 accept,其余 41 个不变,`derived` 104 处成立。
+  坑:4 路并行示例 + 全量测试 + 指纹同时跑,示例 43(400 万符号)被杀报 FAIL,单跑 682 s 逐行同期望 —— 并行跑挂了先单跑再下结论。
+- 文档:ROADMAP #31 清空;CHANGELOG;`cairn/DSP发端与PR.md` §30 余项;invariants / pitfalls 的 P2 #31 句;USAGE。
+- CI:PR 开出后补。
+
 ## 2026-10-17 · pam6 / pam8 的混合信号包络标定(fix/pam6-pam8-ms-envelope,ROADMAP P2 #34)
 
 - 探针(示例 12 的判据:Whisper 背板、CTLE 四档择优 + 4 抽头 unrolled DFE、判决后最窄子眼 > 0,PAM6 / PAM8 以 1 GBd 步长):最后开眼 PAM6 13 GBd
@@ -16,7 +31,9 @@
 - 验证:本地全量 1211 passed / 1 skipped(+1;第一遍 1 红是 `test_mapping_formats` 里断言 pam6 / pam8 为 None 的旧用例,改为四格式断言后绿);ruff;
   Cython(schema / timedomain);指纹 980 个值 bit-identical;示例 12 全尺寸重跑两次后 accept,`derived` 104 处引用成立;示例 00–11 / 13–46 未动。
 - 文档:ROADMAP #34 清空;CHANGELOG;README 包络表加 PAM6 / PAM8 列;USAGE §1;SUMMARY §04 / 448G 段;COMPARISON;`cairn/448G调制格式.md` §6 / §7。
-- CI:PR 开出后补。
+- CI(PR #97,头 5e535ea;两条 test 工作流各跑一遍):测试矩阵 jit 13–21 分钟、3.10 nojit 32 / 41 分钟(又一次离 45 分钟上限 4 分钟)、3.11 nojit 36 / 36 分钟,
+  examples 10 / 18、examples-full 28 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;Android API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(5 / 4 / 4 分钟);
+  pyinstaller 3、nuitka 70、nuitka-onefile 124 分钟绿(合并时 onefile 仍在跑)。
 
 ## 2026-10-17 · PAM6 串扰 aggressor 发 corner32 对流(fix/pam6-xtalk-occupancy,ROADMAP P3 #12 的一条)
 
