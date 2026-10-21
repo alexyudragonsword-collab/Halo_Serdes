@@ -280,6 +280,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("rx.dfe.adapt", "Adapt", "enum",
            options=["none", "lms", "sign_sign"]),
         _f("rx.dfe.mu", "mu", "float"),
+        _f("rx.dfe.level_adapt", "Level adapt (dLev)", "enum", options=["none", "sign_sign"]),
         _f("rx.dfe.tap_limits", "Tap limits", "opt_tuple_float"),
         _f("rx.dfe.sum_bw", "Summing-node BW [GHz]", "opt_float", scale=1e9),
         _f("rx.dfe.loop_delay_ui", "Loop delay [UI]", "float"),

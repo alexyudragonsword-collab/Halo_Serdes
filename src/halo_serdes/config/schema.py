@@ -325,6 +325,16 @@ class DfeConfig:
     n_taps: int = 1                     # 802.3dj reference receiver: 1 tap
     adapt: Literal["none", "lms", "sign_sign"] = "none"
     mu: float = 1e-3
+    # mixed-signal slicer levels (dLev): "sign_sign" lets them follow the
+    # equalised amplitude at the loop's sampling point by sign-sign LMS on
+    # the decision error (step mu x |main cursor| per LMS batch), as a real
+    # PAM4 receiver does; it runs only while the DFE adapts (adapt != none).
+    # Until 2026-10-21 the levels stayed at the pulse peak's main cursor for
+    # the whole run while the bang-bang loop locked 0.06 UI after it, which
+    # read PAM4 32G 1.3-1.8x pessimistic (ROADMAP P2 #31). "none" keeps
+    # that. The ADC receiver's LMS FFE pulls its output onto the levels and
+    # is unaffected.
+    level_adapt: Literal["none", "sign_sign"] = "sign_sign"
     tap_limits: Optional[tuple[float, ...]] = None
     sum_bw: Optional[float] = None      # mixed-signal summing-node bandwidth [Hz]
     loop_delay_ui: float = 0.0          # mixed-signal decision feedback delay [UI]
@@ -341,6 +351,7 @@ class DfeConfig:
     def __post_init__(self):
         _require(self.n_taps >= 0, f"dfe.n_taps must be >= 0, got {self.n_taps}")
         _require_in(self.adapt, {"none", "lms", "sign_sign"}, "dfe.adapt")
+        _require_in(self.level_adapt, {"none", "sign_sign"}, "dfe.level_adapt")
         _require(self.mu >= 0, f"dfe.mu must be >= 0, got {self.mu}")
         _require(self.loop_delay_ui >= 0,
                  f"dfe.loop_delay_ui must be >= 0, got {self.loop_delay_ui}")

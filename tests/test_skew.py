@@ -100,10 +100,12 @@ def test_phase_ui_reads_the_bathtub_where_it_is_defined():
     BER. With one -- a bang-bang loop hunts on any clock (ROADMAP P2 #27) --
     the read at the offset holds the DFE where it reads, which the bathtub,
     re-adapted at every phase, does not; at 0 it is still the engine's own
-    on NRZ. On PAM4 the engine's own read holds the slicer's thresholds where
-    the time engine sets its levels, at the pulse peak, while a lane read at
-    an offset has them adapted where it samples -- at 0 on the lock, two
-    samples on from the peak -- and reads lower (ROADMAP P2 #30)."""
+    on NRZ. On PAM4 too since the time engine's levels adapt to where it
+    samples (dLev, ROADMAP P2 #31): the engine's own read and the lane's at
+    0 both hold the thresholds at the lock. With the levels held at the pulse
+    peak (``level_adapt: none``) the engine's own read keeps them there while
+    the lane at 0 has them adapted on the lock, two samples on, and reads
+    lower (ROADMAP P2 #30)."""
     from halo_serdes.channel import ChannelModel
 
     cfg = _preset("PAM4 224G ADC (106 GBd)", 0.0015)
@@ -123,7 +125,11 @@ def test_phase_ui_reads_the_bathtub_where_it_is_defined():
     ms = _preset("PAM4 32G mixed-signal", 0.0085)
     m0 = run_statistical(ms)
     assert m0.extras["jitter_sigma_ui"] > 0.02
-    assert 1.0 < m0.ber / run_statistical(ms, phase_ui=0.0).ber < 1.5
+    assert run_statistical(ms, phase_ui=0.0).ber == pytest.approx(m0.ber, rel=1e-12)
+    held = dataclasses.replace(ms, rx=dataclasses.replace(
+        ms.rx, dfe=dataclasses.replace(ms.rx.dfe, level_adapt="none")))
+    h0 = run_statistical(held)
+    assert 1.0 < h0.ber / run_statistical(held, phase_ui=0.0).ber < 1.5
 
 
 def test_adc_lane_needs_its_ffe():

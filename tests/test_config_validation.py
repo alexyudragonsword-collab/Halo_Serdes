@@ -182,3 +182,16 @@ def test_dsp_tx_fields_round_trip_through_yaml(tmp_path):
         c = LinkConfig(tx=tx)
         dump_config(c, path)
         assert load_config(path) == c
+
+
+def test_dfe_level_adapt_is_validated():
+    """ROADMAP P2 #31: the mixed-signal slicer levels adapt by default
+    (sign-sign, with the DFE); "none" keeps them at the pulse peak."""
+    import pytest
+
+    from halo_serdes.config.schema import DfeConfig
+
+    assert DfeConfig().level_adapt == "sign_sign"
+    assert DfeConfig(level_adapt="none").level_adapt == "none"
+    with pytest.raises(ValueError, match="dfe.level_adapt"):
+        DfeConfig(level_adapt="lms")

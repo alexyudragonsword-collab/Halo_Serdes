@@ -37,6 +37,7 @@ def _ms_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                    train_len: int, adapt_start: int, tap1_unrolled: int,
                    branch_offsets: np.ndarray,
                    rx_clock_offset_samples: np.ndarray,
+                   mu_lev: float, lcorr: np.ndarray,
                    fs: np.ndarray, ist: np.ndarray,
                    dec: np.ndarray, y_sum: np.ndarray, phase: np.ndarray,
                    pd_hist: np.ndarray, w_hist: np.ndarray):
@@ -44,8 +45,11 @@ def _ms_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
 
     Everything the loop carries from one symbol to the next lives in the
     arguments: the DFE taps ``w`` and the LMS accumulator ``corr`` (updated
-    in place), ``fs`` = [position, integrator, summing-node feedback, sign of
-    the previous data sample], ``ist`` = [LMS batch count, tap-history row],
+    in place), the slicer ``levels`` and their sign accumulator ``lcorr``
+    (updated in place when ``mu_lev`` > 0: dLev adaptation, applied every
+    ``n_ave`` symbols on the absolute symbol count), ``fs`` = [position,
+    integrator, summing-node feedback, sign of the previous data sample],
+    ``ist`` = [LMS batch count, tap-history row],
     and the output arrays, which the decisions and feedback read back from.
     So any split of [0, n) into consecutive calls runs the same arithmetic in
     the same order as one call -- bit for bit.
@@ -161,6 +165,30 @@ def _ms_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                     corr[i] = 0.0
                 n_acc = 0
 
+        # --- sign-sign adaptation of the slicer levels (dLev) ---
+        # the decided level moves towards the samples decided as it; the
+        # update is batched on the absolute symbol count so any chunking
+        # of the run gives the same levels. The DFE feedback above reads
+        # the levels, so the taps (normalised to the main cursor) keep
+        # multiplying the amplitude the receiver actually sees.
+        if mu_lev > 0.0 and k >= adapt_start:
+            e_l = v - levels[dec[k]]
+            lcorr[dec[k]] += 1.0 if e_l > 0 else -1.0
+            if (k + 1) % n_ave == 0:
+                for m in range(nl):
+                    levels[m] += mu_lev * lcorr[m] / n_ave
+                # a batch that would let two levels cross (a closed eye
+                # deciding at random) is undone: the levels stay ordered
+                crossed = False
+                for m in range(1, nl):
+                    if levels[m] <= levels[m - 1]:
+                        crossed = True
+                if crossed:
+                    for m in range(nl):
+                        levels[m] -= mu_lev * lcorr[m] / n_ave
+                for m in range(nl):
+                    lcorr[m] = 0.0
+
         # --- Alexander bang-bang phase detector (sign domain) ---
         s_cur = 1.0 if y_d > 0 else -1.0
         s_edge = 1.0 if y_e > 0 else -1.0
@@ -213,15 +241,19 @@ class MsRxRun:
     def __init__(self, y, osr, phase0, n_symbols, levels, w_dfe, mu_dfe,
                  n_ave, kp, ki, clamp, sum_alpha, ref_idx, train_len,
                  adapt_start, tap1_unrolled, branch_offsets,
-                 rx_clock_offset_samples, core=None):
+                 rx_clock_offset_samples, core=None, mu_lev: float = 0.0):
         nt = w_dfe.size
         self.core = core if core is not None else _ms_rx_core
         self.osr = osr
         self.set_window(y)
-        self.params = (levels, w_dfe.copy(), np.zeros(nt, dtype=np.float64),
+        # the levels are the run's: adapted in place when mu_lev > 0
+        # (``levels`` after the run), untouched otherwise
+        self.levels = np.array(levels, dtype=np.float64)
+        self.params = (self.levels, w_dfe.copy(), np.zeros(nt, dtype=np.float64),
                        mu_dfe, n_ave, kp, ki, clamp, sum_alpha, ref_idx,
                        train_len, adapt_start, tap1_unrolled, branch_offsets,
-                       rx_clock_offset_samples)
+                       rx_clock_offset_samples, float(mu_lev),
+                       np.zeros(self.levels.size, dtype=np.float64))
         self.fs = np.array([phase0, 0.0, 0.0, 1.0], dtype=np.float64)
         self.ist = np.zeros(2, dtype=np.int64)
         self.n_symbols = n_symbols
@@ -286,11 +318,11 @@ def _ms_rx_with(core):
               sum_alpha: float, ref_idx: np.ndarray, train_len: int,
               adapt_start: int, tap1_unrolled: int,
               branch_offsets: np.ndarray,
-              rx_clock_offset_samples: np.ndarray):
+              rx_clock_offset_samples: np.ndarray, mu_lev: float = 0.0):
         run = MsRxRun(y, osr, phase0, n_symbols, levels, w_dfe, mu_dfe, n_ave,
                       kp, ki, clamp, sum_alpha, ref_idx, train_len, adapt_start,
                       tap1_unrolled, branch_offsets, rx_clock_offset_samples,
-                      core=core)
+                      core=core, mu_lev=mu_lev)
         run.advance(n_symbols)
         return run.result()
     return ms_rx
@@ -328,6 +360,11 @@ _MS_RX_DOC = """Joint DFE + Alexander bang-bang CDR loop.
             and tracks the *difference* between the two clocks, exactly as a
             real CDR does; zeros give the pre-existing ideal-clock behaviour
             bit for bit.
+        mu_lev: sign-sign step of the slicer levels (dLev) [V per LMS batch],
+            from ``adapt_start`` on: each decided level moves towards the
+            samples decided as it. 0 (the default) keeps the levels given,
+            bit for bit as before the argument existed; ``MsRxRun.levels``
+            holds the adapted ones after a run.
 
     The loop itself is :func:`_ms_rx_core_py`; :class:`MsRxRun` runs it in
     chunks with the same result.
