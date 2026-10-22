@@ -73,6 +73,7 @@ def _optical(f_r, tx_noise, target=(1.0,), at="rx", precode=False, n_sym=200_000
     (dict(target=(1.0, 1.0), precode=True), 0.036),
     (dict(target=(1.0, 0.5), at="tx"), 0.036),
 ])
+@pytest.mark.needs_jit      # 87-90 s a case without numba (2026-10-22)
 def test_statistical_engine_follows_transmitter_noise_through_the_chain(kw, sigma):
     """Invariant 3 with the noise in the transmitter, ahead of a 12 GHz VCSEL:
     at the slicer it has the colour of the whole chain after the DAC, which

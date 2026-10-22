@@ -46,6 +46,9 @@ halo_serdes = ["io/ami_c/*.c", "io/ami_c/*.ami"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "needs_jit: engine-level run that takes minutes on the pure-Python kernels; skipped under HALO_NO_JIT=1 (tests/conftest.py)",
+]
 
 [tool.ruff]
 line-length = 100

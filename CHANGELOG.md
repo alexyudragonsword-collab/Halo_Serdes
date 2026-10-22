@@ -6,6 +6,18 @@
 
 ---
 
+## [未发布] — nojit CI 腿的预算:引擎级交叉校验标 needs_jit(2026-10-22)
+
+### 变更(测试与 CI,库代码不动)
+- `tests/conftest.py`:共享 `needs_jit` 标记(`pyproject` 登记),`HALO_NO_JIT=1` 时自动跳过 —— 引擎级的统计 / 时域交叉校验(几十万符号、两个引擎各跑一遍)
+  在纯 Python 内核上要一分钟以上,而时域内核在两条路径下逐位相同(`test_cdr_kernel` / `test_chunked_kernels` / `test_adc_rx` / `test_rtl_lockstep` / `test_fixed_loop`
+  直接查这一致性),慢路径从它们学不到东西。已有自己 `needs_jit = pytest.mark.skipif(内核是纯 Python 版)` 的文件照旧,两者跳法相同。
+- 标了 25 个标记用例 + `test_pr` / `test_stream` 四处本地 skipif:`test_tx_noise` 四格、`test_crosstalk` 漂移 aggressor 与各 skew 铁律 3、`test_ffe_tracks_wander` 三个、
+  `test_skew` 混合信号偏离锁定点、`test_profile_run_smear`、`test_clock_profile_cdr` 112G MM 环路、`test_pr` MM-under-PR 与发端 PR 主光标、`test_stream` 流式对默认引擎与
+  串扰流、`test_mlsd_precode_wiring` 两个、`test_optical` 主机 FFE 铁律 3 与码型分箱 ADC 五格。numba 下全部照跑(收集 1225 不变)。
+- 实测(本地 Python 3.11,逐文件计时):nojit 全量 2644 → 1292 s(1158 passed / 67 skipped → 1123 / 102),动过的十个文件 1583 → 296 s;余下最重的是内核路径
+  本身的用例(`test_chunked_kernels[adc_dsp_pr4]` 62 s、`test_fixed_loop[pr4]` 53 s),有意保留。3.10 nojit 腿在 PR #97–#99 上 41–42 / 45 分钟;工作流上限不动,注释记了预算。
+
 ## [未发布] — bang-bang 采样相位的平稳分布(ROADMAP P2 #32)
 
 ### 新增

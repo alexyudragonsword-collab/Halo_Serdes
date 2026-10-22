@@ -246,6 +246,7 @@ def test_invariant3_optical_adc_within_2x(er_db):
 
 @pytest.mark.parametrize("er_db,oma_dbm", [(3.0, -4.0), (4.5, -4.0), (6.0, -4.0),
                                             (6.0, -2.0), (7.5, -4.0)])
+@pytest.mark.needs_jit      # 22 s a case without numba (2026-10-22)
 def test_optical_adc_within_1p5x_with_pattern_binned_noise(er_db, oma_dbm):
     """The per-level noise is a scale mixture: which neighbours were sent
     moves the light along the receive filter's memory, and one
@@ -572,6 +573,7 @@ def test_optical_noise_kernels_carry_the_tx_ffe(er_db):
     np.testing.assert_allclose(binned, exact, rtol=0.01)
 
 
+@pytest.mark.needs_jit      # 28 s without numba (2026-10-22)
 def test_invariant3_holds_with_a_host_tx_ffe():
     """End to end on a linear optical link: with the Tx FFE missing from the
     noise kernels the statistical engine read 3.0x the time engine here (the
