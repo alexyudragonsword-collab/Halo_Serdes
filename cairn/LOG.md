@@ -12,7 +12,10 @@
 - 做法:`tests/conftest.py` 共享 `needs_jit` 标记 + `HALO_NO_JIT=1` 自动跳过,`pyproject` 登记;已有本地 skipif 的文件沿用。标 25 个标记用例 + 4 处本地 skipif。
   nojit 全量 2644 → 1292 s(1123 passed / 102 skipped),十个文件 1583 → 296 s;numba 下收集 1225 不变、标过的用例照跑。内核路径的重用例
   (`test_chunked_kernels[adc_dsp_pr4]` 62 s、`test_fixed_loop[pr4]` 53 s、`test_rtl_lockstep`)有意保留。工作流 45 分钟上限不动,注释记预算。
-- 坑:整套 `--durations` 一次跑到底,容器重启(两次,各 ~1 小时一次)就全丢;改成逐文件各写一个 log 的循环,重启后续跑。CI 行见下。
+- 坑:整套 `--durations` 一次跑到底,容器重启(两次,各 ~1 小时一次)就全丢;改成逐文件各写一个 log 的循环,重启后续跑。本地 numba 全量两次被容器重启打断(47 %),以 CI 的四条 jit 腿为准。
+- CI(PR #100,头 609902a;两条 test 工作流各跑一遍,全绿):**3.10 nojit 21.2 / 20.9 分钟(此前 42 / 42)**、3.11 nojit 18.5 / 18.3(此前 21–37),
+  jit 腿 16.6–21.6 分钟,examples 15 / 18、examples-full 29 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;pyinstaller 2、nuitka 28、nuitka-onefile 52 分钟绿。
+  Android 工作流按路径过滤(android / src / configs / data)没有触发 —— 这个 PR 只动 tests / pyproject / test.yml,共用层没动。
 
 ## 2026-10-21 · bang-bang 采样相位的平稳分布(fix/nrz-bb-pattern-phase,ROADMAP P2 #32)
 
