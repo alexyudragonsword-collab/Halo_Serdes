@@ -48,12 +48,14 @@ def tx_sndr_db(wave, ref_wave, osr: int, *, phase: int | None = None, skip: int 
 
 
 def measured_rlm(wave, symbols: np.ndarray, osr: int, *, phase: int | None = None,
-                 skip: int = 16) -> float:
-    """R_LM of the four level means at the symbol centres (PAM4 only)."""
+                 skip: int = 16, n_levels: int = 4) -> float:
+    """R_LM of the ``n_levels`` level means at the symbol centres (PAM4 per
+    802.3 120D; PAM6 / PAM8 by the same rule on every inner level,
+    ``core.static_curve.rlm``)."""
     w = _centres(wave, osr, phase, skip)
     s = np.asarray(symbols)[skip: len(symbols) - skip] if skip else np.asarray(symbols)
     n = min(w.size, s.size)
-    means = [float(w[:n][s[:n] == k].mean()) for k in range(4)]
+    means = [float(w[:n][s[:n] == k].mean()) for k in range(n_levels)]
     return rlm(sorted(means))
 
 
@@ -92,7 +94,8 @@ def tx_report(cfg: LinkConfig, symbols: np.ndarray | None = None) -> TxReport:
         rng = np.random.default_rng(c.sim.seed)
         out.append((pipe.waveform(pipe.symbol_stage(line), rng), pipe))
     (wave, pipe), (ref, _) = out
-    r = measured_rlm(wave, line, cfg.osr) if cfg.modulation == "pam4" else None
+    r = (measured_rlm(wave, line, cfg.osr, n_levels=cfg.n_levels)
+         if cfg.n_levels > 2 else None)             # NRZ has no inner level
     return TxReport(sndr_db=tx_sndr_db(wave, ref, cfg.osr), rlm=r,
                     dac_clipped=int(pipe.stats["dac_clipped"]), wave=wave, ref_wave=ref,
                     line_symbols=line)

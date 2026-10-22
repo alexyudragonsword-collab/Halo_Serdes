@@ -78,7 +78,8 @@ FfeConfig(adapt="lsm")  # ValueError: ffe.adapt must be one of ['lms','none','wi
 `prbsNq` / `prqs10` 是 PAM4 的符号码型,pam6 / pam8 用比特码型(`prbs13` 等)。混合信号包络(`ms_envelope()`)四种格式都由示例 12
 标定:舒适区 / 绝对极限 PAM6 30 / 32.5 Gb/s(12 / 13 GBd)、PAM8 24 / 33 Gb/s(8 / 11 GBd),硬上限 30 GBd 不分格式
 (2026-10-17 前 pam6 / pam8 只警告"未核实")。448G/lane 的格式比较见 `examples/46`、
-`cairn/448G调制格式.md`。R_LM、TDECQ 仍是 PAM4 专属量。
+`cairn/448G调制格式.md`。R_LM 与 TDECQ 自 2026-10-22 起对 PAM6 / PAM8 也算(`tx.rlm` 压所有内电平;`tdecq(n_levels=, level_probs=)`),但那是本项目的约定 ——
+802.3 只定义 PAM4;PAM6 的 OMA 取两符号串(corner32 没有三连外电平),见 `analysis/tdecq.py` 模块说明。
 
 ---
 

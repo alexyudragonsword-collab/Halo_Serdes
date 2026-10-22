@@ -340,17 +340,23 @@ def tdecq_value(cfg, n_symbols: int = 8191):
     import dataclasses as dc
 
     from halo_serdes.analysis.tdecq import tdecq
+    from halo_serdes.core.mapping import level_probabilities
     from halo_serdes.engine.optical_stage import transmitter_power
 
-    c = dc.replace(cfg, sim=dc.replace(cfg.sim, n_symbols=n_symbols, pattern="prbs13q"))
+    # PRBS13Q is PAM4's symbol pattern; PAM6 / PAM8 take the bit pattern
+    pattern = "prbs13q" if cfg.modulation == "pam4" else "prbs13"
+    c = dc.replace(cfg, sim=dc.replace(cfg.sim, n_symbols=n_symbols, pattern=pattern))
     power, line = transmitter_power(c, include_seg_a=False, through_fibre=True)
-    return tdecq(power, c.dt, c.symbol_rate, line, **_tdecq_settings(c))
+    return tdecq(power, c.dt, c.symbol_rate, line, n_levels=c.n_levels,
+                 level_probs=level_probabilities(c.modulation), **_tdecq_settings(c))
 
 
 def tdecq_study(rec) -> dict:
     """TDECQ of the configured optical transmitter (after its fibre, laser
     RIN included, host trace excluded) against extinction ratio and laser
-    bandwidth, with the configured point and the curve's R_LM. PAM4 only."""
+    bandwidth, with the configured point and the curve's R_LM. PAM4 per
+    802.3; PAM6 / PAM8 by the project's convention (analysis/tdecq.py);
+    not NRZ (that would be TDEC, a different procedure)."""
 
     def compute():
         import dataclasses as dc
@@ -360,8 +366,9 @@ def tdecq_study(rec) -> dict:
         cfg = rec.cfg
         if cfg.topology is None:
             return {"error": "TDECQ needs topology.optical.kind = vcsel_mmf or eml_smf."}
-        if cfg.modulation != "pam4":
-            return {"error": "TDECQ is defined for PAM4 transmitters."}
+        if cfg.n_levels < 4:
+            return {"error": "TDECQ is defined for PAM transmitters (PAM4 per 802.3; "
+                             "PAM6 / PAM8 by this project's convention), not NRZ."}
         opt = cfg.topology.optical
 
         def at(**kw):
@@ -376,7 +383,7 @@ def tdecq_study(rec) -> dict:
                 "bw_ghz": bw / 1e9, "tdecq_bw": np.array([at(f_r_hz=float(b)) for b in bw]),
                 "tdecq_db": here.tdecq_db, "rlm": here.rlm, "ceq": here.ceq,
                 "oma_dbm": float(10 * np.log10(here.oma_outer_w * 1e3)),
-                "curve_rlm": optical_rlm(opt)}
+                "curve_rlm": optical_rlm(opt, n_levels=cfg.n_levels)}
     return _cached(("tdecq", rec.id), compute)
 
 

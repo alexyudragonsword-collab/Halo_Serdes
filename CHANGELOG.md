@@ -6,6 +6,24 @@
 
 ---
 
+## [未发布] — PAM6 / PAM8 的 R_LM 与 TDECQ(本项目约定,ROADMAP P3 #12)
+
+### 新增
+- `core.static_curve.rlm` 推广到 N 电平:802.3 120D 的 R_LM = min(3ES, 2−3ES) 写成 1 − max |ES_k / e_k − 1|(每个内电平对它那一侧外电平的归一位置
+  相对理想位置 e_k 的偏差),四电平逐位等于 802.3,六 / 八电平按同一形式(理想位置 3/5、1/5;5/7、3/7、1/7),两电平为 1。`tx.rlm` 压所有 PAM 格式的内电平
+  (`core.mapping.levels_for` / `pam6_levels` / `pam8_levels` 加 `rlm`);`analysis.tx_metrics.measured_rlm(n_levels=)`,`tx_report` 对 PAM6 / PAM8 也报 R_LM。
+- `analysis.tdecq.tdecq(n_levels=4, level_probs=None)`:N − 1 个门限在标称中点(PAM4 的 P_ave ∓ OMA/3、P_ave)、理想半眼 OMA / (2(N−1))(PAM4 的 OMA/6)、
+  `qt_for(n_levels, level_probs)` 按电平占用求 Q_t(PAM4 1.5 Q = 原 `Q_T`,PAM6 corner32 / PAM8 1.75 Q),目标 SER 4.8e-4 不变;`nominal_levels(n)`。
+  PAM6 corner32 永不连发三个外电平:没有 ≥ 3 的串时 OMA 取两符号串的中间 1 UI,`oma_runs` 读 (2, 2)。`optical_rlm(n_levels=)`。
+  802.3 只定义 PAM4,PAM6 / PAM8 的两个量都是**本项目约定**,文档与 docstring 都注明。
+- GUI / API 的 TDECQ 研究对 PAM6 / PAM8 放开(码型用 prbs13,PRBS13Q 是 PAM4 的);NRZ 仍返回说明(那是 TDEC,另一套程序)。表单 `tx.rlm` 标签 "RLM (PAM4)" → "RLM (inner levels)"。
+
+### 变更(数会动)
+- PAM4 / NRZ 逐位不变:指纹 986 个值 bit-identical,示例 00–46 除 34 外不动;示例 34 末尾加同一光学器件三格式表(VCSEL 100G (SR1) 4.59 / 14.85 / 21.49 dB、
+  EML 200G (DR1) 1.88 / 3.85 / 12.49 dB,R_LM 0.98–1.00;同波特下眼各为 OMA 的 1/3、1/5、1/7)。LPO 预设 53 GBd 上 2.95 / 5.92 / 17.35 dB。
+- 测试 +13(9 个函数):Q_t 随占用(1.5 / 1.75 / 1.75)、PAM6 / PAM8 理想眼 ≤ 0.05 dB 与 0.6σ 噪声闭式 0.1 dB 内、其它电平数拒、研究路径三格式单调;`levels_for` 的 rlm 对三格式、
+  R_LM 与 802.3 公式逐位、六 / 八电平压 r 读 r;`tx_report` 三格式读回 0.9、NRZ None;`optical_rlm(n_levels)`。
+
 ## [未发布] — nojit CI 腿的预算:引擎级交叉校验标 needs_jit(2026-10-22)
 
 ### 变更(测试与 CI,库代码不动)

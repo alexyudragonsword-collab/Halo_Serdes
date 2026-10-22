@@ -300,3 +300,40 @@ def test_pam6_event_bits_are_the_pairs_words_the_event_touches():
     assert W.shape == (6, 6, 6, 6) and W[1, 2, 1, 2] == 0 and not W[0, 0].any()
     assert W[1, 2, 1, 3] == popc(PAM6_DECODE[1, 2] ^ PAM6_DECODE[1, 3])
     assert pair_event_bits((1,), 0) > 0 and pair_word_bits("pam4") is None
+
+
+def test_rlm_compresses_the_inner_levels_of_every_pam_format():
+    """``tx.rlm`` scales every inner level, the outer pair fixed, on PAM4 /
+    PAM6 / PAM8 alike; NRZ has none (ROADMAP P3 #12, 2026-10-22)."""
+    from halo_serdes.core.mapping import levels_for
+
+    for m in ("pam4", "pam6", "pam8"):
+        full, comp = levels_for(m, 1.0, 1.0), levels_for(m, 1.0, 0.8)
+        assert comp[[0, -1]] == pytest.approx(full[[0, -1]])
+        assert comp[1:-1] == pytest.approx(0.8 * full[1:-1])
+    assert levels_for("nrz", 1.0, 0.8) == pytest.approx(levels_for("nrz", 1.0, 1.0))
+
+
+def test_rlm_generalises_the_802_3_formula():
+    """On four levels the N-level R_LM is 802.3 120D.3.1.2's bit for bit;
+    on six and eight it reads the uniform compression of the inner levels
+    (what ``tx.rlm`` sets), penalises expansion the same way, and is 1 on
+    two levels."""
+    from halo_serdes.core.static_curve import rlm
+
+    rng = np.random.default_rng(3)
+    for _ in range(50):
+        v0, v3 = -1.0, 1.0
+        v1, v2 = sorted(rng.uniform(-0.9, 0.9, 2))
+        mid = 0.5 * (v0 + v3)
+        es1, es2 = (v1 - mid) / (v0 - mid), (v2 - mid) / (v3 - mid)
+        assert rlm([v0, v1, v2, v3]) == pytest.approx(min(3 * es1, 3 * es2, 2 - 3 * es1, 2 - 3 * es2),
+                                                     abs=1e-12)
+    for n in (6, 8):
+        lv = (2.0 * np.arange(n) - (n - 1.0)) / (n - 1.0)
+        assert rlm(lv) == pytest.approx(1.0)
+        for r in (0.7, 0.9, 1.1):
+            comp = lv.copy()
+            comp[1:-1] *= r
+            assert rlm(comp) == pytest.approx(1.0 - abs(r - 1.0), abs=1e-12)
+    assert rlm([-1.0, 1.0]) == 1.0

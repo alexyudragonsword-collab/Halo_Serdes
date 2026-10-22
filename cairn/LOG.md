@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-22 · PAM6 / PAM8 的 R_LM 与 TDECQ(feat/pam6-pam8-rlm-tdecq,ROADMAP P3 #12)
+
+- 口径(本项目约定,802.3 只定义 PAM4):R_LM 取 802.3 公式的等价形式 1 − max |ES_k / e_k − 1| 对每个内电平;TDECQ 保留 PAM4 程序的每个元素、
+  让电平数穿过去(N − 1 门限在标称中点、半眼 OMA / (2(N−1))、Q_t 按占用 1.5 / 1.75 / 1.75 Q、目标 SER 4.8e-4 照用)。两处 docstring 与文档都写明"约定,不是标准量"。
+- 踩到一个结构性的坑:PAM6 corner32 永不连发三个外电平((5,5) / (0,0) 对被排除,跨对的三连必含一个这样的对),802.3 按 7 / 6 连的 OMA 在 PAM6 上找不到串,
+  第一版直接 NaN;改为没有 ≥ 3 串时取两符号串的中间 1 UI,`oma_runs` 报 (2, 2)。带限眼上这比 PAM4 的读法低约 0.2 dB OMA,文档注明。
+- 数:理想眼 PAM4 / PAM6 / PAM8 +0.001 / +0.001 / +0.024 dB;0.6σ 高斯噪声对闭式 0.969 dB 读 0.91 / 1.01 / 1.02;`tx.rlm` 0.9 三格式都读回 0.900。
+  示例 34 三格式表 VCSEL 100G (SR1) 4.59 / 14.85 / 21.49 dB、EML 200G (DR1) 1.88 / 3.85 / 12.49 dB;LPO 预设 53 GBd 2.95 / 5.92 / 17.35 dB。
+- 验证:PAM4 逐位不变 —— 指纹 986 值 bit-identical(两次,含 OMA 回退改动后),示例 34 旧行一字不动、只多 9 行,`derived` 104 处成立;
+  受影响测试 270 + 新 13 绿,本地全量 1237 passed / 1 skipped(22 分钟,+13);ruff;Cython(tdecq / static_curve / mapping / tx_metrics / eo)。CI 行见下。
+- 文档:ROADMAP #12 清空;CHANGELOG;`cairn/448G调制格式.md` §6;USAGE §1。
+
 ## 2026-10-22 · nojit CI 腿的预算:引擎级交叉校验标 needs_jit(ci/nojit-budget)
 
 - 3.10 nojit 腿连续三个 PR 41–42 / 45 分钟。逐文件 `HALO_NO_JIT=1 --durations=0` 量(本地 3.11,75 个文件 2644 s):前 25 个用例占一半,

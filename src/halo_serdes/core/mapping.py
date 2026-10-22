@@ -3,7 +3,8 @@
 Gray map (802.3 convention, matching serdespy):
     bits (b_msb, b_lsb) -> level index: 00->0, 01->1, 11->2, 10->3
     level indices map to voltages [-1, -1/3, +1/3, +1] * (swing/2), with RLM
-    compression applied to the inner levels when rlm < 1.
+    compression applied to the inner levels when rlm < 1 (PAM6 / PAM8 the
+    same way: every inner level scaled by rlm, the outer pair fixed).
 
 PAM8 is 3-bit reflected Gray per symbol on levels (2k - 7) / 7. PAM6 maps
 5 bits onto a *pair* of symbols: 32 of the 36 pairs, the four corner pairs
@@ -110,26 +111,37 @@ def bits_per_symbol_of(modulation: str) -> int | float:
     return _BITS_PER_SYMBOL[modulation]
 
 
-def pam8_levels(swing: float = 2.0) -> np.ndarray:
-    """PAM8 voltage levels for level indices 0..7: (2k - 7) / 7 * swing / 2."""
+def _pam_n_levels(n: int, swing: float, rlm: float) -> np.ndarray:
+    """N equally spaced levels (2k - (N - 1)) / (N - 1) * swing / 2, the inner
+    ones scaled by ``rlm`` (the outer pair fixed), as ``pam4_levels`` does."""
     a = swing / 2.0
-    return a * (2.0 * np.arange(8) - 7.0) / 7.0
+    lv = a * (2.0 * np.arange(n) - (n - 1.0)) / (n - 1.0)
+    lv[1:-1] *= rlm
+    return lv
 
 
-def pam6_levels(swing: float = 2.0) -> np.ndarray:
-    """PAM6 voltage levels for level indices 0..5: (2k - 5) / 5 * swing / 2."""
-    a = swing / 2.0
-    return a * (2.0 * np.arange(6) - 5.0) / 5.0
+def pam8_levels(swing: float = 2.0, rlm: float = 1.0) -> np.ndarray:
+    """PAM8 voltage levels for level indices 0..7: (2k - 7) / 7 * swing / 2,
+    the six inner ones compressed by ``rlm``."""
+    return _pam_n_levels(8, swing, rlm)
+
+
+def pam6_levels(swing: float = 2.0, rlm: float = 1.0) -> np.ndarray:
+    """PAM6 voltage levels for level indices 0..5: (2k - 5) / 5 * swing / 2,
+    the four inner ones compressed by ``rlm``."""
+    return _pam_n_levels(6, swing, rlm)
 
 
 def levels_for(modulation: str, swing: float = 2.0, rlm: float = 1.0) -> np.ndarray:
-    """The driver's levels [V] for a modulation; ``rlm`` compresses PAM4's inner pair."""
+    """The driver's levels [V] for a modulation; ``rlm`` compresses the inner
+    levels of any PAM format (PAM4's pair as 802.3 120D describes it; PAM6 /
+    PAM8 by the same rule, ROADMAP P3 #12)."""
     if modulation == "pam4":
         return pam4_levels(swing, rlm)
     if modulation == "pam6":
-        return pam6_levels(swing)
+        return pam6_levels(swing, rlm)
     if modulation == "pam8":
-        return pam8_levels(swing)
+        return pam8_levels(swing, rlm)
     return nrz_levels(swing)
 
 

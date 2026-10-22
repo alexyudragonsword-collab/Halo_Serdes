@@ -66,12 +66,16 @@ def static_curve(cfg) -> StaticCurve | None:
                        floor=-(er + 1.0) / (er - 1.0))
 
 
-def optical_rlm(cfg, drive_levels=(-1.0, -1.0 / 3.0, 1.0 / 3.0, 1.0)) -> float:
-    """R_LM of the optical levels the curve makes from the given drive levels.
+def optical_rlm(cfg, drive_levels=None, n_levels: int = 4) -> float:
+    """R_LM of the optical levels the curve makes from the given drive levels
+    (default: the ``n_levels`` nominal levels on [-1, 1]; PAM4 unless told).
 
     This is the sense in which ``tx.rlm`` becomes a derived quantity once the
     E/O is nonlinear: ``tx.rlm`` sets the driver's inner levels, the curve
     decides where the light ends up."""
     curve = static_curve(cfg)
+    if drive_levels is None:
+        n = int(n_levels)
+        drive_levels = (2.0 * np.arange(n) - (n - 1.0)) / (n - 1.0)
     u = np.asarray(drive_levels, dtype=np.float64)
     return rlm(curve(u) if curve is not None else u)

@@ -238,9 +238,15 @@ PCS 层的 deskew、对齐标记锁定与 lane 重排是数字协议行为,不�
 - (2026-10-08 已做:`CONTRIBUTING.md`,附 `tools/fingerprint.py`("重构用数值指纹证明"这条规则此前没有入库工具)。
   更正:原记 "`LICENSE` 尚缺" 不实 —— MIT 的 `LICENSE` 自 2026-09-12(b6e15ca)就在根目录,`pyproject.toml` 也写着 MIT。)
 
-### 12. PAM6 / PAM8 仍缺的 PAM4 专属量(2026-10-15,448G 调制格式比较余项)
-- R_LM(`tx.rlm`、`core/static_curve.rlm`、`analysis/tx_metrics.py`)与 TDECQ(`analysis/tdecq.py`)按 802.3 的 PAM4 定义写,pam6 / pam8 上
-  仍按 PAM4 门控;802.3dj 对 PAM4 以外格式有没有对应定义**未核实**,先不编。
+(2026-10-22 清空:原 #12 PAM6 / PAM8 仍缺的 PAM4 专属量 —— R_LM 与 TDECQ 按**本项目约定**推广到 PAM6 / PAM8(802.3 只定义 PAM4,
+这里查到的材料里 802.3dj 也没有别的格式的定义;两处都注明是约定,不是标准量)。R_LM:802.3 120D 的四项 min(3ES, 2−3ES) 等于
+1 − 每个内电平相对理想位置的偏差,照这个形式对每个内电平算(理想位置 PAM6 3/5、1/5,PAM8 5/7、3/7、1/7),四电平上逐位等于 802.3,
+内电平统一压 r 时读 r;`tx.rlm` 现在也压 PAM6 / PAM8 的内电平(默认 1 不变,指纹 986 值 bit-identical)。TDECQ:N − 1 个门限放在标称中点、
+理想半眼 OMA / (2(N−1))、Q_t 按格式的电平占用求(PAM4 1.5 Q 不变,PAM6 corner32 与 PAM8 1.75 Q),目标 SER 4.8e-4 照用;PAM6 corner32
+永不连发三个外电平,OMA 取两符号串的中间 1 UI(`oma_runs` 读 (2, 2),带限眼上读低一点)。理想眼三格式 ≤ 0.03 dB,0.6σ 高斯噪声对闭式差 ≤ 0.05 dB。
+示例 34 加同一光学器件三格式表:VCSEL 100G (SR1) 4.59 / 14.85 / 21.49 dB、EML 200G (DR1) 1.88 / 3.85 / 12.49 dB(同波特,眼各为 OMA 的 1/3、1/5、1/7);
+LPO 预设 53 GBd 2.95 / 5.92 / 17.35 dB。GUI TDECQ 研究对 PAM6 / PAM8 放开(码型 prbs13),NRZ 仍拒(那是 TDEC)。测试 +13。
+见 CHANGELOG、`cairn/448G调制格式.md` §6。余下的子项(发端 PR / 新 FEC / 多 lane 的 448G 版本)是开工时定的边界,不是待办。)
 - (2026-10-17 已做:串扰 aggressor 在 PAM6 上发 corner32 对流 —— 时域 aggressor 的符号经 `bits_to_symbols` 抽(外层 1/8、内层 3/16、无角对),
   统计引擎 aggressor 光标的五处 ISI PDF(同步、准同步平均、事件投影)按占用加权,ICN 与 COM 的 σ_XT 用占用二阶矩(`core.mapping.symbol_variance`,
   0.4 对均匀 0.467),COM 里受扰 lane 自己的 σ_ISI 与 A_ni PDF 也按占用。量到(main 跑旧、本分支跑新):两引擎各自从均匀改到占用 SER 同降 ——

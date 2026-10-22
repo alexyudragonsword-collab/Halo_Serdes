@@ -167,7 +167,7 @@ class TxConfig:
     fir_taps: tuple[float, ...] = (1.0,)   # main cursor inferred: last-but-pre convention set in Phase 1
     fir_n_pre: int = 0
     swing: float = 1.0                     # differential peak-to-peak [V]
-    rlm: float = 1.0                       # PAM4 level mismatch ratio
+    rlm: float = 1.0                       # R_LM: inner levels compressed by this (PAM4 / PAM6 / PAM8)
     # PAM6's 5-bits-per-pair map (core/mapping.py): "corner32" sends 32 of
     # the 36 pairs, the four with both symbols outer left out
     pam6_map: Literal["corner32"] = "corner32"
