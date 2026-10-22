@@ -352,6 +352,7 @@ def test_jtol_runs_on_a_profile_clock(tmp_path):
 # ------------------------------------------------------------- ADC / MM
 
 @pytest.mark.parametrize("kp_shift", [4, 7, 9])
+@pytest.mark.needs_jit      # 33 s a case without numba (2026-10-22)
 def test_mm_loop_model_tracks_the_adc_kernel_on_the_112g_link(tmp_path, kp_shift):
     """Mueller-Muller on the 112 GBd ADC link with a shipped PLL profile scaled
     to 200 fs: the model's sigma -- a run of the configured length, the loop

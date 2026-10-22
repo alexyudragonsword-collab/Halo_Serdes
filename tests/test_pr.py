@@ -225,6 +225,7 @@ def _mean_phase_ui(res, cfg) -> float:
 
 
 @pytest.mark.parametrize("alpha,precode", [(0.5, False), (1.0, False), (1.0, True)])
+@needs_jit      # 31 s a case without numba (2026-10-22)
 def test_mm_cdr_holds_its_phase_under_a_pr_target(alpha, precode):
     """The detector reads the sample less alpha times the previous decision,
     so a shaped pulse does not move the lock point: within 0.05 UI of the
@@ -323,6 +324,7 @@ def test_tx_pr_is_rx_pr_moved_plus_its_peak_cost(alpha):
     assert cost - 1.5 < snr_free - snr_peak < cost + 0.5, (snr_free, snr_peak)
 
 
+@needs_jit      # 16 s without numba (2026-10-22)
 def test_tx_pr_main_cursor_is_the_symbols_own():
     """At a = 1 the shaped pulse has two equal cursors and its peak can be the
     a x_{k-1} one; the receiver locates x_k on the unshaped pulse. Located by

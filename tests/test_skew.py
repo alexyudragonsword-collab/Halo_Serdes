@@ -208,6 +208,7 @@ def _time_at_offset(cfg, channel, offsets_ui, wander=False):
     ("PAM4 32G mixed-signal", 0.0085, (0.125, 0.25)),
     ("NRZ 28G analytic (COM/xtalk)", 0.022, (-0.375, 0.25)),
 ])
+@pytest.mark.needs_jit      # 62 s a case without numba (2026-10-22)
 def test_invariant3_mixed_signal_lane_off_its_lock(name, noise, offsets):
     """The lane's curve against a time-domain lane held at the offset on a
     clock that hunts as a bang-bang loop on that link does; over -3/8 ... +1/4

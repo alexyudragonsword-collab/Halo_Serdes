@@ -145,6 +145,7 @@ def test_the_tracking_rate_is_the_lms_step_times_the_timing_direction():
     assert g0 == 0.0
 
 
+@pytest.mark.needs_jit      # 25-70 s without numba (2026-10-22)
 def test_invariant3_with_the_ffe_tracking_the_wander():
     """mu 1e-2, kp_shift 9, SSPLL profile, twelve seeds: the time engine's
     CDR error 0.505 samples RMS, the loop model with the FFE's path 0.496
@@ -173,6 +174,7 @@ def test_invariant3_with_the_ffe_tracking_the_wander():
     assert 0.5 < ratio < 2.0, (ratio, stat.ber, n_err)
 
 
+@pytest.mark.needs_jit      # 25-70 s without numba (2026-10-22)
 def test_the_slicer_thresholds_are_held_with_the_taps(monkeypatch):
     """The held curve against the time engine frozen (loop, FFE and DFE) 1.5
     and 2 samples early of its lock, 2.8 mV: 1.05-1.10x over 1.2 M symbols;
@@ -222,6 +224,7 @@ def test_the_slicer_thresholds_are_held_with_the_taps(monkeypatch):
         assert 0.85 < ratio < 1.3, (d, ratio, r.ber.n_errors)
 
 
+@pytest.mark.needs_jit      # 25-70 s without numba (2026-10-22)
 def test_mixed_signal_pam4_holds_its_thresholds_too(monkeypatch):
     """The PAM4 32G preset at 6 mV, the time engine frozen (loop and DFE) 6
     samples early and 3-4 late of its lock, its DFE taps and slicer levels

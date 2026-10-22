@@ -99,6 +99,7 @@ def test_mlsd_improves_ser_over_the_slicer(kind):
     assert r.ser < r.extras["ser_slicer"]
 
 
+@pytest.mark.needs_jit      # 16 s without numba (2026-10-22)
 def test_deeper_trellis_memory_stays_at_least_as_good():
     """Deeper memory keeps the gain; it is deliberately NOT asserted to improve
     monotonically. The residual cursors are estimated from the pulse response
@@ -170,6 +171,7 @@ def _pr_cfg(precode, n=120_000):
         pr=PrConfig(target=(1.0, 1.0)))
 
 
+@pytest.mark.needs_jit      # 50 s without numba (2026-10-22)
 def test_precoded_pr_target_is_scored_on_user_symbols():
     """With precoding and a [1, 1] target the slicer decides composites and
     the link is scored after the precoder is undone: a working link, not the

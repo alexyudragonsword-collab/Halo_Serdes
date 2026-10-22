@@ -100,6 +100,7 @@ def _ex31(kp_shift, noise, clock="SSPLL 200 fs"):
 
 
 @pytest.mark.parametrize("kp_shift, noise", [(5, 0.0028), (8, 0.0015)])
+@pytest.mark.needs_jit      # 40 s a case without numba (2026-10-22)
 def test_invariant3_on_a_profile_clock_with_the_taps_held(kp_shift, noise):
     """Example 31's link, SSPLL profile, against eight seeds of the time
     engine: over twelve seeds 0.74x at kp_shift 5 (2.8 mV) and 0.83x at 8

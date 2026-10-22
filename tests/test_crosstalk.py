@@ -197,6 +197,7 @@ def _both(cfg, bank, skew_ui):
     ("PAM4 224G ADC (106 GBd)", 0.0015, -46.0, (0.0, 0.25, 0.5, 0.75)),
     ("PAM4 32G mixed-signal", 0.006, -34.0, (0.0, 0.25, 0.5)),
 ])
+@pytest.mark.needs_jit      # invariant 3; 17 s a case without numba
 def test_invariant3_with_crosstalk_at_every_lane_skew(name, noise, coupling_db, skews):
     """The statistical engine reads the aggressors where the time engine's
     victim samples them -- on its own sampling grid, after the FFE on an ADC
@@ -398,6 +399,7 @@ def test_stream_engine_with_quasi_synchronous_config_crosstalk():
     _both_ways(cfg, 30)
 
 
+@pytest.mark.needs_jit      # 96 s without numba (2026-10-22)
 def test_one_drifting_aggressor_is_the_mean_over_its_phases():
     """The statistical engine's quasi-synchronous aggressor is the synchronous
     one averaged over every phase: with one aggressor (and a PDF tail that is

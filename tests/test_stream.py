@@ -106,6 +106,7 @@ def test_streamed_chunking_does_not_change_a_bit(make):
 
 @pytest.mark.parametrize("make", [_ms_cfg, _adc_cfg], ids=["mixed_signal", "adc_dsp"])
 @pytest.mark.parametrize("pole", [False, True], ids=["no_pole", "tx_pole"])
+@needs_jit      # 33 s a case without numba; chunking itself: test_chunked_kernels
 def test_streamed_agrees_with_the_default_engine(make, pole):
     """Same link instance and white draws; only the noise band-limit and the
     Tx pole are other (equivalent) filters."""
@@ -205,6 +206,7 @@ def test_optical_photodiode_draws_are_the_default_engines():
 
 
 @pytest.mark.parametrize("make", [_ms_cfg, _adc_cfg], ids=["mixed_signal", "adc_dsp"])
+@needs_jit      # 50 s a case without numba (2026-10-22)
 def test_crosstalk_streams(make):
     """Each aggressor's own draws, held and filtered by its coupling as an FIR."""
     from halo_serdes.channel.crosstalk import synthetic_aggressor
