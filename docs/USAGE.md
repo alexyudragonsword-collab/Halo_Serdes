@@ -385,14 +385,19 @@ from halo_serdes.analysis.cdr_tracking import cdr_tracking_error_s
 res = run_time_link(cfg, channel=ch)                 # kind: profile 的配置
 err = cdr_tracking_error_s(cfg, res)                 # 恢复时钟 − 发送时钟,逐判决 [s]
 st = run_statistical(cfg, channel=ch)
-sol = st.extras["clock_loop"]                        # 环路模型:k_pd、带宽、未追踪 σ、自噪声 σ
+sol = st.extras["clock_loop"]                        # 环路模型:k_pd、带宽、未追踪 σ、自噪声 σ、阻尼比 damping
+x, p = st.extras["sampling_density"]                 # 混合信号带环路:读数用的采样相位分布(相位 [UI]、密度 [1/UI];ADC / 无环路为 None)
+xu, m = st.extras["detector_curve"]                  # 鉴相器均值曲线 M(u),分布由它的势 −∫M 决定(2026-10-21,ROADMAP P2 #32)
 print(err.std() * 1e15, sol.sigma_ui * cfg.ui * 1e15)   # 实测 vs 模型 [fs];一个种子,慢游走下单种子能差 3×,比多种子的系综
 print(sol.sigma_steady_ui * cfg.ui * 1e15)           # 环路振铃起来后(更长的运行)
 prof.scaled_to_rms(200e-15, f_lo=cfg.symbol_rate / cfg.sim.n_symbols).save("x_200fs.yaml")
 ```
 
 剖面在环路带宽内的漂移速率接近 `kp` 时 BB-CDR 会失锁(周期滑移),统计引擎会给出
-`slew-limited` 警告 —— 这时线性模型不再描述内核在做什么。`examples/31` 用三个 200 fs
+`slew-limited` 警告 —— 这时线性模型不再描述内核在做什么。线性化阻尼比 `kp·√(k_pd/ki)/2` 低于 0.25 时也报警
+(NRZ 16G 预设 kp_shift 7 时 0.34 锁住,8 时 0.17 滑周):bang-bang 增益随误差涨而降,欠阻尼的环路振铃到滑周,定点模型看不出来。
+混合信号带环路的统计读数不再按高斯平滑:bang-bang 鉴相器饱和,采样相位 2σ 外是指数尾、晚侧更重(`cdr.linear.bb_stationary_density`,
+RMS 仍是线性模型的 σ),深 BER 比高斯平滑高一到两个量级(ROADMAP P2 #32)。`examples/31` 用三个 200 fs
 时钟(白噪 / SSPLL / CPPLL)扫 `kp_shift`,出 BER、眼高、残余抖动实测与模型的对照表。
 
 **接收端采样时钟**(`rx.clock`,与 `tx.clock` 同一个 `ClockConfig`;默认理想,全零):
@@ -1096,7 +1101,7 @@ c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch
   自己的环路算);各 lane 的串扰相位随 skew 变
   (要的话每条 lane 自己建 `cfg.crosstalk`,`shared_cdr` 收一组曲线)。
 - 示例 `examples/45_shared_cdr_skew.py`:三条链路的曲线、窗口、四条 lane 三种时钟放法;PAM4 32G 混合信号的 minmax 时钟
-  下最差 lane 是单条 lane 用自己环路时的 1.83、KP4 门限下窗口 0.363 UI(PAM4 猎振 σ 改正之后,ROADMAP P2 #30;P2 #29 判决门限保持后
+  下最差 lane 是单条 lane 用自己环路时的 2.35、KP4 门限下窗口 0.351 UI(2026-10-21 bang-bang 相位按平稳分布平滑之后,ROADMAP P2 #32;此前 1.83 / 0.363 UI,PAM4 猎振 σ 改正之后,ROADMAP P2 #30;P2 #29 判决门限保持后
   一度 2.94 / 0.321 UI,那时 σ 读高、早侧偏悲观。此前 1.73 / 0.360 UI;2026-10-15 前 0.17 —— 那是静止采样的曲线,锁定点不在浴盆底;计入环路游走、DFE
   保持后浴盆底抹平,KP4 门限下窗口 0.514 → 0.360 UI;P2 #27 当天读 1.92 / 0.349 UI,样本之间线性插值读高,P2 #28);ADC 那条 FFE 跟着重解时 KP4 门限下窗口 0.435 UI,
   沿用锁定点的 FFE 只有 0.156 UI。

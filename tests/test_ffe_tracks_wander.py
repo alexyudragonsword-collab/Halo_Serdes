@@ -201,13 +201,15 @@ def test_the_slicer_thresholds_are_held_with_the_taps(monkeypatch):
 
     r0 = at(0.0)
     held = []
-    smeared = st._smeared_at
+    smeared_at, smeared_with = st._smeared_at, st._smeared_with
 
-    def capture(curve, phi, center, sigma):
+    def capture(curve, phi, center, *rest):
         held.append((np.array(curve), np.array(phi), center))
-        return smeared(curve, phi, center, sigma)
+        return (smeared_with if len(rest) == 2 else smeared_at)(curve, phi, center, *rest)
 
+    # a bang-bang loop reads through the density smear since P2 #32, the rest through the Gaussian
     monkeypatch.setattr(st, "_smeared_at", capture)
+    monkeypatch.setattr(st, "_smeared_with", capture)
     profile = _with(cfg, clock=clocks["SSPLL 200 fs"], kp_shift=6)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -254,13 +256,15 @@ def test_mixed_signal_pam4_holds_its_thresholds_too(monkeypatch):
 
     monkeypatch.setattr(timedomain, "channel_cursors", lock_taps)
     held = []
-    smeared = st._smeared_at
+    smeared_at, smeared_with = st._smeared_at, st._smeared_with
 
-    def capture(curve, phi, center, sigma):
+    def capture(curve, phi, center, *rest):
         held.append((np.array(curve), np.array(phi), center))
-        return smeared(curve, phi, center, sigma)
+        return (smeared_with if len(rest) == 2 else smeared_at)(curve, phi, center, *rest)
 
+    # a bang-bang loop reads through the density smear since P2 #32, the rest through the Gaussian
     monkeypatch.setattr(st, "_smeared_at", capture)
+    monkeypatch.setattr(st, "_smeared_with", capture)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         st.run_statistical(cfg)

@@ -146,6 +146,9 @@ class LoopSolution:
     sigma_over_run_ui: tuple[float, ...] | None = None
     # the adaptive FFE's share of the tracking (LoopParams.ffe_track), per update
     ffe_track: float = 0.0
+    # the second-order loop's damping ratio at this gain, kp sqrt(k_pd / ki) / 2
+    # (loop_damping); None without an integral path
+    damping: float | None = None
 
     @property
     def sigma_ui(self) -> float:
@@ -400,6 +403,104 @@ def bb_pd_noise_var(rho: float = 0.5) -> float:
     return rho - rho ** 2 / 3.0
 
 
+def loop_damping(loop: LoopParams, k_pd: float) -> float | None:
+    """Damping ratio of the proportional-integral loop linearised at gain
+    ``k_pd``: ``kp sqrt(k_pd / ki) / 2`` (the open loop ``k_pd (kp + ki / s)
+    / s`` in updates has ``w_n^2 = k_pd ki`` and ``2 zeta w_n = k_pd kp``).
+    None without an integral path. A bang-bang loop's gain falls as its
+    error grows, and with it the damping, so an underdamped loop rings up
+    until it slips: the mixed-signal kernel on the NRZ 16G preset held at
+    0.34 (kp_shift 7: 0.057 UI RMS, 1.1x the model) and slipped at 0.17
+    (kp_shift 8: 0.46 UI RMS, 1.15 UI of drift over 200k symbols, BER 2.2x
+    the model's 3.9e-4; ROADMAP P2 #32)."""
+    if loop.ki_ui <= 0.0 or k_pd <= 0.0:
+        return None
+    return float(loop.kp_ui * np.sqrt(k_pd / loop.ki_ui) / 2.0)
+
+
+def bb_stationary_density(u: np.ndarray, mean_curve: np.ndarray, sigma: float,
+                          n_iter: int = 60) -> np.ndarray:
+    """Stationary density of a bang-bang loop's sampling phase on the grid
+    ``u`` (uniform; samples or UI, as the caller likes) under a detector whose
+    mean output at offset ``u`` is ``mean_curve`` -- positive early (the loop
+    moves later), negative late -- with RMS ``sigma`` in the grid's unit.
+
+    A loop far slower than the symbol rate sees the detector as a drift
+    ``kp M(u)`` plus white noise, so its phase diffuses in the potential
+    ``-int M`` and settles to the Boltzmann density ``exp(int_0^u M / T)``.
+    The linearised model (:func:`bb_loop_fixed_point`) already gives the
+    RMS, and its gain is the statistical linearisation -- the slope of ``M``
+    under the error's own distribution, not at the origin -- so the
+    temperature ``T`` is set (bisected) to make the density's RMS about its
+    mean equal ``sigma``; the curve sets the shape only. Where ``M`` keeps
+    growing that is the Gaussian; where the detector saturates (every
+    transition already voting one way, 0.2 UI out on the NRZ 16G preset) the
+    potential turns linear and the tails exponential, heavier than the
+    Gaussian's and asymmetric where the pulse's two sides differ: the kernel's
+    late tail at 0.23 UI was 3-7x a Gaussian of its own RMS, and under a
+    steep bathtub that read the statistical BER 0.25-0.84x the time engine's
+    with a Gaussian smear, 0.4-0.9x with this density (ROADMAP P2 #32).
+    Beyond the point where the potential stops falling (the detector's pull
+    reverses, half a UI out) the density is zero: a loop there slips, which
+    no stationary picture holds. Returns ``p`` with ``sum(p) du = 1``; a
+    curve with no restoring slope, or ``sigma`` 0, returns the Gaussian of
+    that ``sigma`` (a delta on the nearest grid point at 0).
+    """
+    u = np.asarray(u, dtype=np.float64)
+    m = np.asarray(mean_curve, dtype=np.float64)
+    du = float(u[1] - u[0]) if u.size > 1 else 1.0
+    i0 = int(np.argmin(np.abs(u)))
+
+    def gaussian() -> np.ndarray:
+        if sigma <= 0.0:
+            p = np.zeros_like(u)
+            p[i0] = 1.0 / du
+            return p
+        g = np.exp(-0.5 * (u / sigma) ** 2)
+        return g / (g.sum() * du)
+
+    if sigma <= 0.0 or u.size < 3 or m.shape != u.shape:
+        return gaussian()
+    pot = np.concatenate(([0.0], np.cumsum(0.5 * (m[1:] + m[:-1]) * du)))
+    pot -= pot[i0]
+    # the well around the mode: outward from it the potential must fall;
+    # where it rises again the pull has reversed and the density ends
+    imax = int(np.argmax(pot))
+    rise = np.flatnonzero(np.diff(pot[imax:]) > 1e-12)
+    hi_cut = imax + int(rise[0]) + 1 if rise.size else u.size
+    rise = np.flatnonzero(np.diff(pot[:imax + 1][::-1]) > 1e-12)
+    lo_cut = imax - int(rise[0]) if rise.size else 0
+    well = np.zeros(u.size, dtype=bool)
+    well[lo_cut:hi_cut] = True
+    drop = pot[imax] - float(pot[well].min())
+    if drop <= 1e-12 or well.sum() < 3:
+        return gaussian()
+    e_pot = np.where(well, pot - pot[imax], -np.inf)
+
+    def density(temp: float) -> np.ndarray:
+        p = np.exp(e_pot / temp)
+        return p / (p.sum() * du)
+
+    def rms(p: np.ndarray) -> float:
+        mean = float(np.sum(p * u) * du)
+        return float(np.sqrt(np.sum(p * (u - mean) ** 2) * du))
+
+    # hotter is wider; bisect the temperature in log between a near-delta
+    # and a near-uniform fill of the well
+    lo, hi = 1e-4 * drop, 1e2 * drop
+    if rms(density(hi)) <= sigma:
+        return density(hi)          # the well is too narrow for this RMS
+    if rms(density(lo)) >= sigma:
+        return density(lo)
+    for _ in range(n_iter):
+        mid = float(np.sqrt(lo * hi))
+        if rms(density(mid)) > sigma:
+            hi = mid
+        else:
+            lo = mid
+    return density(float(np.sqrt(lo * hi)))
+
+
 def bb_data_noise(mean_out: np.ndarray, period: np.ndarray | None = None) -> tuple[float, PdNoise]:
     """What a loop sees of a bang-bang detector's data-dependent mean output.
 
@@ -509,7 +610,8 @@ def bb_loop_fixed_point(loop: LoopParams,
         if converged:
             break
     return LoopSolution(k_pd=float(k_pd), sigma_untracked_ui=float(sig_u),
-                        sigma_self_ui=float(sig_s), bandwidth_hz=bandwidth_hz(loop, k_pd))
+                        sigma_self_ui=float(sig_s), bandwidth_hz=bandwidth_hz(loop, k_pd),
+                        damping=loop_damping(loop, k_pd))
 
 
 def mm_loop_solution(loop: LoopParams, k_pd: float, pd_noise: float | PdNoise,
@@ -519,7 +621,8 @@ def mm_loop_solution(loop: LoopParams, k_pd: float, pd_noise: float | PdNoise,
     sig_u = untracked_ui(ErrorResponse(loop, k_pd))
     sig_s = self_noise_ui(loop, k_pd, pd_noise)
     return LoopSolution(k_pd=float(k_pd), sigma_untracked_ui=float(sig_u),
-                        sigma_self_ui=float(sig_s), bandwidth_hz=bandwidth_hz(loop, k_pd))
+                        sigma_self_ui=float(sig_s), bandwidth_hz=bandwidth_hz(loop, k_pd),
+                        damping=loop_damping(loop, k_pd))
 
 
 def lock_offset_samples(pulse_y: np.ndarray, peak_idx: int, osr: int, half_span: int) -> float:

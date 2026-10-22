@@ -95,9 +95,11 @@ def test_two_engines_agree_where_the_loop_hunts(name, rj, noise):
     (0.35 / 0.48 / 0.88x with the loop left out); over 0-0.09 UI of RJ and
     two noise levels, 0.45-1.08x on the cases with 20 errors or more (0.78 /
     1.03 / 1.02x and 0.50-1.12x before the curve was taken between samples,
-    ROADMAP P2 #28). The
-    rest on NRZ 16G is the sampler's own phase distribution against a
-    Gaussian of the same sigma (cairn/DSP发端与PR.md §28)."""
+    ROADMAP P2 #28). The rest on NRZ 16G was the sampler's own phase
+    distribution against a Gaussian of the same sigma: exponential, late-heavy
+    tails from the saturating detector, which the read is smeared with since
+    2026-10-21 (0.84 -> 0.91x at 18 mV, 0.64 -> 0.78x at 15 mV / 0.04 UI, on 800k
+    symbols -- too few errors in 400k to sit here; ROADMAP P2 #32)."""
     cfg = _preset(name, rj=rj, noise=noise, n_symbols=200_000)
     cm = ChannelModel.from_config(cfg)
     n_err = n_chk = 0
@@ -123,15 +125,16 @@ def test_the_smear_holds_the_dfe_where_it_adapted(monkeypatch):
     little."""
     cfg = _preset("NRZ 16G mixed-signal", rj=0.06, noise=0.012, n_symbols=200_000)
     seen = []
-    orig = st._smeared_at
-    monkeypatch.setattr(st, "_smeared_at", lambda c, p, ce, sg: (
-        seen.append((np.array(c), np.array(p), ce, sg)), orig(c, p, ce, sg))[1])
+    orig = st._smeared_with
+    monkeypatch.setattr(st, "_smeared_with", lambda c, p, ce, u, d: (
+        seen.append((np.array(c), np.array(p), ce, np.array(u), np.array(d))),
+        orig(c, p, ce, u, d))[1])
     s = st.run_statistical(cfg)
-    held, x, lock, sigma = seen[0]
+    held, x, lock, u, dens = seen[0]        # the density smear since P2 #32 (a Gaussian before)
     # the bathtub unsmeared: the DFE re-adapted at every phase
     monkeypatch.setattr(st, "_sampling_jitter_ui", lambda *a, **k: (0.0, None))
     still = st.run_statistical(cfg)
     readapted = np.interp(x, np.asarray(still.phi_ui) * cfg.osr, still.ber_phi)
     early = x - lock <= -4.0
     assert np.all(held[early] > 3.0 * readapted[early]), (held[early] / readapted[early]).min()
-    assert s.ber > 1.02 * orig(readapted, x, lock, sigma), (s.ber, orig(readapted, x, lock, sigma))
+    assert s.ber > 1.02 * orig(readapted, x, lock, u, dens), (s.ber, orig(readapted, x, lock, u, dens))

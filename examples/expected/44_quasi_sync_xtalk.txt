@@ -18,33 +18,33 @@ PAM4 224G ADC (106 GBd)  (noise 1.5 mV, couplings around -46 dB)
 
 PAM4 32G mixed-signal  (noise 6.0 mV, couplings around -34 dB)
   lanes                time BER (errors)     stat BER   stat / time
-  sync, skew 0.000 UI    7.69e-03 (  4524)    7.31e-03    0.95
-  sync, skew 0.125 UI    9.27e-04 (   545)    9.29e-04    1.00
-  sync, skew 0.250 UI    8.52e-04 (   501)    8.56e-04    1.00
-  sync, skew 0.375 UI    9.37e-04 (   551)    8.94e-04    0.95
-  sync, skew 0.500 UI    1.14e-03 (   668)    1.12e-03    0.98
-  sync, skew 0.625 UI    1.67e-03 (   982)    1.72e-03    1.03
-  sync, skew 0.750 UI    3.01e-03 (  1767)    3.07e-03    1.02
-  sync, skew 0.875 UI    5.48e-03 (  3221)    5.65e-03    1.03
-  quasi-sync  +100 ppm   2.61e-03 (  1535)    2.37e-03    0.91
-  quasi-sync  -100 ppm   2.55e-03 (  1499)    2.37e-03    0.93
-  synchronous: time BER 8.52e-04 ... 7.69e-03 over the skews (9.0x), mean 2.71e-03; statistical mean 2.69e-03
+  sync, skew 0.000 UI    7.69e-03 (  4524)    7.54e-03    0.98
+  sync, skew 0.125 UI    9.27e-04 (   545)    9.54e-04    1.03
+  sync, skew 0.250 UI    8.52e-04 (   501)    8.70e-04    1.02
+  sync, skew 0.375 UI    9.37e-04 (   551)    9.07e-04    0.97
+  sync, skew 0.500 UI    1.14e-03 (   668)    1.13e-03    1.00
+  sync, skew 0.625 UI    1.67e-03 (   982)    1.73e-03    1.04
+  sync, skew 0.750 UI    3.01e-03 (  1767)    3.08e-03    1.03
+  sync, skew 0.875 UI    5.48e-03 (  3221)    5.67e-03    1.04
+  quasi-sync  +100 ppm   2.61e-03 (  1535)    2.39e-03    0.92
+  quasi-sync  -100 ppm   2.55e-03 (  1499)    2.39e-03    0.94
+  synchronous: time BER 8.52e-04 ... 7.69e-03 over the skews (9.0x), mean 2.71e-03; statistical mean 2.74e-03
   quasi-synchronous / mean over the skews (time): 0.96 0.94  [~s]
 
 NRZ 28G analytic (COM/xtalk)  (noise 10.0 mV, couplings around -27 dB)
   lanes                time BER (errors)     stat BER   stat / time
-  sync, skew 0.000 UI    9.05e-04 (   266)    7.14e-04    0.79
+  sync, skew 0.000 UI    9.05e-04 (   266)    7.15e-04    0.79
   sync, skew 0.125 UI    1.14e-03 (   334)    9.57e-04    0.84
   sync, skew 0.250 UI    1.76e-03 (   517)    1.52e-03    0.86
-  sync, skew 0.375 UI    3.20e-03 (   942)    3.11e-03    0.97
-  sync, skew 0.500 UI    7.76e-03 (  2281)    7.75e-03    1.00
-  sync, skew 0.625 UI    1.81e-02 (  5311)    1.82e-02    1.01
-  sync, skew 0.750 UI    2.95e-02 (  8659)    3.14e-02    1.06
-  sync, skew 0.875 UI    5.59e-03 (  1644)    2.47e-03    0.44
+  sync, skew 0.375 UI    3.20e-03 (   942)    3.12e-03    0.97
+  sync, skew 0.500 UI    7.76e-03 (  2281)    7.77e-03    1.00
+  sync, skew 0.625 UI    1.81e-02 (  5311)    1.83e-02    1.01
+  sync, skew 0.750 UI    2.95e-02 (  8659)    3.16e-02    1.07
+  sync, skew 0.875 UI    5.59e-03 (  1644)    2.45e-03    0.44
   quasi-sync  +100 ppm   8.21e-03 (  2413)    6.70e-03    0.82
   quasi-sync  -100 ppm   8.27e-03 (  2432)    6.70e-03    0.81
-  synchronous: time BER 9.05e-04 ... 2.95e-02 over the skews (32.6x), mean 8.48e-03; statistical mean 8.26e-03
+  synchronous: time BER 9.05e-04 ... 2.95e-02 over the skews (32.6x), mean 8.48e-03; statistical mean 8.30e-03
   quasi-synchronous / mean over the skews (time): 0.97 0.98  [~s]
 
-stat / time: synchronous 0.44 ... 1.11 (24 runs), quasi-synchronous 0.70 ... 0.93 (6 runs)
+stat / time: synchronous 0.44 ... 1.11 (24 runs), quasi-synchronous 0.70 ... 0.94 (6 runs)
 wrote examples/output/44_quasi_sync_xtalk.png

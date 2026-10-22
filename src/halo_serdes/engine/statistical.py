@@ -56,9 +56,18 @@ Non-LTI approximations (each cross-checked against the time engine):
   two edges exact, the rest linearised, per phase; it also randomises a
   bang-bang detector's edges. White SJ and DCD are not modelled, nor an ADC
   receiver's Mueller-Muller loop on white clocks (its own noise 0.0001-0.006
-  UI on the presets). The Gaussian is the remaining approximation: on the
-  NRZ 16G preset's steep bathtub the time engine's own phase distribution
-  reads 1.15-1.4x what a Gaussian of its sigma does;
+  UI on the presets). A bang-bang loop's phase is not Gaussian about the
+  lock: its detector saturates, so beyond ~2 sigma the density's tails are
+  exponential and heavier on the side that saturates first (the late side
+  on the NRZ 16G preset: 3-7x a Gaussian's mass 0.23 UI out). Since
+  2026-10-21 the mixed-signal read is smeared with the stationary density
+  of the detector's own mean curve (``_bb_mean_curve``,
+  ``cdr.linear.bb_stationary_density``), its RMS the linear model's; the
+  NRZ 16G preset read 0.84 / 0.64 / 0.25x the time engine at 18 / 15 / 12
+  mV with a Gaussian, 0.91 / 0.78 / 0.42x with it (ROADMAP P2 #32). What
+  is left there is the free-running loop's errors sitting on the data that
+  drove it late (2.1x the held curve's rate at the same phase at 12 mV),
+  which a phase-independent bathtub does not hold (ROADMAP P3 #13);
 - receive-side partial response (``cfg.pr``): the controlled cursor (the
   first postcursor of the FFE-shaped pulse, whatever it is at each phase)
   leaves the ISI PDF; with a sequence detector it joins the trellis cursors
@@ -218,7 +227,8 @@ import numpy as np
 
 from ..afe import Ctle
 from ..cdr.linear import (
-    ErrorResponse, LoopParams, LoopSolution, bb_loop_fixed_point, error_response, lock_offset_samples,
+    ErrorResponse, LoopParams, LoopSolution, bb_loop_fixed_point, bb_stationary_density, error_response,
+    lock_offset_samples,
     mm_hold_range_ui, mm_loop_solution, mm_pd_statistics,
 )
 from ..channel import ChannelModel
@@ -1203,6 +1213,17 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
     smears = (tuple(loop_sol.sigma_over_run_ui)
               if loop_sol is not None and loop_sol.sigma_over_run_ui else (sigma_ui,))
+    # A bang-bang loop's phase is not Gaussian about the lock: its detector
+    # saturates, so the density's tails are exponential and asymmetric
+    # (bb_stationary_density, ROADMAP P2 #32). Its mean curve is taken on the
+    # raw pulse the kernel's detector reads, over the span the smear reaches.
+    bb_u = bb_curve = bb_density = None
+    if loop_sol is not None and cfg.rx.arch == "mixed_signal" and held:
+        span = float(min(8.0 * max(smears) * osr, osr / 2.0))
+        bb_u = np.linspace(-span, span, 1601)
+        bb_curve = _bb_mean_curve(pulse_pre, osr, cfg.rx.noise_rms, swing, levels_norm, bb_u,
+                                  extra_edge_ui=float(cfg.tx.clock.rj_ui),
+                                  level_probs=level_probabilities(cfg.modulation))
     sub = 4 if sigma_ui * osr < 1.0 else 2 if sigma_ui * osr < 2.0 else 1
     fine_span = (int(min(osr // 2, np.ceil(8.0 * max(smears) * osr)))
                  if held and (holds or sub > 1) else 0)
@@ -1653,8 +1674,14 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             # so the read is the mean over the run's points (one if it does not)
             x, cb, cs = ((fine_x, ber_fine, ser_fine) if fine_span
                          else (phi_offsets, ber_raw, ser_raw))
-            ber = float(np.mean([_smeared_at(cb, x, lock, sg * osr) for sg in smears]))
-            ser = float(np.mean([_smeared_at(cs, x, lock, sg * osr) for sg in smears]))
+            if bb_curve is not None:
+                densities = [bb_stationary_density(bb_u, bb_curve, sg * osr) for sg in smears]
+                ber = float(np.mean([_smeared_with(cb, x, lock, bb_u, d) for d in densities]))
+                ser = float(np.mean([_smeared_with(cs, x, lock, bb_u, d) for d in densities]))
+                bb_density = np.mean(densities, axis=0)
+            else:
+                ber = float(np.mean([_smeared_at(cb, x, lock, sg * osr) for sg in smears]))
+                ser = float(np.mean([_smeared_at(cs, x, lock, sg * osr) for sg in smears]))
         best = int(np.argmin(np.abs(phi_offsets - lock)))
         lock_ui = lock / osr
     loop_load = None
@@ -1688,6 +1715,12 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "level_sigma": level_sigma,
                 "jitter_sigma_ui": sigma_ui,
                 "clock_loop": loop_sol,
+                # the bang-bang sampler's phase about the lock [UI] and its
+                # density [1/UI] the read was taken with, and the detector's
+                # mean output over the same offsets; None for a Gaussian smear
+                "sampling_density": (None if bb_density is None
+                                     else (bb_u / osr, bb_density * osr)),
+                "detector_curve": None if bb_curve is None else (bb_u / osr, bb_curve),
                 "lock_phase_ui": lock_ui,
                 "ber_min_phase": float(ber_phi.min()),
                 "dfe_ep_factor": float(ep_factor_phi[best]),
@@ -1728,6 +1761,83 @@ def _smeared_at(curve: np.ndarray, phi: np.ndarray, center: float, sigma: float)
     v = np.interp(x, np.asarray(phi, dtype=np.float64), np.asarray(curve, dtype=np.float64))
     g = np.exp(-0.5 * ((x - center) / sigma) ** 2)
     return float(np.sum(v * g) / np.sum(g))
+
+
+def _smeared_with(curve: np.ndarray, phi: np.ndarray, center: float, u: np.ndarray,
+                  density: np.ndarray) -> float:
+    """``_smeared_at`` with a density on the uniform grid ``u`` of offsets
+    from ``center`` in place of the Gaussian: ``sum curve(center + u) p(u) du``,
+    the curve interpolated linearly and held at its ends."""
+    v = np.interp(center + np.asarray(u, dtype=np.float64),
+                  np.asarray(phi, dtype=np.float64), np.asarray(curve, dtype=np.float64))
+    du = float(u[1] - u[0]) if np.size(u) > 1 else 1.0
+    return float(np.sum(v * density) * du)
+
+
+def _bb_mean_curve(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
+                   levels_norm: np.ndarray, u: np.ndarray, extra_edge_ui: float = 0.0,
+                   n_pre: int = 24, n_post: int = 64, level_probs: np.ndarray | None = None
+                   ) -> np.ndarray:
+    """The Alexander detector's mean output against the clock's offset ``u``
+    [samples, late positive] from the lock point, as the kernel's detector
+    reads it (``cdr/kernels.py``): on the raw (pre-DFE) samples, ``pd = (sign
+    y_prev - sign y_cur) sign y_edge / 2`` -- a transition where the two data
+    samples' signs differ, +1 (early) where the edge sample reads as the old
+    one. Each sample is its two conditioned symbols' cursors at the shifted
+    instant plus the other symbols' ISI and the AWGN as one Gaussian (the
+    data samples' ``sigma_d``, the edge's ``sigma_e``, independent across the
+    three), summed over every pair of levels by its probability; the
+    transmitter's white edge jitter moves the crossing, so the curve is
+    averaged over it. At the origin its slope is the linearised gain
+    (``bb_pd_gain``: 1.81-2.08/UI against the kernel's 1.92-2.15 on the NRZ
+    16G preset); out from it the curve saturates, sooner on the late side,
+    where a late clock's data sample slides down the pulse and its raw sign
+    flips more often -- which is the shape of the sampler's phase density
+    (:func:`halo_serdes.cdr.linear.bb_stationary_density`). Measured against
+    the kernel's output binned by its phase, within 0.01-0.03 to 5 samples
+    either side; its late plateau beyond is softer still in the kernel
+    (-0.22 against -0.26 to -0.34, ROADMAP P2 #32).
+    """
+    from scipy.special import erf
+
+    y = np.asarray(pulse_pd.y, dtype=np.float64)
+    peak = int(np.argmax(np.abs(y)))
+    half = osr // 2
+    data = peak + lock_offset_samples(y, peak, osr, half)     # fractional: the sampler interpolates
+    e0, e1 = data - half, data + half                         # this symbol's and the previous one's cursor
+    grid = np.arange(y.size, dtype=np.float64)
+
+    def at(x):
+        return np.interp(x, grid, y, left=0.0, right=0.0)
+
+    pw = (np.full(levels_norm.size, 1.0 / levels_norm.size) if level_probs is None
+          else np.asarray(level_probs, dtype=np.float64))
+    sym_var = float(np.sum(pw * levels_norm ** 2))
+
+    def isi_sigma(centre: float, conditioned: tuple[float, float]) -> float:
+        idx = centre + np.arange(-n_pre, n_post + 1) * osr
+        keep = np.all([np.abs(idx - c) > 0.5 for c in conditioned], axis=0)
+        return float(np.sqrt(swing ** 2 * sym_var * np.sum(at(idx[keep]) ** 2) + noise_sigma ** 2))
+
+    s_e = isi_sigma(e0, (e0, e1))
+    s_d = isi_sigma(data, (data, data + osr))
+    u = np.asarray(u, dtype=np.float64)
+    curve = np.zeros_like(u)
+    for i_old, a_old in enumerate(levels_norm):
+        for i_new, a_new in enumerate(levels_norm):
+            p = float(pw[i_old] * pw[i_new])
+            mu_e = swing * (a_new * at(e0 + u) + a_old * at(e1 + u))
+            mu_prev = swing * (a_old * at(data + u) + a_new * at(data + u - osr))
+            mu_cur = swing * (a_new * at(data + u) + a_old * at(data + u + osr))
+            curve += p * 0.5 * (erf(mu_prev / (np.sqrt(2.0) * s_d)) - erf(mu_cur / (np.sqrt(2.0) * s_d))) \
+                * erf(mu_e / (np.sqrt(2.0) * s_e))
+    if extra_edge_ui > 0.0 and u.size > 1:
+        du = float(u[1] - u[0])
+        half_k = int(np.ceil(4.0 * extra_edge_ui * osr / du))
+        k = np.exp(-0.5 * (np.arange(-half_k, half_k + 1) * du / (extra_edge_ui * osr)) ** 2)
+        k /= k.sum()
+        curve = np.convolve(np.pad(curve, (half_k,), mode="edge"), k, mode="valid")
+    return curve
 
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
@@ -1845,6 +1955,8 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
     sol = replace(sol, sigma_steady_ui=steady, sigma_over_run_ui=_over_run(
         profs, ErrorResponse(lp, sol.k_pd), sol, first, last, n_sym, ui))
     _warn_if_run_short_of_steady(sol, cfg)
+    if cfg.rx.arch != "adc_dsp":
+        _warn_if_underdamped(sol)
     for p in profs:
         if p is not None:
             _warn_if_slew_limited(p, lp, f_lo, sol, cfg)
@@ -2107,6 +2219,29 @@ def _warn_if_run_short_of_steady(sol: LoopSolution, cfg: LinkConfig) -> None:
         "than the run to build) -- this BER is the run's, like the time engine's; a longer "
         "run and the link in service see more. Lower kp_shift (more damping) or run longer",
         stacklevel=3)
+
+
+_BB_DAMPING_WARN = 0.25
+
+
+def _warn_if_underdamped(sol: LoopSolution) -> None:
+    """A bang-bang loop's linearised gain falls as its error grows, and its
+    damping with it (``cdr.linear.loop_damping``): below about 0.25 the
+    kernel rings up and slips cycles -- on the NRZ 16G preset it held at
+    0.34 (kp_shift 7) and slipped at 0.17 (kp_shift 8: 0.46 UI RMS of
+    phase, BER 2.2x this engine's), which the fixed point, converging to a
+    finite error, does not show (ROADMAP P2 #32)."""
+    zeta = sol.damping
+    if zeta is None or zeta >= _BB_DAMPING_WARN:
+        return
+    import warnings
+
+    warnings.warn(
+        f"the bang-bang loop's damping ratio is {zeta:.2f} (kp sqrt(k_pd / ki) / 2 at its "
+        f"linearised gain {sol.k_pd:.2f}/UI), below {_BB_DAMPING_WARN}: the kernel slipped "
+        "cycles at 0.17 and held at 0.34 (NRZ 16G preset, kp_shift 8 / 7); this engine's "
+        "loop model converges to a finite error here and its BER is optimistic -- lower "
+        "kp_shift (a larger proportional step) or raise ki_shift", stacklevel=3)
 
 
 def _warn_if_slew_limited(prof, loop: LoopParams, f_lo: float, sol: LoopSolution,
