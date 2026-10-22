@@ -14,6 +14,9 @@
 - 验证:PAM4 逐位不变 —— 指纹 986 值 bit-identical(两次,含 OMA 回退改动后),示例 34 旧行一字不动、只多 9 行,`derived` 104 处成立;
   受影响测试 270 + 新 13 绿,本地全量 1237 passed / 1 skipped(22 分钟,+13);ruff;Cython(tdecq / static_curve / mapping / tx_metrics / eo)。CI 行见下。
 - 文档:ROADMAP #12 清空;CHANGELOG;`cairn/448G调制格式.md` §6;USAGE §1。
+- CI(PR #101,头 8706e28;两条 test 工作流各跑一遍,全绿):测试矩阵 jit 11.0–22.4 分钟、3.10 nojit 11.9 / 20.6 分钟(needs_jit 之后第二轮,上限 45)、
+  3.11 nojit 14.3 / 15.9 分钟,examples 10 / 11、examples-full 19 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;Android API 34 / 35 / 编译版 instrumented
+  各 34 tests、0 failures(5 / 4 / 5 分钟);pyinstaller 3、nuitka 48(缓存未命中)、nuitka-onefile 41 分钟绿。
 
 ## 2026-10-22 · nojit CI 腿的预算:引擎级交叉校验标 needs_jit(ci/nojit-budget)
 
