@@ -20,6 +20,9 @@
   其余 44 个不变,`derived` 104 处成立;远尾 400 万符号 × 2 种子(四个并行被 OOM 杀,每个 4.7 GB —— 一次只跑一个)。
   本地全量 1224 passed / 1 skipped(21 分钟,+10);新测试 `HALO_NO_JIT=1` 也绿。
 - 文档:ROADMAP #32 清空、P3 #13 登记;CHANGELOG;`cairn/DSP发端与PR.md` §32 + §31 余项更正;invariants / pitfalls(高斯近似那条更正);USAGE。
+- CI(PR #99,头 c641b29;两条 test 工作流各跑一遍,全绿):测试矩阵 jit 10.6–20.7 分钟、3.10 nojit 42.2 / 42.4 分钟(第三次贴着 45 分钟上限,差 3 分钟)、
+  3.11 nojit 20.9 / 36.6 分钟,examples 14 / 18、examples-full 31 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;Android API 34 / 35 / 编译版 instrumented
+  各 34 tests、0 failures(5 / 4 / 5 分钟);pyinstaller 3、nuitka 31、nuitka-onefile 35 分钟绿。
 
 ## 2026-10-21 · 混合信号判决电平自适应 dLev(fix/ms-pam4-level-adapt,ROADMAP P2 #31)
 
