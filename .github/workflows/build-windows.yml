@@ -56,36 +56,52 @@ jobs:
 
   nuitka:
     runs-on: windows-latest
-    # a cold build (empty cache: new dependency versions, an evicted entry)
-    # took 64-118 min in 2026-10 and the onefile one was cancelled at the old
-    # 120 min limit seven times in a week; the cache makes warm builds short,
-    # the limit is for the cold ones
-    timeout-minutes: 180
+    # a cold build (nothing usable in the cache) is 117-130 min of MSVC on
+    # the 4-core runner (64-130 min over 2026-10); the onefile one was
+    # cancelled at the old 120 min limit seven times in a week, and the two
+    # of 2026-10-24 came within 50 min of 180. The cache makes warm builds
+    # 30-50 min; the limit is for the cold ones, with room
+    timeout-minutes: 240
     continue-on-error: true        # Nuitka compile of scipy is slow/heavy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # Most of a Nuitka build is MSVC compiling ~3600 generated C files
-      # (97 of 114 min on 2026-10-09), almost all of them scipy / pandas /
-      # matplotlib / dash, identical from run to run while their versions
-      # are. Nuitka caches them (clcache) in NUITKA_CACHE_DIR, which a fresh
-      # runner never had: "0 cache hits and 3643 cache misses". Keep it
-      # between runs -- a fresh key per run so each saves what it compiled,
-      # starting from the latest of its kind (a branch also reads main's).
-      - name: Restore Nuitka's compile cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/nuitka-cache
-          key: nuitka-standalone-${{ runner.os }}-py3.11-${{ github.run_id }}
-          restore-keys: |
-            nuitka-standalone-${{ runner.os }}-py3.11-
       - name: Install (gui + desktop + nuitka)
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[gui,desktop]"
           pip install "nuitka>=2.0" ordered-set zstandard
+      # Most of a Nuitka build is MSVC compiling ~3650 generated C files
+      # (98 of 117 min on 2026-10-24), almost all of them scipy / pandas /
+      # matplotlib / dash, identical from run to run while their versions
+      # are. Nuitka caches the objects (clcache) in NUITKA_CACHE_DIR, which a
+      # fresh runner never had; keep it between runs -- a fresh key per run
+      # so each saves what it compiled, starting from the latest of its kind
+      # (a branch also reads main's). What invalidates every object at once
+      # is the toolchain, not our code: the runner image (its MSVC / SDK
+      # build -- 20261007 -> 20261021 turned a 1 GB restored cache into
+      # "0 cache hits and 3651 cache misses" twice on 2026-10-24), Nuitka's
+      # version (it generates the C) and the Python it compiles against. So
+      # the key names all three (read after the install, hence the order)
+      # and a change starts a new, small chain instead of hauling a dead
+      # 1 GB cache in and out of every build; a dependency upgrade inside a
+      # chain recompiles only its own files (pandas 3.0.6 -> 3.1.0: 222 of
+      # 3651).
+      - name: Name the toolchain the cache is good for
+        id: tc
+        run: |
+          $nuitka = python -c "import importlib.metadata as m; print(m.version('nuitka'))"
+          $py = python -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
+          "chain=$env:ImageVersion-nuitka$nuitka-py$py" >> $env:GITHUB_OUTPUT
+      - name: Restore Nuitka's compile cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/nuitka-cache
+          key: nuitka-standalone-${{ runner.os }}-${{ steps.tc.outputs.chain }}-${{ github.run_id }}
+          restore-keys: |
+            nuitka-standalone-${{ runner.os }}-${{ steps.tc.outputs.chain }}-
       - name: Build (standalone)
         env:
           NUITKA_CACHE_DIR: ${{ runner.temp }}/nuitka-cache   # the runner context is not available at job level
@@ -116,26 +132,32 @@ jobs:
 
   nuitka-onefile:
     runs-on: windows-latest
-    timeout-minutes: 180           # see the nuitka job
+    timeout-minutes: 240           # see the nuitka job
     continue-on-error: true        # Nuitka compile of scipy is slow/heavy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # as in the nuitka job (its own key: the build directory differs)
-      - name: Restore Nuitka's compile cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/nuitka-cache
-          key: nuitka-onefile-${{ runner.os }}-py3.11-${{ github.run_id }}
-          restore-keys: |
-            nuitka-onefile-${{ runner.os }}-py3.11-
       - name: Install (gui + desktop + nuitka)
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[gui,desktop]"
           pip install "nuitka>=2.0" ordered-set zstandard
+      # as in the nuitka job (its own key: the build directory differs)
+      - name: Name the toolchain the cache is good for
+        id: tc
+        run: |
+          $nuitka = python -c "import importlib.metadata as m; print(m.version('nuitka'))"
+          $py = python -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
+          "chain=$env:ImageVersion-nuitka$nuitka-py$py" >> $env:GITHUB_OUTPUT
+      - name: Restore Nuitka's compile cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/nuitka-cache
+          key: nuitka-onefile-${{ runner.os }}-${{ steps.tc.outputs.chain }}-${{ github.run_id }}
+          restore-keys: |
+            nuitka-onefile-${{ runner.os }}-${{ steps.tc.outputs.chain }}-
       - name: Build (onefile)
         env:
           NUITKA_CACHE_DIR: ${{ runner.temp }}/nuitka-cache
