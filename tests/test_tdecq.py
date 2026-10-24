@@ -276,3 +276,96 @@ def test_fiber_emulation_filters_the_signal_not_the_noise_weighting():
     base = tdecq(power, cfg.dt, cfg.symbol_rate, line)
     narrow = tdecq(power, cfg.dt, cfg.symbol_rate, line, fiber_emulation_hz=18e9)
     assert base.tdecq_db < a.tdecq_db < narrow.tdecq_db
+
+
+# ------------------------------------------- PAM6 / PAM8 (project convention) ---
+# 802.3 defines TDECQ for PAM4 only; ``n_levels`` 6 and 8 keep every element of
+# its procedure and let the level count through (module docstring; ROADMAP P3
+# #12, 2026-10-22). Measured on the LPO preset at 53.125 GBd: PAM4 2.95,
+# PAM6 5.92, PAM8 17.35 dB.
+
+def _ideal_eye(mod: str, seed: int = 1):
+    from halo_serdes.analysis.tdecq import nominal_levels
+    from halo_serdes.core.mapping import bits_needed, bits_to_symbols, n_levels_of
+
+    n = n_levels_of(mod)
+    rng = np.random.default_rng(seed)
+    sym = bits_to_symbols(rng.integers(0, 2, bits_needed(SYM.size, mod)), mod)[: SYM.size]
+    levels = PAVE + nominal_levels(n) * OMA / 2.0
+    return n, sym, levels
+
+
+def test_qt_follows_the_level_occupancy():
+    """An ideal N-level eye's SER is Q times the thresholds each level faces,
+    weighted by how often it is sent: 1.5 on PAM4 (the module's Q_T, bit for
+    bit), 1.75 on PAM6's corner32 occupancy and on PAM8."""
+    from halo_serdes.analysis.metrics import qfunc
+    from halo_serdes.analysis.tdecq import qt_for
+    from halo_serdes.core.mapping import level_probabilities
+
+    assert qt_for(4) == Q_T
+    assert 1.75 * qfunc(qt_for(6, level_probabilities("pam6"))) == pytest.approx(TARGET_SER, rel=1e-9)
+    assert 1.75 * qfunc(qt_for(8)) == pytest.approx(TARGET_SER, rel=1e-9)
+    assert qt_for(6, level_probabilities("pam6")) == qt_for(8)
+    assert 5.0 / 3.0 * qfunc(qt_for(6)) == pytest.approx(TARGET_SER, rel=1e-9)   # uniform PAM6
+
+
+@pytest.mark.parametrize("mod", ["pam6", "pam8"])
+def test_pam6_and_pam8_ideal_eyes_score_zero(mod):
+    """An ideal eye scores 0 dB on every format. PAM6's corner32 map never
+    sends three equal outer symbols in a row, so its OMA comes from the
+    central UI of two-symbol runs (``oma_runs`` (2, 2)) -- exact on a held
+    eye."""
+    from halo_serdes.core.mapping import level_probabilities
+
+    n, sym, levels = _ideal_eye(mod)
+    r = tdecq(hold(levels[sym], OSR), DT, BAUD, sym, reference_filter=False,
+              n_levels=n, level_probs=level_probabilities(mod))
+    assert abs(r.tdecq_db) < 0.05, r.tdecq_db
+    assert r.oma_outer_w == pytest.approx(OMA, rel=1e-9)
+    assert r.rlm == pytest.approx(1.0, abs=1e-3)
+    assert r.thresholds_w.size == n - 1 and r.levels_w.size == n
+    assert max(r.ser_left, r.ser_right) == pytest.approx(TARGET_SER, rel=1e-3)
+    if mod == "pam6":
+        assert r.oma_runs == (2, 2)
+
+
+@pytest.mark.parametrize("mod", ["pam6", "pam8"])
+def test_pam6_and_pam8_known_noise_match_the_closed_form(mod):
+    """Noise of 0.6 sigma_ideal in the eye: TDECQ = -5 log10(1 - 0.36) =
+    0.969 dB, within 0.1 dB (the PAM4 version holds 0.2 dB)."""
+    from halo_serdes.analysis.tdecq import qt_for
+    from halo_serdes.core.mapping import level_probabilities
+
+    n, sym, levels = _ideal_eye(mod)
+    probs = level_probabilities(mod)
+    s_ideal = OMA / (2 * (n - 1) * qt_for(n, probs))
+    rng = np.random.default_rng(7)
+    y = hold(levels[sym] + 0.6 * s_ideal * rng.standard_normal(sym.size), OSR)
+    r = tdecq(y, DT, BAUD, sym, reference_filter=False, optimise=False,
+              n_levels=n, level_probs=probs)
+    assert r.tdecq_db == pytest.approx(-5 * np.log10(1 - 0.36), abs=0.1)
+
+
+def test_other_level_counts_are_refused():
+    with pytest.raises(ValueError, match="PAM4, PAM6 and PAM8"):
+        tdecq(IDEAL, DT, BAUD, SYM, n_levels=5)
+    with pytest.raises(ValueError, match="0..5"):
+        tdecq(IDEAL, DT, BAUD, np.full(SYM.size, 6), n_levels=6)
+
+
+def test_the_study_measures_pam6_and_pam8_on_the_lpo_preset():
+    """The app's TDECQ path on the LPO preset switched to PAM6 / PAM8 (bit
+    pattern in place of PRBS13Q): at the same 53.125 GBd the eyes are
+    1/5 and 1/7 of the OMA, so TDECQ rises with the level count (2.95 /
+    5.92 / 17.35 dB measured)."""
+    import dataclasses as dc
+
+    from halo_serdes_app import config_bridge as cb
+    from halo_serdes_app.studies import tdecq_value
+
+    base = cb.load_preset("PAM4 100G/λ LPO (VCSEL + OM4)")
+    vals = {m: tdecq_value(dc.replace(base, modulation=m)) for m in ("pam4", "pam6", "pam8")}
+    assert vals["pam4"].tdecq_db < vals["pam6"].tdecq_db < vals["pam8"].tdecq_db
+    assert vals["pam6"].oma_runs == (2, 2) and vals["pam6"].levels_w.size == 6
+    assert all(0.9 < v.rlm <= 1.0 for v in vals.values())

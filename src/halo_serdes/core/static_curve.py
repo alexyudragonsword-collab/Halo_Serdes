@@ -71,14 +71,31 @@ class StaticCurve:
 
 
 def rlm(levels) -> float:
-    """Level separation mismatch ratio of four ascending PAM4 levels.
+    """Level separation mismatch ratio of N ascending PAM levels.
 
-    IEEE 802.3 120D.3.1.2: with V_mid = (V0 + V3) / 2,
+    IEEE 802.3 120D.3.1.2 defines it for PAM4: with V_mid = (V0 + V3) / 2,
     ES1 = (V1 - V_mid) / (V0 - V_mid), ES2 = (V2 - V_mid) / (V3 - V_mid),
     R_LM = min(3 ES1, 3 ES2, 2 - 3 ES1, 2 - 3 ES2); 1 for equal spacing.
+    Each term is ``1 -/+ (3 ES - 1)``: one minus an inner level's deviation
+    from its ideal position (1/3 of the way from V_mid to its outer level),
+    relative to that position, so R_LM = 1 - max |ES_k / e_k - 1|. That
+    form is what this project uses for PAM6 and PAM8 (2026-10-22, ROADMAP
+    P3 #12): every inner level k measured against its own side's outer level,
+    its ideal position e_k = |2k - (N - 1)| / (N - 1) (3/5, 1/5 for PAM6;
+    5/7, 3/7, 1/7 for PAM8). It reproduces the 802.3 value exactly on four
+    levels, reads ``r`` when every inner level is compressed by ``r``
+    (``tx.rlm``), and 1 for two levels. 802.3 defines no R_LM beyond PAM4:
+    this is a project convention, not a standard figure.
     """
-    v0, v1, v2, v3 = (float(x) for x in levels)
-    mid = 0.5 * (v0 + v3)
-    es1 = (v1 - mid) / (v0 - mid)
-    es2 = (v2 - mid) / (v3 - mid)
-    return min(3 * es1, 3 * es2, 2 - 3 * es1, 2 - 3 * es2)
+    v = np.asarray([float(x) for x in levels], dtype=np.float64)
+    n = v.size
+    if n < 3:
+        return 1.0
+    mid = 0.5 * (v[0] + v[-1])
+    worst = 0.0
+    for k in range(1, n - 1):
+        side = v[0] if 2 * k < n - 1 else v[-1]
+        es = (v[k] - mid) / (side - mid)
+        ideal = abs(2 * k - (n - 1)) / (n - 1)
+        worst = max(worst, abs(es / ideal - 1.0))
+    return 1.0 - worst

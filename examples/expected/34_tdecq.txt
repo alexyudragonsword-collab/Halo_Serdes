@@ -30,3 +30,12 @@ What the details the standard texts here could not settle would change
   none:2.97  40G:3.41  30G:3.89  25G:4.50  21G:5.68  18G:8.20  15G:16.35
   SR1 4.4 dB is crossed at f_A = 25.8 GHz
 wrote examples/output/34_tdecq.png
+
+The same optics carrying PAM4 / PAM6 / PAM8 (TDECQ and R_LM beyond PAM4 are this project's convention; see analysis/tdecq.py):
+  transmitter          format     TDECQ   R_LM       OMA      ER  OMA runs
+  VCSEL 100G/λ (SR1)     pam4    4.59 dB  0.998  +1.07 dBm  4.07 dB  (6, 6)
+  VCSEL 100G/λ (SR1)     pam6   14.85 dB  0.984  +0.88 dBm  3.88 dB  (2, 2)
+  VCSEL 100G/λ (SR1)     pam8   21.49 dB  0.982  +1.05 dBm  4.05 dB  (4, 4)
+  EML 200G/λ (DR1)       pam4    1.88 dB  0.997  +2.04 dBm  4.53 dB  (6, 6)
+  EML 200G/λ (DR1)       pam6    3.85 dB  0.997  +1.78 dBm  4.23 dB  (2, 2)
+  EML 200G/λ (DR1)       pam8   12.49 dB  0.992  +1.94 dBm  4.46 dB  (4, 4)

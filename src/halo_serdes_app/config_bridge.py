@@ -213,7 +213,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("tx.fir_taps", "FIR taps [pre..,main,post..]", "tuple_float"),
         _f("tx.fir_n_pre", "FIR precursors", "int"),
         _f("tx.swing", "Swing [V pp]", "float"),
-        _f("tx.rlm", "RLM (PAM4)", "float"),
+        _f("tx.rlm", "RLM (inner levels)", "float"),
         _f("tx.pam6_map", "PAM6 pair map", "enum", options=["corner32"]),
         _f("tx.bw", "Driver BW [GHz]", "opt_float", scale=1e9),
         _f("tx.dac_bits", "DAC bits (empty = ideal)", "opt_int"),

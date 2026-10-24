@@ -227,3 +227,21 @@ def test_time_engine_equalises_the_pulse_with_the_tx_ffe(arch):
     res = run_time_link(cfg)
     assert res.slicer_snr_db > floor, res.slicer_snr_db
     assert res.ber.n_errors < 20, res.ber.n_errors
+
+
+@pytest.mark.parametrize("mod", ["pam4", "pam6", "pam8"])
+def test_measured_rlm_reads_the_configured_compression_on_every_pam_format(mod):
+    """``tx_report`` measures R_LM on the level means of every PAM format
+    (ROADMAP P3 #12, 2026-10-22): a linear driver with ``tx.rlm`` 0.9 reads
+    0.9; NRZ, with no inner level, reports None."""
+    from halo_serdes.analysis.tx_metrics import tx_report
+    from halo_serdes.config.schema import ChannelConfig, LinkConfig, SimConfig, TxConfig
+
+    def cfg(m):
+        return LinkConfig(modulation=m, symbol_rate=26.5625e9, osr=16, tx=TxConfig(swing=1.0, rlm=0.9),
+                          channel=ChannelConfig(kind="analytic", length_m=0.1),
+                          sim=SimConfig(n_symbols=4000, seed=1,
+                                        pattern="prbs13q" if m == "pam4" else "prbs13"))
+
+    assert tx_report(cfg(mod)).rlm == pytest.approx(0.9, abs=2e-3)
+    assert tx_report(cfg("nrz")).rlm is None

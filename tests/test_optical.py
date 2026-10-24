@@ -642,3 +642,17 @@ def test_optical_package_imports_only_numpy():
                 continue
             bad += [f"{path.name}: {n}" for n in names if n.split(".")[0] not in allowed]
     assert not bad, bad
+
+
+def test_optical_rlm_takes_the_level_count():
+    """The curve's R_LM on PAM6 / PAM8 drive levels: 1 on a linear E/O, and
+    falling with compression as on PAM4 (the inner levels sit nearer the
+    bend, so it falls faster the more of them there are)."""
+    from halo_serdes.optical import optical_rlm
+
+    lin = OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0)
+    assert all(optical_rlm(lin, n_levels=n) == pytest.approx(1.0) for n in (4, 6, 8))
+    o = OpticalConfig(kind="vcsel_mmf", modal_bw_mhz_km=4700.0, li_compression=0.3)
+    r = [optical_rlm(o, n_levels=n) for n in (4, 6, 8)]
+    assert r[0] == pytest.approx(optical_rlm(o))            # the default is PAM4
+    assert 1.0 > r[0] and r[0] > r[1] > r[2]

@@ -1,4 +1,4 @@
-"""TDECQ: transmitter and dispersion eye closure for PAM4 optical signals.
+"""TDECQ: transmitter and dispersion eye closure for PAM optical signals.
 
 The 802.3 figure of merit for a PAM4 optical transmitter: how much Gaussian
 noise its eye could still absorb, after a reference receiver and a reference
@@ -83,6 +83,24 @@ simplification are marked:
   is evaluated on bin centres, as an instrument does; the search for sigma
   is a bisection in log sigma.
 
+PAM6 / PAM8 (``n_levels``, 2026-10-22, ROADMAP P3 #12): 802.3 defines
+TDECQ for PAM4 only, so beyond it this is a project convention that keeps
+every element of the PAM4 procedure and lets the level count through:
+N - 1 thresholds at the nominal midpoints ``P_ave + (u_k + u_k+1) / 2 *
+OMA_outer / 2`` (PAM4's P_ave -/+ OMA/3, P_ave), the ideal half eye
+``OMA_outer / (2 (N - 1))`` in place of ``OMA / 6``, OMA_outer from runs of
+the top and bottom symbols, and Q_t the Q at which an *ideal* N-level eye
+with the format's level occupancy (``level_probs``; ``core.mapping.
+level_probabilities``) has the same 4.8e-4 SER: SER = Q sum_k p_k c_k with
+c_k the thresholds a level faces (1 outer, 2 inner), 1.5 Q on PAM4, 1.75 Q
+on PAM6's corner32 occupancy and on PAM8. The target SER itself is kept:
+it is a PAM4 / KP4 number, and no standard gives another for these formats.
+PAM6's corner32 map never sends three equal outer symbols in a row (the
+pair of two outers is left out), so where no run of three exists OMA_outer
+is taken over the central 1 UI of its two-symbol runs (``oma_runs`` reads
+(2, 2)): on a band-limited eye that reads the levels before they settle,
+a slightly lower OMA and a higher TDECQ than a run-based measurement.
+
 Pure numpy apart from the Q function (scipy.special, already on the phone
 path). Waveform-to-symbol sampling goes through ``core.sampler`` (invariant
 #5): fractional instants are reached by shifting the waveform, not by
@@ -102,6 +120,25 @@ from .metrics import qfunc, qfunc_inv
 TARGET_SER = 4.8e-4
 #: The Q at which an ideal PAM4 eye has that SER: SER = 1.5 Q.
 Q_T = qfunc_inv(TARGET_SER / 1.5)
+
+
+def nominal_levels(n_levels: int) -> np.ndarray:
+    """The N nominal levels on [-1, 1]: (2k - (N - 1)) / (N - 1)."""
+    n = int(n_levels)
+    return (2.0 * np.arange(n) - (n - 1.0)) / (n - 1.0)
+
+
+def qt_for(n_levels: int, level_probs=None, target_ser: float = TARGET_SER) -> float:
+    """The Q at which an ideal ``n_levels`` eye has ``target_ser``: each level
+    faces one threshold (outer) or two (inner), so SER = Q sum_k p_k c_k --
+    1.5 Q on equiprobable PAM4 (``Q_T``), 1.75 Q on PAM6's corner32
+    occupancy (outer 1/8, inner 3/16) and on equiprobable PAM8."""
+    n = int(n_levels)
+    p = (np.full(n, 1.0 / n) if level_probs is None
+         else np.asarray(level_probs, dtype=np.float64))
+    c = np.full(n, 2.0)
+    c[0] = c[-1] = 1.0
+    return float(qfunc_inv(target_ser / float(np.dot(p, c))))
 #: 3 dB frequency of the delay-normalised fourth-order Bessel polynomial [rad/s].
 _BT4_W3DB = 2.113917674904216
 #: Histogram centres and width in UI (121.8.5.3).
@@ -191,29 +228,38 @@ def _runs(symbols: np.ndarray, value: int, min_len: int) -> list[tuple[int, int]
     return [(int(a), int(b - a)) for a, b in zip(starts, stops) if b - a >= min_len]
 
 
-def _run_level(y: np.ndarray, osr: int, delay: float, runs, lo: int, hi: int) -> float:
+def _run_level(y: np.ndarray, osr: int, delay: float, runs, lo: int, hi: int,
+               half_ui: float = 1.0) -> float:
     vals = []
     for start, length in runs:
         c = delay + (start + length / 2.0) * osr        # centre of the run [samples]
-        a, b = int(round(c - osr)), int(round(c + osr))  # central 2 UI
+        a, b = int(round(c - half_ui * osr)), int(round(c + half_ui * osr))  # central 2 UI
         if a >= lo and b <= hi:
             vals.append(y[a:b])
     return float(np.mean(np.concatenate(vals))) if vals else float("nan")
 
 
-def _outer_levels(y, osr, delay, symbols, lo, hi):
-    """(P0, P3, (run of 3s, run of 0s)) per 121.8.4, with a fallback to the
-    longest runs available when the pattern lacks 7 threes / 6 zeros."""
+def _outer_levels(y, osr, delay, symbols, lo, hi, top: int = 3):
+    """(P0, P_top, (run of tops, run of 0s)) per 121.8.4, with a fallback to
+    the longest runs available when the pattern lacks 7 tops / 6 zeros."""
     want3, want0 = 7, 6
-    r3, r0 = _runs(symbols, 3, want3), _runs(symbols, 0, want0)
+    r3, r0 = _runs(symbols, top, want3), _runs(symbols, 0, want0)
     if not r3:
-        longest = max((n for _, n in _runs(symbols, 3, 3)), default=0)
-        want3, r3 = longest, _runs(symbols, 3, max(longest, 3))
+        longest = max((n for _, n in _runs(symbols, top, 3)), default=0)
+        want3, r3 = longest, _runs(symbols, top, max(longest, 3))
     if not r0:
         longest = max((n for _, n in _runs(symbols, 0, 3)), default=0)
         want0, r0 = longest, _runs(symbols, 0, max(longest, 3))
-    p3 = _run_level(y, osr, delay, r3, lo, hi)
-    p0 = _run_level(y, osr, delay, r0, lo, hi)
+    # PAM6's corner32 map never sends three equal outer symbols in a row (a
+    # pair of two outers is left out), so its longest runs are two: their
+    # central 1 UI then (the settled half of each symbol; ROADMAP P3 #12)
+    half3 = half0 = 1.0
+    if not r3:
+        want3, r3, half3 = 2, _runs(symbols, top, 2), 0.5
+    if not r0:
+        want0, r0, half0 = 2, _runs(symbols, 0, 2), 0.5
+    p3 = _run_level(y, osr, delay, r3, lo, hi, half3)
+    p0 = _run_level(y, osr, delay, r0, lo, hi, half0)
     return p0, p3, (want3, want0)
 
 
@@ -253,13 +299,15 @@ def _equalise(seqs: np.ndarray, taps: np.ndarray, n_pre: int) -> np.ndarray:
     return out
 
 
-def _sigma_eq(hists, oma, target, guess=None):
+def _sigma_eq(hists, oma, target, guess=None, ref=None):
     """Largest noise after the equaliser for which max SER <= target
-    (bisection in log sigma; ``guess`` narrows the bracket when it holds)."""
+    (bisection in log sigma; ``guess`` narrows the bracket when it holds;
+    ``ref`` is the ideal eye's answer, the bracket's scale)."""
     def worst(sig):
         return max(h.ser(sig) for h in hists)
 
-    ref = oma / (6.0 * Q_T)                 # the ideal eye's answer
+    if ref is None:
+        ref = oma / (6.0 * Q_T)             # the ideal PAM4 eye's answer
     if guess is not None and guess > 0.0:
         lo, hi = guess / 1.25, guess * 1.25
         if worst(lo) <= target < worst(hi):
@@ -337,12 +385,16 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
           noise_bw_hz: float | None = None, skip_ui: int = 64,
           dfe: bool = False, dfe_max: float = DFE_MAX,
           fiber_emulation_hz: float | None = None,
-          pre_post_limits: tuple[float, float] | None = None) -> TdecqResult:
-    """TDECQ of a PAM4 optical power waveform.
+          pre_post_limits: tuple[float, float] | None = None,
+          n_levels: int = 4, level_probs=None) -> TdecqResult:
+    """TDECQ of a PAM optical power waveform.
 
     ``power`` [W] sampled every ``dt``, an integer number of samples per UI,
-    carrying ``symbols`` (level indices 0..3, the *line* symbols actually
-    sent) from sample 0 on. ``f_ref_hz`` defaults to half the symbol rate;
+    carrying ``symbols`` (level indices 0..``n_levels`` - 1, the *line*
+    symbols actually sent) from sample 0 on. ``n_levels`` 4 is 802.3's
+    PAM4; 6 and 8 follow the module docstring's convention, with
+    ``level_probs`` the format's level occupancy for Q_t (uniform if None;
+    PAM6's corner32 map is not uniform). ``f_ref_hz`` defaults to half the symbol rate;
     ``reference_filter=False`` skips the reference receiver (for waveforms
     already band-limited, and for the closed-form tests). ``noise_bw_hz``
     is the bandwidth of the noise C_eq weighs the equaliser with (default
@@ -354,8 +406,13 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
     docstring for both; neither has a default value to give).
     """
     symbols = np.asarray(symbols, dtype=np.int64)
-    if symbols.max() > 3 or symbols.min() < 0:
-        raise ValueError("TDECQ is defined for PAM4: symbols must be level indices 0..3")
+    n_lv = int(n_levels)
+    if n_lv not in (4, 6, 8):
+        raise ValueError(f"TDECQ is defined for PAM4, PAM6 and PAM8 here: n_levels {n_lv}")
+    if symbols.max() > n_lv - 1 or symbols.min() < 0:
+        raise ValueError(f"TDECQ on PAM{n_lv}: symbols must be level indices 0..{n_lv - 1}")
+    q_t = qt_for(n_lv, level_probs, target_ser)
+    half_eyes = 2.0 * (n_lv - 1)                   # OMA / half_eyes: the ideal half eye
     if dfe and skip_ui < 1:
         raise ValueError("the DFE needs the symbol before the first scored one: skip_ui >= 1")
     if pre_post_limits is not None and not pre_post_limits[0] < pre_post_limits[1]:
@@ -369,13 +426,16 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
         y = reference_receiver(y, dt, fiber_emulation_hz)      # the same BT4 shape
 
     n_sym = min(symbols.size, y.size // osr)
-    nominal = np.array([-1.0, -1.0 / 3.0, 1.0 / 3.0, 1.0])
+    nominal = nominal_levels(n_lv)
     delay = _align(y, osr, symbols[:n_sym], nominal, max_delay_ui=min(64, n_sym // 4))
     lo, hi = skip_ui * osr, y.size - skip_ui * osr
     p_ave = float(np.mean(y[lo:hi]))
-    p0, p3, runs_used = _outer_levels(y, osr, delay, symbols[:n_sym], lo, hi)
+    p0, p3, runs_used = _outer_levels(y, osr, delay, symbols[:n_sym], lo, hi, top=n_lv - 1)
     oma = p3 - p0
-    thr = np.array([p_ave - oma / 3.0, p_ave, p_ave + oma / 3.0])
+    if n_lv == 4:
+        thr = np.array([p_ave - oma / 3.0, p_ave, p_ave + oma / 3.0])
+    else:
+        thr = p_ave + 0.5 * (nominal[:-1] + nominal[1:]) * oma / 2.0
 
     # baud sequences at the eye centre and across both histogram windows
     def seq_at(t_ui: float) -> tuple[np.ndarray, int]:
@@ -421,11 +481,11 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
             eq = eq - b * prev_lv
         hists = [_Histogram(eq[1: 1 + _WINDOW_POINTS].ravel(), thr),
                  _Histogram(eq[1 + _WINDOW_POINTS:].ravel(), thr)]
-        s_eq = _sigma_eq(hists, oma, target_ser, guess)
+        s_eq = _sigma_eq(hists, oma, target_ser, guess, ref=oma / (half_eyes * q_t))
         ceq = float(np.sqrt(taps @ R @ taps))
         s_g = s_eq / ceq
         noise = np.hypot(s_g, sigma_scope_w)
-        val = np.inf if s_g <= 0.0 else 10.0 * np.log10(oma / (6.0 * Q_T * noise))
+        val = np.inf if s_g <= 0.0 else 10.0 * np.log10(oma / (half_eyes * q_t * noise))
         return val, s_g, ceq, eq, hists
 
     # the main-tap position is chosen on the least-squares start, and only
@@ -500,7 +560,7 @@ def tdecq(power: np.ndarray, dt: float, symbol_rate: float, symbols: np.ndarray,
     ser_r = hists[1].ser(s_eq) if s_eq > 0 else 1.0
     centre = eq[0]
     levels = np.array([centre[sym == k].mean() if np.any(sym == k) else np.nan
-                       for k in range(4)])
+                       for k in range(n_lv)])
     from ..optical.eo import rlm as _rlm
 
     return TdecqResult(

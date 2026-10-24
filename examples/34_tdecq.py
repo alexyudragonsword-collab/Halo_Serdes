@@ -244,3 +244,24 @@ fig.suptitle("Dotted lines: 802.3db SR1 4.4 dB (blue) and 802.3dj DR1 3.4 dB (re
 fig.tight_layout()
 fig.savefig(OUT / "34_tdecq.png", dpi=130)
 print(f"wrote {OUT / '34_tdecq.png'}")
+
+# 4. the same optics carrying PAM6 / PAM8 (ROADMAP P3 #12, 2026-10-22). 802.3
+# defines TDECQ and R_LM for PAM4 only; here both let the level count through
+# (analysis/tdecq.py, core/static_curve.rlm: a project convention, not a
+# standard figure). At the same baud the eyes are 1/5 and 1/7 of the OMA,
+# so TDECQ climbs steeply with the level count; PAM6's corner32 map has no
+# run of three outer symbols, so its OMA comes from two-symbol runs.
+from halo_serdes.core.mapping import level_probabilities  # noqa: E402
+
+print("\nThe same optics carrying PAM4 / PAM6 / PAM8 (TDECQ and R_LM beyond PAM4 are this project's"
+      " convention; see analysis/tdecq.py):")
+print(f"  {'transmitter':<20} {'format':>6} {'TDECQ':>9} {'R_LM':>6} {'OMA':>9} {'ER':>7}  OMA runs")
+for name, t in TRANSMITTERS.items():
+    for mod in ("pam4", "pam6", "pam8"):
+        cfg = t["cfg"] if mod == "pam4" else dataclasses.replace(
+            t["cfg"], modulation=mod, sim=dataclasses.replace(t["cfg"].sim, pattern="prbs13"))
+        power, line = transmitter_power(cfg, include_seg_a=False, through_fibre=True)
+        m = tdecq(power, cfg.dt, cfg.symbol_rate, line, n_levels=cfg.n_levels,
+                  level_probs=level_probabilities(mod), **t["measure"])
+        print(f"  {name:<20} {mod:>6} {m.tdecq_db:7.2f} dB {m.rlm:6.3f} {10 * np.log10(m.oma_outer_w * 1e3):+6.2f} dBm"
+              f" {m.er_db:5.2f} dB  {m.oma_runs}")
