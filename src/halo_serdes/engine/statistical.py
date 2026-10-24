@@ -65,9 +65,13 @@ Non-LTI approximations (each cross-checked against the time engine):
   ``cdr.linear.bb_stationary_density``), its RMS the linear model's; the
   NRZ 16G preset read 0.84 / 0.64 / 0.25x the time engine at 18 / 15 / 12
   mV with a Gaussian, 0.91 / 0.78 / 0.42x with it (ROADMAP P2 #32). What
-  is left there is the free-running loop's errors sitting on the data that
-  drove it late (2.1x the held curve's rate at the same phase at 12 mV),
-  which a phase-independent bathtub does not hold (ROADMAP P3 #13);
+  was left there is the free-running loop's errors sitting on the data that
+  drove it late: a long run of the other level before a short one votes
+  the loop late and, past the DFE's taps, pulls the short run's samples
+  toward itself. Since 2026-10-24 the NRZ read with a DFE is multiplied by
+  the factor of that correlation over 2^12 histories
+  (``_pattern_phase_factor``: 2.15 / 1.49 / 1.17x at 12 / 15 / 18 mV, the
+  kernel 0.95 / 1.04 / 1.14x the read; ROADMAP P3 #13);
 - receive-side partial response (``cfg.pr``): the controlled cursor (the
   first postcursor of the FFE-shaped pulse, whatever it is at each phase)
   leaves the ISI PDF; with a sequence detector it joins the trellis cursors
@@ -242,6 +246,7 @@ from ..core.sampler import baud_samples, upsampled_taps
 from ..core.waveform import Waveform
 from ..dsp.mlsd import mlse_min_distance_sq
 from ..tx.pipeline import TxPipeline
+from .scoring import cdr_gains
 from .static_link import _levels, make_pattern
 
 
@@ -1218,6 +1223,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     # (bb_stationary_density, ROADMAP P2 #32). Its mean curve is taken on the
     # raw pulse the kernel's detector reads, over the span the smear reaches.
     bb_u = bb_curve = bb_density = None
+    pattern_phase = None
     if loop_sol is not None and cfg.rx.arch == "mixed_signal" and held:
         span = float(min(8.0 * max(smears) * osr, osr / 2.0))
         bb_u = np.linspace(-span, span, 1601)
@@ -1679,6 +1685,21 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 ber = float(np.mean([_smeared_with(cb, x, lock, bb_u, d) for d in densities]))
                 ser = float(np.mean([_smeared_with(cs, x, lock, bb_u, d) for d in densities]))
                 bb_density = np.mean(densities, axis=0)
+                # the phase and the data are not independent on NRZ with a
+                # DFE: the runs that vote the loop late are the runs whose
+                # samples it then errs on (_pattern_phase_factor, P3 #13)
+                kp_s = cdr_gains(cfg.rx.cdr, osr)[0]
+                if n_levels == 2 and n_dfe > 0 and not pr_active and mlsd_mem == 0 and kp_s > 0:
+                    def _jit_at(off_s: int):
+                        if tx_jit_phi is None:
+                            return None
+                        i_j = int(np.clip(off_s - int(phi_offsets[0]), 0, len(tx_jit_phi) - 1))
+                        return tx_jit_phi[i_j]
+                    pattern_phase = _pattern_phase_factor(
+                        pulse, pulse_pre, osr, lock, noise_sigma, swing, n_dfe, bb_u, bb_density,
+                        bb_curve, kp_s, edge_jitter=_jit_at)
+                    ber *= pattern_phase.factor
+                    ser *= pattern_phase.factor
             else:
                 ber = float(np.mean([_smeared_at(cb, x, lock, sg * osr) for sg in smears]))
                 ser = float(np.mean([_smeared_at(cs, x, lock, sg * osr) for sg in smears]))
@@ -1721,6 +1742,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "sampling_density": (None if bb_density is None
                                      else (bb_u / osr, bb_density * osr)),
                 "detector_curve": None if bb_curve is None else (bb_u / osr, bb_curve),
+                # the data-phase correlation the read was multiplied by on
+                # NRZ with a DFE under a bang-bang loop (PatternPhase); None
+                # where it does not apply
+                "pattern_phase": pattern_phase,
                 "lock_phase_ui": lock_ui,
                 "ber_min_phase": float(ber_phi.min()),
                 "dfe_ep_factor": float(ep_factor_phi[best]),
@@ -1838,6 +1863,178 @@ def _bb_mean_curve(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: floa
         k /= k.sum()
         curve = np.convolve(np.pad(curve, (half_k,), mode="edge"), k, mode="valid")
     return curve
+
+
+#: symbols of history the pattern-phase read conditions on (2^n histories)
+_PATTERN_HISTORY = 12
+
+
+@dataclass(frozen=True)
+class PatternPhase:
+    """How much more a free-running bang-bang loop's errors read than the
+    phase-independent bathtub, because the data that drives its phase late
+    is the data its samples are weakest on (``_pattern_phase_factor``).
+
+    ``factor``: the joint read over the independent one, what the engine
+    multiplies its smeared read by. ``shift``: per history, the loop's mean
+    phase given it [samples, late positive]; ``history`` the symbols before
+    the one sampled (column ``k - 1`` is symbol ``i - k``, +1 the sampled
+    symbol's own level), ``next_same`` whether the symbol after it is too.
+    ``read_joint`` / ``read_indep``: the two reads of the model behind the
+    factor -- its own Gaussian-residual bathtub, not the engine's.
+    """
+
+    factor: float
+    shift: np.ndarray
+    history: np.ndarray
+    next_same: np.ndarray
+    read_joint: float
+    read_indep: float
+
+
+def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: float,
+                          noise_sigma: float, swing: float, n_dfe: int, u: np.ndarray,
+                          density: np.ndarray, curve: np.ndarray, kp: float,
+                          edge_jitter=None, n_hist: int = _PATTERN_HISTORY,
+                          step: float = 0.25, n_pre: int = 24, n_post: int = 64) -> PatternPhase:
+    """The pattern-phase factor of a bang-bang loop on NRZ with a held DFE.
+
+    The smear reads the bathtub as if the sampling phase and the data were
+    independent. They are not: the loop's phase at symbol ``i`` is the sum
+    of its last votes (``kp`` samples each, decaying at the loop's
+    linearised rate), and a vote is the sign of an edge sample whose ISI
+    the symbols around that edge set -- a long run of the opposite level
+    before a short run delays the first crossing out of it, so those edges
+    vote late; the same run's postcursors beyond the DFE's taps pull the
+    short run's data samples toward the opposite level, so the last symbol
+    of the short run, sampled late in front of its own transition, is where
+    the free-running loop errs. On the NRZ 16G preset at 12 mV + 0.03 UI the
+    kernel's errors sat 2.0x above its own phase histogram times the held
+    curve, in the symbols ending a run of 2-3 after a run of 6 or more of
+    the other level (0.5 % of the symbols, a third of the errors); binned
+    by pattern class and phase the joint read was 2.01x the independent one
+    (1.40x at 15 mV / 0.04 UI, 1.15x at 18 mV / 0.06 UI), and so was the
+    free-running BER against this engine (2.27 / 1.44 / 1.03x).
+
+    Every history of ``n_hist`` symbols before the sampled one (and the
+    symbol after it) is taken as one class. Its phase: the stationary
+    ``density`` shifted by the class's mean vote bias, ``kp`` times the sum
+    over the window's transitions of ``(1 - theta)^m`` (``theta`` the
+    curve's slope at the lock times ``kp``, the loop's memory) times the
+    class's mean detector output at that edge less the unconditional mean
+    (``curve``) -- each edge sample its conditioned symbols' cursors on the
+    detector's pulse plus the rest as a Gaussian, as ``_bb_mean_curve``
+    takes them; averaged over the density. Its errors at each phase: the
+    data sample's conditioned cursors on the receiver's pulse, the DFE's
+    taps held at the lock, the transmitter's edge jitter from the engine's
+    own per-phase tables (``edge_jitter(offset)``, the own two edges exact)
+    and the rest Gaussian. ``factor`` is the class-weighted joint read over
+    the same classes read with the unshifted density: 2.07 / 1.45 / 1.15x
+    on the three points above against the kernel's 2.01 / 1.40 / 1.15x
+    (ROADMAP P3 #13). The model's own bathtub reads 2-3.5x below the
+    engine's held curve off the lock (it agrees at it), so the factor, not
+    the read, is what it is used for.
+    """
+    from scipy.special import erf
+
+    def ncdf(x):
+        return 0.5 * (1.0 + erf(x / np.sqrt(2.0)))
+
+    y = np.asarray(pulse.y, dtype=np.float64)
+    peak = int(np.argmax(np.abs(y)))
+    grid = np.arange(y.size, dtype=np.float64)
+
+    def at(x):
+        return np.interp(x, grid, y, left=0.0, right=0.0)
+
+    y_e = np.asarray(pulse_pd.y, dtype=np.float64)
+    peak_e = int(np.argmax(np.abs(y_e)))
+    lock_e = lock_offset_samples(y_e, peak_e, osr, osr // 2)
+    grid_e = np.arange(y_e.size, dtype=np.float64)
+
+    def at_e(x):
+        return np.interp(x, grid_e, y_e, left=0.0, right=0.0)
+
+    u = np.asarray(u, dtype=np.float64)
+    du = float(u[1] - u[0]) if u.size > 1 else 1.0
+    sub = max(1, int(round(step / du)))
+    us, p0 = u[::sub], np.asarray(density, dtype=np.float64)[::sub]
+    dus = float(us[1] - us[0]) if us.size > 1 else 1.0
+    p0 = p0 / max(float(p0.sum() * dus), 1e-300)
+    i0 = int(np.argmin(np.abs(u)))
+    di = max(1, int(round(1.0 / du)))
+    slope = -(float(curve[min(i0 + di, u.size - 1)]) - float(curve[max(i0 - di, 0)])) / (2.0 * di * du)
+    theta = min(max(kp * slope, 0.0), 1.0)
+
+    n = 2 ** n_hist
+    hist = 1.0 - 2.0 * ((np.arange(n)[:, None] >> np.arange(n_hist)[None, :]) & 1)
+    hist = np.concatenate([hist, hist])
+    nxt = np.concatenate([np.ones(n), -np.ones(n)])
+    n_cls = hist.shape[0]
+    w_cls = 1.0 / n_cls
+    ks = np.arange(1, n_hist + 1)
+    k_rand = np.concatenate([np.arange(n_hist + 1, n_post + 1), -np.arange(2, n_pre + 1)])
+    decay = (1.0 - theta) ** np.arange(n_hist - 1)
+    # --- the data sample at every phase: conditioned cursors, DFE held at the lock, rest Gaussian ---
+    pos = peak + lock + us                                              # (n_phase,)
+    c_post = at(pos[None, :] + ks[:, None] * osr)                      # (n_hist, n_phase)
+    r = c_post.copy()
+    if n_dfe > 0:
+        m_d = min(n_dfe, n_hist)
+        r[:m_d] -= at(peak + lock + ks[:m_d] * osr)[:, None]
+    margin = swing * (at(pos)[None, :] + hist @ r + at(pos - osr)[None, :] * nxt[:, None])
+    var_rest = noise_sigma ** 2 + swing ** 2 * np.sum(at(pos[None, :] + k_rand[:, None] * osr) ** 2, axis=0)
+    p_err = np.zeros((n_cls, us.size))
+    kernels: dict = {}
+    for iu, uu in enumerate(us):
+        off_s = int(np.rint(lock + uu))
+        jit = edge_jitter(off_s) if edge_jitter is not None else None
+        if jit is None:
+            p_err[:, iu] = ncdf(-margin[:, iu] / np.sqrt(max(var_rest[iu], (swing * 1e-6) ** 2)))
+            continue
+        # the own two edges' exact kernel per neighbour pattern, applied on a
+        # grid of margins and read back per class (the grid on the noise, or
+        # on the jitter itself where the receiver has none)
+        dv = (noise_sigma if noise_sigma > 0.0 else max(float(np.max(jit.sigma)), swing * 1e-3)) / 6.0
+        for sp in (-1.0, 1.0):
+            for sn in (-1.0, 1.0):
+                sel = (hist[:, 0] == sp) & (nxt == sn)
+                combo = (1, int(sp > 0), int(sn > 0))
+                if (off_s, combo) not in kernels:
+                    ker, lo = jit.kernel(combo, dv)
+                    kernels[(off_s, combo)] = (ker, (lo + np.arange(ker.size)) * dv)
+                ker, x = kernels[(off_s, combo)]
+                s_tot = np.sqrt(var_rest[iu] + float(jit.rest[combo]) ** 2)
+                mg = np.linspace(margin[sel, iu].min(), margin[sel, iu].max(), 257)
+                pg = (ncdf(-(mg[:, None] + x[None, :]) / s_tot) * ker[None, :]).sum(axis=1)
+                p_err[sel, iu] = np.interp(margin[sel, iu], mg, pg)
+    # --- the votes at the window's edges: edge m lies between symbols i-2-m and i-1-m ---
+    delta = np.zeros((n_cls, us.size))
+    for m in range(n_hist - 1):
+        s_new, s_old = hist[:, m], hist[:, m + 1]
+        pos_e = peak_e + lock_e + us - osr / 2.0 - (1 + m) * osr        # (n_phase,)
+        js = np.arange(-(m + 2), n_hist - m)       # symbol i-1-m-j, from i+1 to i-n_hist
+        cols = []
+        for j in js:
+            q = 1 + m + j
+            cols.append(nxt if q == -1 else np.ones(n_cls) if q == 0 else hist[:, q - 1])
+        ce = at_e(pos_e[None, :] + ((1 + m + js) * osr)[:, None])     # (n_j, n_phase)
+        mu_e = swing * (np.stack(cols, axis=1) @ ce)                      # (n_cls, n_phase)
+        j_rand = np.concatenate([-np.arange(m + 3, n_pre + 1), np.arange(n_hist - m, n_post + 1)])
+        var_e = noise_sigma ** 2 + swing ** 2 * np.sum(at_e(pos_e[None, :] + ((1 + m + j_rand) * osr)[:, None]) ** 2, axis=0)
+        vote = np.where((s_new != s_old)[:, None], s_old[:, None] * erf(mu_e / np.sqrt(2.0 * var_e)[None, :]), 0.0)
+        delta += decay[m] * (vote - vote.mean(axis=0, keepdims=True))
+    delta *= kp
+    shift = (delta * p0[None, :]).sum(axis=1) * dus
+    read_joint = read_indep = 0.0
+    for c in range(n_cls):
+        pc = np.interp(us - shift[c], us, p0, left=0.0, right=0.0)
+        pc /= max(float(pc.sum() * dus), 1e-300)
+        read_joint += w_cls * float(np.sum(pc * p_err[c])) * dus
+        read_indep += w_cls * float(np.sum(p0 * p_err[c])) * dus
+    factor = read_joint / read_indep if read_indep > 0.0 else 1.0
+    return PatternPhase(factor=float(factor), shift=shift, history=hist.astype(np.int8),
+                        next_same=nxt > 0, read_joint=float(read_joint), read_indep=float(read_indep))
 
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,

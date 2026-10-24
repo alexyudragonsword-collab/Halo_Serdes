@@ -398,7 +398,8 @@ prof.scaled_to_rms(200e-15, f_lo=cfg.symbol_rate / cfg.sim.n_symbols).save("x_20
 `slew-limited` 警告 —— 这时线性模型不再描述内核在做什么。线性化阻尼比 `kp·√(k_pd/ki)/2` 低于 0.25 时也报警
 (NRZ 16G 预设 kp_shift 7 时 0.34 锁住,8 时 0.17 滑周):bang-bang 增益随误差涨而降,欠阻尼的环路振铃到滑周,定点模型看不出来。
 混合信号带环路的统计读数不再按高斯平滑:bang-bang 鉴相器饱和,采样相位 2σ 外是指数尾、晚侧更重(`cdr.linear.bb_stationary_density`,
-RMS 仍是线性模型的 σ),深 BER 比高斯平滑高一到两个量级(ROADMAP P2 #32)。`examples/31` 用三个 200 fs
+RMS 仍是线性模型的 σ),深 BER 比高斯平滑高一到两个量级(ROADMAP P2 #32)。NRZ 带 DFE 时读数再乘一个码型-相位因子(`extras["pattern_phase"].factor`):
+短串之前的长反向串既把环路投晚、又把短串的数据样本拉向反向电平,相位与数据不独立,NRZ 16G 12 / 15 / 18 mV 2.15 / 1.49 / 1.17×(ROADMAP P3 #13);PAM4 不乘。`examples/31` 用三个 200 fs
 时钟(白噪 / SSPLL / CPPLL)扫 `kp_shift`,出 BER、眼高、残余抖动实测与模型的对照表。
 
 **接收端采样时钟**(`rx.clock`,与 `tx.clock` 同一个 `ClockConfig`;默认理想,全零):
