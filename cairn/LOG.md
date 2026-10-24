@@ -10,7 +10,10 @@
 - 结论:Python 3.11.9、Nuitka 4.3.1、依赖版本全同;唯一变量是运行器镜像 20261007 → 20261021,恢复的 1068 MB 缓存两次都 0 / 3651 命中;
   同镜像内 3650 / 3650 命中 44 分钟,pandas 小升级只重编 222 个 48 分钟;10-20 的 126 分钟冷构建同理。即每次镜像滚动(约两周)两条腿各冷一次。
 - 做法:缓存键加 `ImageVersion-nuitka<ver>-py<ver>`(装完后读),换链从零起、不再搬死对象(旧链 92 → 1068 MB,保存 4–6 分钟);上限 180 → 240。
-- 文档:ROADMAP #10 的 CI 条清空;CHANGELOG;`packaging/README.md` 段落更新;pitfalls 一条。CI 行见下(第一次是新链冷构建,再触发一次看命中)。
+- 文档:ROADMAP #10 的 CI 条清空;CHANGELOG;`packaging/README.md` 段落更新;pitfalls 一条。
+- CI(PR #103,头 21f5212):第一次 push 触发 = 新链 `20261021.278.1-nuitka4.3.1-py3.11.9` 的冷构建,"Cache not found",nuitka 69 分钟(C 编 58)、
+  onefile 121 分钟(C 编 100),0 / 3651 命中,保存各 18–19 秒;workflow_dispatch 再跑一次:恢复到上一次的键,缓存 91 MB(旧链 1068 MB),
+  3651 / 3651 命中,nuitka 31 分钟、onefile 44 分钟。pyinstaller 2.8 / 3.1 分钟;test 矩阵、examples、examples-full、lint 等在 21f5212 上全绿(只动工作流与文档)。
 
 ## 2026-10-24 · 自由运行 bang-bang 环路的码型-相位相关进统计引擎(fix/bb-data-correlated-errors,ROADMAP P3 #13)
 
