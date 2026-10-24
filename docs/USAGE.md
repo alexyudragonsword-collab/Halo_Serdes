@@ -249,7 +249,7 @@ s = run_statistical(cfg)        # 统计:同一组 aggressor
 YAML 里同名(`crosstalk:` 下一组键,`aggressors:` 是映射的列表);表单有 bank 那几项(`aggressors` 只在 YAML)。
 `ppm` 0 是同步 lane:受扰在每个耦合脉冲的同一个相位上采样,代价随 skew 变得很厉害(示例 44 的三条链路在 8 个 skew 上差 9.0–32.6×)。
 `ppm` ≠ 0 是准同步 lane(各自参考时钟):时域按 aggressor 自己的速率保持它的符号,受扰轮流看到每个相位;统计引擎对相位求平均
-(要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.70–0.93×,时域 BER 是同步各 skew 平均的 0.85–0.98(示例 44)。
+(要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.70–1.00×(2026-10-24 NRZ 的码型-相位因子之前 0.70–0.93×),时域 BER 是同步各 skew 平均的 0.85–0.98(示例 44)。
 静态引擎不注入串扰,配置里有串扰时报错;带重定时器的拓扑是三条链路,配置的串扰说不清属于哪一段,也报错。
 
 **API 入参**:一个 `XtalkAggressor` 对象**同时**驱动时域和统计两个引擎,保证一致;显式给出时**替换**配置里的串扰(两者都有时警告):
@@ -398,7 +398,8 @@ prof.scaled_to_rms(200e-15, f_lo=cfg.symbol_rate / cfg.sim.n_symbols).save("x_20
 `slew-limited` 警告 —— 这时线性模型不再描述内核在做什么。线性化阻尼比 `kp·√(k_pd/ki)/2` 低于 0.25 时也报警
 (NRZ 16G 预设 kp_shift 7 时 0.34 锁住,8 时 0.17 滑周):bang-bang 增益随误差涨而降,欠阻尼的环路振铃到滑周,定点模型看不出来。
 混合信号带环路的统计读数不再按高斯平滑:bang-bang 鉴相器饱和,采样相位 2σ 外是指数尾、晚侧更重(`cdr.linear.bb_stationary_density`,
-RMS 仍是线性模型的 σ),深 BER 比高斯平滑高一到两个量级(ROADMAP P2 #32)。`examples/31` 用三个 200 fs
+RMS 仍是线性模型的 σ),深 BER 比高斯平滑高一到两个量级(ROADMAP P2 #32)。NRZ 带 DFE 时读数再乘一个码型-相位因子(`extras["pattern_phase"].factor`):
+短串之前的长反向串既把环路投晚、又把短串的数据样本拉向反向电平,相位与数据不独立,NRZ 16G 12 / 15 / 18 mV 2.15 / 1.49 / 1.17×(ROADMAP P3 #13);PAM4 不乘。`examples/31` 用三个 200 fs
 时钟(白噪 / SSPLL / CPPLL)扫 `kp_shift`,出 BER、眼高、残余抖动实测与模型的对照表。
 
 **接收端采样时钟**(`rx.clock`,与 `tx.clock` 同一个 `ClockConfig`;默认理想,全零):
