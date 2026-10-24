@@ -13,7 +13,9 @@
 - 文档:CHANGELOG;`cairn/DSP发端与PR.md` §33 余项;`cairn/多lane建模.md` §7 七更正;COMPARISON / USAGE 示例 44 范围。
 - CI(PR #104,头 ae49e2f;两条 test 工作流各一遍,全绿):测试矩阵 3.10 jit 17.7 / 18.2 分钟、3.11 jit 20.3 / 15.8、3.10 nojit 17.3 / 22.3、3.11 nojit 11.4 / 11.1,
   examples 18.4 / 10.5、examples-full 30.2 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;Android(b2b388d)API 34 / 35 / 编译版 instrumented 各 34 tests、
-  0 failures(5.0 / 4.6 / 4.0 分钟,工作流 16 分钟);pyinstaller 3.0 分钟绿;nuitka 两腿与主干 37df013 的首次新链冷构建同时起跑(主干 nuitka 74 分钟绿),写到这里仍在跑,结论补在下。
+  0 failures(5.0 / 4.6 / 4.0 分钟,工作流 16 分钟);pyinstaller 3.0 分钟绿;nuitka 119 分钟、nuitka-onefile 121 分钟绿 —— "Cache not found":主干 37df013 的首次新链
+  冷构建(74 / 119 分钟)与本分支同时起跑、还没保存,分支看不到别的分支的缓存,两边都冷;主干的已存,之后的分支应命中(PR #103 上命中时 31 / 44 分钟)。
+  本地全量第一次被容器重启打断(23 %),重跑见下。
 
 ## 2026-10-24 · CI:nuitka 打包腿的缓存按工具链分链(ci/nuitka-cache-margin,ROADMAP P3 #10 的 CI 条)
 
