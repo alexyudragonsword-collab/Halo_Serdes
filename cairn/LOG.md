@@ -3,6 +3,20 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-24 · 码型-相位因子计入串扰方差(fix/pattern-phase-xtalk-variance,P3 #13 余项)
+
+- 因子的高斯余项加 aggressor 的 ISI 方差(`xtalk_var(pos)`:同步按受扰采样相位处的光标平方和,准同步按相位平均;边沿样本按半 UI 前的位置)。
+  示例 44 NRZ 28G −27 dB:因子 1.23 → 0.99–1.02,统计 / 时域 同步 0.97–1.32 → 0.79–1.06(7/8 UI 0.54 → 0.45)、准同步 1.00 → 0.81 —— 即串扰主导时
+  码型对环路的拉力被淹没,读数回到因子之前;示例 24 同理。无串扰链路逐位不变(指纹 986 值 bit-identical)。
+- 坑:闭包 `np.full(pos.shape, 0)` 是整型,`+=` 浮点被截成 0,同步 lane 方差静默为零;准同步那支(常数)先对了才看出来。
+- 验证:受影响五个测试文件 75 passed;示例 47 个重跑,24 / 44 接受,`derived` 104 处成立;全量见 CI 行。
+- 文档:CHANGELOG;`cairn/DSP发端与PR.md` §33 余项;`cairn/多lane建模.md` §7 七更正;COMPARISON / USAGE 示例 44 范围。
+- CI(PR #104,头 ae49e2f;两条 test 工作流各一遍,全绿):测试矩阵 3.10 jit 17.7 / 18.2 分钟、3.11 jit 20.3 / 15.8、3.10 nojit 17.3 / 22.3、3.11 nojit 11.4 / 11.1,
+  examples 18.4 / 10.5、examples-full 30.2 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;Android(b2b388d)API 34 / 35 / 编译版 instrumented 各 34 tests、
+  0 failures(5.0 / 4.6 / 4.0 分钟,工作流 16 分钟);pyinstaller 3.0 分钟绿;nuitka 119 分钟、nuitka-onefile 121 分钟绿 —— "Cache not found":主干 37df013 的首次新链
+  冷构建(74 / 119 分钟)与本分支同时起跑、还没保存,分支看不到别的分支的缓存,两边都冷;主干的已存,之后的分支应命中(PR #103 上命中时 31 / 44 分钟)。
+  本地全量第一次被容器重启打断(23 %),重跑见下。
+
 ## 2026-10-24 · CI:nuitka 打包腿的缓存按工具链分链(ci/nuitka-cache-margin,ROADMAP P3 #10 的 CI 条)
 
 - 问题:PR #102 的 nuitka / nuitka-onefile 117 / 128.6 分钟,离 180 分钟上限只剩 50 分钟。缓存列表 API 被代理拦截,改拿五次运行的作业日志
