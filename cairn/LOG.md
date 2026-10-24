@@ -11,6 +11,9 @@
 - 坑:闭包 `np.full(pos.shape, 0)` 是整型,`+=` 浮点被截成 0,同步 lane 方差静默为零;准同步那支(常数)先对了才看出来。
 - 验证:受影响五个测试文件 75 passed;示例 47 个重跑,24 / 44 接受,`derived` 104 处成立;全量见 CI 行。
 - 文档:CHANGELOG;`cairn/DSP发端与PR.md` §33 余项;`cairn/多lane建模.md` §7 七更正;COMPARISON / USAGE 示例 44 范围。
+- CI(PR #104,头 ae49e2f;两条 test 工作流各一遍,全绿):测试矩阵 3.10 jit 17.7 / 18.2 分钟、3.11 jit 20.3 / 15.8、3.10 nojit 17.3 / 22.3、3.11 nojit 11.4 / 11.1,
+  examples 18.4 / 10.5、examples-full 30.2 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;Android(b2b388d)API 34 / 35 / 编译版 instrumented 各 34 tests、
+  0 failures(5.0 / 4.6 / 4.0 分钟,工作流 16 分钟);pyinstaller 3.0 分钟绿;nuitka 两腿与主干 37df013 的首次新链冷构建同时起跑(主干 nuitka 74 分钟绿),写到这里仍在跑,结论补在下。
 
 ## 2026-10-24 · CI:nuitka 打包腿的缓存按工具链分链(ci/nuitka-cache-margin,ROADMAP P3 #10 的 CI 条)
 
