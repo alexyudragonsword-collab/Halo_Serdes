@@ -15,6 +15,8 @@
   因子 2.15 / 1.49 / 1.17× 对实测 2.01 / 1.40 / 1.15×;各类平移对实测 0.1–0.2 个样本内;模型自己的绝对曲线比引擎持有曲线偏低 2–3.5×(锁定点吻合),只取比值。
 - 数:NRZ 16G 12 / 15 / 18 mV 统计 / 时域 0.44 / 0.70 / 0.97× → 0.95 / 1.04 / 1.14×;预设 NRZ 16G 2.2e-8 → 6.4e-8、NRZ 28G 6.5e-28 → 7.2e-28;PAM4 / ADC 不变。
 - 文档:ROADMAP #13 清空;CHANGELOG;`cairn/DSP发端与PR.md` §33(§32 余项指过去);`architecture-invariants.md` §3 补一句;`engineering-pitfalls.md` 四条;USAGE §9。
+- 验证:本地全量 1236 passed / 8 skipped(25.9 分钟,+6);ruff;Cython(statistical);指纹 986 值 6 处动(NRZ 16G / 28G / 32G static 统计);
+  示例 47 个重跑,24 / 44 / 45 接受(`derived` 104 处成立)。CI 行见下。
 - 坑:容器重建后 venv 没了(`uv venv` + `-e .[jit,fec,test]` 重建 1 分钟);探针脚本里用 `sys.argv[0].rsplit('/')` 取目录在无目录调用时取到文件名本身。
 
 ## 2026-10-22 · PAM6 / PAM8 的 R_LM 与 TDECQ(feat/pam6-pam8-rlm-tdecq,ROADMAP P3 #12)
