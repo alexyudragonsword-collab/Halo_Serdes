@@ -137,3 +137,32 @@ def test_two_engines_agree_where_the_loop_errs_on_its_own_data():
     ratio = s.ber / (n_err / n_chk)
     assert 0.7 < ratio < 1.5, (ratio, s.ber, n_err)
     assert 1.3 < s.extras["pattern_phase"].factor < 1.7
+
+
+def test_crosstalk_is_noise_to_the_factor_too(monkeypatch):
+    """Example 44's NRZ 28G lanes (2 FEXT + 2 NEXT at -27 dB, 10 mV): with the
+    aggressors' variance left out of the factor's Gaussian rest it read 1.23x
+    at every skew (the engine 1.23-1.32x the time engine at 0.5-0.75 UI);
+    with it the couplings swamp the pattern's pull on the loop and the factor
+    sits at 1.00 (0.99-1.02 over the skews), the engine back at 0.79-1.06x."""
+    from halo_serdes.config.schema import CrosstalkConfig
+    cfg = cb.load_preset("NRZ 28G analytic (COM/xtalk)")
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=0.010))
+    quiet = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"].factor
+    assert quiet > 1.15, quiet
+    cap = {}
+    orig = st._pattern_phase_factor
+
+    def spy(*a, **k):
+        cap["xtalk_var"] = k.get("xtalk_var")
+        return orig(*a, **k)
+
+    monkeypatch.setattr(st, "_pattern_phase_factor", spy)
+    loud = dataclasses.replace(cfg, crosstalk=CrosstalkConfig(n_fext=2, n_next=2, coupling_db=-27.0, seed=1, skew_ui=0.5))
+    with_x = st.run_statistical(loud, channel=ChannelModel.from_config(loud)).extras["pattern_phase"].factor
+    assert cap["xtalk_var"] is not None
+    assert 0.95 < with_x < 1.05 and with_x < quiet, (with_x, quiet)
+    # the variance the closure reports is of the couplings' size, not zero
+    import numpy as np
+    v = np.asarray(cap["xtalk_var"](np.arange(4.0)))
+    assert np.all(v > (0.005) ** 2), v

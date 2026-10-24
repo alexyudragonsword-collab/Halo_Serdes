@@ -1695,9 +1695,29 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                             return None
                         i_j = int(np.clip(off_s - int(phi_offsets[0]), 0, len(tx_jit_phi) - 1))
                         return tx_jit_phi[i_j]
+                    x_var = None
+                    if x_slicer or x_drift:
+                        # the aggressors' variance where the victim samples
+                        # (sync: its cursors at that phase; quasi-sync: the
+                        # mean over the phases it walks through), as the ISI
+                        # PDF above takes them, for the factor's Gaussian rest
+                        sym_var = float(np.sum(level_probs * levels_norm ** 2))
+                        x_grids = [(np.arange(xy.size, dtype=np.float64), xy) for xy in x_slicer]
+                        drift_var = sum(sym_var * float(np.mean([np.sum(xc ** 2) for xc in sets]))
+                                        for sets, _ in x_drift)
+
+                        def x_var(pos, _g=x_grids, _d=drift_var, _sv=sym_var):
+                            pos = np.atleast_1d(np.asarray(pos, dtype=np.float64))
+                            v = np.full(pos.shape, float(_d))
+                            for grid_x, xy in _g:
+                                for i_p, p in enumerate(pos):
+                                    idx = np.arange(p % osr, xy.size, osr)
+                                    xc = np.interp(idx, grid_x, xy) * swing
+                                    v[i_p] += _sv * float(np.sum(xc ** 2))
+                            return v
                     pattern_phase = _pattern_phase_factor(
                         pulse, pulse_pre, osr, lock, noise_sigma, swing, n_dfe, bb_u, bb_density,
-                        bb_curve, kp_s, edge_jitter=_jit_at)
+                        bb_curve, kp_s, edge_jitter=_jit_at, xtalk_var=x_var)
                     ber *= pattern_phase.factor
                     ser *= pattern_phase.factor
             else:
@@ -1895,7 +1915,7 @@ class PatternPhase:
 def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: float,
                           noise_sigma: float, swing: float, n_dfe: int, u: np.ndarray,
                           density: np.ndarray, curve: np.ndarray, kp: float,
-                          edge_jitter=None, n_hist: int = _PATTERN_HISTORY,
+                          edge_jitter=None, xtalk_var=None, n_hist: int = _PATTERN_HISTORY,
                           step: float = 0.25, n_pre: int = 24, n_post: int = 64) -> PatternPhase:
     """The pattern-phase factor of a bang-bang loop on NRZ with a held DFE.
 
@@ -1933,7 +1953,13 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     on the three points above against the kernel's 2.01 / 1.40 / 1.15x
     (ROADMAP P3 #13). The model's own bathtub reads 2-3.5x below the
     engine's held curve off the lock (it agrees at it), so the factor, not
-    the read, is what it is used for.
+    the read, is what it is used for. ``xtalk_var(pos)``: the aggressors'
+    ISI variance [V^2] at absolute waveform positions ``pos`` (the victim
+    pulse's time origin), added to the data and edge samples' Gaussian rest
+    -- crosstalk is noise to both the detector's votes and the decisions,
+    and without it the factor read example 44's NRZ 28G lanes 1.23-1.32x
+    the time engine at skews of 0.5-0.75 UI where the couplings dominate
+    (1.00-1.07x before the factor).
     """
     from scipy.special import erf
 
@@ -1984,6 +2010,8 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         r[:m_d] -= at(peak + lock + ks[:m_d] * osr)[:, None]
     margin = swing * (at(pos)[None, :] + hist @ r + at(pos - osr)[None, :] * nxt[:, None])
     var_rest = noise_sigma ** 2 + swing ** 2 * np.sum(at(pos[None, :] + k_rand[:, None] * osr) ** 2, axis=0)
+    if xtalk_var is not None:
+        var_rest = var_rest + np.asarray(xtalk_var(pos), dtype=np.float64)
     p_err = np.zeros((n_cls, us.size))
     kernels: dict = {}
     for iu, uu in enumerate(us):
@@ -2022,6 +2050,10 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         mu_e = swing * (np.stack(cols, axis=1) @ ce)                      # (n_cls, n_phase)
         j_rand = np.concatenate([-np.arange(m + 3, n_pre + 1), np.arange(n_hist - m, n_post + 1)])
         var_e = noise_sigma ** 2 + swing ** 2 * np.sum(at_e(pos_e[None, :] + ((1 + m + j_rand) * osr)[:, None]) ** 2, axis=0)
+        if xtalk_var is not None:
+            # the aggressors on the victim's time axis: the edge sits half a
+            # UI before this symbol's data instant
+            var_e = var_e + np.asarray(xtalk_var(peak + lock + us - osr / 2.0), dtype=np.float64)
         vote = np.where((s_new != s_old)[:, None], s_old[:, None] * erf(mu_e / np.sqrt(2.0 * var_e)[None, :]), 0.0)
         delta += decay[m] * (vote - vote.mean(axis=0, keepdims=True))
     delta *= kp
