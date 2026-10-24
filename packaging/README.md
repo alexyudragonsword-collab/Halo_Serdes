@@ -65,14 +65,23 @@ runner (PyInstaller, Nuitka standalone, Nuitka onefile), smoke-tests each with
 Actions tab (workflow_dispatch) or by pushing changes under
 `src/halo_serdes_gui/` or `packaging/`.
 
-Most of a Nuitka build is MSVC compiling the ~3600 C files Nuitka generates,
+Most of a Nuitka build is MSVC compiling the ~3650 C files Nuitka generates,
 almost all of them for scipy / pandas / matplotlib / dash. The two Nuitka jobs
-keep Nuitka's compile cache (`NUITKA_CACHE_DIR`, ~92 MB) between runs with
-`actions/cache`: a cold build took 87-109 min on 2026-10-09 (64-120 min that
-month), two warm ones 31-42 min with 3642-3643 of 3643 files from the cache
--- the C phase still took ~26 min with every file a hit. A branch reads main's
-cache; the first run on main after a dependency upgrade is cold, which is what
-the 180 min limit is for. A job that reaches its limit is
+keep Nuitka's compile cache (`NUITKA_CACHE_DIR`) between runs with
+`actions/cache`: a cold build took 87-109 min on 2026-10-09 and 117-130 min on
+2026-10-24 (64-130 min over the month), warm ones 31-50 min with every file or
+all but a dependency's from the cache -- the C phase still takes ~25 min with
+every file a hit. What invalidates every object at once is the toolchain, not
+our code: the Windows runner image (its MSVC / SDK build -- the 2026-10-21
+image turned a 1 GB restored cache into 0 hits of 3651 in both jobs), Nuitka's
+version and the Python patch. Since 2026-10-24 the cache key names all three
+(`<ImageVersion>-nuitka<ver>-py<ver>`, read after the install), so a toolchain
+change starts a new, small chain instead of hauling a dead cache in and out of
+every build (the old chain had grown to 1068 MB, 4-6 min per save); within a
+chain a dependency upgrade recompiles only its own files (pandas 3.0.6 ->
+3.1.0: 222 of 3651). A branch reads main's cache of the same chain; the first
+run after an image roll is cold on every branch, which is what the 240 min
+limit is for (GitHub allows 360). A job that reaches its limit is
 *cancelled*, not failed -- `continue-on-error` does not cover it, and a
 cancelled onefile build skips the release below.
 

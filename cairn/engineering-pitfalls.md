@@ -722,6 +722,9 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
   Δ_c 先按平稳分布平均成常数再平移,2.1×(实测 2.0×)。
 - **纯 ISI + AWGN 的解析浴盆在偏离锁定点处比引擎低 3–20×**(2026-10-24):发端白边沿抖动在晚采样点上是本符号两条边的精确核(`tx_edge_jitter`),
   不是"再加 3 mV 噪声";没有它,+4 处 7.5e-7 对 1.6e-5。要做任何按相位的解析对照,先把引擎的逐相位边沿抖动表接上。
+- **Nuitka 的 clcache 跟着运行器镜像一起失效**(2026-10-24):缓存恢复成功、1 GB、"Cache restored from key" 都在,照样 0 命中 —— 换的是 `windows-latest`
+  镜像里的 MSVC / SDK,不是我们的代码或依赖。只看 actions/cache 的恢复日志会以为缓存在工作;要看 Nuitka 自己那行 "Compiled N C files using clcache
+  with X cache hits"。缓存键里不带工具链版本,死对象就一直被搬来搬去,越滚越大。
 
 ## 已知限制(不是 bug,别去"修")
 

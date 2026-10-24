@@ -6,7 +6,19 @@
 
 ---
 
-## [未发布] — 自由运行 bang-bang 环路的码型-相位相关进统计引擎(ROADMAP P3 #13)
+## [未发布] — CI:nuitka 打包腿的缓存按工具链分链,上限 240 分钟(ROADMAP P3 #10 的 CI 条)
+
+### 变更
+- `build-windows.yml` 的两条 Nuitka 腿:缓存键从 `nuitka-<kind>-<os>-py3.11-<run_id>` 改为 `nuitka-<kind>-<os>-<ImageVersion>-nuitka<ver>-py<ver>-<run_id>`
+  (装完 Nuitka 之后由一步 `tc` 读出三项再恢复缓存),同前缀的 `restore-keys`;`timeout-minutes` 180 → 240(GitHub 上限 360)。
+- 证据:2026-10-20 到 10-24 五次 nuitka 腿的日志逐项对比 —— Python 3.11.9、Nuitka 4.3.1、numpy / scipy / pandas / matplotlib / plotly / dash 版本都相同,
+  唯一变的是运行器镜像 `windows-2025-vs2026` 20261007.264.1 → 20261021.278.1,恢复的 1068 MB 缓存(自 10-22 主干)在 10-24 两次都 "0 cache hits and 3651 cache misses"
+  (117 / 128.6 分钟);同一镜像内 10-22 主干 3650 / 3650 命中(44 分钟)、分支上 pandas 3.0.6 → 3.1.0 只重编 222 个(48 分钟)。10-20 的 126 分钟冷构建同样对着上一次镜像的缓存。
+  旧键把换了工具链的死对象一直带着(92 MB → 1068 MB,每次保存 4–6 分钟);新键换链即换缓存,链内才累积。
+- 不改的:Nuitka 不钉版本(升级即新链,照常冷一次);MSVC 4 核编 3651 个文件 98 分钟改不动;两条腿各自的缓存(构建目录不同)照旧。
+- 验证:本 PR 第一次运行是新链的冷构建(镜像 20261021),预期 117–130 分钟;之后再触发一次应命中。数见 LOG。
+
+
 
 ### 新增
 - `engine.statistical._pattern_phase_factor` / `PatternPhase`:NRZ 混合信号带 DFE、bang-bang 环路按平稳分布平滑的读数再乘一个码型-相位因子。
