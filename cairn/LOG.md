@@ -20,7 +20,8 @@
 - CI(PR #102,头 ce5c9b3;push 与 pull_request 两条 test 工作流各跑一遍,全绿):测试矩阵 3.10 jit 17.9 / 23.2 分钟、3.11 jit 12.1 / 10.8、
   3.10 nojit 22.4 / 22.4、3.11 nojit 19.6 / 19.8(上限 45),examples 15.1 / 18.5、examples-full 30.4 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;
   Android(5d3d5a8,之后两个提交只动文档与示例)API 34 / 35 / 编译版 instrumented 各 34 tests、0 failures(3.7 / 5.0 / 4.1 分钟,工作流 13 分钟);
-  pyinstaller 2.7 分钟绿,nuitka 与 nuitka-onefile 写到这里时已跑 105 分钟仍在进行(上限 180;此前缓存未命中 48 分钟),结论补在下。
+  pyinstaller 2.7 分钟绿;nuitka 117 分钟、nuitka-onefile 128.6 分钟绿(缓存未命中;此前未命中 48 分钟、热构建 31–42 分钟,上限 180 —— 余量只剩 50 分钟,
+  登记在 ROADMAP P3 #10 的 CI 长尾)。新头 4504287(只动 LOG)的 test 工作流 22.4 分钟绿。
 - 坑:容器重建后 venv 没了(`uv venv` + `-e .[jit,fec,test]` 重建 1 分钟);探针脚本里用 `sys.argv[0].rsplit('/')` 取目录在无目录调用时取到文件名本身。
 
 ## 2026-10-22 · PAM6 / PAM8 的 R_LM 与 TDECQ(feat/pam6-pam8-rlm-tdecq,ROADMAP P3 #12)
