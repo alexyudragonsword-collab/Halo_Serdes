@@ -725,6 +725,11 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
 - **Nuitka 的 clcache 跟着运行器镜像一起失效**(2026-10-24):缓存恢复成功、1 GB、"Cache restored from key" 都在,照样 0 命中 —— 换的是 `windows-latest`
   镜像里的 MSVC / SDK,不是我们的代码或依赖。只看 actions/cache 的恢复日志会以为缓存在工作;要看 Nuitka 自己那行 "Compiled N C files using clcache
   with X cache hits"。缓存键里不带工具链版本,死对象就一直被搬来搬去,越滚越大。
+- **`TxEdgeJitter` 的分箱下标是(本符号, 下一符号, 前一符号)**(2026-10-24):`_BINNED_NEIGHBOURS = (-1, 1)` 是**光标**偏移,c(−1) 是下一个符号的前光标;
+  `tx_edge_jitter` 里 `d_at(ms + c)` 配 a_(n−c),c = −1 → a_(n+1)。按"前、后"的直觉读反,两条边的核就互换,偏离锁定点处读低 2–3.5×,
+  而锁定点(两条边核差不多)看不出来。对照时要带发端抖动、在偏离锁定点处比。
+- **DFE 误码传播链要按相位的边际率**(2026-10-24):按类各自 1/(1 − p_ep,c + p_err,c) 再平均,锁定点高估 1.6×(易错类的 p_ep 大、权重又大);引擎是
+  `ser / (1 − p_ep + ser)` 一相位一个因子。
 
 ## 已知限制(不是 bug,别去"修")
 

@@ -166,3 +166,18 @@ def test_crosstalk_is_noise_to_the_factor_too(monkeypatch):
     import numpy as np
     v = np.asarray(cap["xtalk_var"](np.arange(4.0)))
     assert np.all(v > (0.005) ** 2), v
+
+
+def test_the_models_own_read_is_the_engines_before_the_factor():
+    """The factor is a ratio of the model's reads, so the model's bathtub has
+    to be the engine's: with the edge-jitter tables read in their bin order
+    (this symbol, next, previous) and the error-propagation chain, its
+    independent read is 0.92 / 0.99 / 0.98x the engine's read before the
+    factor at 12 / 15 / 18 mV (0.3-0.6x with the bins swapped, which is what
+    the 2-3.5x gap of cairn/DSP发端与PR.md §33 was)."""
+    for noise, rj in ((0.015, 0.04), (0.018, 0.06)):
+        cfg = _preset(noise, rj)
+        s = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg))
+        pp = s.extras["pattern_phase"]
+        before = s.ber / pp.factor
+        assert 0.8 < pp.read_indep / before < 1.2, (noise, pp.read_indep, before)
