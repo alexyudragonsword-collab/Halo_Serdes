@@ -70,8 +70,8 @@ Non-LTI approximations (each cross-checked against the time engine):
   the loop late and, past the DFE's taps, pulls the short run's samples
   toward itself. Since 2026-10-24 the NRZ read with a DFE is multiplied by
   the factor of that correlation over 2^12 histories
-  (``_pattern_phase_factor``: 2.15 / 1.49 / 1.17x at 12 / 15 / 18 mV, the
-  kernel 0.95 / 1.04 / 1.14x the read; ROADMAP P3 #13);
+  (``_pattern_phase_factor``: 2.14 / 1.56 / 1.23x at 12 / 15 / 18 mV, the
+  kernel 0.94 / 1.08 / 1.20x the read; ROADMAP P3 #13);
 - receive-side partial response (``cfg.pr``): the controlled cursor (the
   first postcursor of the FFE-shaped pulse, whatever it is at each phase)
   leaves the ISI PDF; with a sequence detector it joins the trellis cursors
@@ -1949,11 +1949,15 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     taps held at the lock, the transmitter's edge jitter from the engine's
     own per-phase tables (``edge_jitter(offset)``, the own two edges exact)
     and the rest Gaussian. ``factor`` is the class-weighted joint read over
-    the same classes read with the unshifted density: 2.07 / 1.45 / 1.15x
+    the same classes read with the unshifted density: 2.14 / 1.56 / 1.23x
     on the three points above against the kernel's 2.01 / 1.40 / 1.15x
-    (ROADMAP P3 #13). The model's own bathtub reads 2-3.5x below the
-    engine's held curve off the lock (it agrees at it), so the factor, not
-    the read, is what it is used for. ``xtalk_var(pos)``: the aggressors'
+    (ROADMAP P3 #13). With the engine's own edge-jitter tables read in
+    their bin order and its error-propagation chain, the model's own
+    bathtub is the engine's held curve within 0.87-1.05x at every phase
+    (NRZ 16G, 12 mV + 0.03 UI: 7.3e-8 / 7.0e-7 / 1.4e-5 / 2.5e-4 / 2.9e-3
+    against 6.9e-8 / 7.8e-7 / 1.6e-5 / 2.8e-4 / 3.1e-3 at 0 / 2 / 4 / 6 / 8
+    samples late); ``read_indep`` is that read, a self-check against the
+    engine's read before the factor. ``xtalk_var(pos)``: the aggressors'
     ISI variance [V^2] at absolute waveform positions ``pos`` (the victim
     pulse's time origin), added to the data and edge samples' Gaussian rest
     -- crosstalk is noise to both the detector's votes and the decisions,
@@ -2013,12 +2017,18 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     if xtalk_var is not None:
         var_rest = var_rest + np.asarray(xtalk_var(pos), dtype=np.float64)
     p_err = np.zeros((n_cls, us.size))
+    p_ep = np.zeros((n_cls, us.size))      # P(error | the previous decision was wrong)
+    # a wrong previous decision feeds the wrong level back through tap 1: the
+    # sample moves by 2 swing h1(lock) either way (the engine's two-state chain)
+    step = 2.0 * swing * at(peak + lock + osr) if n_dfe > 0 else 0.0
     kernels: dict = {}
     for iu, uu in enumerate(us):
         off_s = int(np.rint(lock + uu))
         jit = edge_jitter(off_s) if edge_jitter is not None else None
         if jit is None:
-            p_err[:, iu] = ncdf(-margin[:, iu] / np.sqrt(max(var_rest[iu], (swing * 1e-6) ** 2)))
+            s_tot = np.sqrt(max(var_rest[iu], (swing * 1e-6) ** 2))
+            p_err[:, iu] = ncdf(-margin[:, iu] / s_tot)
+            p_ep[:, iu] = 0.5 * (ncdf(-(margin[:, iu] - step) / s_tot) + ncdf(-(margin[:, iu] + step) / s_tot))
             continue
         # the own two edges' exact kernel per neighbour pattern, applied on a
         # grid of margins and read back per class (the grid on the noise, or
@@ -2027,15 +2037,30 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         for sp in (-1.0, 1.0):
             for sn in (-1.0, 1.0):
                 sel = (hist[:, 0] == sp) & (nxt == sn)
-                combo = (1, int(sp > 0), int(sn > 0))
+                # the tables' bins run (this symbol, the next, the previous):
+                # _BINNED_NEIGHBOURS = (-1, 1) are cursor offsets, c(-1) is
+                # the symbol after this one. Read the other way round the
+                # classes that err most (a transition next, none before) got
+                # the weak kernel of the edge behind them, and the model's
+                # bathtub sat 2-3.5x under the engine's off the lock
+                combo = (1, int(sn > 0), int(sp > 0))
                 if (off_s, combo) not in kernels:
                     ker, lo = jit.kernel(combo, dv)
                     kernels[(off_s, combo)] = (ker, (lo + np.arange(ker.size)) * dv)
                 ker, x = kernels[(off_s, combo)]
                 s_tot = np.sqrt(var_rest[iu] + float(jit.rest[combo]) ** 2)
-                mg = np.linspace(margin[sel, iu].min(), margin[sel, iu].max(), 257)
+                m_sel = margin[sel, iu]
+                mg = np.linspace(m_sel.min() - step, m_sel.max() + step, 385)
                 pg = (ncdf(-(mg[:, None] + x[None, :]) / s_tot) * ker[None, :]).sum(axis=1)
-                p_err[sel, iu] = np.interp(margin[sel, iu], mg, pg)
+                p_err[sel, iu] = np.interp(m_sel, mg, pg)
+                p_ep[sel, iu] = 0.5 * (np.interp(m_sel - step, mg, pg) + np.interp(m_sel + step, mg, pg))
+    # DFE error propagation as the engine applies it: the chain over the
+    # marginal rates at each phase (ser / (1 - p_ep + ser)), one factor per
+    # phase on every class -- per class it overstates the lock point 1.6x
+    if n_dfe > 0:
+        pe_m = p_err.mean(axis=0)
+        ep = 1.0 / np.maximum(1.0 - np.minimum(p_ep.mean(axis=0), 0.99) + pe_m, 1e-9)
+        p_err = p_err * ep[None, :]
     # --- the votes at the window's edges: edge m lies between symbols i-2-m and i-1-m ---
     delta = np.zeros((n_cls, us.size))
     for m in range(n_hist - 1):
