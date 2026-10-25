@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-25 · 审计:#99–#105 之后的文档漂移与 ROADMAP 证据(docs/audit-2026-10-25)
+
+- 查了:AGENTS.md 65 行(上限 65,已无余量)、六条铁律在;ROADMAP 里 29 处 `cairn/…§N` 指针全部能找到小节;LOG 近八条 ≤ 20 行;
+  `example_drift derived` 104 处成立,`candidates` 330 行待读(多 lane §8、SUMMARY、USAGE 的历史值与单独实测,与上次同一批,未新登记);
+  README 不引两引擎比值;引旧数的句子都带日期更正链(invariants §3、多lane §7 / §8.3、DSP §32 / §33、COMPARISON、USAGE)。
+- 改了:`cairn/多lane建模.md` §7 表的 PAM4 32G / NRZ 28G 两行就地更新到 2026-10-24 末的值(此前只在脚注里写“表里应读”),§8.3 补末位;
+  LOG 里 PR #104 条“重跑见下”的悬空句改为以 CI 为准。只改文档。
+- CI(PR #106,头 5d26e1c,只触发 test 工作流):矩阵 3.10 jit 23.2 分钟、3.11 jit 20.2、3.10 nojit 20.2、3.11 nojit 20.0,examples 19.0,lint / import-clean / RTL lockstep / vendor-drift 绿。
+
 ## 2026-10-24 · 因子模型的浴盆对上引擎:邻符号分箱顺序 + 误码传播(fix/pattern-phase-curve-gap,P3 #13 余项)
 
 - 拆法:模型对引擎的无条件曲线,rj = 0 时 0.85–0.97×(不是 ISI / 噪声 / 持有 DFE),rj 0.03 时 0.3–0.6× → 差在发端边沿抖动项;
@@ -29,7 +38,7 @@
   examples 18.4 / 10.5、examples-full 30.2 分钟,lint、import-clean、RTL lockstep、vendor-drift 绿;Android(b2b388d)API 34 / 35 / 编译版 instrumented 各 34 tests、
   0 failures(5.0 / 4.6 / 4.0 分钟,工作流 16 分钟);pyinstaller 3.0 分钟绿;nuitka 119 分钟、nuitka-onefile 121 分钟绿 —— "Cache not found":主干 37df013 的首次新链
   冷构建(74 / 119 分钟)与本分支同时起跑、还没保存,分支看不到别的分支的缓存,两边都冷;主干的已存,之后的分支应命中(PR #103 上命中时 31 / 44 分钟)。
-  本地全量第一次被容器重启打断(23 %),重跑见下。
+  本地全量两次被容器重启打断(23 %),以 CI 的四条腿为准。
 
 ## 2026-10-24 · CI:nuitka 打包腿的缓存按工具链分链(ci/nuitka-cache-margin,ROADMAP P3 #10 的 CI 条)
 
