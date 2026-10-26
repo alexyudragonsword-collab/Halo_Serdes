@@ -2188,85 +2188,103 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     # recurs the run structure at the loop's memory, 7x the independent
     # data's tail at 8 mV; PRBS13 0.1x) -- the class mixture is scaled onto
     # p0 so only the classes' relative shapes come from here.
-    bits = (np.arange(n_cls)[:, None] >> np.arange(n_hist + 1)[None, :]) & 1      # (n_cls, 13): h_1..h_12, next
-    bit_n = bits[:, n_hist]
-    # the step i -> i+1 re-expresses the window relative to the next symbol:
-    # h'_1 = n, h'_q = h_(q-1) n, n' = the new symbol
-    succ_base = bit_n + np.sum(((bits[:, :n_hist - 1] ^ bit_n[:, None]) << np.arange(1, n_hist)[None, :]), axis=1)
-    pred = np.empty((2, n_cls), dtype=np.int64)
-    for nb in (0, 1):
-        succ = succ_base + (nb << n_hist)
-        order = np.argsort(succ, kind="stable")
-        pred[0, succ[order][::2]] = order[::2]
-        pred[1, succ[order][1::2]] = order[1::2]
-    assert np.array_equal(np.sort(np.concatenate([pred[0], pred[1]])), np.repeat(np.arange(n_cls), 2))
-    t_old, t_new = hist[:, 1], hist[:, 0]                                 # symbols i-2 and i-1, relative to i
-    same = (t_old == t_new)
-    # the classes whose two symbols agree first, so the routing below is
-    # two slices rather than two masks (a permutation of the class axis,
-    # undone at the end)
-    perm = np.concatenate([np.flatnonzero(same), np.flatnonzero(~same)])
-    inv = np.empty_like(perm)
-    inv[perm] = np.arange(n_cls)
-    n_same = int(same.sum())
-    pred_p = inv[pred[:, perm]]                                           # predecessors in the permuted order
-    # per pairing state b (0: the old sample read its symbol, 1: it did not)
-    # the stay / late / early probabilities, in the permuted order
+    # The step i -> i+1 re-expresses the window relative to the next
+    # symbol: h'_1 = n, h'_q = h_(q-1) xor n, n' = the new one, h_12 is
+    # dropped. Class index bits: h_1 .. h_12 at 0 .. n_hist-1, n at n_hist.
+    # The two predecessors of a class differ only in h_12, and where n is
+    # set the history is complemented -- which on the low bits is the
+    # index read backwards -- so the arrival is a sum over h_12 and one
+    # reversed slice, no gather. "The two symbols before i agree" is
+    # bit 0 == bit 1, so the routing below works on quadrant views.
+    half = n_cls // 4                       # 2^(n_hist - 1): the bits h_1 .. h_(n_hist-1)
+    n_u = us.size
+    n_q = n_cls // 4
+    t_old = hist[:, 1]                                                    # symbol i-2, relative to i
     probs = []
     for b in (0, 1):
-        s_old = (t_old[perm] * (1 - 2 * b)).astype(np.float32)[:, None]
-        p_stay = 0.5 * (1.0 + s_old * a_new[perm])
+        s_old = (t_old * (1 - 2 * b)).astype(np.float32)[:, None]
+        p_stay = 0.5 * (1.0 + s_old * a_new)
         p_vote = 1.0 - p_stay
-        p_late = p_vote * 0.5 * (1.0 + s_old * c_e[perm])
+        p_late = p_vote * 0.5 * (1.0 + s_old * c_e)
         probs.append((p_stay.astype(np.float32), p_late.astype(np.float32), (p_vote - p_late).astype(np.float32)))
-    n_u = us.size
     n_mv = n_sub if kp > 0.0 else 0                 # bins a vote moves the mass (none: nothing moves)
     n_state = 4 if ki > 0.0 else 2
     buf = [[np.zeros((n_cls, n_u), dtype=np.float32) for _ in range(n_state)] for _ in range(2)]
+    arr = [np.empty((n_cls, n_u), dtype=np.float32) for _ in range(2)]
+    tmp = [np.empty((n_cls, n_u), dtype=np.float32) for _ in range(4)]
+
+    def arrive(x: np.ndarray, out_a: np.ndarray) -> None:
+        """Half the mass of each class's two predecessors, into ``out_a``."""
+        summed = x.reshape(2, 2, half, n_u).sum(axis=1)                  # (n, h_12 summed, h_1..h_11)
+        a4 = out_a.reshape(2, half, 2, n_u)                               # (new, h'_2..h'_12, h'_1 = n)
+        np.multiply(summed[0], 0.5, out=a4[0, :, 0])
+        np.multiply(summed[1, ::-1], 0.5, out=a4[0, :, 1])
+        a4[1] = a4[0]
+
+    def quads(x: np.ndarray):
+        """(same, diff) quadrant views: bit 1 == bit 0, and not."""
+        v = x.reshape(n_q, 2, 2, n_u)
+        return (v[:, 0, 0], v[:, 1, 1]), (v[:, 0, 1], v[:, 1, 0])
 
     def advance(st: list[np.ndarray], out: list[np.ndarray]) -> None:
         """One symbol. ``st`` = mass for the two pairing states, then (with
         the integral path) the same masses times the integrator's mean."""
         for o in out:
-            o[...] = 0.0
+            o.fill(0.0)
+        stay, late, early, extra = tmp
         for b in (0, 1):
             p_stay, p_late, p_early = probs[b]
-            for j in ((b, b + 2) if n_state == 4 else (b,)):
-                arrived = st[j][pred_p[0]]
-                arrived += st[j][pred_p[1]]
-                arrived *= 0.5
-                if j == b:
-                    m_arr = arrived
+            for i_j, j in enumerate((b, b + 2) if n_state == 4 else (b,)):
+                arrived = arr[i_j]
+                arrive(st[j], arrived)
                 # staying keeps the raw sign: right iff the two symbols
                 # agree; a vote flips it: right iff they differ
                 k_same, k_diff = (b, 1 - b) if j < 2 else (b + 2, 3 - b)
-                stay = arrived * p_stay
-                out[k_same][:n_same] += stay[:n_same]
-                out[k_diff][n_same:] += stay[n_same:]
-                late = arrived * p_late
-                early = arrived * p_early
+                np.multiply(arrived, p_stay, out=stay)
+                np.multiply(arrived, p_late, out=late)
+                np.multiply(arrived, p_early, out=early)
                 if j >= 2:
                     # the vote's own step into the integrator
-                    late += ki * (m_arr * p_late)
-                    early -= ki * (m_arr * p_early)
-                out[k_diff][:n_same, n_mv:] += late[:n_same, :n_u - n_mv]
-                out[k_same][n_same:, n_mv:] += late[n_same:, :n_u - n_mv]
-                out[k_diff][:n_same, :n_u - n_mv] += early[:n_same, n_mv:]
-                out[k_same][n_same:, :n_u - n_mv] += early[n_same:, n_mv:]
+                    np.multiply(arr[0], p_late, out=extra)
+                    extra *= ki
+                    late += extra
+                    np.multiply(arr[0], p_early, out=extra)
+                    extra *= ki
+                    early -= extra
+                st_same, st_diff = quads(stay)
+                la_same, la_diff = quads(late)
+                ea_same, ea_diff = quads(early)
+                to_same_s, to_same_d = quads(out[k_same])
+                to_diff_s, to_diff_d = quads(out[k_diff])
+                for dst, src in zip(to_same_s, st_same):
+                    dst += src
+                for dst, src in zip(to_diff_d, st_diff):
+                    dst += src
+                for dst, src in zip(to_diff_s, la_same):
+                    dst[:, n_mv:] += src[:, :n_u - n_mv]
+                for dst, src in zip(to_same_d, la_diff):
+                    dst[:, n_mv:] += src[:, :n_u - n_mv]
+                for dst, src in zip(to_diff_s, ea_same):
+                    dst[:, :n_u - n_mv] += src[:, n_mv:]
+                for dst, src in zip(to_same_d, ea_diff):
+                    dst[:, :n_u - n_mv] += src[:, n_mv:]
         if n_state == 4:
             # the integrator's push, at its mean given the phase (over the
             # classes: it remembers further back than the window), as a
             # chance of one bin in its direction
             m_tot = out[0].sum(axis=0) + out[1].sum(axis=0)
             i_mean = (out[2].sum(axis=0) + out[3].sum(axis=0)) / np.maximum(m_tot, 1e-30)
+            if _PATTERN_PHASE_TRACE is not None:
+                _PATTERN_PHASE_TRACE["i_mean"] = i_mean.copy()
             frac = np.clip(np.abs(i_mean) / dus, 0.0, 1.0)
-            f_up = np.where(i_mean > 0.0, frac, 0.0)[None, :]
-            f_down = np.where(i_mean < 0.0, frac, 0.0)[None, :]
+            f_up = np.where(i_mean > 0.0, frac, 0.0).astype(np.float32)[None, :]
+            f_down = np.where(i_mean < 0.0, frac, 0.0).astype(np.float32)[None, :]
             f_up[0, -1] = 0.0
             f_down[0, 0] = 0.0
+            up, down = tmp[0], tmp[1]
             for o in out:
-                up = o * f_up
-                down = o * f_down
+                np.multiply(o, f_up, out=up)
+                np.multiply(o, f_down, out=down)
                 o -= up
                 o -= down
                 o[:, 1:] += up[:, :-1]
@@ -2275,6 +2293,8 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     buf[0][0][...] = (p0 / n_cls).astype(np.float32)[None, :]
     cur, nxt_buf = buf
     sig = p0 > 1e-6 * p0.max()
+    mean0 = float(np.sum(p0 * us) * dus)
+    rms0 = float(np.sqrt(max(float(np.sum(p0 * (us - mean0) ** 2) * dus), 1e-12)))
     p_s = p0
     n_used = 0
     done = False
@@ -2286,6 +2306,13 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         for o in cur:
             o /= tot
         mix = (cur[0].sum(axis=0) + cur[1].sum(axis=0)).astype(np.float64) / dus
+        # a loop whose mean walks off by its own RMS is slipping (a closed
+        # eye: NRZ 32G static, no noise, BER 0.1 -- 600 steps for nothing);
+        # no stationary picture holds
+        walk = abs(float(np.sum(mix * us) * dus) - mean0)
+        if walk > rms0:
+            p_s = mix
+            break
         # converged where the engine's density has mass, tail included,
         # relative to itself: the tails converge last and set the factor
         done = float(np.max(np.abs(mix[sig] / np.maximum(p_s[sig], 1e-300) - 1.0))) < tol
@@ -2293,7 +2320,7 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         if done:
             break
     mass = cur[:2]
-    pc = (mass[0] + mass[1]).astype(np.float64)[inv]
+    pc = (mass[0] + mass[1]).astype(np.float64)
     marginal_error = float(np.max(np.abs(p_s[sig] / p0[sig] - 1.0))) if sig.any() else 0.0
     if _PATTERN_PHASE_TRACE is not None:
         _PATTERN_PHASE_TRACE.update(us=us, p0=p0, p_s=p_s, p_err=p_err, pc_raw=pc.copy(), n_steps=n_used)
