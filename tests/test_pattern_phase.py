@@ -41,28 +41,27 @@ def test_the_factor_is_what_the_kernel_measured_and_fades_with_noise():
     random data (ROADMAP P3 #15): the free-running kernel errs 1.47 / 1.24 /
     1.00x this engine before the factor (20 / 5 / 3 seeds of 1.6M symbols,
     171 / 348 / 1824 errors); the chain with the loop's integral path gives
-    1.59 / 1.27 / 1.08x (the engine then 1.08 / 1.02 / 1.08x the kernel).
+    1.35 / 1.18 / 1.05x (the engine then 0.92 / 0.95 / 1.05x the kernel).
     On PRBS31 the kernel errs 1.54 / 1.16 / 1.03x more than on random data."""
     f = []
     for noise, rj in ((0.012, 0.03), (0.015, 0.04), (0.018, 0.06)):
         cfg = _preset(noise, rj)
         s = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg))
         f.append(s.extras["pattern_phase"].factor)
-    assert 1.4 < f[0] < 1.8 and 1.15 < f[1] < 1.4 and 1.02 < f[2] < 1.15, f
+    assert 1.2 < f[0] < 1.5 and 1.08 < f[1] < 1.3 and 1.0 < f[2] < 1.12, f
     assert f[0] > f[1] > f[2], f
 
 
 def test_deep_the_factor_follows_the_long_run_classes_tails():
-    """ROADMAP P3 #14 / #15: at 8 mV + 0.019 UI on independent random data
-    the kernel (70 seeds of 1.6M symbols, 31 errors) read 1.41x the engine
-    before the factor; the chain with the integral path gives 1.71 (the
-    engine 1.20x the kernel; its phase RMS 1.81 against the kernel's 1.80,
-    P(phase > 6.5 samples) 2.7e-4 against 2.7e-4). Its class with the errors
-    (a run of 2-3 after 6 or more of the other level, a transition next):
-    P(phase > 8.5 samples) 7.1e-5 against the kernel's 6.4e-5."""
+    """ROADMAP P3 #14-#16: at 8 mV + 0.019 UI on independent random data
+    the kernel (80 seeds of 1.6M symbols, 32 errors) read 1.29x the engine
+    before the factor; the chain with the integral path (second-order
+    fluxes) gives 1.13, the engine 0.88x the kernel. Its class with the
+    errors (a run of 2-3 after 6 or more of the other level, a transition
+    next): P(phase > 8.5 samples) 4.2e-5 against the kernel's 6.4e-5."""
     cfg = _preset(0.008, 0.019)
     pp = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"]
-    assert 1.4 < pp.factor < 2.1, pp.factor
+    assert 0.95 < pp.factor < 1.35, pp.factor
     assert pp.converged and pp.steps < 600
     lbla = _run_lengths(pp.history)
     worst = ~pp.next_same & np.isin(lbla[:, 0], (1, 2)) & (lbla[:, 1] >= 6)
@@ -70,18 +69,19 @@ def test_deep_the_factor_follows_the_long_run_classes_tails():
     late = pp.phase_grid > 8.5
     tail = float(pp.cond_density[worst][:, late].sum(axis=1).mean() * du)
     everyone = float(pp.cond_density[:, late].sum(axis=1).mean() * du)
-    assert 3e-5 < tail < 1.5e-4 and tail > 5 * everyone, (tail, everyone)
+    assert 2e-5 < tail < 1.2e-4 and tail > 5 * everyone, (tail, everyone)
 
 
-def test_no_credit_below_one_where_the_chain_extrapolates():
-    """NRZ 28G analytic at 10 mV: the chain's joint read comes out 0.15x the
-    independent one -- no kernel case reads below 1, so the factor is floored
-    there and the raw ratio kept."""
+def test_below_one_where_the_stationary_density_runs_heavy():
+    """NRZ 28G analytic at 10 mV: the kernel's phase (10 seeds of 1.6M
+    symbols, independent data) has P(> 2 samples) 2e-5, the engine's
+    stationary density 1.6e-4, the chain 1e-6 -- the factor carries that
+    marginal, and reads 0.13 (until 2026-10-26 floored at 1)."""
     cfg = cb.load_preset("NRZ 28G analytic (COM/xtalk)")
     cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=0.010))
     pp = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"]
-    assert pp.factor_raw < 0.6 and pp.converged, pp.factor_raw
-    assert pp.factor == 1.0
+    assert pp.factor < 0.3 and pp.converged, pp.factor
+    assert pp.factor == pp.factor_raw
 
 
 def test_the_shift_follows_the_run_before_the_short_run():
@@ -118,7 +118,7 @@ def test_the_read_is_the_independent_one_times_the_factor(monkeypatch):
                         lambda *a, **k: dataclasses.replace(orig(*a, **k), factor=1.0))
     without = st.run_statistical(cfg, channel=cm)
     factor = with_f.extras["pattern_phase"].factor
-    assert factor > 1.15
+    assert factor > 1.08
     assert with_f.ber / without.ber == pytest.approx(factor, rel=1e-9)
     assert with_f.ser / without.ser == pytest.approx(factor, rel=1e-9)
 
@@ -163,7 +163,7 @@ def test_two_engines_agree_where_the_loop_errs_on_its_own_data():
     15 mV + 0.04 UI, on independent random data -- what this engine models
     (on PRBS31 the free-running kernel errs 1.16x more here and up to 4x more
     at 8 mV, ROADMAP P3 #15). Two seeds of 1M symbols (about 90 errors); five
-    seeds of 1.6M read the engine 1.02x with the factor (0.81x without)."""
+    seeds of 1.6M read the engine 0.95x with the factor (0.81x without)."""
     cfg = _preset(0.015, 0.04, n_symbols=1_000_000)
     cm = ChannelModel.from_config(cfg)
     n_err = n_chk = 0
@@ -177,21 +177,21 @@ def test_two_engines_agree_where_the_loop_errs_on_its_own_data():
     s = st.run_statistical(cfg, channel=cm)
     ratio = s.ber / (n_err / n_chk)
     assert 0.7 < ratio < 1.5, (ratio, s.ber, n_err)
-    assert 1.15 < s.extras["pattern_phase"].factor < 1.4
+    assert 1.08 < s.extras["pattern_phase"].factor < 1.3
 
 
 def test_crosstalk_is_noise_to_the_factor_too(monkeypatch):
     """The aggressors' variance goes into the factor's Gaussian rest, of the
     votes and of the decisions alike (example 44's NRZ 28G lanes read
     1.23-1.32x the time engine without it). NRZ 16G at 12 mV + 0.03 UI, 2 FEXT
-    + 2 NEXT, on independent data: the factor 1.59 quiet, 1.26 / 1.36 at -27 /
-    -33 dB (skew 0.5 UI), and the engine 1.06 / 1.10x the time engine with
+    + 2 NEXT, on independent data: the factor 1.35 quiet, 1.25 / 1.32 at -27 /
+    -33 dB (skew 0.5 UI), and the engine 1.05 / 1.07x the time engine with
     it, 0.84 / 0.81x without (two seeds of 400k symbols, 13257 / 260
     errors)."""
     from halo_serdes.config.schema import CrosstalkConfig
     cfg = _preset(0.012, 0.03)
     quiet = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"].factor
-    assert quiet > 1.5, quiet
+    assert quiet > 1.2, quiet
     cap = {}
     orig = st._pattern_phase_factor
 
