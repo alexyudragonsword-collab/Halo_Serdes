@@ -143,9 +143,15 @@ def test_the_read_uses_the_density_whose_rms_is_the_models():
 def test_the_density_reads_more_than_the_gaussian_smear_on_a_steep_bathtub(monkeypatch):
     """Same curve, two smears: the density's heavier late tail reads the
     NRZ 16G preset 1.09-1.66x the Gaussian's (18 / 15 / 12 mV: 1.09 / 1.22 /
-    1.66x), which is where the time engine is (0.84 -> 0.91x at 18 mV)."""
+    1.66x), which is where the time engine is (0.84 -> 0.91x at 18 mV).
+    Read before the pattern-phase factor: since 2026-10-26 (ROADMAP P3 #15)
+    the factor reads the phase from its own vote chain, so on the product
+    the smear's shape cancels."""
     cfg = _preset(0.015, 0.04)
     cm = ChannelModel.from_config(cfg)
+    orig = st._pattern_phase_factor
+    monkeypatch.setattr(st, "_pattern_phase_factor",
+                        lambda *a, **k: dataclasses.replace(orig(*a, **k), factor=1.0))
     with_density = st.run_statistical(cfg, channel=cm).ber
     monkeypatch.setattr(st, "bb_stationary_density",
                         lambda u, m, sigma: np.exp(-0.5 * (u / sigma) ** 2)
