@@ -72,11 +72,13 @@ Non-LTI approximations (each cross-checked against the time engine):
   the factor of that correlation over 2^12 histories
   (``_pattern_phase_factor``, ROADMAP P3 #13); since 2026-10-26 each
   history's phase density is the loop's own vote chain at its fixed point,
-  not the stationary density shifted (P3 #14): 2.03 / 1.35 / 1.09x at
-  12 / 15 / 18 mV and 3.0-7.3x at 10-3 mV, the read 0.89 / 0.94 / 1.06x and
-  0.62-1.23x the kernel's on its default PRBS31. On independent data the
-  kernel errs 1.5 / 1.2 / 4.1x less (12 / 15 / 8 mV), and the read is
-  1.4 / 1.1 / 3.2x that (ROADMAP P3 #15);
+  not the stationary density shifted (P3 #14), and the chain carries the
+  loop's integral path, so its own marginal is the phase on random data
+  (P3 #15): 1.59 / 1.27 / 1.08x at 12 / 15 / 18 mV, 1.4-1.8x at 10-6 mV,
+  the read 1.02-1.95x the kernel's on independent symbols from 18 to 6 mV.
+  This engine models random data: on PRBS31 the free-running kernel errs
+  1.03-10x more over the same range (PRBS23 more still, PRBS13 less), the
+  pattern's recurrence landing on the loop's memory;
 - receive-side partial response (``cfg.pr``): the controlled cursor (the
   first postcursor of the FFE-shaped pulse, whatever it is at each phase)
   leaves the ISI PDF; with a sequence detector it joins the trellis cursors
@@ -1693,7 +1695,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 # the phase and the data are not independent on NRZ with a
                 # DFE: the runs that vote the loop late are the runs whose
                 # samples it then errs on (_pattern_phase_factor, P3 #13)
-                kp_s = cdr_gains(cfg.rx.cdr, osr)[0]
+                kp_s, ki_s = cdr_gains(cfg.rx.cdr, osr)[:2]
                 if n_levels == 2 and n_dfe > 0 and not pr_active and mlsd_mem == 0 and kp_s > 0:
                     def _jit_at(off_s: int):
                         if tx_jit_phi is None:
@@ -1723,7 +1725,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     pattern_phase = _pattern_phase_factor(
                         pulse, pulse_pre, osr, lock, noise_sigma, swing, n_dfe, bb_u, bb_density,
                         kp_s, edge_jitter=_jit_at, xtalk_var=x_var,
-                        edge_jitter_ui=float(cfg.tx.clock.rj_ui))
+                        edge_jitter_ui=float(cfg.tx.clock.rj_ui), ki=ki_s)
                     ber *= pattern_phase.factor
                     ser *= pattern_phase.factor
             else:
@@ -1943,7 +1945,8 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
                           edge_jitter=None, xtalk_var=None, edge_jitter_ui: float = 0.0,
                           n_hist: int = _PATTERN_HISTORY, step: float = 0.5,
                           n_pre: int = 24, n_post: int = 64, n_steps: int = 600,
-                          tol: float = 1e-3, onto_p0: bool = True, trust: float = 1e-3) -> PatternPhase:
+                          tol: float = 1e-3, onto_p0: bool | None = None, trust: float = 1e-3,
+                          ki: float = 0.0) -> PatternPhase:
     """The pattern-phase factor of a bang-bang loop on NRZ with a held DFE.
 
     The smear reads the bathtub as if the sampling phase and the data were
@@ -1973,19 +1976,26 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     Gaussian about its conditioned cursors on the detector's pulse,
     smoothed over the transmitter's edge jitter. The sign tables are the
     kernel's with its loop frozen at +2 to +8 samples within 0.02 in every
-    class; the chain is its own Monte Carlo within 10 % per class, and
-    that Monte Carlo with the kernel's integral path and transmitted
-    pattern reproduces the kernel's phase record (P(phase > 8.5 samples)
-    3.75e-5 against 3.70e-5 at 8 mV + 0.019 UI). Until 2026-10-25 the
-    class density was the stationary one shifted by the class's mean vote
-    bias; that is right to 0.2 samples in the mean but light in the tail
-    where it matters (ROADMAP P3 #14). The chain carries neither the loop's
-    integral path nor the pattern's own correlations -- both move the
-    marginal's tail (at 8 mV the integral path 500x beyond 8.5 samples,
-    PRBS31 against independent data 7x), so the class mixture is scaled
-    onto the engine's ``density`` and only the classes' relative shapes
-    come from the chain (``PatternPhase.density`` is the chain's own
-    marginal, ``marginal_error`` how far it sits from ``density``).
+    class; the chain is its own Monte Carlo within 10 % per class. Until
+    2026-10-25 the class density was the stationary one shifted by the
+    class's mean vote bias; that is right to 0.2 samples in the mean but
+    light in the tail where it matters (ROADMAP P3 #14).
+
+    ``ki`` > 0: the loop's integral path rides along as a moment closure --
+    every state also carries its mass times the integrator's mean, which a
+    vote steps by +-``ki``, and each symbol the mass moves by the
+    integrator's mean at its phase (over the classes; it remembers further
+    back than the window). With it the chain's own marginal is the phase
+    on random data and is read as is: against the kernel fed independent
+    symbols, RMS within 0.02 samples and P(phase > 6.5 samples) within 5 %
+    at 10 / 9 / 8 / 6 / 3 mV, the far late tail (> 8.5) 1.2-2.9x heavy;
+    without it the tail beyond 8.5 samples is 50x light at 8 mV. ``ki`` 0
+    (or ``onto_p0``): only the chain's class posterior is placed on the
+    engine's ``density``, frozen beyond the phases where the chain carries
+    ``trust`` of it (the 2026-10-26 P3 #14 form, which matched PRBS31's
+    tail by the coincidence of p0's lying between the two patterns').
+    ``PatternPhase.density`` is the chain's own marginal, ``marginal_error``
+    how far it sits from ``density``.
 
     Each class's errors at each phase: the data sample's conditioned
     cursors on the receiver's pulse, the DFE's taps held at the lock, the
@@ -1996,22 +2006,21 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     ``read_indep`` is that read, a self-check against the engine's read
     before the factor. ``factor`` is the class-weighted joint read over the
     same classes read with the stationary density, floored at 1 (see
-    there): 2.03 / 1.35 / 1.09x on the three points above (the engine's
-    read then 0.89 / 0.94 / 1.06x the kernel's on PRBS31) and 3.0 / 3.7 /
-    4.6 / 6.4 / 7.3x at 10 / 9 / 8 / 6 / 3 mV (0.62 / 0.71 / 0.79 / 0.86 /
-    1.23x; with the shifted density 0.53 / 0.53 / 0.50 / 0.40 / 0.51x).
-    ``trust``: the share of p0's mass the chain must carry at a phase for
-    its class posterior to be read there; outward of it the posterior is
-    the one at the edge. ``xtalk_var(pos)``: the
+    there), 1 where the chain does not converge: 1.59 / 1.27 / 1.08x on the
+    three points above and 1.76 / 1.77 / 1.71 / 1.43 / 1.01x at 10 / 9 / 8 /
+    6 / 3 mV -- the engine then 1.08 / 1.02 / 1.08x and 1.37 / 1.30 / 1.33 /
+    1.95x the kernel's on independent symbols (3 mV: no kernel error in 20
+    seeds, consistent). ``xtalk_var(pos)``: the
     aggressors' ISI variance [V^2] at absolute waveform positions ``pos``
     (the victim pulse's time origin), added to the data and edge samples'
     Gaussian rest -- crosstalk is noise to both the detector's votes and
-    the decisions, and without it the factor read example 44's NRZ 28G
-    lanes 1.23-1.32x the time engine at skews of 0.5-0.75 UI where the
-    couplings dominate. ``step``: the phase grid [samples], rounded to a
+    the decisions (NRZ 16G at 12 mV with 2 FEXT + 2 NEXT at -27 / -33 dB:
+    the factor 1.26 / 1.36, the engine 1.06 / 1.10x the kernel on
+    independent symbols, 0.84 / 0.81x without it). ``step``: the phase grid [samples], rounded to a
     whole fraction of ``kp`` so a vote moves whole bins; ``n_steps`` /
     ``tol``: the chain's iteration budget and its stopping change of the
-    marginal, relative to its peak (0.1 % in the factor at 1e-5).
+    marginal, relative to itself wherever the engine's density is above
+    1e-6 of its peak (the tails converge last and set the factor).
     """
     from scipy.special import erf
 
@@ -2212,53 +2221,86 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         probs.append((p_stay.astype(np.float32), p_late.astype(np.float32), (p_vote - p_late).astype(np.float32)))
     n_u = us.size
     n_mv = n_sub if kp > 0.0 else 0                 # bins a vote moves the mass (none: nothing moves)
-    buf = [np.zeros((n_cls, n_u), dtype=np.float32) for _ in range(4)]
+    n_state = 4 if ki > 0.0 else 2
+    buf = [[np.zeros((n_cls, n_u), dtype=np.float32) for _ in range(n_state)] for _ in range(2)]
 
-    def advance(mass: list[np.ndarray]) -> list[np.ndarray]:
-        out = buf[2:] if mass[0] is buf[0] else buf[:2]
-        out[0][...] = 0.0
-        out[1][...] = 0.0
+    def advance(st: list[np.ndarray], out: list[np.ndarray]) -> None:
+        """One symbol. ``st`` = mass for the two pairing states, then (with
+        the integral path) the same masses times the integrator's mean."""
+        for o in out:
+            o[...] = 0.0
         for b in (0, 1):
-            arrived = mass[b][pred_p[0]]
-            arrived += mass[b][pred_p[1]]
-            arrived *= 0.5
             p_stay, p_late, p_early = probs[b]
-            # staying keeps the raw sign: right iff the two symbols agree;
-            # a vote flips it: right iff they differ
-            stay = arrived * p_stay
-            out[b][:n_same] += stay[:n_same]
-            out[1 - b][n_same:] += stay[n_same:]
-            late = arrived * p_late
-            early = arrived * p_early
-            out[1 - b][:n_same, n_mv:] += late[:n_same, :n_u - n_mv]
-            out[b][n_same:, n_mv:] += late[n_same:, :n_u - n_mv]
-            out[1 - b][:n_same, :n_u - n_mv] += early[:n_same, n_mv:]
-            out[b][n_same:, :n_u - n_mv] += early[n_same:, n_mv:]
-        return out
+            for j in ((b, b + 2) if n_state == 4 else (b,)):
+                arrived = st[j][pred_p[0]]
+                arrived += st[j][pred_p[1]]
+                arrived *= 0.5
+                if j == b:
+                    m_arr = arrived
+                # staying keeps the raw sign: right iff the two symbols
+                # agree; a vote flips it: right iff they differ
+                k_same, k_diff = (b, 1 - b) if j < 2 else (b + 2, 3 - b)
+                stay = arrived * p_stay
+                out[k_same][:n_same] += stay[:n_same]
+                out[k_diff][n_same:] += stay[n_same:]
+                late = arrived * p_late
+                early = arrived * p_early
+                if j >= 2:
+                    # the vote's own step into the integrator
+                    late += ki * (m_arr * p_late)
+                    early -= ki * (m_arr * p_early)
+                out[k_diff][:n_same, n_mv:] += late[:n_same, :n_u - n_mv]
+                out[k_same][n_same:, n_mv:] += late[n_same:, :n_u - n_mv]
+                out[k_diff][:n_same, :n_u - n_mv] += early[:n_same, n_mv:]
+                out[k_same][n_same:, :n_u - n_mv] += early[n_same:, n_mv:]
+        if n_state == 4:
+            # the integrator's push, at its mean given the phase (over the
+            # classes: it remembers further back than the window), as a
+            # chance of one bin in its direction
+            m_tot = out[0].sum(axis=0) + out[1].sum(axis=0)
+            i_mean = (out[2].sum(axis=0) + out[3].sum(axis=0)) / np.maximum(m_tot, 1e-30)
+            frac = np.clip(np.abs(i_mean) / dus, 0.0, 1.0)
+            f_up = np.where(i_mean > 0.0, frac, 0.0)[None, :]
+            f_down = np.where(i_mean < 0.0, frac, 0.0)[None, :]
+            f_up[0, -1] = 0.0
+            f_down[0, 0] = 0.0
+            for o in out:
+                up = o * f_up
+                down = o * f_down
+                o -= up
+                o -= down
+                o[:, 1:] += up[:, :-1]
+                o[:, :-1] += down[:, 1:]
 
-    buf[0][...] = (p0 / n_cls).astype(np.float32)[None, :]
-    mass = [buf[0], buf[1]]
+    buf[0][0][...] = (p0 / n_cls).astype(np.float32)[None, :]
+    cur, nxt_buf = buf
     sig = p0 > 1e-6 * p0.max()
     p_s = p0
     n_used = 0
     done = False
     for _ in range(n_steps):
         n_used += 1
-        mass = advance(mass)
-        tot = float(mass[0].sum() + mass[1].sum())
-        mass[0] /= tot
-        mass[1] /= tot
-        mix = (mass[0].sum(axis=0) + mass[1].sum(axis=0)).astype(np.float64) / dus
+        advance(cur, nxt_buf)
+        cur, nxt_buf = nxt_buf, cur
+        tot = float(cur[0].sum() + cur[1].sum())
+        for o in cur:
+            o /= tot
+        mix = (cur[0].sum(axis=0) + cur[1].sum(axis=0)).astype(np.float64) / dus
         # converged where the engine's density has mass, tail included,
         # relative to itself: the tails converge last and set the factor
         done = float(np.max(np.abs(mix[sig] / np.maximum(p_s[sig], 1e-300) - 1.0))) < tol
         p_s = mix
         if done:
             break
+    mass = cur[:2]
     pc = (mass[0] + mass[1]).astype(np.float64)[inv]
     marginal_error = float(np.max(np.abs(p_s[sig] / p0[sig] - 1.0))) if sig.any() else 0.0
     if _PATTERN_PHASE_TRACE is not None:
         _PATTERN_PHASE_TRACE.update(us=us, p0=p0, p_s=p_s, p_err=p_err, pc_raw=pc.copy(), n_steps=n_used)
+    if onto_p0 is None:
+        # with the integral path the chain's own marginal is the loop's
+        # phase on random data; without it only its class posterior is
+        onto_p0 = not ki > 0.0
     if onto_p0:
         # the class posterior P(class | phase) from the chain, on the
         # engine's marginal. It is the chain's only where the chain itself
@@ -2294,13 +2336,10 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     raw = read_joint / read_indep if read_indep > 0.0 else 1.0
     # no credit for a correlation that would *lower* the read: every case
     # measured against the kernel has it read 1 or more times the engine's
-    # independent read (NRZ 16G 12 to 3 mV, on PRBS31 and on independent
-    # data alike). The chain's ratio falls below 1 on the NRZ 28G analytic
-    # preset's family (0.95-0.99 at 20-35 mV, 0.29 at 10, 0.05 at its 4 mV
-    # preset), where its errors sit at phases the chain carries 1e-4 to
-    # 1e-17 of p0's mass, or it does not converge (the votes all but
-    # certain): extrapolation, not measured
-    factor = max(raw, 1.0)
+    # independent read (NRZ 16G 18 to 8 mV on independent data 1.00-1.47x,
+    # on PRBS31 more). A chain that does not converge (the votes all but
+    # certain: NRZ 28G analytic at its 4 mV preset) carries no reading
+    factor = max(raw, 1.0) if done else 1.0
     return PatternPhase(factor=float(factor), shift=shift, history=hist.astype(np.int8),
                         next_same=nxt > 0, read_joint=float(read_joint), read_indep=float(read_indep),
                         phase_grid=us, cond_density=pc.astype(np.float32), marginal_error=marginal_error,
