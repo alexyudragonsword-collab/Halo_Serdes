@@ -11,7 +11,8 @@
 - 串扰下因子 1.26 / 1.36(NRZ 16G 12 mV),时域证实 1.06 / 1.10×;"串扰时因子回到 1"是旧版产物(pitfalls)。
 - 预设 NRZ 16G 1.58e-7 → 2.18e-8、32G static 0.0976 → 0.0972;示例 24 / 44 重新接受(44 的 NRZ 28G 同步 0.44 → 0.71 起,多 lane §7 表就地更新)。
 - 余项 → ROADMAP P3 #16(深处偏高、3 mV 未核、28G 钳 1)。§35;tests 10 项。
-- CI:待补。
+- CI(PR #109,头 46b500f,两套):矩阵 jit 18.0–30.1 分钟、nojit 16.9–31.1(上限 45;上一轮最慢 24.7,多出的是因子的成本),examples 18.8 / 19.0、examples-full 30.6;
+  Android 构建 1.4 / 编译版 8.8、仿真器 API 34 5.3 / API 35 5.1 / 编译版 5.0;pyinstaller 3.1、nuitka 27.3、nuitka-onefile 44.0;lint / import-clean / RTL lockstep / vendor-drift 绿。
 
 ## 2026-10-26 · P3 #15 测量:深处 BER 跟码型走,统计引擎定为随机数据的口径(fix/pattern-dependence-p15 第二步)
 
