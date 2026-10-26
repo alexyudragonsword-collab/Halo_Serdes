@@ -74,8 +74,9 @@ Non-LTI approximations (each cross-checked against the time engine):
   history's phase density is the loop's own vote chain at its fixed point,
   not the stationary density shifted (P3 #14), and the chain carries the
   loop's integral path, so its own marginal is the phase on random data
-  (P3 #15): 1.59 / 1.27 / 1.08x at 12 / 15 / 18 mV, 1.4-1.8x at 10-6 mV,
-  the read 1.02-1.95x the kernel's on independent symbols from 18 to 6 mV.
+  (P3 #15), pushed with second-order fluxes (P3 #16): 1.35 / 1.18 / 1.05x
+  at 12 / 15 / 18 mV, 0.8-1.35x at 10-6 mV, the read 0.88-1.09x the
+  kernel's on independent symbols from 18 to 6 mV.
   This engine models random data: on PRBS31 the free-running kernel errs
   1.03-10x more over the same range (PRBS23 more still, PRBS13 less), the
   pattern's recurrence landing on the loop's memory;
@@ -233,6 +234,9 @@ Non-LTI approximations (each cross-checked against the time engine):
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+
+import collections
+import hashlib
 
 import numpy as np
 
@@ -1937,6 +1941,10 @@ class PatternPhase:
 
 
 _PATTERN_PHASE_TRACE: dict | None = None     # probes: a dict here receives the propagation's internals
+#: results of ``_pattern_phase_factor`` by a digest of their inputs, most
+#: recent last (about 2 MB each: the class densities)
+_PATTERN_PHASE_CACHE: "collections.OrderedDict[str, PatternPhase]" = collections.OrderedDict()
+_PATTERN_PHASE_CACHE_SIZE = 8
 
 
 def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: float,
@@ -1946,7 +1954,7 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
                           n_hist: int = _PATTERN_HISTORY, step: float = 0.5,
                           n_pre: int = 24, n_post: int = 64, n_steps: int = 600,
                           tol: float = 1e-3, onto_p0: bool | None = None, trust: float = 1e-3,
-                          ki: float = 0.0) -> PatternPhase:
+                          ki: float = 0.0, second_order: bool = True) -> PatternPhase:
     """The pattern-phase factor of a bang-bang loop on NRZ with a held DFE.
 
     The smear reads the bathtub as if the sampling phase and the data were
@@ -2005,12 +2013,16 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     bathtub is the engine's held curve within 0.87-1.05x at every phase and
     ``read_indep`` is that read, a self-check against the engine's read
     before the factor. ``factor`` is the class-weighted joint read over the
-    same classes read with the stationary density, floored at 1 (see
-    there), 1 where the chain does not converge: 1.59 / 1.27 / 1.08x on the
-    three points above and 1.76 / 1.77 / 1.71 / 1.43 / 1.01x at 10 / 9 / 8 /
-    6 / 3 mV -- the engine then 1.08 / 1.02 / 1.08x and 1.37 / 1.30 / 1.33 /
-    1.95x the kernel's on independent symbols (3 mV: no kernel error in 20
-    seeds, consistent). ``xtalk_var(pos)``: the
+    same classes read with the stationary density (below 1 where that
+    density's tails run heavy, see there), 1 where the chain does not
+    converge: 1.35 / 1.18 / 1.05x on the three points above and 1.35 /
+    1.27 / 1.13 / 0.80 / 0.44x at 10 / 9 / 8 / 6 / 3 mV -- the engine then
+    0.92 / 0.95 / 1.05x and 1.05 / 0.93 / 0.88 / 1.09x the kernel's on
+    independent symbols (3 mV: no kernel error in 20 seeds, consistent).
+    ``second_order``: the integrator's push as Lax-Wendroff fluxes; the
+    first-order move diffuses the phase, and the factor read 1.71 / 1.32 /
+    1.17 at 8 mV on 0.5 / 0.25 / 0.125-sample grids against 1.13 / 1.08 /
+    1.07 with it. ``xtalk_var(pos)``: the
     aggressors' ISI variance [V^2] at absolute waveform positions ``pos``
     (the victim pulse's time origin), added to the data and edge samples'
     Gaussian rest -- crosstalk is noise to both the detector's votes and
@@ -2050,6 +2062,35 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     us = np.arange(np.ceil(float(u.min()) / dus), np.floor(float(u.max()) / dus) + 1.0) * dus
     p0 = np.interp(us, u, np.asarray(density, dtype=np.float64))
     p0 = p0 / max(float(p0.sum() * dus), 1e-300)
+
+    # the same inputs come back often (a sweep's repeated points, the API's
+    # and the tests' reruns of one config: 84 of the first 110 calls in the
+    # test suite) -- the result is a pure function of them, closures read
+    # where they are used
+    key = None
+    if _PATTERN_PHASE_TRACE is None:
+        h = hashlib.sha1()
+        for arr_in in (pulse.y, pulse_pd.y, u, density, us):
+            h.update(np.ascontiguousarray(np.asarray(arr_in, dtype=np.float64)).tobytes())
+        h.update(repr((osr, float(lock), float(noise_sigma), float(swing), int(n_dfe), float(kp),
+                       float(edge_jitter_ui), n_hist, step, n_pre, n_post, n_steps, tol, onto_p0,
+                       trust, float(ki), second_order)).encode())
+        if edge_jitter is not None:
+            for off in sorted({int(np.rint(lock + uu)) for uu in us}):
+                jit = edge_jitter(off)
+                if jit is None:
+                    h.update(b"none")
+                    continue
+                for part in (jit.sigma, jit.rest, jit.step, jit.phi, jit.weight):
+                    h.update(np.ascontiguousarray(np.asarray(part, dtype=np.float64)).tobytes())
+        if xtalk_var is not None:
+            pk = int(np.argmax(np.abs(np.asarray(pulse.y))))
+            for pos_k in (pk + lock + us, pk + lock + us - osr / 2.0):
+                h.update(np.asarray(xtalk_var(pos_k), dtype=np.float64).tobytes())
+        key = h.hexdigest()
+        if key in _PATTERN_PHASE_CACHE:
+            _PATTERN_PHASE_CACHE.move_to_end(key)
+            return _PATTERN_PHASE_CACHE[key]
 
     n = 2 ** n_hist
     hist = 1.0 - 2.0 * ((np.arange(n)[:, None] >> np.arange(n_hist)[None, :]) & 1)
@@ -2188,93 +2229,141 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     # recurs the run structure at the loop's memory, 7x the independent
     # data's tail at 8 mV; PRBS13 0.1x) -- the class mixture is scaled onto
     # p0 so only the classes' relative shapes come from here.
-    bits = (np.arange(n_cls)[:, None] >> np.arange(n_hist + 1)[None, :]) & 1      # (n_cls, 13): h_1..h_12, next
-    bit_n = bits[:, n_hist]
-    # the step i -> i+1 re-expresses the window relative to the next symbol:
-    # h'_1 = n, h'_q = h_(q-1) n, n' = the new symbol
-    succ_base = bit_n + np.sum(((bits[:, :n_hist - 1] ^ bit_n[:, None]) << np.arange(1, n_hist)[None, :]), axis=1)
-    pred = np.empty((2, n_cls), dtype=np.int64)
-    for nb in (0, 1):
-        succ = succ_base + (nb << n_hist)
-        order = np.argsort(succ, kind="stable")
-        pred[0, succ[order][::2]] = order[::2]
-        pred[1, succ[order][1::2]] = order[1::2]
-    assert np.array_equal(np.sort(np.concatenate([pred[0], pred[1]])), np.repeat(np.arange(n_cls), 2))
-    t_old, t_new = hist[:, 1], hist[:, 0]                                 # symbols i-2 and i-1, relative to i
-    same = (t_old == t_new)
-    # the classes whose two symbols agree first, so the routing below is
-    # two slices rather than two masks (a permutation of the class axis,
-    # undone at the end)
-    perm = np.concatenate([np.flatnonzero(same), np.flatnonzero(~same)])
-    inv = np.empty_like(perm)
-    inv[perm] = np.arange(n_cls)
-    n_same = int(same.sum())
-    pred_p = inv[pred[:, perm]]                                           # predecessors in the permuted order
-    # per pairing state b (0: the old sample read its symbol, 1: it did not)
-    # the stay / late / early probabilities, in the permuted order
+    # The step i -> i+1 re-expresses the window relative to the next
+    # symbol: h'_1 = n, h'_q = h_(q-1) xor n, n' = the new one, h_12 is
+    # dropped. Class index bits: h_1 .. h_12 at 0 .. n_hist-1, n at n_hist.
+    # The two predecessors of a class differ only in h_12, and where n is
+    # set the history is complemented -- which on the low bits is the
+    # index read backwards -- so the arrival is a sum over h_12 and one
+    # reversed slice, no gather. "The two symbols before i agree" is
+    # bit 0 == bit 1, so the routing below works on quadrant views.
+    half = n_cls // 4                       # 2^(n_hist - 1): the bits h_1 .. h_(n_hist-1)
+    n_u = us.size
+    n_q = n_cls // 4
+    t_old = hist[:, 1]                                                    # symbol i-2, relative to i
     probs = []
     for b in (0, 1):
-        s_old = (t_old[perm] * (1 - 2 * b)).astype(np.float32)[:, None]
-        p_stay = 0.5 * (1.0 + s_old * a_new[perm])
+        s_old = (t_old * (1 - 2 * b)).astype(np.float32)[:, None]
+        p_stay = 0.5 * (1.0 + s_old * a_new)
         p_vote = 1.0 - p_stay
-        p_late = p_vote * 0.5 * (1.0 + s_old * c_e[perm])
+        p_late = p_vote * 0.5 * (1.0 + s_old * c_e)
         probs.append((p_stay.astype(np.float32), p_late.astype(np.float32), (p_vote - p_late).astype(np.float32)))
-    n_u = us.size
     n_mv = n_sub if kp > 0.0 else 0                 # bins a vote moves the mass (none: nothing moves)
     n_state = 4 if ki > 0.0 else 2
     buf = [[np.zeros((n_cls, n_u), dtype=np.float32) for _ in range(n_state)] for _ in range(2)]
+    arr = [np.empty((n_cls, n_u), dtype=np.float32) for _ in range(2)]
+    tmp = [np.empty((n_cls, n_u), dtype=np.float32) for _ in range(4)]
+
+    def arrive(x: np.ndarray, out_a: np.ndarray) -> None:
+        """Half the mass of each class's two predecessors, into ``out_a``."""
+        summed = x.reshape(2, 2, half, n_u).sum(axis=1)                  # (n, h_12 summed, h_1..h_11)
+        a4 = out_a.reshape(2, half, 2, n_u)                               # (new, h'_2..h'_12, h'_1 = n)
+        np.multiply(summed[0], 0.5, out=a4[0, :, 0])
+        np.multiply(summed[1, ::-1], 0.5, out=a4[0, :, 1])
+        a4[1] = a4[0]
+
+    def quads(x: np.ndarray):
+        """(same, diff) quadrant views: bit 1 == bit 0, and not."""
+        v = x.reshape(n_q, 2, 2, n_u)
+        return (v[:, 0, 0], v[:, 1, 1]), (v[:, 0, 1], v[:, 1, 0])
 
     def advance(st: list[np.ndarray], out: list[np.ndarray]) -> None:
         """One symbol. ``st`` = mass for the two pairing states, then (with
         the integral path) the same masses times the integrator's mean."""
         for o in out:
-            o[...] = 0.0
+            o.fill(0.0)
+        stay, late, early, extra = tmp
         for b in (0, 1):
             p_stay, p_late, p_early = probs[b]
-            for j in ((b, b + 2) if n_state == 4 else (b,)):
-                arrived = st[j][pred_p[0]]
-                arrived += st[j][pred_p[1]]
-                arrived *= 0.5
-                if j == b:
-                    m_arr = arrived
+            for i_j, j in enumerate((b, b + 2) if n_state == 4 else (b,)):
+                arrived = arr[i_j]
+                arrive(st[j], arrived)
                 # staying keeps the raw sign: right iff the two symbols
                 # agree; a vote flips it: right iff they differ
                 k_same, k_diff = (b, 1 - b) if j < 2 else (b + 2, 3 - b)
-                stay = arrived * p_stay
-                out[k_same][:n_same] += stay[:n_same]
-                out[k_diff][n_same:] += stay[n_same:]
-                late = arrived * p_late
-                early = arrived * p_early
+                np.multiply(arrived, p_stay, out=stay)
+                np.multiply(arrived, p_late, out=late)
+                np.multiply(arrived, p_early, out=early)
                 if j >= 2:
                     # the vote's own step into the integrator
-                    late += ki * (m_arr * p_late)
-                    early -= ki * (m_arr * p_early)
-                out[k_diff][:n_same, n_mv:] += late[:n_same, :n_u - n_mv]
-                out[k_same][n_same:, n_mv:] += late[n_same:, :n_u - n_mv]
-                out[k_diff][:n_same, :n_u - n_mv] += early[:n_same, n_mv:]
-                out[k_same][n_same:, :n_u - n_mv] += early[n_same:, n_mv:]
+                    np.multiply(arr[0], p_late, out=extra)
+                    extra *= ki
+                    late += extra
+                    np.multiply(arr[0], p_early, out=extra)
+                    extra *= ki
+                    early -= extra
+                st_same, st_diff = quads(stay)
+                la_same, la_diff = quads(late)
+                ea_same, ea_diff = quads(early)
+                to_same_s, to_same_d = quads(out[k_same])
+                to_diff_s, to_diff_d = quads(out[k_diff])
+                for dst, src in zip(to_same_s, st_same):
+                    dst += src
+                for dst, src in zip(to_diff_d, st_diff):
+                    dst += src
+                for dst, src in zip(to_diff_s, la_same):
+                    dst[:, n_mv:] += src[:, :n_u - n_mv]
+                for dst, src in zip(to_same_d, la_diff):
+                    dst[:, n_mv:] += src[:, :n_u - n_mv]
+                for dst, src in zip(to_diff_s, ea_same):
+                    dst[:, :n_u - n_mv] += src[:, n_mv:]
+                for dst, src in zip(to_same_d, ea_diff):
+                    dst[:, :n_u - n_mv] += src[:, n_mv:]
         if n_state == 4:
             # the integrator's push, at its mean given the phase (over the
             # classes: it remembers further back than the window), as a
             # chance of one bin in its direction
             m_tot = out[0].sum(axis=0) + out[1].sum(axis=0)
             i_mean = (out[2].sum(axis=0) + out[3].sum(axis=0)) / np.maximum(m_tot, 1e-30)
+            if _PATTERN_PHASE_TRACE is not None:
+                _PATTERN_PHASE_TRACE["i_mean"] = i_mean.copy()
             frac = np.clip(np.abs(i_mean) / dus, 0.0, 1.0)
-            f_up = np.where(i_mean > 0.0, frac, 0.0)[None, :]
-            f_down = np.where(i_mean < 0.0, frac, 0.0)[None, :]
+            f_up = np.where(i_mean > 0.0, frac, 0.0).astype(np.float32)[None, :]
+            f_down = np.where(i_mean < 0.0, frac, 0.0).astype(np.float32)[None, :]
             f_up[0, -1] = 0.0
             f_down[0, 0] = 0.0
+            up, down, side = tmp[0], tmp[1], tmp[2]
+            if second_order:
+                # Lax-Wendroff fluxes: the first-order (upwind) move of a
+                # fraction c of a bin's mass one bin on adds c (1 - c) / 2
+                # bins^2 of diffusion a step, which the tails read as a
+                # wider loop (the factor fell 1.71 / 1.32 / 1.17 at 8 mV as
+                # the grid went 0.5 / 0.25 / 0.125 samples); the second-order
+                # flux takes it back. Outward of the mode the density falls
+                # in the push's direction, so the flux stays within (0, c m]
+                # and no mass goes negative. Flux = m (c - g) + g m_next.
+                g_up = (0.5 * f_up * (1.0 - f_up)).astype(np.float32)
+                g_down = (0.5 * f_down * (1.0 - f_down)).astype(np.float32)
+                a_up, a_down = f_up - g_up, f_down - g_down
+            else:
+                a_up, a_down = f_up, f_down
+            # each push is non-zero on one side of the grid only
+            cols_up = np.flatnonzero(f_up[0] > 0.0)
+            cols_dn = np.flatnonzero(f_down[0] > 0.0)
+            up_lo, up_hi = (int(cols_up[0]), int(cols_up[-1]) + 1) if cols_up.size else (0, 0)
+            dn_lo, dn_hi = (int(cols_dn[0]), int(cols_dn[-1]) + 1) if cols_dn.size else (1, 1)
             for o in out:
-                up = o * f_up
-                down = o * f_down
-                o -= up
-                o -= down
-                o[:, 1:] += up[:, :-1]
-                o[:, :-1] += down[:, 1:]
+                # both fluxes from the mass before either moves (f_up[-1] = 0,
+                # f_down[0] = 0 keep the neighbours on the grid)
+                f_u = up[:, up_lo:up_hi]
+                np.multiply(o[:, up_lo:up_hi], a_up[:, up_lo:up_hi], out=f_u)
+                f_d = down[:, dn_lo:dn_hi]
+                np.multiply(o[:, dn_lo:dn_hi], a_down[:, dn_lo:dn_hi], out=f_d)
+                if second_order:
+                    np.multiply(o[:, up_lo + 1:up_hi + 1], g_up[:, up_lo:up_hi], out=side[:, up_lo:up_hi])
+                    f_u += side[:, up_lo:up_hi]
+                    np.multiply(o[:, dn_lo - 1:dn_hi - 1], g_down[:, dn_lo:dn_hi], out=side[:, dn_lo:dn_hi])
+                    f_d += side[:, dn_lo:dn_hi]
+                o[:, up_lo:up_hi] -= f_u
+                o[:, dn_lo:dn_hi] -= f_d
+                o[:, up_lo + 1:up_hi + 1] += f_u
+                o[:, dn_lo - 1:dn_hi - 1] += f_d
 
     buf[0][0][...] = (p0 / n_cls).astype(np.float32)[None, :]
     cur, nxt_buf = buf
     sig = p0 > 1e-6 * p0.max()
+    mean0 = float(np.sum(p0 * us) * dus)
+    rms0 = float(np.sqrt(max(float(np.sum(p0 * (us - mean0) ** 2) * dus), 1e-12)))
     p_s = p0
     n_used = 0
     done = False
@@ -2286,6 +2375,13 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         for o in cur:
             o /= tot
         mix = (cur[0].sum(axis=0) + cur[1].sum(axis=0)).astype(np.float64) / dus
+        # a loop whose mean walks off by its own RMS is slipping (a closed
+        # eye: NRZ 32G static, no noise, BER 0.1 -- 600 steps for nothing);
+        # no stationary picture holds
+        walk = abs(float(np.sum(mix * us) * dus) - mean0)
+        if walk > rms0:
+            p_s = mix
+            break
         # converged where the engine's density has mass, tail included,
         # relative to itself: the tails converge last and set the factor
         done = float(np.max(np.abs(mix[sig] / np.maximum(p_s[sig], 1e-300) - 1.0))) < tol
@@ -2293,7 +2389,7 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         if done:
             break
     mass = cur[:2]
-    pc = (mass[0] + mass[1]).astype(np.float64)[inv]
+    pc = (mass[0] + mass[1]).astype(np.float64)
     marginal_error = float(np.max(np.abs(p_s[sig] / p0[sig] - 1.0))) if sig.any() else 0.0
     if _PATTERN_PHASE_TRACE is not None:
         _PATTERN_PHASE_TRACE.update(us=us, p0=p0, p_s=p_s, p_err=p_err, pc_raw=pc.copy(), n_steps=n_used)
@@ -2334,16 +2430,25 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     read_joint = w_cls * float(np.sum(pc * p_err)) * dus
     read_indep = w_cls * float(np.sum(p0[None, :] * p_err)) * dus
     raw = read_joint / read_indep if read_indep > 0.0 else 1.0
-    # no credit for a correlation that would *lower* the read: every case
-    # measured against the kernel has it read 1 or more times the engine's
-    # independent read (NRZ 16G 18 to 8 mV on independent data 1.00-1.47x,
-    # on PRBS31 more). A chain that does not converge (the votes all but
-    # certain: NRZ 28G analytic at its 4 mV preset) carries no reading
-    factor = max(raw, 1.0) if done else 1.0
-    return PatternPhase(factor=float(factor), shift=shift, history=hist.astype(np.int8),
-                        next_same=nxt > 0, read_joint=float(read_joint), read_indep=float(read_indep),
-                        phase_grid=us, cond_density=pc.astype(np.float32), marginal_error=marginal_error,
-                        density=p_s, factor_raw=float(raw), steps=n_used, converged=bool(done))
+    # The factor carries the chain's own marginal as well as the classes'
+    # correlation, and below 1 it is the marginal: the engine's stationary
+    # density is a Boltzmann fit to the linearised RMS whose tails run far
+    # heavier than the loop's at low noise (NRZ 16G 6 mV: the kernel 0.74x
+    # the read before the factor, the chain 0.80; NRZ 28G analytic at its
+    # 4 mV preset: the kernel's phase never beyond 2 samples in 1.6e7
+    # symbols, p0 1.1e-4 there, the chain 1e-5). Until 2026-10-26 it was
+    # floored at 1. A chain that does not converge (a slipping loop) carries
+    # no reading
+    factor = raw if done else 1.0
+    result = PatternPhase(factor=float(factor), shift=shift, history=hist.astype(np.int8),
+                          next_same=nxt > 0, read_joint=float(read_joint), read_indep=float(read_indep),
+                          phase_grid=us, cond_density=pc.astype(np.float32), marginal_error=marginal_error,
+                          density=p_s, factor_raw=float(raw), steps=n_used, converged=bool(done))
+    if key is not None:
+        _PATTERN_PHASE_CACHE[key] = result
+        while len(_PATTERN_PHASE_CACHE) > _PATTERN_PHASE_CACHE_SIZE:
+            _PATTERN_PHASE_CACHE.popitem(last=False)
+    return result
 
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
