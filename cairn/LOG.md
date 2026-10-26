@@ -12,7 +12,8 @@
   统计对独立码元 1.09 / 1.38 / 3.2× → 登记 ROADMAP P3 #15。§33 的 2.27× 在独立码元下是 1.47×(§33 加日期更正)。
 - NRZ 28G analytic:链原始比值 < 1(0.05 at 预设,不收敛、外推),钳到 1;示例 24 / 44 / 45 重新接受,多 lane §7 表就地更新 + 七更正。
 - `cairn/DSP发端与PR.md` §34;pitfalls 6 条;tests 10 项。成本:NRZ 16G 预设一次统计 0.9 → 3.2 s。
-- CI:待补。
+- CI(PR #108,头 f4c8f6f,push + pull_request 两套):矩阵 jit 14.8–22.3 分钟、nojit 12.9–24.7(上限 45),examples 18.1 / 18.8、examples-full 24.4;
+  Android 构建 2.1 / 编译版 9.6、仿真器 API 34 3.8 / API 35 4.8 / 编译版 5.1;pyinstaller 2.2、nuitka 37.5、nuitka-onefile 40.0;lint / import-clean / RTL lockstep / vendor-drift 绿。
 
 ## 2026-10-25 · 深处因子的局部核实:≤ 10 mV 统计读时域 0.4–0.6×,登记 P3 #14(docs/deep-factor-check)
 
