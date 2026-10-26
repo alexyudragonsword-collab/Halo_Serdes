@@ -14,14 +14,14 @@ PAM4 32G mixed-signal  (noise 7.0 mV, target 2.19e-04 = KP4 threshold)
 
 NRZ 28G analytic (COM/xtalk)  (noise 12.0 mV, target 1.00e-12 = 1e-12)
   offset from lock [UI]   -0.375   -0.250   -0.125   +0.000   +0.125   +0.250   +0.375
-  BER                    8.4e-06  9.8e-08  3.3e-10  2.9e-11  1.6e-08  2.7e-05  1.1e-02
-  own loop: 2.94e-11 at its lock point; lowest 8.10e-12 at -0.031 UI
-  window: at the target none (never that low) -> 0.000 UI; at 10x the lock BER -0.122 ... +0.054 UI -> 0.176 UI
+  BER                    7.6e-06  8.9e-08  3.0e-10  2.6e-11  1.5e-08  2.4e-05  1.0e-02
+  own loop: 2.64e-11 at its lock point; lowest 7.58e-12 at -0.031 UI
+  window: at the target none (never that low) -> 0.000 UI; at 10x the lock BER -0.121 ... +0.054 UI -> 0.175 UI
   four lanes, skews +0.00 +0.06 -0.09 +0.13 UI:
-    master   clock at +0.000 UI   lanes  2.9e-11  1.4e-11  1.8e-09  4.8e-10   worst 1.8e-09 (lane 2), mean 5.9e-10
-    average  clock at +0.026 UI   lanes  5.9e-11  8.6e-12  9.0e-09  1.7e-10   worst 9.0e-09 (lane 2), mean 2.3e-09
-    minmax   clock at -0.011 UI   lanes  1.9e-11  2.5e-11  1.1e-09  1.1e-09   worst 1.1e-09 (lane 2), mean 5.5e-10
-  minmax worst lane / one lane on its own loop: 37.51
+    master   clock at +0.000 UI   lanes  2.6e-11  1.2e-11  1.7e-09  4.3e-10   worst 1.7e-09 (lane 2), mean 5.4e-10
+    average  clock at +0.026 UI   lanes  5.5e-11  8.0e-12  8.2e-09  1.6e-10   worst 8.2e-09 (lane 2), mean 2.1e-09
+    minmax   clock at -0.011 UI   lanes  1.7e-11  2.3e-11  1.0e-09  9.9e-10   worst 1.0e-09 (lane 2), mean 5.1e-10
+  minmax worst lane / one lane on its own loop: 38.22
   [~s]
 
 PAM4 224G ADC (106 GBd)  (noise 1.5 mV, target 2.19e-04 = KP4 threshold)
