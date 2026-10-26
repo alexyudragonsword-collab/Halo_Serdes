@@ -40,14 +40,47 @@ def test_the_factor_is_what_the_kernel_measured_and_fades_with_noise():
     """NRZ 16G at 12 / 15 / 18 mV + 0.03 / 0.04 / 0.06 UI: binned by pattern
     class and phase the kernel's joint read was 2.01 / 1.40 / 1.15x its
     independent one, and its free-running BER 2.27 / 1.44 / 1.03x this engine
-    before the factor; the model gives 2.15 / 1.49 / 1.17x."""
+    before the factor; the chain gives 2.03 / 1.35 / 1.09x (the engine then
+    0.89 / 0.94 / 1.06x the kernel)."""
     f = []
     for noise, rj in ((0.012, 0.03), (0.015, 0.04), (0.018, 0.06)):
         cfg = _preset(noise, rj)
         s = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg))
         f.append(s.extras["pattern_phase"].factor)
-    assert 1.8 < f[0] < 2.6 and 1.3 < f[1] < 1.7 and 1.05 < f[2] < 1.3, f
+    assert 1.8 < f[0] < 2.4 and 1.2 < f[1] < 1.6 and 1.02 < f[2] < 1.25, f
     assert f[0] > f[1] > f[2], f
+
+
+def test_deep_the_factor_follows_the_long_run_classes_tails():
+    """ROADMAP P3 #14: at 8 mV + 0.019 UI the kernel (70 seeds of 1.6M
+    symbols, 127 errors) read 5.8x the engine before the factor; a stationary
+    density shifted per class gave 2.9 (the engine 0.50x the kernel), the
+    chain's class densities 4.6 (0.79x). Its class with the errors (a run of
+    2-3 after 6 or more of the other level, a transition next) has the
+    kernel's late tail to 10 samples within 0.86-1.4x."""
+    cfg = _preset(0.008, 0.019)
+    pp = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"]
+    assert 3.6 < pp.factor < 6.0, pp.factor
+    assert pp.converged and pp.steps < 600
+    lbla = _run_lengths(pp.history)
+    worst = ~pp.next_same & np.isin(lbla[:, 0], (1, 2)) & (lbla[:, 1] >= 6)
+    du = float(pp.phase_grid[1] - pp.phase_grid[0])
+    late = pp.phase_grid > 8.5
+    tail = float(pp.cond_density[worst][:, late].sum(axis=1).mean() * du)
+    everyone = float(pp.cond_density[:, late].sum(axis=1).mean() * du)
+    assert 3e-4 < tail < 1.5e-3 and tail > 5 * everyone, (tail, everyone)
+
+
+def test_no_credit_below_one_where_the_chain_extrapolates():
+    """NRZ 28G analytic at 10 mV: the errors sit where the chain carries 1e-4
+    to 1e-8 of the stationary density's mass, and the joint read comes out
+    0.3x the independent one -- no kernel case reads below 1, so the factor
+    is floored there and the raw ratio kept."""
+    cfg = cb.load_preset("NRZ 28G analytic (COM/xtalk)")
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=0.010))
+    pp = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"]
+    assert pp.factor_raw < 0.6, pp.factor_raw
+    assert pp.factor == 1.0
 
 
 def test_the_shift_follows_the_run_before_the_short_run():
@@ -68,7 +101,11 @@ def test_the_shift_follows_the_run_before_the_short_run():
     assert mean_shift(1) < -0.3, mean_shift(1)
     assert 0.1 < mean_shift(2) < 0.6, mean_shift(2)
     assert 0.6 < mean_shift(3) < mean_shift(5) < 1.3, (mean_shift(3), mean_shift(5))
-    assert abs(float(pp.shift.mean())) < 1e-6
+    assert abs(float(pp.shift.mean())) < 0.2
+    # the conditional densities are densities on the grid, their mixture the stationary one
+    du = float(pp.phase_grid[1] - pp.phase_grid[0])
+    assert np.allclose(pp.cond_density.sum(axis=1) * du, 1.0, atol=1e-4)
+    assert pp.density.sum() * du == pytest.approx(1.0, rel=1e-6)
 
 
 def test_the_read_is_the_independent_one_times_the_factor(monkeypatch):
@@ -99,12 +136,12 @@ def test_a_loop_that_does_not_move_has_no_correlation(monkeypatch):
     monkeypatch.setattr(st, "_pattern_phase_factor", spy)
     st.run_statistical(cfg, channel=ChannelModel.from_config(cfg))
     a = list(cap["a"])
-    assert a[10] > 0.0          # kp [samples per vote]
-    a[10] = 0.0
+    assert a[9] > 0.0           # kp [samples per vote]
+    a[9] = 0.0
     still = orig(*a, **cap["k"])
-    assert still.factor == pytest.approx(1.0, abs=1e-12)
-    assert np.all(still.shift == 0.0)
-    assert still.read_joint == pytest.approx(still.read_indep, rel=1e-12)
+    assert still.factor == pytest.approx(1.0, abs=1e-4)      # float32 chain
+    assert np.ptp(still.shift) < 1e-4           # every class at the stationary density's mean
+    assert still.read_joint == pytest.approx(still.read_indep, rel=1e-4)
 
 
 def test_it_applies_to_nrz_with_a_dfe_under_a_bang_bang_loop_only():
@@ -136,7 +173,7 @@ def test_two_engines_agree_where_the_loop_errs_on_its_own_data():
     s = st.run_statistical(cfg, channel=cm)
     ratio = s.ber / (n_err / n_chk)
     assert 0.7 < ratio < 1.5, (ratio, s.ber, n_err)
-    assert 1.3 < s.extras["pattern_phase"].factor < 1.7
+    assert 1.2 < s.extras["pattern_phase"].factor < 1.6
 
 
 def test_crosstalk_is_noise_to_the_factor_too(monkeypatch):
@@ -144,12 +181,12 @@ def test_crosstalk_is_noise_to_the_factor_too(monkeypatch):
     aggressors' variance left out of the factor's Gaussian rest it read 1.23x
     at every skew (the engine 1.23-1.32x the time engine at 0.5-0.75 UI);
     with it the couplings swamp the pattern's pull on the loop and the factor
-    sits at 1.00 (0.99-1.02 over the skews), the engine back at 0.79-1.06x."""
+    sits at 1.00. Checked here on the NRZ 16G preset at 12 mV, where the
+    quiet factor is 2.0: the same couplings bring it to 1.00."""
     from halo_serdes.config.schema import CrosstalkConfig
-    cfg = cb.load_preset("NRZ 28G analytic (COM/xtalk)")
-    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=0.010))
+    cfg = _preset(0.012, 0.03)
     quiet = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"].factor
-    assert quiet > 1.15, quiet
+    assert quiet > 1.5, quiet
     cap = {}
     orig = st._pattern_phase_factor
 
@@ -163,7 +200,6 @@ def test_crosstalk_is_noise_to_the_factor_too(monkeypatch):
     assert cap["xtalk_var"] is not None
     assert 0.95 < with_x < 1.05 and with_x < quiet, (with_x, quiet)
     # the variance the closure reports is of the couplings' size, not zero
-    import numpy as np
     v = np.asarray(cap["xtalk_var"](np.arange(4.0)))
     assert np.all(v > (0.005) ** 2), v
 
