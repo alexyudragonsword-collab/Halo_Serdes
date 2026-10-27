@@ -23,7 +23,15 @@ out of the pulse and read 14-25x high, so this curve never reached the KP4
 threshold (ROADMAP P2 #23); before 2026-10-13 (P1 #21) the time-domain
 lane's DFE never engaged.
 
-Pass ``--quick`` for a smoke run (fewer phases).
+The curves are read on a clock the lane's own data does not vote; the
+master lane reads its own loop (``LaneCurve.own_ber``): on NRZ with a DFE
+the data that votes a bang-bang loop late is the data it then errs on
+(the pattern-phase factor), which a lane on that clock does not share. The
+last part runs lanes together on one clock in the time domain
+(``engine.shared_clock``, ROADMAP P3 #9c's dynamic part) and reads that
+difference.
+
+Pass ``--quick`` for a smoke run (fewer phases, shorter runs).
 """
 
 import dataclasses
@@ -47,6 +55,8 @@ sys.path.insert(0, str(REPO / "src"))
 from halo_serdes.analysis import lane_curve, shared_cdr  # noqa: E402
 from halo_serdes.channel import ChannelModel  # noqa: E402
 from halo_serdes.engine.cascade import initial_ffe_taps  # noqa: E402
+from halo_serdes.engine.shared_clock import run_shared_clock  # noqa: E402
+from halo_serdes.engine.statistical import run_statistical  # noqa: E402
 from halo_serdes.fec import fec_threshold  # noqa: E402
 from halo_serdes_app import config_bridge as cb  # noqa: E402
 
@@ -105,8 +115,9 @@ for name, (noise, target, tname) in LINKS.items():
         print(f"  {lab or 'BER':21s} " + " ".join(f"{float(c.at(d)):8.1e}" for d in TABLE))
     main = next(iter(cs.values()))
     b = main.best_offset_ui
-    print(f"  own loop: {float(main.at(0.0)):.2e} at its lock point; lowest {float(main.at(b)):.2e} "
-          f"at {b:+.3f} UI")
+    own = main.own_ber if main.own_ber is not None else float(main.at(0.0))
+    print(f"  own loop: {own:.2e} at its lock point (on another lane's clock "
+          f"{float(main.at(0.0)):.2e}); lowest {float(main.at(b)):.2e} at {b:+.3f} UI")
     for lab, c in cs.items():
         w = c.window(target)
         t10 = 10 * float(c.at(0.0))
@@ -117,15 +128,27 @@ for name, (noise, target, tname) in LINKS.items():
         a, b = cs.values()
         print("  held / re-solved: " + ", ".join(f"{float(b.at(d)) / float(a.at(d)):.1f}x at {d:+.2f} UI"
                                                   for d in (-0.25, 0.25)))
+    # the average's clock is one loop over the four lanes' detectors: quieter
+    # hunting on a bang-bang loop (the ADC's Mueller-Muller loop is modelled
+    # without its own noise on white clocks, so its curve is the same)
+    if link(name).rx.arch == "mixed_signal":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            avg = lane_curve(link(name), n_phases=N_PHASES, voters=len(SKEWS))
+    else:
+        avg = dataclasses.replace(main, voters=len(SKEWS))
+    by_pol = {"master": main, "average": avg, "minmax": main}
+    print(f"  on one loop over the four lanes' detectors: {float(avg.at(0.0)):.2e} at the lock point")
     print("  four lanes, skews " + " ".join(f"{s:+.2f}" for s in SKEWS) + " UI:")
     for pol in ("master", "average", "minmax"):
-        r = shared_cdr(main, SKEWS, pol)
+        r = shared_cdr(by_pol[pol], SKEWS, pol)
         print(f"    {pol:8s} clock at {r.phase_ui:+.3f} UI   lanes "
               + " ".join(f"{x:8.1e}" for x in r.ber)
               + f"   worst {r.worst:.1e} (lane {int(np.argmax(r.ber))}), mean {r.mean:.1e}")
     mm = shared_cdr(main, SKEWS, "minmax")
-    print(f"  minmax worst lane / one lane on its own loop: {mm.worst / float(main.at(0.0)):.2f}")
-    sweep = {pol: [shared_cdr(main, s * np.array([0, 1, 2, 3]) / 3, pol).worst for s in SPREADS]
+    print(f"  minmax worst lane / one lane on its own loop: {mm.worst / own:.2f}")
+    sweep = {pol: [shared_cdr(by_pol[pol], s * np.array([0, 1, 2, 3]) / 3, pol).worst
+                   for s in SPREADS]
              for pol in ("master", "average", "minmax")}
     results[name] = (cs, target, tname, sweep)
     print(f"  [{time.time() - t0:.0f}s]")
@@ -136,11 +159,33 @@ if not QUICK:
     for name, (cs, target, tname, sweep) in results.items():
         main = next(iter(cs.values()))
         m = shared_cdr(main, SKEWS, "master")
-        assert m.ber[0] == float(main.at(0.0))
+        assert m.ber[0] == (main.own_ber if main.own_ber is not None else float(main.at(0.0)))
         assert shared_cdr(main, SKEWS, "minmax").worst <= m.worst * (1 + 1e-9)
     adc = results["PAM4 224G ADC (106 GBd)"][0]
     moved, held = adc["FFE re-solved"], adc["FFE held at lock"]
     assert float(held.at(0.25)) > 3 * float(moved.at(0.25))
+
+# ---------------------------------------- lanes run together on one clock ---
+# NRZ 16G at 15 mV: four lanes at skew 0, lane 0's loop driving. The master
+# lane errs on the data that votes its loop late; the others sample on the
+# same phase without that correlation.
+cfg16 = dataclasses.replace(cb.load_preset("NRZ 16G mixed-signal"), sim=dataclasses.replace(
+    cb.load_preset("NRZ 16G mixed-signal").sim, n_symbols=100_000 if QUICK else 1_500_000))
+cfg16 = dataclasses.replace(cfg16, rx=dataclasses.replace(cfg16.rx, noise_rms=0.015))
+t0 = time.time()
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    run = run_shared_clock(cfg16, [0.0] * 4, "master")
+    s_own = run_statistical(cfg16).ber
+    s_other = run_statistical(cfg16, phase_ui=0.0, own_clock=False).ber
+e, n = run.n_errors, np.array([ln.ber.n_checked for ln in run.lanes])
+print("\nNRZ 16G mixed-signal (noise 15.0 mV), four lanes at skew 0 on lane 0's loop, time domain:")
+print("  lanes " + " ".join(f"{x:8.1e}" for x in run.ber) + "   errors " + " ".join(map(str, e)))
+t_m, t_o = e[0] / n[0], e[1:].sum() / n[1:].sum()
+print(f"  master lane {t_m:.2e} (statistical, own loop {s_own:.2e}: {s_own / max(t_m, 1e-300):.2f}x); "
+      f"the others {t_o:.2e} (statistical, on its clock {s_other:.2e}: {s_other / max(t_o, 1e-300):.2f}x)")
+print(f"  master / others: time {t_m / max(t_o, 1e-300):.2f}, statistical {s_own / s_other:.2f}  "
+      f"[{time.time() - t0:.0f}s]")
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(2, len(LINKS), figsize=(15, 8))

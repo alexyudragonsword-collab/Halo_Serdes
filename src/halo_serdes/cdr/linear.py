@@ -543,7 +543,7 @@ def bb_loop_fixed_point(loop: LoopParams,
                         n_iter: int = 60,
                         transitions: Sequence[tuple[float, float, float]] | None = None,
                         mean_output: Callable[[float], np.ndarray] | None = None,
-                        period: np.ndarray | None = None) -> LoopSolution:
+                        period: np.ndarray | None = None, voters: int = 1) -> LoopSolution:
     """Self-consistent operating point of a bang-bang loop.
 
     ``untracked_ui(err_fn)`` must return the RMS clock jitter [UI] left when
@@ -574,6 +574,12 @@ def bb_loop_fixed_point(loop: LoopParams,
     at low frequency on random data, ``period``'s lines on a repeating
     pattern. Counted white, PAM4's hunting read 1.11-1.21x the time engine's
     (ROADMAP P2 #30).
+
+    ``voters``: lanes whose detectors the loop averages (one loop listening
+    to N lanes alike, each its own data and noise): the mean output and the
+    gain are one lane's, the output's noise power 1/N of it. On NRZ 16G at
+    15 mV the time engine's hunting went 1.92 / 1.33 / 0.92 / 0.65 samples
+    RMS on 1 / 2 / 4 / 8 such lanes (ROADMAP P3 #9c).
     """
     classes = ((rho, 0.0, sigma_edge_ui),) if transitions is None else tuple(transitions)
     rho_all = sum(p for p, _, _ in classes)
@@ -600,9 +606,17 @@ def bb_loop_fixed_point(loop: LoopParams,
         counted, seen = bb_data_noise(mean_output(sigma_e), period)
         return PdNoise(max(white - counted, 0.0) + seen.white_var, seen.line_freq, seen.line_power)
 
+    def averaged(noise: float | PdNoise) -> float | PdNoise:
+        if voters <= 1:
+            return noise
+        if isinstance(noise, PdNoise):
+            return PdNoise(noise.white_var / voters, noise.line_freq,
+                           np.asarray(noise.line_power) / voters)
+        return noise / voters
+
     for _ in range(n_iter):
         sig_u = untracked_ui(ErrorResponse(loop, k_pd))
-        sig_s = self_noise_ui(loop, k_pd, pd_noise(sigma_e, info))
+        sig_s = self_noise_ui(loop, k_pd, averaged(pd_noise(sigma_e, info)))
         new = float(np.hypot(sig_u, sig_s))
         k_new, info = gain(new)
         converged = abs(k_new - k_pd) <= 1e-6 * k_pd

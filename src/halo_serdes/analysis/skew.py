@@ -21,10 +21,13 @@ receiver's DFE).
 ``cairn/多lane建模.md`` §8 has the time-domain cross-check and its setup (a
 frozen loop held at the offset, started from the cursors there).
 
-Static only: what the master loop's tracking does to the other lanes, and
-jitter correlated between lanes, need the lanes run together in the time
-domain. The clock jitter each run smears its curve with is still the one
-its own loop would leave.
+The clock jitter each run smears its curve with is the one the lane's own
+loop would leave (the lanes taken alike). What the shared loop's tracking
+does is in the time domain (``engine.shared_clock``, ROADMAP P3 #9c): on a
+clock another lane's data votes, a lane's phase is independent of its own
+data, so on NRZ with a DFE the curve leaves out the pattern-phase factor
+(``run_statistical(own_clock=False)``) that the lane reads on its own loop
+(``LaneCurve.own_ber``, what the master lane reads).
 
 Phases are in UI. ``LaneCurve.offsets_ui`` is measured from the lane's own
 lock point. ``shared_cdr`` works in the frame where a lane with skew 0 locks
@@ -67,14 +70,19 @@ def _read(phi_ui: np.ndarray, ber: np.ndarray, at_ui) -> np.ndarray:
 class LaneCurve:
     """A lane's BER against its sampling offset from its own lock point.
 
-    ``offsets_ui`` covers one UI, ascending in [-0.5, 0.5). ``readapt`` says
-    whether an FFE was given per offset (False for one FFE at every offset,
-    and for a receiver without one).
+    ``offsets_ui`` covers one UI, ascending in [-0.5, 0.5); ``ber`` is read
+    on a clock the lane's own data does not vote. ``readapt`` says whether an
+    FFE was given per offset (False for one FFE at every offset, and for a
+    receiver without one). ``own_ber``: the BER at the lock point when the
+    lane's own loop samples it (None: the same as the curve's there).
+    ``voters``: how many lanes' detectors the loop averages (1: one lane's).
     """
 
     offsets_ui: np.ndarray
     ber: np.ndarray
     readapt: bool = True
+    own_ber: float | None = None
+    voters: int = 1
 
     def at(self, offset_ui):
         """BER at ``offset_ui`` from the lock point (log-linear between grid
@@ -150,12 +158,18 @@ def _pre_ffe_lock_ui(cfg: LinkConfig, channel) -> float:
 
 
 def lane_curve(cfg: LinkConfig, channel=None, *, n_phases: int = 16,
-               ffe_taps=None, xtalk=None) -> LaneCurve:
+               ffe_taps=None, xtalk=None, voters: int = 1) -> LaneCurve:
     """BER of one lane against its sampling offset, from the statistical engine.
 
     ``n_phases`` offsets over one UI, one run each, sampled there
-    (``run_statistical(phase_ui=)``): each puts the DFE taps and the slicer
-    levels at that phase. ``xtalk`` is passed through.
+    (``run_statistical(phase_ui=, own_clock=False)``): each puts the DFE taps
+    and the slicer levels at that phase. One more run at the lock point on
+    the lane's own loop gives ``own_ber``. ``xtalk`` is passed through.
+
+    ``voters``: the clock is one loop averaging that many lanes' detectors
+    (``shared_cdr("average")``, lanes alike): its hunting is the one lane's
+    over sqrt(N) (``run_statistical(voters=)``), and no lane's data is
+    correlated with it. 1 for a clock one lane's loop drives.
 
     An ADC receiver with an FFE needs ``ffe_taps``: one array for every
     offset, or a function of the sampling phase (UI from the pre-FFE pulse
@@ -183,13 +197,20 @@ def lane_curve(cfg: LinkConfig, channel=None, *, n_phases: int = 16,
     lock = _pre_ffe_lock_ui(cfg, channel) if per_offset else 0.0
     offs = np.arange(n_phases) / n_phases - 0.5
     ber = np.empty(n_phases)
-    for i, d in enumerate(offs):
+
+    def run(d, own):
         kw = {}
         if has_ffe:
             taps = ffe_taps(float(lock + d)) if per_offset else ffe_taps
             kw = dict(ffe_taps=np.asarray(taps, dtype=np.float64), ffe_pre=fcfg.n_pre)
-        ber[i] = run_statistical(cfg, channel=channel, xtalk=xtalk, phase_ui=float(d), **kw).ber
-    return LaneCurve(offs, ber, readapt=per_offset)
+        return run_statistical(cfg, channel=channel, xtalk=xtalk, phase_ui=float(d),
+                               own_clock=own, voters=voters if not own else 1, **kw)
+
+    for i, d in enumerate(offs):
+        ber[i] = run(d, False).ber
+    own = run(0.0, True)
+    own_ber = own.ber if own.extras.get("pattern_phase") is not None else None
+    return LaneCurve(offs, ber, readapt=per_offset, own_ber=own_ber, voters=int(voters))
 
 
 @dataclass(frozen=True)
@@ -227,11 +248,14 @@ def shared_cdr(curves, skews_ui, policy: str = "master", master: int = 0) -> Sha
     the clock samples:
 
     - ``"master"``: lane ``master``'s loop drives all of them, at its own
-      lock point;
+      lock point; that lane reads its ``own_ber``, the others their curves
+      (their data does not vote the clock);
     - ``"average"``: one loop whose phase detector sums every lane's timing
       error with equal weight; for small errors (the linear range) it settles
       at the lanes' mean skew (taken on the circle, so skews a UI apart are
-      the same lane alignment);
+      the same lane alignment); its curves should be taken with ``voters``
+      the number of lanes (a quieter loop: on NRZ 16G at 15 mV eight lanes
+      read 0.09x one lane's own loop), and a warning says when they are not;
     - ``"minmax"``: the phase that minimises the worst lane's BER -- what a
       calibration that eye-scans every lane would choose.
     """
@@ -254,6 +278,13 @@ def shared_cdr(curves, skews_ui, policy: str = "master", master: int = 0) -> Sha
         phase = float(s[master])
     elif policy == "average":
         phase = float(np.angle(np.mean(np.exp(2j * np.pi * s))) / (2 * np.pi))
+        if any(c.voters != s.size for c in cv):
+            import warnings
+
+            warnings.warn(f"shared_cdr('average') over {s.size} lanes: curves taken with "
+                          f"voters={sorted({c.voters for c in cv})}, not {s.size} "
+                          "(lane_curve(voters=)); the loop's hunting is off by their sqrt ratio",
+                          stacklevel=2)
     else:
         grid = np.arange(_FINE) / _FINE - 0.5
         worst = np.max(np.log10(np.maximum(lanes(grid), _FLOOR)), axis=0)
@@ -264,4 +295,6 @@ def shared_cdr(curves, skews_ui, policy: str = "master", master: int = 0) -> Sha
         phase = float(grid[run[len(run) // 2]])
     off = _wrap(phase - s)
     ber = np.array([float(c.at(o)) for c, o in zip(cv, off)])
+    if policy == "master" and cv[master].own_ber is not None:
+        ber[master] = cv[master].own_ber
     return SharedCdr(policy, phase, s, off, ber)

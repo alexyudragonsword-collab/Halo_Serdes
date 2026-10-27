@@ -28,6 +28,19 @@ def values():
     return r["data"]["values"]
 
 
+@pytest.fixture(scope="module")
+def study_runs(values):
+    """Every advertised study once on the default config, on one statistical
+    handle: four tests below read the same replies (each ran them itself
+    until 2026-10-26, the file's largest cost). Running a study without a
+    handle is left to ``test_studies_return_flat_series`` on two cheap ones."""
+    from halo_serdes_app import studies
+
+    handle = call("run_stat", values=values)["data"]["handle"]
+    return {name: call("study", name=name, values=values, handle=handle)
+            for name in sorted(studies.STUDY_PLOTS)}
+
+
 # ------------------------------------------------------------- envelope ---
 
 def test_every_method_is_reachable_and_shaped():
@@ -87,8 +100,8 @@ def test_schema_advertises_every_study_with_a_plot_spec():
             assert panel["x"] and panel["y"], s["name"]
 
 
-def _spec_matches_data(name, values):
-    r = call("study", name=name, values=values)
+def _spec_matches_data(name, values, reply=None):
+    r = call("study", name=name, values=values) if reply is None else reply
     assert r["ok"], (name, r)
     d = r["data"]
     if d.get("note"):
@@ -101,7 +114,7 @@ def _spec_matches_data(name, values):
     return True
 
 
-def test_every_plot_spec_names_keys_the_study_actually_returns(values):
+def test_every_plot_spec_names_keys_the_study_actually_returns(values, study_runs):
     """The spec is only useful if its keys exist in the data.
 
     A renamed array in a study would otherwise leave the panel silently empty
@@ -110,7 +123,7 @@ def test_every_plot_spec_names_keys_the_study_actually_returns(values):
     """
     from halo_serdes_app import studies
 
-    reached = {n for n in studies.STUDY_PLOTS if _spec_matches_data(n, values)}
+    reached = {n for n in studies.STUDY_PLOTS if _spec_matches_data(n, values, study_runs[n])}
     # Whatever this config could not reach is checked by the ADC test below.
     # Naming the gap rather than silently skipping it is the point: the
     # fixedpoint spec named `bits`/`ser` against a study returning
@@ -341,8 +354,10 @@ def test_run_com_is_all_scalars(values):
 
 
 @pytest.mark.parametrize("name", ["fec", "reach", "com", "crosstalk", "multilane"])
-def test_studies_return_flat_series(values, name):
-    r = call("study", name=name, values=values)
+def test_studies_return_flat_series(values, study_runs, name):
+    # the two cheap ones without a handle (the study runs its own statistical
+    # pass), the rest from the shared replies
+    r = call("study", name=name, values=values) if name in ("fec", "com") else study_runs[name]
     assert r["ok"], r
     d = r["data"]
     assert d["name"] == name
@@ -568,7 +583,7 @@ def test_bad_touchstone_paths_are_data(values, tmp_path):
 
 # ------------------------------------------------------- study plots (M9) ---
 
-def test_every_study_plot_names_keys_the_study_actually_returns(values):
+def test_every_study_plot_names_keys_the_study_actually_returns(study_runs):
     """Axis metadata has to match the data it describes.
 
     The studies return a flat ``{name: array}`` with nothing marking the x
@@ -579,10 +594,9 @@ def test_every_study_plot_names_keys_the_study_actually_returns(values):
     """
     from halo_serdes_app import studies
 
-    handle = call("run_stat", values=values)["data"]["handle"]
     checked = 0
     for name in sorted(studies.STUDY_PLOTS):
-        r = call("study", name=name, values=values, handle=handle)
+        r = study_runs[name]
         assert r["ok"], r
         d = r["data"]
         if d.get("note"):
@@ -600,7 +614,7 @@ def test_every_study_plot_names_keys_the_study_actually_returns(values):
     assert checked >= 5, f"only {checked} panels exercised"
 
 
-def test_a_log_axis_is_only_declared_where_the_data_allows_it(values):
+def test_a_log_axis_is_only_declared_where_the_data_allows_it(study_runs):
     """A log axis needs strictly positive data, or the chart draws nothing.
 
     The client takes ``y_log`` at face value; if a study can emit a zero on an
@@ -609,9 +623,8 @@ def test_a_log_axis_is_only_declared_where_the_data_allows_it(values):
     """
     from halo_serdes_app import studies
 
-    handle = call("run_stat", values=values)["data"]["handle"]
     for name in sorted(studies.STUDY_PLOTS):
-        d = call("study", name=name, values=values, handle=handle)["data"]
+        d = study_runs[name]["data"]
         if d.get("note"):
             continue
         for panel in d["plots"]:

@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-26 · P3 #17 深处核到 BER、P3 #9c 共享 CDR 动态部分、测试与因子的成本(feat/p17-p9c-ci)
+
+- #17:NRZ 16G 预设 3 mV 独立码元 344 种子 2 个错(3.6e-9,90 % 6.5e-10…1.2e-8),统计 9.6e-9 在内,不乘因子的 2.2e-8 不在(P ≤ 0.06 %);
+  NRZ 28G 20 mV 401 个错,统计 / 时域 1.02×(不乘因子 1.11×)。ROADMAP #17 清空。DSP §37。
+- #9c:`engine/shared_clock.py` —— 原内核增益置 0、共享环路在外面逐符号挪全部 lane 的采样器(单 lane 与 `run_time_link` 逐位相同;`_ms_prepare` / `_ms_finish`)。
+  主 lane 带:从 lane 不带主 lane 的数据-相位相关,NRZ 16G 15 mV 主 / 从时域 2.05×;统计 `own_clock=False` 只乘因子的边际部分(`factor_marginal`),
+  主 0.90×、从 1.13×(整个去掉因子 1.41×)。平均环路:猎振 1/√N(1 / 2 / 4 / 8 条 1.92 / 1.33 / 0.92 / 0.65 个样本),`voters=N` 1.02–1.05×,8 条 BER 1.33×。
+  28G 22 mV 从 lane −3/8…+1/4 UI 0.73–1.11×。`lane_curve(voters=)`、`LaneCurve.own_ber`;示例 45 重接受(NRZ 曲线 ×1.29,average 行改用 voters 曲线)。
+  ADC 一侧没接,登记 P3 #9d(铁律 2 记了不对称)。多 lane §9、§8.3 九更正。坑:PRBS 每条 lane 同一串(pitfalls)。
+- CI 成本:链的单步融合成 numba 循环(`cdr/pattern_chain.py`),与 numpy 步逐位相同,一次因子 5.6 → 2.8 s;剖面时钟 / 欠阻尼环路不再跑链
+  (原来 600 步不收敛、因子 1,单次 50–106 s → 5–7 s);`test_api_json` 的 study 改模块级 fixture,231 → 67 s(本地同负载)。指纹 986 值逐位不变。
+- 探针:调用记录插件(`plug/callrec.py`,会话暂存区),`p9c_*.py`、`probe15.py` 长链。
+
 ## 2026-10-26 · P3 #16:积分器推动的数值扩散;去掉下限 1(perf/factor-cost-p16 第二步)
 
 - 排除投票表(i−2 / i−1 这条边对冻结内核逐类 0.03 内)与闭合本身(链的 E[I | u] 远处比内核小:+8 个样本 0.042 对 0.049)。
