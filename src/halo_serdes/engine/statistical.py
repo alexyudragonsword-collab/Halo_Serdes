@@ -2297,7 +2297,7 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         v = x.reshape(n_q, 2, 2, n_u)
         return (v[:, 0, 0], v[:, 1, 1]), (v[:, 0, 1], v[:, 1, 0])
 
-    def advance(st: list[np.ndarray], out: list[np.ndarray]) -> None:
+    def advance(st: np.ndarray, out: np.ndarray) -> None:
         """One symbol. ``st`` = mass for the two pairing states, then (with
         the integral path) the same masses times the integrator's mean."""
         for o in out:

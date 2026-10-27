@@ -411,6 +411,10 @@ CDR(kp/ki 置 2^-60、采样偏移钉住)比时域浴盆,把噪声问题和环�
 "Incompatible types in conditional expression"(把两边推成长度不同的 C 元组),Android 的"build compiled APK"一步失败,
 解释版 APK 与桌面全绿(2026-10-10,`study/pr-event-union`)。改成同类型(固定元组 + `continue`)。**动了 `src/` 就在本地
 `python -m cython -3 --no-docstrings` 把改过的模块编一遍**,比等 Android CI 快得多。
+- **只翻译成 C 不够:Cython 在运行时强制内置类型的注解**(2026-10-27,PR #111)。`def advance(st: list[np.ndarray], ...)` 在 Python 里只是注释,
+  编译后传 ndarray 就 `TypeError: Argument 'st' has incorrect type (expected list, got numpy.ndarray)`;改了缓冲区的类型、没改注解,
+  `cython -3` 翻译通过,编译版 APK 在模拟器上 8 项失败(解释版与桌面全绿)。注解写 `list` / `dict` / `tuple` / `str` 就是约束;
+  动了编译集(`engine` 等)的函数签名或参数类型,要真编一次 .so 跑一下(`setup.py build_ext --inplace` 的 host 构建,`HALO_NO_JIT=1`)。
 
 **CI 超时是 cancelled,不是 failure。** `nuitka-onefile` 设了 `continue-on-error: true`,看上去"失败了也不挡",但到 `timeout-minutes`
 被取消的 job 不归它管:整个 run 记为 cancelled;`release` 的条件里 `needs.nuitka-onefile.result != 'cancelled'` 本是"有人手动取消就别发布",
