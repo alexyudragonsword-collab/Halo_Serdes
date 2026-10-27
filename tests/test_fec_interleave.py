@@ -20,7 +20,7 @@ from halo_serdes.engine import run_static_link, run_time_link
 from halo_serdes.fec import fec_threshold
 from halo_serdes.fec.interleave import (
     BIT_MUX_2CW, SEQUENTIAL, SYMBOL_PAIR_4CW, FecLayout, bit_errors, burst_profile,
-    compound_fer,
+    burst_profile_lanes, compound_fer,
 )
 
 P_STAR = fec_threshold("kp4")
@@ -42,6 +42,23 @@ def test_every_codeword_gets_its_n_symbols(lay):
         for k in np.unique(c):
             assert np.unique(s[c == k]).size == lay.n // lay.lanes
             assert np.all(np.bincount(s[c == k])[np.unique(s[c == k])] == 10)
+
+
+@pytest.mark.parametrize("lay", LAYOUTS, ids=lambda x: f"L{x.lanes}M{x.pcs_lanes}g{x.mux_bits}I{x.interleave}")
+def test_the_lanes_together_fill_every_codeword(lay):
+    """All physical lanes over one codeword group: each codeword gets its n
+    distinct symbols, the lanes' FEC lanes numbered on; lane 0 is the
+    one-lane labelling."""
+    span = lay.n * 10 * lay.interleave // lay.lanes
+    b = np.arange(span)
+    got = [lay.locate(b, lane=j) for j in range(lay.lanes)]
+    cw = np.concatenate([c for c, _ in got])
+    sym = np.concatenate([s for _, s in got])
+    for k in range(lay.interleave):
+        assert np.unique(sym[cw == k]).size == lay.n
+    assert all(np.array_equal(x, y) for x, y in zip(got[0], lay.locate(b)))
+    with pytest.raises(ValueError, match="lanes 0"):
+        lay.locate(b, lane=lay.lanes)
 
 
 def test_sequential_is_consecutive_symbols_of_one_codeword():
@@ -245,6 +262,48 @@ def test_resample_keeps_the_event_count_and_is_reproducible():
     assert a.n_events == prof.n_events and np.array_equal(a.marks, b.marks)
     assert np.array_equal(np.unique(a.event), np.arange(np.unique(a.event).size))
     assert np.all(np.diff(a.event) >= 0)
+
+
+# ------------------------------------------------------------- lanes taken together
+
+def test_one_lane_together_is_the_lane():
+    rng = np.random.default_rng(4)
+    e = _bursts(4_000_000, 2e-4, 6, rng)
+    a = burst_profile(e, 4_000_000, SEQUENTIAL)
+    b = burst_profile_lanes([e], 4_000_000, SEQUENTIAL)
+    assert (a.n_events, a.n_bits) == (b.n_events, b.n_bits)
+    assert np.array_equal(a.marks, b.marks) and np.array_equal(a.event, b.event)
+    with pytest.raises(ValueError, match="4-lane layout"):
+        burst_profile_lanes([e], 4_000_000, BIT_MUX_2CW)
+
+
+def test_independent_lanes_read_as_one():
+    """Four lanes of independent random errors at the threshold: within a few
+    per cent of one lane's profile through the layout (chance coincidences
+    across lanes are the difference)."""
+    rng = np.random.default_rng(5)
+    n_bits = 4_000_000
+    errs = [np.flatnonzero(rng.random(n_bits) < P_STAR) for _ in range(4)]
+    joint = burst_profile_lanes(errs, n_bits, BIT_MUX_2CW, bits_per_symbol=1)
+    one = burst_profile(np.concatenate([e + j * n_bits for j, e in enumerate(errs)]),
+                        4 * n_bits, BIT_MUX_2CW, bits_per_symbol=1)
+    assert joint.n_bits == one.n_bits and joint.n_errors == one.n_errors
+    assert 0.9 < joint.threshold() / one.threshold() < 1.02
+
+
+def test_lanes_that_err_together_are_one_event():
+    """The same bit in error on all four lanes at once (one clock): under 4:1
+    bit multiplexing the four errors are four FEC lanes of one codeword --
+    one event of four symbols, where one lane's profile reads four events of
+    one. The threshold falls by orders of magnitude."""
+    n_bits = 4_000_000
+    e = np.arange(1000, n_bits, 2711)
+    joint = burst_profile_lanes([e] * 4, n_bits, BIT_MUX_2CW, bits_per_symbol=1)
+    one = burst_profile(np.concatenate([e + j * n_bits for j in range(4)]),
+                        4 * n_bits, BIT_MUX_2CW, bits_per_symbol=1)
+    assert joint.n_events == e.size and set(joint.marks) == {4}
+    assert set(one.marks) == {1}
+    assert joint.threshold() < 1e-2 * one.threshold()
 
 
 def test_no_errors_has_nothing_to_extrapolate():

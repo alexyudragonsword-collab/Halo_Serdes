@@ -772,6 +772,9 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
 - **从 lane 不是"去掉因子"**(2026-10-26,P3 #9c):因子 = 链的联合 / (曲线 × 引擎的平稳密度 p0),里面既有数据与相位的相关,也有链自己的边际
   比 p0 轻的那部分。从 lane 的相位与它的数据无关,但分布仍是主 lane 环路的:只去相关、保留边际(`factor_marginal`)。整个去掉时
   NRZ 16G 15 mV 从 lane 统计 / 时域 1.41×,保留边际 1.13×。
+- **一个时钟上的 lane 不能按独立 lane 读 FEC**(2026-10-27,P3 #9 共享时钟):每条 lane 的边际 BER 对得上,不代表多 lane 合起来对得上 ——
+  共享 CDR 的 lane 同时出错是独立时的 7×、再共用发端时钟 17×,4:1 比特复用下 KP4 等效门限掉到 0.14× / 0.003×。`burst_profile` 一条 lane
+  外推整条链路只在 lane 独立时成立;同一时钟的 lane 用 `burst_profile_lanes` 把各 lane 的误码合起来(`cairn/多lane建模.md` §9.5)。
 - **几个探针并行时 numpy 的线性代数慢 300 倍**(2026-10-27,剖析 `test_pr` 时):OpenBLAS 默认按核数开线程,四个进程各开四个,
   343 阶 `np.linalg.solve` 一次 664 ms(单线程 2.2 ms);那一项统计运行 23 s 里 17 s 是它。本地并行跑探针 / 测试时设
   `OPENBLAS_NUM_THREADS=1`(或 `OMP_NUM_THREADS=1`),否则量到的耗时、剖析的热点都是争抢,不是代码。CI 的 pytest 加了 `--durations=25`,时长以 CI 上的为准。
