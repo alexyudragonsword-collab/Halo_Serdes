@@ -28,8 +28,10 @@ master lane reads its own loop (``LaneCurve.own_ber``): on NRZ with a DFE
 the data that votes a bang-bang loop late is the data it then errs on
 (the pattern-phase factor), which a lane on that clock does not share. The
 last part runs lanes together on one clock in the time domain
-(``engine.shared_clock``, ROADMAP P3 #9c's dynamic part) and reads that
-difference.
+(``engine.shared_clock``, ROADMAP P3 #9c / #9d, the dynamic part) and reads
+that difference, and on the ADC receiver an averaging loop that stays where
+it starts: its detector, on the equalised samples, does not see the lanes'
+offsets.
 
 Pass ``--quick`` for a smoke run (fewer phases, shorter runs).
 """
@@ -186,6 +188,38 @@ print(f"  master lane {t_m:.2e} (statistical, own loop {s_own:.2e}: {s_own / max
       f"the others {t_o:.2e} (statistical, on its clock {s_other:.2e}: {s_other / max(t_o, 1e-300):.2f}x)")
 print(f"  master / others: time {t_m / max(t_o, 1e-300):.2f}, statistical {s_own / s_other:.2f}  "
       f"[{time.time() - t0:.0f}s]")
+
+# PAM4 224G ADC at 2.5 mV, the four lanes at SKEWS on one loop over all of
+# them. Its Mueller-Muller detector reads the equalised samples and every
+# lane's FFE re-adapts where it samples, so the averaged detector does not see
+# the offsets: the clock stays where it starts (lane 0's lock), not at the
+# mean skew (ROADMAP P3 #9d).
+adc_name = "PAM4 224G ADC (106 GBd)"
+cfg_a = cb.load_preset(adc_name)
+cfg_a = dataclasses.replace(cfg_a, rx=dataclasses.replace(cfg_a.rx, noise_rms=0.0025),
+                            sim=dataclasses.replace(cfg_a.sim, n_symbols=30_000 if QUICK else 200_000))
+ch_a = ChannelModel.from_config(cfg_a)
+t0 = time.time()
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    run_a = run_shared_clock(cfg_a, SKEWS, "average", channel=ch_a)
+    mean_skew = float(np.angle(np.mean(np.exp(2j * np.pi * np.array(SKEWS)))) / (2 * np.pi))
+
+    def st_a(d):
+        return run_statistical(cfg_a, channel=ch_a, phase_ui=d, ffe_pre=cfg_a.rx.ffe.n_pre,
+                               ffe_taps=initial_ffe_taps(cfg_a, ch_a, at_ui=d)).ber
+
+    at_start = [st_a(-s) for s in SKEWS]
+    at_mean = [st_a(mean_skew - s) for s in SKEWS]
+print(f"\n{adc_name} (noise 2.5 mV), four lanes, skews " + " ".join(f"{s:+.2f}" for s in SKEWS)
+      + " UI, one loop over all of them, time domain:")
+print("  lanes                " + " ".join(f"{x:8.1e}" for x in run_a.ber)
+      + "   errors " + " ".join(map(str, run_a.n_errors)))
+print("  statistical, clock where it starts  " + " ".join(f"{x:8.1e}" for x in at_start)
+      + "   ratio " + " ".join(f"{a / max(t, 1e-300):.2f}" for a, t in zip(at_start, run_a.ber)))
+print(f"  statistical, clock at the mean skew ({mean_skew:+.3f} UI) " + " ".join(f"{x:8.1e}" for x in at_mean)
+      + "   ratio " + " ".join(f"{a / max(t, 1e-300):.2f}" for a, t in zip(at_mean, run_a.ber))
+      + f"  [{time.time() - t0:.0f}s]")
 
 # ------------------------------------------------------------------ plot ---
 fig, axes = plt.subplots(2, len(LINKS), figsize=(15, 8))

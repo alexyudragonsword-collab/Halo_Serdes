@@ -76,6 +76,11 @@ class LaneCurve:
     receiver without one). ``own_ber``: the BER at the lock point when the
     lane's own loop samples it (None: the same as the curve's there).
     ``voters``: how many lanes' detectors the loop averages (1: one lane's).
+    ``pd_sees_offset``: whether the lane's phase detector reads where it
+    samples. False for a Mueller-Muller detector on the equalised samples
+    behind an adapting FFE (the PAM4 ADC presets): the FFE re-adapts at any
+    offset and the detector's output with it, so a loop averaging such lanes
+    has no pull towards their mean skew (``shared_cdr("average")``).
     """
 
     offsets_ui: np.ndarray
@@ -83,6 +88,7 @@ class LaneCurve:
     readapt: bool = True
     own_ber: float | None = None
     voters: int = 1
+    pd_sees_offset: bool = True
 
     def at(self, offset_ui):
         """BER at ``offset_ui`` from the lock point (log-linear between grid
@@ -210,7 +216,10 @@ def lane_curve(cfg: LinkConfig, channel=None, *, n_phases: int = 16,
         ber[i] = run(d, False).ber
     own = run(0.0, True)
     own_ber = own.ber if own.extras.get("pattern_phase") is not None else None
-    return LaneCurve(offs, ber, readapt=per_offset, own_ber=own_ber, voters=int(voters))
+    blind = (cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "ffe"
+             and has_ffe and fcfg.adapt != "none")
+    return LaneCurve(offs, ber, readapt=per_offset, own_ber=own_ber, voters=int(voters),
+                     pd_sees_offset=not blind)
 
 
 @dataclass(frozen=True)
@@ -253,9 +262,15 @@ def shared_cdr(curves, skews_ui, policy: str = "master", master: int = 0) -> Sha
     - ``"average"``: one loop whose phase detector sums every lane's timing
       error with equal weight; for small errors (the linear range) it settles
       at the lanes' mean skew (taken on the circle, so skews a UI apart are
-      the same lane alignment); its curves should be taken with ``voters``
-      the number of lanes (a quieter loop: on NRZ 16G at 15 mV eight lanes
-      read 0.09x one lane's own loop), and a warning says when they are not;
+      the same lane alignment) -- of the lanes whose detector sees the
+      offset (``LaneCurve.pd_sees_offset``). With none (Mueller-Muller on the
+      equalised samples behind an adapting FFE, the PAM4 ADC presets) nothing
+      pulls the clock: it stays where it starts, taken as lane ``master``'s
+      lock (on the 224G preset, the time engine's lanes 0.97-1.05x of that
+      reading, 0.51-1.58x of the mean-skew one; ``engine.shared_clock``). Its
+      curves should be taken with ``voters`` the number of lanes (a quieter
+      bang-bang loop: on NRZ 16G at 15 mV eight lanes read 0.09x one lane's
+      own loop), and a warning says when they are not;
     - ``"minmax"``: the phase that minimises the worst lane's BER -- what a
       calibration that eye-scans every lane would choose.
     """
@@ -277,7 +292,11 @@ def shared_cdr(curves, skews_ui, policy: str = "master", master: int = 0) -> Sha
             raise ValueError(f"master {master}: lanes are 0..{s.size - 1}")
         phase = float(s[master])
     elif policy == "average":
-        phase = float(np.angle(np.mean(np.exp(2j * np.pi * s))) / (2 * np.pi))
+        if not 0 <= master < s.size:
+            raise ValueError(f"master {master}: lanes are 0..{s.size - 1}")
+        seen = np.array([c.pd_sees_offset for c in cv])
+        phase = (float(np.angle(np.mean(np.exp(2j * np.pi * s[seen]))) / (2 * np.pi))
+                 if seen.any() else float(s[master]))
         if any(c.voters != s.size for c in cv):
             import warnings
 
