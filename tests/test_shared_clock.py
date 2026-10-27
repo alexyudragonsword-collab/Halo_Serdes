@@ -212,7 +212,8 @@ def test_an_averaging_loop_over_adc_lanes_has_no_pull_to_their_mean_skew():
 def test_invariant3_adc_lanes_on_the_masters_clock():
     """ADC lanes on the master's clock at their skews against the statistical
     engine at those offsets with the FFE solved there: the 224G preset at
-    2.5 mV, -1/4 ... +1/4 UI, 0.90-1.02 over three seeds of 200k symbols
+    2.5 mV, -1/4 ... +1/4 UI, 0.74-0.95 over three seeds of 200k symbols (0.90-1.02
+    before the DFE propagation took the FFE's noise colour in, DSP §38)
     (cairn/多lane建模.md §9.4)."""
     from halo_serdes.channel import ChannelModel
     from halo_serdes.engine.cascade import initial_ffe_taps
