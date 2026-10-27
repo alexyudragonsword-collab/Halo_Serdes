@@ -6,6 +6,26 @@
 
 ---
 
+## [未发布] — ADC 一侧的共享时钟时域运行(ROADMAP P3 #9d)
+
+### 新增
+- `run_shared_clock` 接 ADC 收端:内核环路增益置 0,外面按内核的形式从各 lane 的样本读回 Mueller-Muller 鉴相、按交织块累加,过内核的比例-积分、
+  限幅与延迟队列;从 lane 的 FFE 从偏移处的游标解起。单 lane 与 `run_time_link` 判决、FFE 逐位相同。混合架构与 `numeric.mode = fixed` 拒绝。
+- `timedomain._adc_link_steps` / `_adc_finish`:ADC 运行拆成"准备 → 交出运行 → 收尾"的生成器,`run_time_link` 走同样三步,指纹 986 值逐位不变。
+- `LaneCurve.pd_sees_offset`:ADC + 鉴相读均衡后的样本 + FFE 自适应时为 False。
+
+### 变更
+- `shared_cdr("average")`:只对鉴相看得见偏移的 lane 取 skew 的圆周均值;一条都没有时时钟放在 lane `master` 的锁定点。PAM4 ADC 预设上平均环路的
+  时钟停在起点(224G 四条 lane:按起点读 0.97–1.05×,按 skew 均值读 0.51–1.58×);鉴相读原始 ADC 样本时照常落在均值(0.90–1.20×)。
+- 示例 45 重新接受:ADC 那条的 average 行与 master 相同(最差 8.5e-5 → 1.1e-4),末段加 ADC 四条 lane 平均环路的时域对照。
+- 224G 2.5 mV 主 lane 带:从 lane −1/4…+1/4 UI 统计(FFE 在偏移处重解)/ 时域 0.90–1.02×。
+
+### 测试
+- `tests/test_shared_clock.py` +3:单条 ADC lane 等于时域引擎、平均环路对 ADC lane 的 skew 均值没有回复力(及 `pd_sees_offset`)、ADC 从 lane 对统计(needs_jit);
+  输入校验改为混合架构 / 定点模式。
+
+---
+
 ## [未发布] — 共享 CDR 的动态部分(P3 #9c)、预设深处核到 BER(P3 #17)、测试与因子的成本
 
 ### 新增

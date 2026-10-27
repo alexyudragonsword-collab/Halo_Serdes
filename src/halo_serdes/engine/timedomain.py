@@ -755,6 +755,53 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     Primary metrics for this architecture are slicer-input SNR and SER
     (post-EQ eye information is low); BER via the same checkers.
     """
+    steps = _adc_link_steps(cfg, channel, collect_eye, collect_jitter, tx_ami, rx_ami,
+                            xtalk, symbols)
+    loop = next(steps)
+    return _adc_finish(steps, _run_rx(loop.run, loop.rx_y, cfg, progress))
+
+
+@dataclass
+class _AdcLoop:
+    """An ADC receiver run set up and not yet driven, and its CDR: what a
+    caller moving the sampler itself needs (``engine/shared_clock.py``).
+    ``pd_src``: the samples the Mueller-Muller detector reads -- 0 the
+    slicer input, 1 it less the controlled cursors, 2 the ADC words."""
+
+    run: object
+    rx_y: object
+    kp: float
+    ki: float
+    clamp: float
+    latency_blocks: int
+    pd_offset: float
+    pd_src: int
+    n_ti: int
+    n_pre: int
+
+
+def _adc_finish(steps, out) -> SimResult:
+    """Hand a driven run's ``run.result()`` back to :func:`_adc_link_steps`
+    and return what it scores."""
+    try:
+        steps.send(out)
+    except StopIteration as stop:
+        return stop.value
+    raise RuntimeError("the ADC run asked for a second drive")
+
+
+def _adc_link_steps(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, rx_ami,
+                    xtalk, symbols, start_shift: float = 0.0, rx_clk=None,
+                    external_loop: bool = False):
+    """:func:`_run_adc_link` as steps: yields an :class:`_AdcLoop` once the
+    run is set up, takes its ``run.result()`` back (``send``) and returns the
+    scored :class:`SimResult` (``StopIteration.value``; :func:`_adc_finish`).
+
+    ``start_shift`` [samples]: start the sampler that far from the pulse
+    peak, the FFE and DFE solved for the cursors there (rounded to a
+    sample). ``rx_clk``: the receiver clock's offsets instead of drawing
+    them. ``external_loop``: the kernel's loop gains are zero and the caller
+    moves the sampler. The defaults are :func:`run_time_link`."""
     from ..afe.adc import TiAdc
     from ..cdr.adc_kernel import AdcRxRun
     from ..dsp.ffe import equalized_cursors
@@ -771,9 +818,10 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     n_wave = rx_y.size if isinstance(rx_y, np.ndarray) else rx_y.n_total
 
     # --- pulse analysis: initial FFE (MMSE), DFE, slicer levels ---
-    st = adc_start(cfg, h, tx_pipe)
+    shift_i = int(np.round(start_shift))
+    st = adc_start(cfg, h, tx_pipe, peak_shift=shift_i)
     lead, cursors, n_pre_c, target, w_ffe0 = st.lead, st.cursors, st.n_pre_c, st.target, st.w_ffe0
-    peak = st.peak_rx - lead
+    peak = st.peak_rx - shift_i - lead
     fcfg = cfg.rx.ffe
     pr = cfg.pr
     n_t = len(pr.target)
@@ -827,26 +875,33 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     mu_d = cfg.rx.dfe.mu if cfg.rx.dfe.adapt != "none" else 0.0
 
     # the receiver's own clock, drawn last so an ideal clock changes nothing
-    rx_clk = rx_clock_offsets_samples(n_sym, cfg, rng)
+    drawn = rx_clock_offsets_samples(n_sym, cfg, rng)
+    rx_clk = drawn if rx_clk is None else np.ascontiguousarray(rx_clk[:n_sym], dtype=np.float64)
     mu_a = pr.mu if (pr.active and pr.adapt == "lms") else 0.0
     alpha_out = np.array([alpha, beta, gamma], dtype=np.float64)
 
     cal = cfg.rx.adc.cal
+    k_run, i_run = (0.0, 0.0) if external_loop else (kp, ki)
+    pd_use_ffe = 1 if cfg.mm_pd_input == "ffe" else 0
     adc_run = AdcRxRun(
-        rx_y if isinstance(rx_y, np.ndarray) else np.zeros(0), osr, float(peak), n_sym,
+        rx_y if isinstance(rx_y, np.ndarray) else np.zeros(0), osr,
+        float(peak) + float(start_shift), n_sym,
         levels.astype(np.float64),
         adc.n_lanes, adc.offsets, adc.gains, adc.skews,
         adc.q_step, adc.code_max, enob_noise,
         np.asarray(w_ffe0, dtype=np.float64), fcfg.n_pre, float(mu_f),
         np.asarray(w_dfe0, dtype=np.float64), float(mu_d),
-        float(kp), float(ki), float(clamp), pd_offset,
-        1 if cfg.mm_pd_input == "ffe" else 0, lat_blocks,
+        float(k_run), float(i_run), float(clamp), pd_offset,
+        pd_use_ffe, lat_blocks,
         sched.reference, int(train_end), int(settle), rx_clk,
         float(alpha), int(pr_mode), np.asarray(pr_levels, dtype=np.float64),
         float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1),
         1 if cal.mode == "background" else 0, cal.mu_offset, cal.mu_gain, cal.mu_skew,
         pr_gamma=float(gamma))
-    dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = _run_rx(adc_run, rx_y, cfg, progress)
+    out = yield _AdcLoop(adc_run, rx_y, float(kp), float(ki), float(clamp), int(lat_blocks),
+                         float(pd_offset), (1 if pr_mode > 0 else 0) if pd_use_ffe else 2,
+                         int(adc.n_lanes), int(fcfg.n_pre))
+    dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = out
     jitter_budget = _stream_jitter(cfg, rx_y, jitter_budget)
 
     fixed = None

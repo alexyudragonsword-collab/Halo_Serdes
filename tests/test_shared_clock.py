@@ -57,8 +57,11 @@ def test_shared_clock_rejects_bad_input():
     with pytest.raises(ValueError, match="UI apart"):
         run_shared_clock(cfg, [-0.6, 0.5])
     adc = _preset("PAM4 224G ADC (106 GBd)", 0.0015, 2_000)
-    with pytest.raises(NotImplementedError):
-        run_shared_clock(adc, [0.0])
+    with pytest.raises(ValueError, match="one receiver architecture"):
+        run_shared_clock([cfg, adc], [0.0, 0.1])
+    fixed = dataclasses.replace(adc, numeric=dataclasses.replace(adc.numeric, mode="fixed"))
+    with pytest.raises(NotImplementedError, match="float receiver"):
+        run_shared_clock(fixed, [0.0])
 
 
 def test_another_lanes_clock_has_no_pattern_phase_correlation():
@@ -131,3 +134,66 @@ def test_one_loop_over_n_lanes_hunts_sqrt_n_less():
         if n == 1:
             one = d.std()
     assert 0.42 < d.std() / one < 0.55
+
+
+# ------------------------------------------------------- the ADC receiver (P3 #9d)
+
+def test_one_adc_lane_is_the_time_engine():
+    """The Mueller-Muller detector read back from the lane's samples, summed
+    over the interleaver's block and taken through the kernel's loop and
+    latency queue, is the kernel's own loop: the same decisions and FFE, the
+    sampler to rounding (the kernel adds the step to the period first)."""
+    cfg = _preset("PAM4 224G ADC (106 GBd)", 0.0025, 20_000)
+    a = run_time_link(cfg, symbols=lane_symbols(cfg, 0))
+    b = run_shared_clock(cfg, [0.0]).lanes[0]
+    assert np.allclose(b.extras["phase_track"], a.extras["phase_track"], rtol=0, atol=1e-6)
+    assert b.ber.n_errors == a.ber.n_errors and b.ber.n_checked == a.ber.n_checked
+    assert np.array_equal(b.ffe_taps, a.ffe_taps)
+
+
+def test_an_averaging_loop_over_adc_lanes_has_no_pull_to_their_mean_skew():
+    """On the PAM4 ADC presets the detector reads the equalised samples, and
+    every lane's FFE re-adapts where it samples: the averaged detector does
+    not see the lanes' offsets, so the clock stays where it starts -- lane
+    0's lock here -- not at the mean skew. ``lane_curve`` marks the curve
+    (``pd_sees_offset``) and ``shared_cdr("average")`` places the clock so."""
+    from halo_serdes.channel import ChannelModel
+    from halo_serdes.engine.cascade import initial_ffe_taps
+
+    cfg = _preset("PAM4 224G ADC (106 GBd)", 0.0025, 30_000)
+    skews = [0.0, 0.125, -0.125, 0.25]
+    r = run_shared_clock(cfg, skews, "average")
+    solo = run_shared_clock(cfg, [0.0])
+    tail = slice(r.displacement.size // 2, None)
+    # the mean skew is 2 samples; the clock is where the lane alone would be
+    assert abs(r.displacement[tail].mean() - solo.displacement[tail].mean()) < 0.5
+    ch = ChannelModel.from_config(cfg)
+    c = lane_curve(cfg, ch, n_phases=2, ffe_taps=lambda at: initial_ffe_taps(cfg, ch, at_ui=at))
+    assert not c.pd_sees_offset
+    assert shared_cdr(dataclasses.replace(c, voters=4), skews, "average").phase_ui == 0.0
+    raw = dataclasses.replace(cfg, rx=dataclasses.replace(
+        cfg.rx, cdr=dataclasses.replace(cfg.rx.cdr, pd_input="adc")))
+    assert lane_curve(raw, ch, n_phases=2,
+                      ffe_taps=lambda at: initial_ffe_taps(raw, ch, at_ui=at)).pd_sees_offset
+
+
+@pytest.mark.needs_jit
+def test_invariant3_adc_lanes_on_the_masters_clock():
+    """ADC lanes on the master's clock at their skews against the statistical
+    engine at those offsets with the FFE solved there: the 224G preset at
+    2.5 mV, -1/4 ... +1/4 UI, 0.90-1.02 over three seeds of 200k symbols
+    (cairn/多lane建模.md §9.4)."""
+    from halo_serdes.channel import ChannelModel
+    from halo_serdes.engine.cascade import initial_ffe_taps
+
+    cfg = _preset("PAM4 224G ADC (106 GBd)", 0.0025, 120_000)
+    ch = ChannelModel.from_config(cfg)
+    skews = (0.0, 0.125, -0.25)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        r = run_shared_clock(cfg, skews, "master", channel=ch)
+        for s, ln in zip(skews, r.lanes):
+            st = run_statistical(cfg, channel=ch, phase_ui=-s, ffe_pre=cfg.rx.ffe.n_pre,
+                                 ffe_taps=initial_ffe_taps(cfg, ch, at_ui=-s)).ber
+            assert ln.ber.n_errors >= 30, (s, ln.ber.n_errors)
+            assert 0.5 < st / ln.ber.ber < 2.0, (s, st, ln.ber.ber)

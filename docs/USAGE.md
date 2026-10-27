@@ -1104,7 +1104,7 @@ c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch
   一个环路听全部 lane 时(`"average"`)猎振按 1/√N 变小,曲线要按 lane 数取:`lane_curve(cfg, voters=4)`(不符时 `shared_cdr` 告警;
   NRZ 16G 15 mV 八条 lane 读单 lane 自己环路的 0.094×)。不含:各 lane 的串扰相位随 skew 变
   (要的话每条 lane 自己建 `cfg.crosstalk`,`shared_cdr` 收一组曲线)。
-- 多条 lane 在一个时钟上一起跑的时域(混合信号;ADC 未接):
+- 多条 lane 在一个时钟上一起跑的时域(混合信号与 ADC):
 
   ```python
   from halo_serdes.engine.shared_clock import run_shared_clock
@@ -1114,7 +1114,9 @@ c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch
   ```
 
   每条 lane 默认独立码元(PRBS 不随种子变,多条 lane 用它就完全相关)。NRZ 16G 15 mV 八条 lane:主 lane 1.53e-5、从 lane 7.44e-6
-  (统计 0.90 / 1.13×),平均环路 9.6e-7(统计 1.33×)。`cairn/多lane建模.md` §9。
+  (统计 0.90 / 1.13×),平均环路 9.6e-7(统计 1.33×)。ADC(224G,2.5 mV):从 lane 在偏移处对统计(FFE 在那里重解)0.90–1.02×;
+  PAM4 ADC 的 MM 读均衡后的样本,平均环路看不见 lane 的偏移、时钟停在起点而不是 skew 均值 —— `lane_curve` 给的曲线带着
+  `pd_sees_offset`,`shared_cdr("average")` 按它放时钟(都看不见时放在 lane `master` 的锁定点)。`cairn/多lane建模.md` §9。
 - 示例 `examples/45_shared_cdr_skew.py`:三条链路的曲线、窗口、四条 lane 三种时钟放法;PAM4 32G 混合信号的 minmax 时钟
   下最差 lane 是单条 lane 用自己环路时的 2.35、KP4 门限下窗口 0.351 UI(2026-10-21 bang-bang 相位按平稳分布平滑之后,ROADMAP P2 #32;此前 1.83 / 0.363 UI,PAM4 猎振 σ 改正之后,ROADMAP P2 #30;P2 #29 判决门限保持后
   一度 2.94 / 0.321 UI,那时 σ 读高、早侧偏悲观。此前 1.73 / 0.360 UI;2026-10-15 前 0.17 —— 那是静止采样的曲线,锁定点不在浴盆底;计入环路游走、DFE
