@@ -74,7 +74,8 @@ def lane_symbols(cfg: LinkConfig, lane: int) -> np.ndarray:
 
 
 def run_shared_clock(cfg: LinkConfig | list, skews_ui, policy: str = "master",
-                     master: int = 0, channel=None, symbols=None) -> SharedClockRun:
+                     master: int = 0, channel=None, symbols=None,
+                     shared_tx_clock: bool = False) -> SharedClockRun:
     """Run ``len(skews_ui)`` lanes on one sampling clock.
 
     ``cfg``: one config for every lane or a list (one per lane, one
@@ -86,6 +87,10 @@ def run_shared_clock(cfg: LinkConfig | list, skews_ui, policy: str = "master",
     detector drives the loop) or ``"average"`` (the mean of every lane's).
     ``channel``: one for every lane or a list. ``symbols``: per lane, the
     user symbol streams to send (default :func:`lane_symbols`).
+    ``shared_tx_clock``: the lanes' transmitters run on one clock too -- every
+    lane's edges carry the lead lane's clock jitter (its profile, RJ and SJ;
+    DCD stays each lane's own, it follows the data), so the lanes' jitter is
+    correlated while their data and noise are not.
     """
     s = np.asarray(skews_ui, dtype=np.float64)
     n = s.size
@@ -116,12 +121,24 @@ def run_shared_clock(cfg: LinkConfig | list, skews_ui, policy: str = "master",
     syms = ([lane_symbols(c, i) for i, c in enumerate(cfgs)] if symbols is None
             else list(symbols))
     shifts = [-(s[i] - s[lead]) * cfgs[i].osr for i in range(n)]
+    tx_clock = _tx_clock_s(cfgs[lead], syms[lead]) if shared_tx_clock else None
     run = _run_adc if archs == {"adc_dsp"} else _run_ms
-    lanes, disp = run(cfgs, chans, syms, shifts, policy, master, lead)
+    lanes, disp = run(cfgs, chans, syms, shifts, policy, master, lead, tx_clock)
     return SharedClockRun(policy, s, tuple(lanes), disp)
 
 
-def _run_ms(cfgs, chans, syms, shifts, policy, master, lead):
+def _tx_clock_s(cfg: LinkConfig, symbols) -> np.ndarray:
+    """The lead lane's transmit-clock edge offsets [s] without its DCD: the
+    first draws of its run's generator, as the engine makes them
+    (``analysis.cdr_tracking.tx_edge_offsets_s``)."""
+    from ..tx.jitter import edge_jitter_seq
+
+    no_dcd = dataclasses.replace(cfg, tx=dataclasses.replace(
+        cfg.tx, clock=dataclasses.replace(cfg.tx.clock, dcd_ui=0.0)))
+    return edge_jitter_seq(len(symbols), no_dcd, np.random.default_rng(cfg.sim.seed))
+
+
+def _run_ms(cfgs, chans, syms, shifts, policy, master, lead, tx_clock=None):
     """Mixed-signal lanes: the bang-bang votes, one per symbol."""
     from .timedomain import _ms_finish, _ms_prepare
 
@@ -129,7 +146,8 @@ def _run_ms(cfgs, chans, syms, shifts, policy, master, lead):
 
     def prep(i, rx_clk=None):
         return _ms_prepare(cfgs[i], chans[i], False, False, None, None, None, syms[i],
-                           start_shift=shifts[i], rx_clk=rx_clk, external_loop=True)
+                           start_shift=shifts[i], rx_clk=rx_clk, external_loop=True,
+                           tx_clock_s=None if i == lead else tx_clock)
 
     lanes = [None] * n
     lanes[lead] = prep(lead)
@@ -169,7 +187,7 @@ def _run_ms(cfgs, chans, syms, shifts, policy, master, lead):
     return out, disp[:k]
 
 
-def _run_adc(cfgs, chans, syms, shifts, policy, master, lead):
+def _run_adc(cfgs, chans, syms, shifts, policy, master, lead, tx_clock=None):
     """ADC lanes: the kernel's Mueller-Muller detector, read back from each
     lane's own samples, summed over the interleaver's block and taken through
     the loop filter, clamp and latency queue the kernel uses
@@ -181,7 +199,8 @@ def _run_adc(cfgs, chans, syms, shifts, policy, master, lead):
 
     def prep(i, rx_clk=None):
         g = _adc_link_steps(cfgs[i], chans[i], False, False, None, None, None, syms[i],
-                            start_shift=shifts[i], rx_clk=rx_clk, external_loop=True)
+                            start_shift=shifts[i], rx_clk=rx_clk, external_loop=True,
+                            tx_clock_s=None if i == lead else tx_clock)
         return g, next(g)
 
     steps, loops = [None] * n, [None] * n

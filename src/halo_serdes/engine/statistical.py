@@ -18,7 +18,10 @@ Non-LTI approximations (each cross-checked against the time engine):
   shifted that way, and the SER s becomes s / (1 - p + s), the two-state
   chain's (``extras['dfe_ep_factor']``; first tap only -- the 1-tap
   Gilbert model, cairn/多lane建模.md §2). Without it the ADC receiver with
-  its DFE engaged read 0.35-0.55x the time engine; with it 0.81-1.25x;
+  its DFE engaged read 0.35-0.55x the time engine; with it 0.81-1.25x.
+  Behind an FFE the noise is coloured and a first error is followed more
+  often than an error the DFE made (p1 > p2, from the FFE taps' lag
+  covariances); the chain is then three-state;
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
 - ADC receiver: the ADC's noise, fullscale^2/12 * 2^(-2 ENOB) (bare
   quantisation without an ENOB), joins the receiver noise at the FFE input
@@ -1596,20 +1599,74 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             # eye. Each the bits the first one cost. First DFE tap only. With the ADC's
             # DFE engaged (ROADMAP P1 #21; tap 0.57) the time engine read
             # 1.8-2.9x this engine's ideal-DFE BER.
+            #
+            # Behind an FFE the receiver's noise is coloured: white per UI at
+            # the FFE input (the receiver's and the ADC's), it reaches the
+            # slicer with covariance sigma_rx^2 * sum w_i w_(i+l) / |w|^2 at
+            # lag l. The noise that made the first error is large, and its
+            # neighbour's mean follows it (lag 1 is negative behind a
+            # peaking FFE: along the DFE's push), so a first error is followed
+            # with p1 > p; an error the push made is not noise-driven, the
+            # next one sees the two before it (p2, lower). Errors per first
+            # one 1 + p1 / (1 - p2); the chain's rate s K / (1 + s K) with
+            # K that. Example 31's link frozen at its lock: 1.50-1.71 errors
+            # per first one against the time engine's 1.77-1.84 before, now
+            # 1.74-1.81 (cairn/DSP发端与PR.md §30). Without colour (no FFE,
+            # the mixed-signal receiver) p1 = p2 = p and this is the
+            # two-state chain above.
             step = float(np.min(np.diff(np.sort(levels_norm)))) * h_dfe1
-            p_ep = 0.0
-            for j in range(n_levels):
-                for sgn in (1.0, -1.0):
-                    p_j = 0.0
-                    if j < n_levels - 1:
-                        thr = (lt[j] + lt[j + 1]) / 2.0
-                        p_j += tail_ge(thr - lv_sorted[j] - sgn * step, int(order[j]))
-                    if j > 0:
-                        thr = (lt[j - 1] + lt[j]) / 2.0
-                        p_j += tail_le(thr - lv_sorted[j] - sgn * step, int(order[j]))
-                    p_ep += p_j * level_probs[int(order[j])] / 2.0
-            p_ep = min(p_ep, 0.99)
+
+            def p_follow(shift: float) -> float:
+                p = 0.0
+                for j in range(n_levels):
+                    for sgn in (1.0, -1.0):
+                        p_j = 0.0
+                        if j < n_levels - 1:
+                            thr = (lt[j] + lt[j + 1]) / 2.0
+                            p_j += tail_ge(thr - lv_sorted[j] - sgn * shift, int(order[j]))
+                        if j > 0:
+                            thr = (lt[j - 1] + lt[j]) / 2.0
+                            p_j += tail_le(thr - lv_sorted[j] - sgn * shift, int(order[j]))
+                        p += p_j * level_probs[int(order[j])] / 2.0
+                return min(p, 0.99)
+
+            p_ep = p_follow(step)
             ep = 1.0 / (1.0 - p_ep + min(ser, 1.0))
+            w_ffe = (np.asarray(ffe_taps, dtype=np.float64)
+                     if ffe_taps is not None and len(ffe_taps) > 2 else None)
+            if w_ffe is not None and rx_sigma > 0.0:
+                ww = float(w_ffe @ w_ffe)
+                c1 = rx_sigma ** 2 * float(w_ffe[:-1] @ w_ffe[1:]) / ww
+                c2 = rx_sigma ** 2 * float(w_ffe[:-2] @ w_ffe[2:]) / ww
+                p_avg = sum(level_probs[int(order[j])] * pdf_lv[int(order[j])]
+                            for j in range(n_levels))
+                p_avg = p_avg / max(float(p_avg.sum()), 1e-300)
+                var_x = float(p_avg @ v_centers ** 2)
+                var_n = noise_sigma ** 2
+                a = float(np.min(np.diff(lt))) / 2.0       # the level's distance to a threshold
+
+                def tail_mean(t: float) -> float:
+                    m = v_centers >= t
+                    mass = float(p_avg[m].sum())
+                    return float(p_avg[m] @ v_centers[m]) / mass if mass > 0.0 else t
+
+                if var_x > 0.0 and var_n > 0.0 and (c1 != 0.0 or c2 != 0.0):
+                    # the first error's deviation and its noise part (E[n | x])
+                    n_k = tail_mean(a) * var_n / var_x
+                    step1 = step - c1 / var_n * n_k        # the neighbour's mean joins the push
+                    p1 = p_follow(step1)
+                    # the second error goes the way the push does (against
+                    # the first when step1 > 0); its noise in its own frame,
+                    # given it erred, and the first's
+                    flip = -1.0 if step1 >= 0.0 else 1.0
+                    n_first = flip * n_k
+                    n_second = (flip * c1 / var_n * n_k
+                                + var_n / var_x * tail_mean(a - abs(step1)))
+                    cf = np.linalg.solve(np.array([[var_n, c1], [c1, var_n]]), np.array([c2, c1]))
+                    m2 = float(cf[0] * n_first + cf[1] * n_second)   # the third's mean there
+                    p2 = p_follow(step - m2)
+                    k_chain = 1.0 + p1 / (1.0 - p2)
+                    ep = k_chain / (1.0 + min(ser, 1.0) * k_chain)
             if not fixed:
                 ep_factor_phi[pi] = ep
             ser *= ep

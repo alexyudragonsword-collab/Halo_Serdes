@@ -52,7 +52,9 @@ jobs:
         env:
           # nojit exercises the pure-Python fallback kernels
           HALO_NO_JIT: ${{ matrix.jit == 'nojit' && '1' || '' }}
-        run: pytest -q
+        # the slowest tests on the runner itself: local timings run beside
+        # other jobs and read BLAS thread contention (cairn/engineering-pitfalls.md)
+        run: pytest -q --durations=25
 
   examples:
     # Every example run end to end with n_symbols capped (tools/run_examples.py

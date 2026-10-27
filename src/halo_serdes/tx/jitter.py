@@ -28,9 +28,15 @@ from .clock import ClockProfile
 
 def edge_jitter_seq(n_symbols: int, cfg: LinkConfig,
                     rng: np.random.Generator,
-                    v_baud: np.ndarray | None = None) -> np.ndarray:
+                    v_baud: np.ndarray | None = None,
+                    clock_s: np.ndarray | None = None) -> np.ndarray:
     """Per-boundary time offsets [s], length n_symbols+1 (boundary k starts
-    symbol k). DCD sign follows edge polarity (rising +, falling -)."""
+    symbol k). DCD sign follows edge polarity (rising +, falling -).
+
+    ``clock_s``: the clock's own part (profile, RJ, SJ) from elsewhere -- a
+    transmit clock shared with another lane (``engine.shared_clock``). The
+    draws are still made, so what ``rng`` gives after them is this lane's
+    own; DCD follows this lane's data."""
     ui = cfg.ui
     clk = cfg.tx.clock
     jit = np.zeros(n_symbols + 1)
@@ -46,6 +52,8 @@ def edge_jitter_seq(n_symbols: int, cfg: LinkConfig,
     if clk.sj_ui > 0 and clk.sj_freq > 0:
         k = np.arange(n_symbols + 1)
         jit += clk.sj_ui * ui * np.sin(2 * np.pi * clk.sj_freq * k * ui)
+    if clock_s is not None:
+        jit = np.resize(np.asarray(clock_s, dtype=np.float64), n_symbols + 1).copy()
     if clk.dcd_ui > 0 and v_baud is not None:
         prev = np.concatenate([[v_baud[0]], v_baud[:-1]])
         rising = v_baud > prev

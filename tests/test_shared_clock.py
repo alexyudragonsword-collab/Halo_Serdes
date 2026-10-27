@@ -99,6 +99,37 @@ def test_master_lane_reads_its_own_loop():
     assert lc.own_ber > 1.3 * float(lc.at(0.0))
 
 
+def test_a_shared_tx_clock_moves_every_lanes_edges_with_the_leads():
+    """``shared_tx_clock``: the lead lane's run is unchanged, and the others'
+    transmitters take its clock (RJ here) in place of their own draws, keeping
+    their own DCD and their generators' later numbers."""
+    from halo_serdes.analysis.cdr_tracking import tx_edge_offsets_s
+    from halo_serdes.engine.shared_clock import _tx_clock_s
+    from halo_serdes.tx.jitter import edge_jitter_seq
+
+    cfg = _preset("NRZ 16G mixed-signal", 0.018, 8_000)
+    cfg = dataclasses.replace(cfg, tx=dataclasses.replace(
+        cfg.tx, clock=dataclasses.replace(cfg.tx.clock, rj_ui=0.05, dcd_ui=0.0)))
+    clk = _tx_clock_s(cfg, lane_symbols(cfg, 0))
+    assert np.array_equal(clk, tx_edge_offsets_s(cfg))
+    own = run_shared_clock(cfg, [0.0, 0.1], "master")
+    shared = run_shared_clock(cfg, [0.0, 0.1], "master", shared_tx_clock=True)
+    a, b = own.lanes, shared.lanes
+    assert np.array_equal(a[0].extras["phase_track"], b[0].extras["phase_track"])
+    assert np.array_equal(a[0].y_slicer, b[0].y_slicer)
+    assert not np.array_equal(a[1].y_slicer, b[1].y_slicer)
+    # the edge sequence: the given clock plus the lane's own DCD, the draws made
+    dcd = dataclasses.replace(cfg, tx=dataclasses.replace(
+        cfg.tx, clock=dataclasses.replace(cfg.tx.clock, dcd_ui=0.1)))
+    v = np.where(lane_symbols(cfg, 1) > 0, 1.0, -1.0)
+    r1, r2 = np.random.default_rng(3), np.random.default_rng(3)
+    j_own = edge_jitter_seq(v.size, dcd, r1, v)
+    j_sh = edge_jitter_seq(v.size, dcd, r2, v, clock_s=clk)
+    assert r1.random() == r2.random()
+    rj_own = edge_jitter_seq(v.size, cfg, np.random.default_rng(3), v)
+    assert np.allclose(j_sh - clk, j_own - rj_own, rtol=0, atol=1e-18)
+
+
 @pytest.mark.needs_jit
 def test_invariant3_lanes_on_the_masters_clock():
     """Lanes sampled by the master's loop at their skews against the

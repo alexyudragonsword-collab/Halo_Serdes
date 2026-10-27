@@ -409,10 +409,14 @@ def test_one_drifting_aggressor_is_the_mean_over_its_phases():
     is the bang-bang loop's hunting smeared in on top (ROADMAP P2 #27): the
     read averages phases each with its own factor, and dividing one out
     leaves 2e-4."""
-    cfg = _xt_cfg("PAM4 32G mixed-signal", 0.006, 100_000, n_fext=1, coupling_db=-30.0,
-                  spread_db=0.0, seed=1, ppm=100.0)
-    drift = run_statistical(cfg)
     import dataclasses
+
+    # the identity holds on any phase grid: 16 samples per UI instead of the
+    # preset's 32 halve the runs (77 -> ~35 s; 1.7e-4 and 5.3e-4 apart there)
+    cfg = dataclasses.replace(
+        _xt_cfg("PAM4 32G mixed-signal", 0.006, 100_000, n_fext=1, coupling_db=-30.0,
+                spread_db=0.0, seed=1, ppm=100.0), osr=16)
+    drift = run_statistical(cfg)
 
     skews = [run_statistical(dataclasses.replace(cfg, crosstalk=dataclasses.replace(
         cfg.crosstalk, ppm=0.0, skew_ui=k / cfg.osr))) for k in range(cfg.osr)]

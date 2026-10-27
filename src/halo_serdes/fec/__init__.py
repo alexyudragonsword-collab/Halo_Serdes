@@ -18,6 +18,7 @@ from .interleave import (
     FecLayout,
     bit_errors,
     burst_profile,
+    burst_profile_lanes,
     compound_fer,
 )
 
@@ -28,5 +29,5 @@ __all__ = [
     "inner_decoded_ber", "concatenated_post_fec_ber",
     "Reach", "fec_threshold", "reach", "refine",
     "FecLayout", "SEQUENTIAL", "BIT_MUX_2CW", "SYMBOL_PAIR_4CW",
-    "BurstProfile", "bit_errors", "burst_profile", "compound_fer",
+    "BurstProfile", "bit_errors", "burst_profile", "burst_profile_lanes", "compound_fer",
 ]

@@ -480,7 +480,7 @@ class _MsLane:
 
 def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, rx_ami, xtalk,
                 symbols, start_shift: float = 0.0, rx_clk=None,
-                external_loop: bool = False) -> _MsLane:
+                external_loop: bool = False, tx_clock_s=None) -> _MsLane:
     """The mixed-signal run up to the receiver loop.
 
     ``start_shift`` [samples]: start the sampler that far from the pulse
@@ -488,7 +488,9 @@ def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, r
     (rounded to a sample). ``rx_clk``: the receiver clock's offsets to use
     instead of drawing them. ``external_loop``: the kernel's own loop gains
     are zero and the caller moves the sampler (``_MsLane.kp`` / ``ki`` /
-    ``clamp`` are the loop's). The defaults are :func:`run_time_link`."""
+    ``clamp`` are the loop's). ``tx_clock_s``: the transmit clock's own edge
+    offsets from another lane (``TxPipeline.clock_s``). The defaults are
+    :func:`run_time_link`."""
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 
@@ -496,6 +498,7 @@ def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, r
     symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line_symbols = _tx_symbols(cfg, symbols)
     tx_pipe = TxPipeline.from_config(cfg)
+    tx_pipe.clock_s = tx_clock_s
     h, rx_y, jitter_budget = _front_end(cfg, channel, tx_pipe, line_symbols, rng,
                                         tx_ami, rx_ami, xtalk, collect_jitter)
     n_wave = rx_y.size if isinstance(rx_y, np.ndarray) else rx_y.n_total
@@ -792,7 +795,7 @@ def _adc_finish(steps, out) -> SimResult:
 
 def _adc_link_steps(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, rx_ami,
                     xtalk, symbols, start_shift: float = 0.0, rx_clk=None,
-                    external_loop: bool = False):
+                    external_loop: bool = False, tx_clock_s=None):
     """:func:`_run_adc_link` as steps: yields an :class:`_AdcLoop` once the
     run is set up, takes its ``run.result()`` back (``send``) and returns the
     scored :class:`SimResult` (``StopIteration.value``; :func:`_adc_finish`).
@@ -801,7 +804,8 @@ def _adc_link_steps(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_am
     peak, the FFE and DFE solved for the cursors there (rounded to a
     sample). ``rx_clk``: the receiver clock's offsets instead of drawing
     them. ``external_loop``: the kernel's loop gains are zero and the caller
-    moves the sampler. The defaults are :func:`run_time_link`."""
+    moves the sampler. ``tx_clock_s`` as for :func:`_ms_prepare`. The
+    defaults are :func:`run_time_link`."""
     from ..afe.adc import TiAdc
     from ..cdr.adc_kernel import AdcRxRun
     from ..dsp.ffe import equalized_cursors
@@ -813,6 +817,7 @@ def _adc_link_steps(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_am
     symbols = make_pattern(cfg) if symbols is None else check_symbols(cfg, symbols)
     line_symbols = _tx_symbols(cfg, symbols)
     tx_pipe = TxPipeline.from_config(cfg)
+    tx_pipe.clock_s = tx_clock_s
     h, rx_y, jitter_budget = _front_end(cfg, channel, tx_pipe, line_symbols, rng,
                                         tx_ami, rx_ami, xtalk, collect_jitter)
     n_wave = rx_y.size if isinstance(rx_y, np.ndarray) else rx_y.n_total

@@ -249,7 +249,7 @@ s = run_statistical(cfg)        # 统计:同一组 aggressor
 YAML 里同名(`crosstalk:` 下一组键,`aggressors:` 是映射的列表);表单有 bank 那几项(`aggressors` 只在 YAML)。
 `ppm` 0 是同步 lane:受扰在每个耦合脉冲的同一个相位上采样,代价随 skew 变得很厉害(示例 44 的三条链路在 8 个 skew 上差 9.0–32.6×)。
 `ppm` ≠ 0 是准同步 lane(各自参考时钟):时域按 aggressor 自己的速率保持它的符号,受扰轮流看到每个相位;统计引擎对相位求平均
-(要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.70–0.94×(2026-10-24 码型-相位因子计入串扰方差;之前当日一度 0.70–1.00×),时域 BER 是同步各 skew 平均的 0.85–0.98(示例 44)。
+(要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.73–0.94×(2026-10-27 DFE 误码传播计入 FFE 着色之前 0.70–0.94×;2026-10-24 码型-相位因子计入串扰方差;之前当日一度 0.70–1.00×),时域 BER 是同步各 skew 平均的 0.85–0.98(示例 44)。
 静态引擎不注入串扰,配置里有串扰时报错;带重定时器的拓扑是三条链路,配置的串扰说不清属于哪一段,也报错。
 
 **API 入参**:一个 `XtalkAggressor` 对象**同时**驱动时域和统计两个引擎,保证一致;显式给出时**替换**配置里的串扰(两者都有时警告):
@@ -535,6 +535,7 @@ prof.frame_error_rate()                                  # 本次 BER 下的复�
 prof.threshold() / fec_threshold("kp4")                  # > 1:二项投影对这些误码偏悲观
 prof.resample(rng).threshold()                           # 按事件 bootstrap,看事件数够不够
 FecLayout(lanes=2, pcs_lanes=8, mux_bits=1, interleave=2, stagger=1)   # 自定义:8:1 比特复用、两码字
+burst_profile_lanes([e0, e1, e2, e3], n_bits, BIT_MUX_2CW)   # 一组 lane 合起来:同一时刻各 lane 的错算一个事件
 ```
 
 `SEQUENTIAL` 是单 lane、连续 10 bit 符号、不交织;`BIT_MUX_2CW` 仿 400GBASE-R(16 条 PCS lane 四条一组比特复用、两码字棋盘交织);
@@ -1091,7 +1092,7 @@ r.phase_ui, r.offsets_ui, r.ber, r.worst, r.mean
 c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch, at_ui=at))
 ```
 
-- 不是"读一次运行的浴盆":ADC 的浴盆沿用锁定点的 FFE(示例 45:−1/4 / +1/4 UI 读高 101.6× / 78.8×;对时域 lane 自己收敛的 FFE
+- 不是"读一次运行的浴盆":ADC 的浴盆沿用锁定点的 FFE(示例 45:−1/4 / +1/4 UI 读高 110.9× / 100.3×(2026-10-27 DFE 误码传播计入 FFE 着色之前 101.6× / 78.8×);对时域 lane 自己收敛的 FFE
   偏 1/4 UI 读高 21× 是 P1 #21 之前量的),均衡后脉冲的最大样本也可能不是主光标。
   离开锁定点读统计结果用 `run_statistical(phase_ui=d)`。
 - 对时域(冻结环路停在偏移处、叠上一段自由运行环路的游走,均衡器从那里的游标起步):混合信号 NRZ 28G 0.67–1.09×、PAM4 32G 0.71–0.99×
@@ -1111,15 +1112,18 @@ c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch
 
   r = run_shared_clock(cfg, [0.0, 0.25, -0.125], policy="master")   # 或 "average";master=i
   r.ber, r.n_errors, r.lanes[i].extras["phase_track"], r.displacement
+  run_shared_clock(cfg, [0.0] * 4, shared_tx_clock=True)          # 发端也共用一个时钟(DCD 仍各自的)
   ```
 
   每条 lane 默认独立码元(PRBS 不随种子变,多条 lane 用它就完全相关)。NRZ 16G 15 mV 八条 lane:主 lane 1.53e-5、从 lane 7.44e-6
   (统计 0.90 / 1.13×),平均环路 9.6e-7(统计 1.33×)。ADC(224G,2.5 mV):从 lane 在偏移处对统计(FFE 在那里重解)0.90–1.02×;
   PAM4 ADC 的 MM 读均衡后的样本,平均环路看不见 lane 的偏移、时钟停在起点而不是 skew 均值 —— `lane_curve` 给的曲线带着
-  `pd_sees_offset`,`shared_cdr("average")` 按它放时钟(都看不见时放在 lane `master` 的锁定点)。`cairn/多lane建模.md` §9。
+  `pd_sees_offset`,`shared_cdr("average")` 按它放时钟(都看不见时放在 lane `master` 的锁定点)。一个时钟上的 lane 会一起出错
+  (NRZ 16G 四条 lane:共享 CDR 7×、再共用发端时钟 17× 于独立时),每条 lane 的 BER 对得上,FEC 不能按独立 lane 读:
+  `bit_errors` 每条 lane 的误码交给 `burst_profile_lanes`(4:1 比特复用下门限 0.14× / 0.003×,符号对四码字 0.93 / 0.87)。`cairn/多lane建模.md` §9。
 - 示例 `examples/45_shared_cdr_skew.py`:三条链路的曲线、窗口、四条 lane 三种时钟放法;PAM4 32G 混合信号的 minmax 时钟
   下最差 lane 是单条 lane 用自己环路时的 2.35、KP4 门限下窗口 0.351 UI(2026-10-21 bang-bang 相位按平稳分布平滑之后,ROADMAP P2 #32;此前 1.83 / 0.363 UI,PAM4 猎振 σ 改正之后,ROADMAP P2 #30;P2 #29 判决门限保持后
   一度 2.94 / 0.321 UI,那时 σ 读高、早侧偏悲观。此前 1.73 / 0.360 UI;2026-10-15 前 0.17 —— 那是静止采样的曲线,锁定点不在浴盆底;计入环路游走、DFE
-  保持后浴盆底抹平,KP4 门限下窗口 0.514 → 0.360 UI;P2 #27 当天读 1.92 / 0.349 UI,样本之间线性插值读高,P2 #28);ADC 那条 FFE 跟着重解时 KP4 门限下窗口 0.435 UI,
-  沿用锁定点的 FFE 只有 0.156 UI。
+  保持后浴盆底抹平,KP4 门限下窗口 0.514 → 0.360 UI;P2 #27 当天读 1.92 / 0.349 UI,样本之间线性插值读高,P2 #28);ADC 那条 FFE 跟着重解时 KP4 门限下窗口 0.459 UI
+  (2026-10-27 DFE 误码传播计入 FFE 着色之前 0.435 UI),沿用锁定点的 FFE 只有 0.156 UI。
   `cairn/多lane建模.md` §8。

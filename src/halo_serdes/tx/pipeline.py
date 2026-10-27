@@ -66,6 +66,9 @@ class TxPipeline:
             noise_rng = np.random.default_rng([cfg.sim.seed, 0x7E5])
         self.noise_rng = noise_rng
         self.stats = {"dac_clipped": 0}
+        #: the transmit clock's own edge offsets [s] (profile, RJ, SJ) when
+        #: another lane's clock drives this one (``edge_jitter_seq(clock_s=)``)
+        self.clock_s = None
 
     @classmethod
     def from_config(cls, cfg: LinkConfig, rng: np.random.Generator | None = None) -> "TxPipeline":
@@ -165,7 +168,7 @@ class TxPipeline:
     def edge_offsets(self, v_sym: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         """Per-boundary Tx clock offsets [s] (n + 1 values), drawn from ``rng``
         in the order the engines have always drawn them."""
-        return edge_jitter_seq(v_sym.size, self.cfg, rng, v_sym)
+        return edge_jitter_seq(v_sym.size, self.cfg, rng, v_sym, clock_s=self.clock_s)
 
     def _zoh(self, v_sym: np.ndarray, rng: np.random.Generator | None):
         if rng is None:
