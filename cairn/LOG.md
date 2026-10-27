@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-27 · 共享时钟的 lane 一起出错、DFE 误码传播的噪声着色、测试瘦身(feat/followups-1027)
+
+- 主 lane 相关偏低再拆(不改):`n_hist`、积分器散布都不是;约一半是 DFE 误码传播在主 lane 更多,其余集中在 La = 1 的类(模型份额 0.001 对实测 0.028)。多 lane §9.1b。
+- `run_shared_clock(shared_tx_clock=True)` + `fec.burst_profile_lanes`:NRZ 16G 四条 lane 同时出错共享 CDR 7×、再共用发端时钟 17×,边际 BER 不变;
+  4:1 比特复用 KP4 门限 0.14× / 0.003×,符号对四码字 0.93 / 0.87。FecLayout 的"lane 独立"假设加限定。多 lane §9.5;pitfalls 1 条。
+- 测试:串扰漂移恒等式 osr 16(77 → 约 35 s)、skew PAM4 曲线 8 相位;CI pytest `--durations=25`;本地并行探针的 BLAS 争抢记 pitfalls。
+- 示例 31 持有曲线低约 10 %:2–5 % 是上次分析逐种子去均值的直方图;其余是 DFE 误码传播 —— FFE 给噪声着色(相邻 UI −0.2),首错之后 p1 0.56–0.64、
+  链里 p2 0.17–0.28,模型只有一个 p(0.33–0.42)。`dfe_ep_factor` 改成三态链(p1 / p2 按条件噪声均值),锁定点每首错带的错 1.74–1.81 对时域 1.77–1.84
+  (原 1.50–1.71);§30 表 1.07 / 0.91 / 0.92×(原 0.93 / 0.81 / 0.85)。无着色时逐位不变,指纹不动。DSP §38,`tests/test_dfe_ep_coloured.py`。
+- 编译版:engine/statistical、timedomain、shared_clock 本地真编 .so、HALO_NO_JIT 下与源码逐位相同。探针 `p19`–`p21`、`p40`–`p48`(会话暂存区)。
+
 ## 2026-10-27 · 主 / 从差距拆分、nuitka 变慢、审计、示例 31 冻结均衡器(feat/audit-p9-refine)
 
 - 主 / 从(NRZ 16G 15 mV,主 + 3 从,18 种子,按主 lane 相位分箱):从 lane 持有曲线 × 实测直方图 1.06×、× 链的边际 1.10×;主 lane 真实相关 1.98、

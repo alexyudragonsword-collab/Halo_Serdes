@@ -38,12 +38,12 @@ def _frozen(noise, n_symbols, seed=1):
 @pytest.mark.needs_jit
 def test_errors_per_first_error_behind_an_ffe():
     """Errors per first error (one after a correct symbol) in the time engine
-    against ``dfe_ep_factor``: 4 mV, two seeds of 500k symbols (~470 first
+    against ``dfe_ep_factor``: 4 mV, four seeds of 500k symbols (~480 first
     errors, 1.84 per first one). The chain without colour read 1.71; without
     an FFE that colours the noise the factor is that chain's, unchanged (the
     fingerprint's mixed-signal and FFE-less entries stay bit-identical)."""
     first = total = 0
-    for seed in (1, 2):
+    for seed in (1, 2, 3, 4):
         cfg = _frozen(0.004, 500_000, seed)
         r = run_time_link(cfg)
         dec, ref = np.asarray(r.extras["decisions"]), np.asarray(r.extras["reference"])
@@ -52,7 +52,7 @@ def test_errors_per_first_error_behind_an_ffe():
         total += bad.size
         first += int((~np.isin(bad - 1, bad)).sum())
     ep = run_statistical(cfg, ffe_taps=r.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre).extras["dfe_ep_factor"]
-    assert first > 300
+    assert first > 400
     assert ep == pytest.approx(total / first, rel=0.06), (ep, total / first, first)
     assert ep > 1.76
 
