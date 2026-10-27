@@ -212,7 +212,7 @@ P1 #21 让 ADC 的 DFE 起作用之前 0.98–1.26× 与 1.4–4.5×)。
 `shared_cdr("average")` 按它放时钟。铁律 2 的不对称撤销。`cairn/多lane建模.md` §9.4。)
 (2026-10-27 已做 lane 间相关的发端抖动与多 lane 的 FEC:`run_shared_clock(shared_tx_clock=True)`、`fec.burst_profile_lanes` —— 一个时钟上的 lane
 一起出错(NRZ 16G 四条 lane 共享 CDR 7×、再共用发端时钟 17× 于独立时),每条 lane 的边际 BER 不变;4:1 比特复用下 KP4 等效门限只有独立 lane 假设的
-0.14× / 0.003×,符号对四码字 0.93 / 0.87。PAM4 / ADC 与 224G 链路上没量。`cairn/多lane建模.md` §9.5。)#9 没有剩下的待办。
+0.14× / 0.003×,符号对四码字 0.93 / 0.87。PAM4 上弱得多(2026-10-27 补):224G ADC 共享 CDR 不让 lane 一起错、门限对各自独立时不动,PAM4 32G 低 5–8 %。`cairn/多lane建模.md` §9.5。)#9 没有剩下的待办。
 PCS 层的 deskew、对齐标记锁定与 lane 重排是数字协议行为,不做(见「边界」)。
 
 ### 11. 光互联的余项
