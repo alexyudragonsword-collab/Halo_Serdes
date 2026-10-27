@@ -411,6 +411,10 @@ CDR(kp/ki 置 2^-60、采样偏移钉住)比时域浴盆,把噪声问题和环�
 "Incompatible types in conditional expression"(把两边推成长度不同的 C 元组),Android 的"build compiled APK"一步失败,
 解释版 APK 与桌面全绿(2026-10-10,`study/pr-event-union`)。改成同类型(固定元组 + `continue`)。**动了 `src/` 就在本地
 `python -m cython -3 --no-docstrings` 把改过的模块编一遍**,比等 Android CI 快得多。
+- **只翻译成 C 不够:Cython 在运行时强制内置类型的注解**(2026-10-27,PR #111)。`def advance(st: list[np.ndarray], ...)` 在 Python 里只是注释,
+  编译后传 ndarray 就 `TypeError: Argument 'st' has incorrect type (expected list, got numpy.ndarray)`;改了缓冲区的类型、没改注解,
+  `cython -3` 翻译通过,编译版 APK 在模拟器上 8 项失败(解释版与桌面全绿)。注解写 `list` / `dict` / `tuple` / `str` 就是约束;
+  动了编译集(`engine` 等)的函数签名或参数类型,要真编一次 .so 跑一下(`setup.py build_ext --inplace` 的 host 构建,`HALO_NO_JIT=1`)。
 
 **CI 超时是 cancelled,不是 failure。** `nuitka-onefile` 设了 `continue-on-error: true`,看上去"失败了也不挡",但到 `timeout-minutes`
 被取消的 job 不归它管:整个 run 记为 cancelled;`release` 的条件里 `needs.nuitka-onefile.result != 'cancelled'` 本是"有人手动取消就别发布",
@@ -762,6 +766,14 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
 - **探针里按窗内哪条边取表要和模型实际用的边一致**(2026-10-26):§34 对冻结内核比的是窗内第 6 条边(一半邻近符号落在窗外按高斯余项),
   报出 +6 处一格 0.07 对 0.19;链只用 i−2 / i−1 那条边,那里是 0.07 对 0.09。
 - **`pgrep -f` / `pkill -f` 的模式会匹配到执行它的 shell 自己**(2026-10-26,会话环境):停后台作业要按进程号,或给模式加 `[x]` 括号。
+- **PRBS 在每条 lane 上都是同一串**(2026-10-26,P3 #9c):`make_pattern` 不读 `sim.seed`,换种子只换噪声与抖动。多条 lane 一起跑时
+  各 lane 的数据就完全相关,共享时钟上的码型-相位相关被算成"所有 lane 一起"。多 lane 运行要给每条 lane 自己的流
+  (`engine.shared_clock.lane_symbols`,按种子与 lane 号的独立码元)。
+- **从 lane 不是"去掉因子"**(2026-10-26,P3 #9c):因子 = 链的联合 / (曲线 × 引擎的平稳密度 p0),里面既有数据与相位的相关,也有链自己的边际
+  比 p0 轻的那部分。从 lane 的相位与它的数据无关,但分布仍是主 lane 环路的:只去相关、保留边际(`factor_marginal`)。整个去掉时
+  NRZ 16G 15 mV 从 lane 统计 / 时域 1.41×,保留边际 1.13×。
+- **平均环路按单 lane 的曲线读悲观一个量级**(2026-10-26,P3 #9c):一个环路平均 N 条 lane 的鉴相输出,噪声功率 1/N、猎振 1/√N
+  (NRZ 16G 15 mV,1 / 2 / 4 / 8 条 1.92 / 1.33 / 0.92 / 0.65 个样本)。`shared_cdr("average")` 要用 `lane_curve(voters=N)` 的曲线。
 
 ## 已知限制(不是 bug,别去"修")
 

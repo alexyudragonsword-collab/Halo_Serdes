@@ -6,6 +6,40 @@
 
 ---
 
+## [未发布] — 共享 CDR 的动态部分(P3 #9c)、预设深处核到 BER(P3 #17)、测试与因子的成本
+
+### 新增
+- `engine/shared_clock.py`:`run_shared_clock(cfg, skews_ui, policy="master" | "average")` —— N 条混合信号 lane 用原内核(增益置 0)逐符号一起跑,
+  共享环路取主 lane 的票或全部的均值、挪所有 lane 的采样器;接收时钟共用,数据(默认每条 lane 独立码元,`lane_symbols`)、噪声、发端抖动各自的。
+  单条 lane 与 `run_time_link` 逐位相同。ADC 一侧未接(ROADMAP P3 #9d)。
+- `run_statistical(own_clock=False)`:在别的 lane 的时钟上读,NRZ 带 DFE 只乘因子里链自己的边际部分(`PatternPhase.factor_marginal`),不乘数据-相位相关。
+- `run_statistical(voters=N)` / `bb_loop_fixed_point(voters=)`:一个环路平均 N 条 lane 的鉴相输出,噪声功率 1/N。
+- `LaneCurve.own_ber` / `LaneCurve.voters`、`lane_curve(voters=)`;`shared_cdr("master")` 主 lane 读 `own_ber`,`"average"` 在曲线的 `voters` 与 lane 数不符时告警。
+- `cdr/pattern_chain.py`:码型-相位链的单步写成一遍循环(numba),与 numpy 步逐位相同;无 numba 时引擎仍走 numpy 步。
+- `timedomain._ms_prepare` / `_ms_finish`:混合信号运行拆成"准备 / 收尾"两段,`run_time_link` 逐位不变。
+
+### 变更
+- `lane_curve` 的曲线改在别的 lane 的时钟上读;示例 45 重新接受:NRZ 28G 曲线 ×1.29(锁定点他钟 1.57e-11、自己环路 1.22e-11),
+  average 行改用 `voters=4` 的曲线(PAM4 32G 最差 5.1e-4 → 3.2e-4,NRZ 28G 3.8e-9 → 5.1e-10),minmax 对单 lane 40.15 → 51.63;末段加时域共享时钟。
+- 统计引擎在两种情况下不再跑码型-相位链(因子取 1,与此前不收敛时的结果相同):时钟留下的游走大于环路自己的猎振(剖面时钟),
+  或环路欠阻尼到会滑周(阻尼 < 0.25,引擎本就告警)。原先这类调用跑满 600 步不收敛,一次 50–100 s。指纹 986 值逐位不变。
+- NRZ 16G 15 mV 时域:8 条 lane 主 lane 1.53e-5 / 从 lane 7.44e-6(主 / 从 2.05,统计 1.62;统计 / 时域 0.90 / 1.13);一个环路平均 1 / 2 / 4 / 8 条 lane 猎振
+  1.92 / 1.33 / 0.92 / 0.65 个样本(统计 1.02–1.05×),8 条 lane BER 9.6e-7(统计 1.33×)。
+- P3 #17:NRZ 16G 预设 3 mV 独立码元 344 种子 2 个错(3.6e-9,90 % 6.5e-10…1.2e-8),统计 9.6e-9 在内、不乘因子的 2.2e-8 不在;
+  NRZ 28G 20 mV 401 个错,统计 / 时域 1.02×(不乘因子 1.11×,出区间)。
+
+### 测试
+- `tests/test_shared_clock.py`(新,7 项):单 lane 等于时域引擎、偏移保持、输入校验、他钟无相关、主 lane 读自己环路、NRZ 28G 从 lane 对统计(needs_jit)、
+  平均环路猎振 1/√N(needs_jit)。
+- `tests/test_pattern_phase.py`:融合单步与 numpy 步逐位相同(纯 Python 拷贝在短链上,jit 的在引擎的链上)。
+- `tests/test_api_json.py`:各 study 在默认配置上只跑一次(模块级 fixture),四个测试共用;本地该文件 231 → 67 s。
+- `tests/test_skew.py`:average 用 `voters` 与 lane 数相符的曲线,不符时告警。
+
+### 余项
+- ROADMAP P3 #9d:ADC 一侧的共享时钟时域运行。
+
+---
+
 ## [未发布] — 码型-相位因子:成本(缓存、无索引步进、滑周早停)与积分器推动的数值扩散(ROADMAP P3 #16)
 
 ### 变更

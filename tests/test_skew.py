@@ -68,10 +68,13 @@ def test_shared_cdr_policies():
     assert mm.worst == pytest.approx(1e-6, rel=0.05)
     assert mm.worst < m.worst and mm.mean < m.mean
     # the average is taken on the circle: lanes at +-0.45 UI are 0.1 UI apart
-    a = shared_cdr(c, [0.45, -0.45], "average")
+    a = shared_cdr(dataclasses.replace(c, voters=2), [0.45, -0.45], "average")
     assert abs(abs(a.phase_ui) - 0.5) < 1e-9
     assert np.allclose(np.abs(a.offsets_ui), 0.05)
-    assert shared_cdr(c, [0.0, 0.1, 0.2], "average").phase_ui == pytest.approx(0.1)
+    assert shared_cdr(dataclasses.replace(c, voters=3), [0.0, 0.1, 0.2],
+                      "average").phase_ui == pytest.approx(0.1)
+    with pytest.warns(UserWarning, match="voters"):
+        shared_cdr(c, [0.0, 0.1], "average")       # a curve for one lane's loop
     # one curve per lane
     curves = [_vee(), _vee(centre=0.1)]
     r = shared_cdr(curves, [0.0, 0.0], "minmax")

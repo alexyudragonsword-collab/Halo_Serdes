@@ -446,6 +446,49 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     if cfg.numeric.mode == "fixed":
         raise ValueError("numeric.mode='fixed' is the ADC receiver's digital back end; "
                          "the mixed-signal receiver's DFE and CDR are analog (rx.arch='adc_dsp')")
+    lane = _ms_prepare(cfg, channel, collect_eye, collect_jitter, tx_ami, rx_ami, xtalk, symbols)
+    return _ms_finish(lane, _run_rx(lane.run, lane.rx_y, cfg, progress))
+
+
+@dataclass
+class _MsLane:
+    """A mixed-signal receiver run set up and not yet driven: what
+    :func:`_ms_finish` needs to score it (``engine/shared_clock.py`` drives
+    several of these on one clock)."""
+
+    cfg: LinkConfig
+    run: MsRxRun
+    rx_y: object
+    kp: float
+    ki: float
+    clamp: float
+    phase0: float
+    n_sym: int
+    train_end: int
+    settle: int
+    cursors: np.ndarray
+    n_dfe: int
+    main: float
+    levels0: np.ndarray
+    w_dfe0: np.ndarray
+    ref_idx: np.ndarray
+    user_idx: np.ndarray
+    osr: int
+    collect_eye: bool
+    jitter_budget: object
+
+
+def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, rx_ami, xtalk,
+                symbols, start_shift: float = 0.0, rx_clk=None,
+                external_loop: bool = False) -> _MsLane:
+    """The mixed-signal run up to the receiver loop.
+
+    ``start_shift`` [samples]: start the sampler that far from the pulse
+    peak, and take the slicer levels and DFE taps from the cursors there
+    (rounded to a sample). ``rx_clk``: the receiver clock's offsets to use
+    instead of drawing them. ``external_loop``: the kernel's own loop gains
+    are zero and the caller moves the sampler (``_MsLane.kp`` / ``ki`` /
+    ``clamp`` are the loop's). The defaults are :func:`run_time_link`."""
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
 
@@ -468,7 +511,8 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     # take enough postcursors for the DFE *and* the residual an MLSD works over
     n_post_c = max(n_dfe, 1) + (cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none"
                                 else 0)
-    cursors = channel_cursors(pulse, osr, 0, n_post_c, peak_idx=peak_rx)
+    cursors = channel_cursors(pulse, osr, 0, n_post_c,
+                              peak_idx=peak_rx + int(np.round(start_shift)))
     main = cursors[0]
     # DFE feedback multiplies slicer levels (which carry the main-cursor
     # scale), so tap weights are postcursors normalized to the main cursor.
@@ -519,19 +563,33 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
         branch_off = np.zeros(levels.size)
 
     # the receiver's own clock, drawn last so an ideal clock changes nothing
-    rx_clk = rx_clock_offsets_samples(n_sym, cfg, rng)
+    drawn = rx_clock_offsets_samples(n_sym, cfg, rng)
+    rx_clk = drawn if rx_clk is None else np.ascontiguousarray(rx_clk[:n_sym], dtype=np.float64)
 
     if collect_eye and not isinstance(rx_y, np.ndarray):
         rx_y.keep_head(int(phase0) % osr + osr + 2000 * 2 * osr)
+    k_run, i_run = (0.0, 0.0) if external_loop else (kp, ki)
     run = MsRxRun(
-        rx_y if isinstance(rx_y, np.ndarray) else np.zeros(0), osr, float(peak), n_sym,
+        rx_y if isinstance(rx_y, np.ndarray) else np.zeros(0), osr,
+        float(peak) + float(start_shift), n_sym,
         levels.astype(np.float64), np.asarray(w_dfe0, dtype=np.float64),
-        float(mu), LMS_BATCH_SYMBOLS, float(kp), float(ki), float(clamp),
+        float(mu), LMS_BATCH_SYMBOLS, float(k_run), float(i_run), float(clamp),
         float(sum_alpha), sched.reference, int(train_end), int(settle),
         int(tap1_unrolled), branch_off, rx_clk, mu_lev=float(mu_lev))
-    dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = _run_rx(run, rx_y, cfg, progress)
-    jitter_budget = _stream_jitter(cfg, rx_y, jitter_budget)
-    levels0, levels = levels, run.levels          # the adapted levels score the run
+    return _MsLane(cfg, run, rx_y, float(kp), float(ki), float(clamp), phase0, n_sym,
+                   int(train_end), int(settle), cursors, n_dfe, main, levels, w_dfe0,
+                   ref_idx, user_idx, osr, collect_eye, jitter_budget)
+
+
+def _ms_finish(lane: _MsLane, out) -> SimResult:
+    """Score a driven mixed-signal run (``out``: its ``run.result()``)."""
+    cfg, run, rx_y, osr = lane.cfg, lane.run, lane.rx_y, lane.osr
+    cursors, n_dfe, main, phase0 = lane.cursors, lane.n_dfe, lane.main, lane.phase0
+    ref_idx, user_idx, w_dfe0 = lane.ref_idx, lane.user_idx, lane.w_dfe0
+    train_end, settle, collect_eye = lane.train_end, lane.settle, lane.collect_eye
+    dec, y_sum, phase, w_dfe, pd_hist, w_dfe_hist = out
+    jitter_budget = _stream_jitter(cfg, rx_y, lane.jitter_budget)
+    levels0, levels = lane.levels0, run.levels    # the adapted levels score the run
 
     n_run = dec.size
     warm = warmup_symbols(cfg, train_end, n_run)

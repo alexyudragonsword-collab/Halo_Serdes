@@ -146,6 +146,39 @@ def test_a_loop_that_does_not_move_has_no_correlation(monkeypatch):
     assert still.read_joint == pytest.approx(still.read_indep, rel=1e-4)
 
 
+def test_the_fused_step_is_the_numpy_step_bit_for_bit(monkeypatch):
+    """The chain's step as one loop (cdr/pattern_chain.py) gives the numpy
+    step's arrays exactly: its pure-Python copy on a short chain here, the
+    jitted one on the engine's own when numba is there. Without numba the
+    engine runs the numpy step (invariant 4)."""
+    from halo_serdes.cdr import pattern_chain as pc
+
+    cfg = _preset(0.012, 0.03)
+    cap = {}
+    orig = st._pattern_phase_factor
+
+    def spy(*a, **k):
+        cap["a"], cap["k"] = a, k
+        return orig(*a, **k)
+
+    monkeypatch.setattr(st, "_pattern_phase_factor", spy)
+    st.run_statistical(cfg, channel=ChannelModel.from_config(cfg))
+    a, k = cap["a"], cap["k"]
+    runs = [(dict(k, n_hist=4, n_steps=4), pc.chain_step_py)]
+    if pc.chain_step is not None:
+        runs.append((dict(k), pc.chain_step))
+    for kw, kern in runs:
+        st._PATTERN_PHASE_CACHE.clear()
+        ref = orig(*a, **kw, kernel="numpy")
+        st._PATTERN_PHASE_CACHE.clear()
+        got = orig(*a, **kw, kernel=kern)
+        assert got.steps == ref.steps
+        assert np.array_equal(got.cond_density, ref.cond_density)
+        assert np.array_equal(got.density, ref.density)
+        assert got.factor == ref.factor and got.factor_marginal == ref.factor_marginal
+    st._PATTERN_PHASE_CACHE.clear()
+
+
 def test_it_applies_to_nrz_with_a_dfe_under_a_bang_bang_loop_only():
     pam4 = cb.load_preset("PAM4 32G mixed-signal")
     assert st.run_statistical(pam4, channel=ChannelModel.from_config(pam4)).extras["pattern_phase"] is None

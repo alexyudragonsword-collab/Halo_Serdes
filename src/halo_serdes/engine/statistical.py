@@ -916,7 +916,8 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     v_bins: int = 4096, n_pre: int = 24, n_post: int = 64,
                     xtalk_pulses: list[Waveform] | None = None,
                     level_sigma: np.ndarray | None = None, xtalk=None,
-                    phase_ui: float | None = None) -> StatResult:
+                    phase_ui: float | None = None, own_clock: bool = True,
+                    voters: int = 1) -> StatResult:
     """``level_sigma``: extra noise sigma at the slicer per transmitted level
     (ascending), added in quadrature to the receiver noise; derived from
     ``channel.optical`` when None. Explicit for studies and for pinning that
@@ -928,6 +929,15 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     so the main cursor is the one sampled there even when an equaliser
     has made a neighbouring one larger. None: the lock point, on the axis
     centred on the pulse peak (as before the parameter existed).
+
+    ``own_clock``: whether the lane's own data votes the loop that samples
+    it. False for a lane on another lane's clock (``"master"``) or on one
+    loop listening to many (``"average"``, ``engine.shared_clock``): the
+    clock's phase is then independent of this lane's data, so NRZ with a
+    DFE takes only the part of the pattern-phase factor that is the loop's
+    own phase density (``PatternPhase.factor_marginal``), not the
+    correlation; the density is the lane's own loop's, i.e. the lanes are
+    taken alike.
 
     Crosstalk: ``cfg.crosstalk`` unless ``xtalk`` (``XtalkAggressor`` list)
     or ``xtalk_pulses`` (coupling pulses of synchronous aggressors) replaces
@@ -1190,7 +1200,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         cfg, pulse if cfg.mm_pd_input == "ffe" else pulse_pre, levels_norm, swing,
         cfg.rx.noise_rms, n_feedback=n_feedback,
         ffe_track=_ffe_lms_track(cfg, pulse_pre, n_dfe) if has_ffe else 0.0,
-        loop=not (cfg.rx.arch == "mixed_signal" and has_ffe))
+        loop=not (cfg.rx.arch == "mixed_signal" and has_ffe), voters=int(voters))
     # The smear is a sampling instant that moves (the loop's hunting and the
     # clock it leaves, the receiver's RJ), faster than the decision feedback
     # adapts: the receiver's DFE stays where it adapted, at the phase it is
@@ -1700,7 +1710,20 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 # DFE: the runs that vote the loop late are the runs whose
                 # samples it then errs on (_pattern_phase_factor, P3 #13)
                 kp_s, ki_s = cdr_gains(cfg.rx.cdr, osr)[:2]
-                if n_levels == 2 and n_dfe > 0 and not pr_active and mlsd_mem == 0 and kp_s > 0:
+                # the chain is the loop's phase as its votes make it; where the
+                # clock's wander the loop leaves is most of the smear (a profile
+                # clock), the phase is the clock's, not the data's, and the chain
+                # does not hold that path: a 16 GBd link under a -50 dB profile
+                # (tests/test_rx_clock.py, 0.14 UI) ran it 2000 steps without
+                # converging, its marginal 25x off the density, factor 1, 75 s.
+                # Nor where the loop is underdamped enough to slip (the warning
+                # below): no stationary joint to find (kp_shift 8 on the NRZ 16G
+                # preset, 600 steps unconverged, 49 s, factor 1)
+                votes_hold = (loop_sol.sigma_untracked_ui <= loop_sol.sigma_self_ui
+                              and (loop_sol.damping is None
+                                   or loop_sol.damping >= _BB_DAMPING_WARN))
+                if (n_levels == 2 and n_dfe > 0 and not pr_active and mlsd_mem == 0 and kp_s > 0
+                        and votes_hold):
                     def _jit_at(off_s: int):
                         if tx_jit_phi is None:
                             return None
@@ -1730,8 +1753,10 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                         pulse, pulse_pre, osr, lock, noise_sigma, swing, n_dfe, bb_u, bb_density,
                         kp_s, edge_jitter=_jit_at, xtalk_var=x_var,
                         edge_jitter_ui=float(cfg.tx.clock.rj_ui), ki=ki_s)
-                    ber *= pattern_phase.factor
-                    ser *= pattern_phase.factor
+                    f_pp = (pattern_phase.factor if own_clock and voters <= 1
+                            else pattern_phase.factor_marginal if voters <= 1 else 1.0)
+                    ber *= f_pp
+                    ser *= f_pp
             else:
                 ber = float(np.mean([_smeared_at(cb, x, lock, sg * osr) for sg in smears]))
                 ser = float(np.mean([_smeared_at(cs, x, lock, sg * osr) for sg in smears]))
@@ -1938,6 +1963,10 @@ class PatternPhase:
     factor_raw: float = 1.0
     steps: int = 0
     converged: bool = True
+    #: the chain's own marginal read against the engine's density, without
+    #: the classes' correlation (``density`` in place of the class
+    #: densities): a lane on another lane's clock (``own_clock=False``)
+    factor_marginal: float = 1.0
 
 
 _PATTERN_PHASE_TRACE: dict | None = None     # probes: a dict here receives the propagation's internals
@@ -1954,7 +1983,8 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
                           n_hist: int = _PATTERN_HISTORY, step: float = 0.5,
                           n_pre: int = 24, n_post: int = 64, n_steps: int = 600,
                           tol: float = 1e-3, onto_p0: bool | None = None, trust: float = 1e-3,
-                          ki: float = 0.0, second_order: bool = True) -> PatternPhase:
+                          ki: float = 0.0, second_order: bool = True,
+                          kernel="auto") -> PatternPhase:
     """The pattern-phase factor of a bang-bang loop on NRZ with a held DFE.
 
     The smear reads the bathtub as if the sampling phase and the data were
@@ -2250,7 +2280,7 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         probs.append((p_stay.astype(np.float32), p_late.astype(np.float32), (p_vote - p_late).astype(np.float32)))
     n_mv = n_sub if kp > 0.0 else 0                 # bins a vote moves the mass (none: nothing moves)
     n_state = 4 if ki > 0.0 else 2
-    buf = [[np.zeros((n_cls, n_u), dtype=np.float32) for _ in range(n_state)] for _ in range(2)]
+    buf = [np.zeros((n_state, n_cls, n_u), dtype=np.float32) for _ in range(2)]
     arr = [np.empty((n_cls, n_u), dtype=np.float32) for _ in range(2)]
     tmp = [np.empty((n_cls, n_u), dtype=np.float32) for _ in range(4)]
 
@@ -2267,7 +2297,7 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
         v = x.reshape(n_q, 2, 2, n_u)
         return (v[:, 0, 0], v[:, 1, 1]), (v[:, 0, 1], v[:, 1, 0])
 
-    def advance(st: list[np.ndarray], out: list[np.ndarray]) -> None:
+    def advance(st: np.ndarray, out: np.ndarray) -> None:
         """One symbol. ``st`` = mass for the two pairing states, then (with
         the integral path) the same masses times the integrator's mean."""
         for o in out:
@@ -2367,6 +2397,22 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     p_s = p0
     n_used = 0
     done = False
+    # the step: the numpy one above defines it; the fused loop
+    # (cdr/pattern_chain.py, numba) gives its arrays bit for bit, 4-5x faster
+    if kernel == "auto":
+        from ..cdr.pattern_chain import chain_step as kernel
+        if _PATTERN_PHASE_TRACE is not None:
+            kernel = None           # the trace reads the integrator's mean from the numpy step
+    elif kernel == "numpy":
+        kernel = None
+    if kernel is not None:
+        p_st = np.ascontiguousarray(np.stack([probs[0][0], probs[1][0]]))
+        p_la = np.ascontiguousarray(np.stack([probs[0][1], probs[1][1]]))
+        p_ea = np.ascontiguousarray(np.stack([probs[0][2], probs[1][2]]))
+
+        def advance(st, out):    # noqa: F811 -- the same step, fused
+            kernel(st, out, p_st, p_la, p_ea, n_hist, n_mv, float(ki), bool(second_order),
+                   float(dus))
     for _ in range(n_steps):
         n_used += 1
         advance(cur, nxt_buf)
@@ -2430,6 +2476,11 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     read_joint = w_cls * float(np.sum(pc * p_err)) * dus
     read_indep = w_cls * float(np.sum(p0[None, :] * p_err)) * dus
     raw = read_joint / read_indep if read_indep > 0.0 else 1.0
+    # the chain's marginal alone, no correlation: what a lane reads on a
+    # clock whose phase is distributed as this loop's but which its own
+    # data does not vote (another lane's loop, engine.shared_clock)
+    read_marg = w_cls * float(np.sum(np.asarray(p_s, dtype=np.float64)[None, :] * p_err)) * dus
+    raw_marg = read_marg / read_indep if read_indep > 0.0 and not onto_p0 else 1.0
     # The factor carries the chain's own marginal as well as the classes'
     # correlation, and below 1 it is the marginal: the engine's stationary
     # density is a Boltzmann fit to the linearised RMS whose tails run far
@@ -2443,7 +2494,8 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
     result = PatternPhase(factor=float(factor), shift=shift, history=hist.astype(np.int8),
                           next_same=nxt > 0, read_joint=float(read_joint), read_indep=float(read_indep),
                           phase_grid=us, cond_density=pc.astype(np.float32), marginal_error=marginal_error,
-                          density=p_s, factor_raw=float(raw), steps=n_used, converged=bool(done))
+                          density=p_s, factor_raw=float(raw), steps=n_used, converged=bool(done),
+                          factor_marginal=float(raw_marg if done else 1.0))
     if key is not None:
         _PATTERN_PHASE_CACHE[key] = result
         while len(_PATTERN_PHASE_CACHE) > _PATTERN_PHASE_CACHE_SIZE:
@@ -2453,7 +2505,7 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
                         swing: float, noise_sigma: float, n_feedback: int = 0,
-                        loop: bool = True, ffe_track: float = 0.0
+                        loop: bool = True, ffe_track: float = 0.0, voters: int = 1
                         ) -> tuple[float, LoopSolution | None]:
     """RMS sampling-instant jitter [UI] to smear the bathtub with, and the loop model behind it.
 
@@ -2558,7 +2610,7 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
             transitions=_bb_transitions(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
                                         pairs=pairs, level_probs=level_probs),
             mean_output=lambda sigma_e: _bb_mean_output(pairs, levels_norm.size, sigma_e),
-            period=_pattern_period(cfg))
+            period=_pattern_period(cfg), voters=voters)
     # the same loop once it has forgotten its start: what a longer run, and
     # the link in service, settles at
     steady = float(np.hypot(untracked(lambda f, k=sol.k_pd: error_response(f, lp, k)),

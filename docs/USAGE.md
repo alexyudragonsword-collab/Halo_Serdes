@@ -1099,9 +1099,22 @@ c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch
   白时钟上不计 bang-bang 环路的游走、时域 lane 静止,0.49–1.78×,ROADMAP P2 #27;P2 #27 当天、曲线在样本之间也算之前 0.92–1.31×,P2 #28);ADC 给定时域 lane 在该偏移收敛的 FFE 时
   0.93–1.47×(224G,1.5 mV,−1/4…+1/4 UI),用上面的 MMSE 起点代用 0.9–1.5× —— 代用解就是时域引擎自己的起点
   (`timedomain.adc_start`),LMS 几乎不离开它。2026-10-14 前代用解是一份漏了发端 FFE 的拷贝,14–25×(ROADMAP P2 #23)。
-- 不含:主 lane 跟踪抖动时从 lane 跟着走的动态部分、lane 间相关抖动(要多 lane 同时跑的时域内核;时钟抖动的平滑仍按 lane
-  自己的环路算);各 lane 的串扰相位随 skew 变
+- 曲线是在"别的 lane 的时钟上"读的(`run_statistical(own_clock=False)`):NRZ 带 DFE 时,推晚环路的数据就是它接着错的数据(码型-相位因子),
+  这份相关只有驱动时钟的那条 lane 有;`c.own_ber` 是这条 lane 用自己环路时锁定点的 BER,`shared_cdr("master")` 给主 lane 用它。
+  一个环路听全部 lane 时(`"average"`)猎振按 1/√N 变小,曲线要按 lane 数取:`lane_curve(cfg, voters=4)`(不符时 `shared_cdr` 告警;
+  NRZ 16G 15 mV 八条 lane 读单 lane 自己环路的 0.094×)。不含:各 lane 的串扰相位随 skew 变
   (要的话每条 lane 自己建 `cfg.crosstalk`,`shared_cdr` 收一组曲线)。
+- 多条 lane 在一个时钟上一起跑的时域(混合信号;ADC 未接):
+
+  ```python
+  from halo_serdes.engine.shared_clock import run_shared_clock
+
+  r = run_shared_clock(cfg, [0.0, 0.25, -0.125], policy="master")   # 或 "average";master=i
+  r.ber, r.n_errors, r.lanes[i].extras["phase_track"], r.displacement
+  ```
+
+  每条 lane 默认独立码元(PRBS 不随种子变,多条 lane 用它就完全相关)。NRZ 16G 15 mV 八条 lane:主 lane 1.53e-5、从 lane 7.44e-6
+  (统计 0.90 / 1.13×),平均环路 9.6e-7(统计 1.33×)。`cairn/多lane建模.md` §9。
 - 示例 `examples/45_shared_cdr_skew.py`:三条链路的曲线、窗口、四条 lane 三种时钟放法;PAM4 32G 混合信号的 minmax 时钟
   下最差 lane 是单条 lane 用自己环路时的 2.35、KP4 门限下窗口 0.351 UI(2026-10-21 bang-bang 相位按平稳分布平滑之后,ROADMAP P2 #32;此前 1.83 / 0.363 UI,PAM4 猎振 σ 改正之后,ROADMAP P2 #30;P2 #29 判决门限保持后
   一度 2.94 / 0.321 UI,那时 σ 读高、早侧偏悲观。此前 1.73 / 0.360 UI;2026-10-15 前 0.17 —— 那是静止采样的曲线,锁定点不在浴盆底;计入环路游走、DFE
