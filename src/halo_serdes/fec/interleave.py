@@ -72,8 +72,12 @@ class FecLayout:
     each FEC lane alternates codewords and ``stagger`` offsets neighbouring
     lanes (1 with two codewords: the checkerboard).
 
-    One lane is enough to evaluate: the others add independent events at the
-    same rate, and which lane an event is on only relabels the codewords."""
+    One lane is enough to evaluate when the lanes' errors are independent: the
+    others add independent events at the same rate, and which lane an event is
+    on only relabels the codewords. Lanes on one clock err together (their
+    sampling phase is one), and an error on two lanes at once is two FEC lanes
+    of the same codeword group: :func:`burst_profile_lanes` takes the lanes
+    together."""
 
     lanes: int = 1
     pcs_lanes: int = 1
@@ -99,17 +103,21 @@ class FecLayout:
             raise ValueError(f"mux_bits must divide or be a multiple of the {M_BITS}-bit "
                              f"RS symbol, got {g}")
 
-    def locate(self, bits: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """(codeword, RS symbol) of each wire bit index on the lane; both
-        are labels, unique across the run."""
+    def locate(self, bits: np.ndarray, lane: int = 0) -> tuple[np.ndarray, np.ndarray]:
+        """(codeword, RS symbol) of each wire bit index on physical lane
+        ``lane``; both are labels, unique across the run and the lanes. The
+        lanes' FEC lanes are numbered on (lane ``j`` carries ``j * pcs_lanes``
+        on), and all of them advance together through the codeword groups."""
         b = np.asarray(bits, dtype=np.int64)
         m, g = self.pcs_lanes, self.mux_bits
+        if not 0 <= lane < self.lanes:
+            raise ValueError(f"lane {lane}: the layout has lanes 0..{self.lanes - 1}")
         r, w = np.divmod(b, m * g)
         q = w // g                                  # FEC lane on this physical lane
         s = (r * g + w % g) // M_BITS               # RS symbol index along it
         per = self.n * self.interleave // (self.lanes * m)   # per FEC lane per codeword group
-        cw = (s // per) * self.interleave + (s + self.stagger * q) % self.interleave
-        return cw, s * m + q
+        cw = (s // per) * self.interleave + (s + self.stagger * (q + lane * m)) % self.interleave
+        return cw, s * m + q + lane * (1 << 40)
 
 
 #: One lane, consecutive 10-bit symbols, one codeword at a time.
@@ -251,6 +259,45 @@ class BurstProfile:
             else:
                 lo = mid
         return 10.0 ** (0.5 * (lo + hi))
+
+
+def burst_profile_lanes(errors: list, n_bits: int, layout: FecLayout,
+                        gap_symbols: int = 8, bits_per_symbol: float = 2) -> BurstProfile:
+    """:func:`burst_profile` over the physical lanes of one flow taken together.
+
+    ``errors[j]``: lane ``j``'s wire-bit error indices (``bit_errors``), the
+    lanes time-aligned (bit ``b`` of every lane on the wire at once);
+    ``n_bits``: bits checked per lane. Errors closer than ``gap_symbols``
+    symbols in time belong to one event whichever lane they are on, so lanes
+    that err together make one event with a larger footprint in a codeword
+    rather than independent ones. ``len(errors)`` must be ``layout.lanes``.
+    With the lanes' errors independent this reads what :func:`burst_profile`
+    of one lane does, to the rare chance coincidences."""
+    if len(errors) != layout.lanes:
+        raise ValueError(f"{len(errors)} lanes of errors for a {layout.lanes}-lane layout")
+    pos = [np.sort(np.asarray(e, dtype=np.int64)) for e in errors]
+    lane = np.concatenate([np.full(p.size, j, dtype=np.int64) for j, p in enumerate(pos)])
+    e = np.concatenate(pos)
+    total = int(n_bits) * layout.lanes
+    if e.size == 0:
+        none = np.zeros(0, dtype=np.int64)
+        return BurstProfile(layout, total, 0, 0, none, none)
+    order = np.argsort(e, kind="stable")
+    e, lane = e[order], lane[order]
+    event = np.concatenate([[0], np.cumsum(np.diff(e) > gap_symbols * bits_per_symbol)])
+    cw = np.empty(e.size, dtype=np.int64)
+    sym = np.empty(e.size, dtype=np.int64)
+    for j in range(layout.lanes):
+        k = lane == j
+        cw[k], sym[k] = layout.locate(e[k], lane=j)
+    order = np.lexsort((sym, cw, event))
+    ev, cw, sym = event[order], cw[order], sym[order]
+    first = np.concatenate([[True], (np.diff(ev) != 0) | (np.diff(cw) != 0) | (np.diff(sym) != 0)])
+    ev, cw = ev[first], cw[first]
+    start = np.concatenate([[True], (np.diff(ev) != 0) | (np.diff(cw) != 0)])
+    first_of = np.flatnonzero(start)
+    marks = np.diff(np.concatenate([first_of, [ev.size]]))
+    return BurstProfile(layout, total, int(e.size), int(event[-1]) + 1, marks, ev[first_of])
 
 
 def burst_profile(errors: np.ndarray, n_bits: int, layout: FecLayout = SEQUENTIAL,

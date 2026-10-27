@@ -229,7 +229,9 @@ def test_invariant3_mixed_signal_lane_off_its_lock(name, noise, offsets):
     ch = ChannelModel.from_config(cfg)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        curve = lane_curve(cfg, ch)
+        # the offsets are on the 1/8 UI grid, where a curve of 8 phases reads
+        # the run at that offset itself (every offset is its own run)
+        curve = lane_curve(cfg, ch, n_phases=8)
         runs = _time_at_offset(cfg, ch, offsets, wander=True)
     for d, t in zip(offsets, runs):
         assert t.ber.n_errors >= 30, (d, t.ber.n_errors)
