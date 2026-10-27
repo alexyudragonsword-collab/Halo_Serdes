@@ -12,6 +12,8 @@
   改读原始 ADC 样本时落在均值(0.90–1.20×),NRZ 28G bang-bang 也在均值。`LaneCurve.pd_sees_offset`,`shared_cdr("average")` 按它放时钟。
 - 示例 45 重接受(ADC 的 average 行与 master 相同,末段加 ADC 时域对照)。铁律 2 的不对称撤销;ROADMAP #9 没有剩下的待办。多 lane §9.4、§8.3 十更正;pitfalls 1 条。
 - 先在本地真编 .so 跑过(上次的坑):编译与解释的 ADC / 混合信号共享时钟结果相同。
+- CI(PR #112,头 a442527,一次全绿):矩阵 jit 17.9–25.6 分钟、nojit 16.4–24.8(#111 11.4–24.8),examples 20.4 / 20.5、examples-full 20.1(#111 35.2);
+  Android 构建 2.8 / 编译版 8.2、编译版模拟器 5.1、API 34 3.6 / 35 5.0;pyinstaller 3.1、nuitka 37.1、nuitka-onefile 43.8(#111 39.1 / 42.7,两次都高,未查)。
 
 ## 2026-10-26 · P3 #17 深处核到 BER、P3 #9c 共享 CDR 动态部分、测试与因子的成本(feat/p17-p9c-ci)
 
