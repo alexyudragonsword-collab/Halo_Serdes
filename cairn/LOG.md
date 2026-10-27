@@ -15,6 +15,9 @@
 - CI 成本:链的单步融合成 numba 循环(`cdr/pattern_chain.py`),与 numpy 步逐位相同,一次因子 5.6 → 2.8 s;剖面时钟 / 欠阻尼环路不再跑链
   (原来 600 步不收敛、因子 1,单次 50–106 s → 5–7 s);`test_api_json` 的 study 改模块级 fixture,231 → 67 s(本地同负载)。指纹 986 值逐位不变。
 - 探针:调用记录插件(`plug/callrec.py`,会话暂存区),`p9c_*.py`、`probe15.py` 长链。
+- CI(PR #111):首推 cdb9946 编译版 APK 模拟器 8 项失败 —— numpy 步注解 `list[np.ndarray]` 被 Cython 强制(pitfalls),改注解后头 1216070 全绿。
+  矩阵 jit 13.5–21.8 分钟、nojit 11.4–24.8(#110 21.8–32.8),examples 18.5 / 20.2、examples-full 35.2(#110 30.4,示例 45 加了时域末段);
+  Android 构建 1.8 / 编译版 6.8、编译版模拟器 5.2、API 34 3.6 / 35 5.0;pyinstaller 2.9、nuitka 39.1、nuitka-onefile 42.7(#110 24.6 / 30.5,引擎改动后缓存未命中待看)。
 
 ## 2026-10-26 · P3 #16:积分器推动的数值扩散;去掉下限 1(perf/factor-cost-p16 第二步)
 
