@@ -1116,11 +1116,12 @@ c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch
   ```
 
   每条 lane 默认独立码元(PRBS 不随种子变,多条 lane 用它就完全相关)。NRZ 16G 15 mV 八条 lane:主 lane 1.53e-5、从 lane 7.44e-6
-  (统计 0.90 / 1.13×),平均环路 9.6e-7(统计 1.33×)。ADC(224G,2.5 mV):从 lane 在偏移处对统计(FFE 在那里重解)0.90–1.02×;
+  (统计 0.90 / 1.13×),平均环路 9.6e-7(统计 1.33×)。ADC(224G,2.5 mV):从 lane 在偏移处对统计(FFE 在那里重解)0.74–0.95×(2026-10-27 DFE 误码传播计入 FFE 着色之前 0.90–1.02×);
   PAM4 ADC 的 MM 读均衡后的样本,平均环路看不见 lane 的偏移、时钟停在起点而不是 skew 均值 —— `lane_curve` 给的曲线带着
   `pd_sees_offset`,`shared_cdr("average")` 按它放时钟(都看不见时放在 lane `master` 的锁定点)。一个时钟上的 lane 会一起出错
   (NRZ 16G 四条 lane:共享 CDR 7×、再共用发端时钟 17× 于独立时),每条 lane 的 BER 对得上,FEC 不能按独立 lane 读:
-  `bit_errors` 每条 lane 的误码交给 `burst_profile_lanes`(4:1 比特复用下门限 0.14× / 0.003×,符号对四码字 0.93 / 0.87)。`cairn/多lane建模.md` §9。
+  `bit_errors` 每条 lane 的误码交给 `burst_profile_lanes`(4:1 比特复用下门限 0.14× / 0.003×,符号对四码字 0.93 / 0.87;PAM4 链路上弱得多 ——
+  224G ADC 对各自独立的 lane 不动,PAM4 32G 低 5–8 %)。`cairn/多lane建模.md` §9。
 - 示例 `examples/45_shared_cdr_skew.py`:三条链路的曲线、窗口、四条 lane 三种时钟放法;PAM4 32G 混合信号的 minmax 时钟
   下最差 lane 是单条 lane 用自己环路时的 2.35、KP4 门限下窗口 0.351 UI(2026-10-21 bang-bang 相位按平稳分布平滑之后,ROADMAP P2 #32;此前 1.83 / 0.363 UI,PAM4 猎振 σ 改正之后,ROADMAP P2 #30;P2 #29 判决门限保持后
   一度 2.94 / 0.321 UI,那时 σ 读高、早侧偏悲观。此前 1.73 / 0.360 UI;2026-10-15 前 0.17 —— 那是静止采样的曲线,锁定点不在浴盆底;计入环路游走、DFE
