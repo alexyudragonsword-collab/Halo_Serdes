@@ -12,6 +12,7 @@
 - 示例 31 并发写:`ClockProfile.save` / `dump_config` 原子写入(`core/files`,进 Android 编译集);pitfalls 一条。
 - 审计:README / COMPARISON 补多 lane FEC 与共享发端时钟;clock_profile.md、invariants 记鉴相增益;示例 31 重接受,derived 全对。
 - 编译集:statistical、tx/clock、core/files 本地真编 .so,HALO_NO_JIT 下 `k_pd` 与源码逐位相同、原子写测试过。指纹逐位不变。探针 `p62`–`p70`。
+- CI(PR #116,头 a76d25d,一次全绿):矩阵 jit 16.4–18.2 分钟、nojit 21.8–25.0,examples 20.2、examples-full 20.5;Android 构建 1.5 / 编译版 10.2、编译版模拟器 3.9、API 34 5.3 / 35 5.0、Chaquopy 实际轮子版本 2.6;不触发 Windows / 打包腿。
 
 ## 2026-10-27 · PAM4 多 lane FEC、ADC 对照重算、按类误码传播与示例 31 余项(feat/followups-1027b)
 
