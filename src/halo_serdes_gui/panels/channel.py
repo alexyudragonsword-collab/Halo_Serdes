@@ -45,13 +45,17 @@ def render(rec: RunRecord):
     except Exception as exc:
         cards.append(theme.metric_card("COM", "n/a", "muted", str(exc)[:20]))
 
-    body = [common.cards_row(cards), common.warnings_block(rec),
+    body = [common.cards_row(cards),
             dbc.Row([
                 dbc.Col(common.graph(figures.channel_loss_fig(cm, cfg.f_nyquist)), lg=6),
                 dbc.Col(common.graph(figures.impulse_fig(cm, cfg.dt)), lg=6),
             ], className="g-2"),
             dbc.Row([
                 dbc.Col(common.graph(figures.pulse_cursors_fig(cm, cfg.dt, cfg.osr)), lg=6),
-                dbc.Col(com_fig or figures.placeholder("COM unavailable"), lg=6),
+                # not ``com_fig or ...``: a Dash component with no children
+                # has len 0, so the graph read as false and the bare placeholder
+                # figure was rendered instead (a React error, and no COM chart)
+                dbc.Col(com_fig if com_fig is not None
+                        else common.graph(figures.placeholder("COM unavailable")), lg=6),
             ], className="g-2")]
     return html.Div(body)

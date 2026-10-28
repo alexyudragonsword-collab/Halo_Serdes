@@ -27,7 +27,6 @@ def render(rec: RunRecord):
     settle, train_end = e.get("settle", 0), e.get("train_end", 0)
     n_ave = e.get("n_ave", 1)
     return html.Div([
-        common.warnings_block(rec),
         dbc.Row([
             dbc.Col(common.graph(figures.dfe_traj_fig(
                 w_hist, w_final, settle, train_end, n_ave)), lg=7),

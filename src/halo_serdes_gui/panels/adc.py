@@ -38,7 +38,7 @@ def render(rec: RunRecord):
         best = f"{ls.min():.2e}" if ls.min() > 0 else "0 (no errors)"
         cards.append(theme.metric_card("Best-lane SER", best, "muted"))
     return html.Div([
-        common.cards_row(cards), common.warnings_block(rec),
+        common.cards_row(cards),
         dbc.Row([
             dbc.Col(common.graph(figures.lane_ser_fig(lane_ser)), lg=6),
             dbc.Col(common.graph(figures.adc_codes_fig(e.get("q_hist_head"))), lg=6),

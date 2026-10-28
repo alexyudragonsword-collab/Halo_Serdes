@@ -241,6 +241,10 @@ CDR 锁偏(`pd_input: adc`),不是均衡器。只看全程 BER 或只看 `y_slic
 桌面页面点开才 `AttributeError`。光互联阶段 2 的「Optical」页就这样交付了(阶段 3 发现并修复)。现在有守卫测试:`api._STUDIES` 里每个 study 都必须能从
 兼容层拿到;Optical 页另有一条渲染测试,其它页仍只测 study 函数(`tests/test_gui_studies.py`)。
 
+**Dash 组件不能用 `a or b` 选。** 组件有 `__len__`(子元素个数),没有子元素的 `dcc.Graph` 判为假。Channel 页写的
+`com_fig or figures.placeholder(...)`,于是 COM 分解图从合入起就没显示过,页面拿到的是裸 Plotly figure(浏览器 React #31,
+Python 侧不报错,只看面板文字的测试也不报)。改为 `is not None`;`tests/test_gui_phase0.py` 遍历各页,不许 figure 出现在组件位置(2026-10-28)。
+
 **测试里"取第一个预设"要先确认它在这个用途下成立。** `preset_names()[0]` 是
 "Library defaults",信道是无文件的 touchstone。这条坑本文件下方已经记过一次(M4 仪器化测试),
 它在 2026-09 的 GUI 测试里又咬了一次 —— **记下来不等于不会再犯,取法本身要改成"取第一个满足前提的"**。

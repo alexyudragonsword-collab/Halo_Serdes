@@ -13,27 +13,9 @@ TITLE = "Dual-Engine"
 TAB_ID = "dual"
 
 
-def _ensure_stat(rec: RunRecord):
-    """Compute the (cheap, analytic) statistical result on demand and cache it.
-
-    A failure is recorded on the record rather than swallowed. This view *is*
-    invariant #3 — the statistical/time-domain cross-check — so "the statistical
-    engine raised" and "the statistical engine was never run" must not render
-    the same way.
-    """
-    if rec.stat is not None or rec.stat_error is not None:
-        return rec.stat
-    try:
-        from halo_serdes.channel import ChannelModel
-        from halo_serdes.engine.statistical import run_statistical
-        from halo_serdes_app.runner import stat_equaliser
-        cm = ChannelModel.from_config(rec.cfg)
-        taps, pre = stat_equaliser(rec.cfg, cm, rec.sim)
-        rec.stat = run_statistical(rec.cfg, channel=cm, ffe_taps=taps, ffe_pre=pre)
-    except Exception as exc:
-        rec.stat = None
-        rec.stat_error = f"{type(exc).__name__}: {exc}"
-    return rec.stat
+#: Kept under its old name; the helper moved to ``common`` when Single Run
+#: started showing the cross-check too.
+_ensure_stat = common.ensure_stat
 
 
 def render(rec: RunRecord):
@@ -47,7 +29,7 @@ def render(rec: RunRecord):
     mc_ber = rec.sim.ber.ber if rec.sim is not None else None
     y_slicer = rec.sim.y_slicer if rec.sim is not None else None
 
-    body = [common.warnings_block(rec)]
+    body = []
     if stat is None and rec.stat_error:
         body.append(theme.banner(
             "crit", f"Statistical engine failed, so there is no cross-check to "

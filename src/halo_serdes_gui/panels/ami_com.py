@@ -12,6 +12,9 @@ from . import common
 
 TITLE = "AMI / COM"
 TAB_ID = "amicom"
+#: Shown with a Run button instead of computing on tab switch (app.py).
+STUDY = ("802.3 COM and the behavioral figure of merit over a channel-loss "
+         "sweep, plus what can execute an IBIS-AMI model here.")
 
 
 def _ami_status():

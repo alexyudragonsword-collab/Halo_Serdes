@@ -15,6 +15,10 @@ from . import common
 
 TITLE = "Optical"
 TAB_ID = "optical"
+#: Shown with a Run button instead of computing on tab switch (app.py).
+STUDY = ("The optical cascade, its level-dependent noise, reach over fibre "
+         "length with and without a retimer, and TDECQ. About 20 s on the LPO "
+         "preset.")
 
 
 def _loss_fig(cm, f_nyq):
@@ -119,7 +123,7 @@ def render(rec: RunRecord):
         cards.append(theme.metric_card("First dispersion fade",
                                        f"{ff / 1e9:.0f} GHz" if np.isfinite(ff) else "none",
                                        "info", f"D {opt.dispersion_ps_nm_km} ps/(nm·km), {opt.length_m:.0f} m"))
-    blocks = [common.warnings_block(rec), common.cards_row(cards),
+    blocks = [common.cards_row(cards),
               dbc.Row([dbc.Col(common.graph(_loss_fig(cm, cfg.f_nyquist)), lg=7),
                        dbc.Col(common.graph(_sigma_fig(noise)), lg=5)], className="g-2")]
     if cfg.modulation == "pam4":

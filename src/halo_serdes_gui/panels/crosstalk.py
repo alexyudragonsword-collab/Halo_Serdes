@@ -14,6 +14,9 @@ from . import common
 
 TITLE = "Crosstalk"
 TAB_ID = "crosstalk"
+#: Shown with a Run button instead of computing on tab switch (app.py).
+STUDY = ("BER against FEXT + NEXT coupling, then ICN and 802.3 COM against the "
+         "number of aggressor lanes. A few seconds.")
 
 
 def render(rec: RunRecord):
@@ -48,7 +51,7 @@ def render(rec: RunRecord):
 
     return html.Div([
         common.cards_row([theme.metric_card("Baseline BER",
-                          f"{x['baseline']:.2e}", "muted", "no aggressors")]),
+                          common.sci(x["baseline"]), "muted", "no aggressors")]),
         common.graph(fig),
         html.Div("One FEXT + one NEXT synthetic aggressor at a common coupling "
                  "level are injected into the StatEye engine (the same "
