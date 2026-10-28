@@ -13,6 +13,8 @@
 - 修 Channel 页 COM 分解图从未显示(`Graph or 占位图`,无子元素的组件为假);pitfalls 一条,测试遍历全部页面查裸 figure。
 - 验证:GUI + 文档新鲜度 + 导入卫生 + API 合同 138 项全过;Playwright 实跑:切预设 ADC 组出现、运行 2.9 s 出卡 + 1.5 s 补结论、改参出横幅、研究页 0.2 s 出按钮、COM 点后 0.7 s、回页不重算,控制台 0 报错。
   导览图 1、4 重拍。
+- CI(PR #118,头 4781bff,一次全绿):矩阵 jit 16.7–22.8 分钟、nojit 12.4–25.1,examples 20.2,import-clean 1.4–2.2;Windows 打包 PyInstaller 2.9、
+  Nuitka 22.4、Nuitka onefile 37.5(GUI 改动触发,桌面打包通过);不触发 Android。
 
 ## 2026-10-28 · ROADMAP 记待办与方向候选(docs/roadmap-1028)
 
