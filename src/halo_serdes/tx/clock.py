@@ -264,17 +264,18 @@ class ClockProfile:
                             source=self.source)
 
     def save(self, path: str | Path, *, source: str | None = None) -> Path:
-        """Write the profile in the file format ``load`` reads (``docs/clock_profile.md``)."""
+        """Write the profile in the file format ``load`` reads
+        (``docs/clock_profile.md``), whole or not at all."""
         import yaml
+
+        from ..core.files import write_text_atomic
 
         p = Path(path)
         data = {"f0_hz": float(self.f0_hz), "f_hz": [float(x) for x in self.f_hz],
                 "l_dbc_hz": [float(x) for x in self.l_dbc_hz],
                 "spurs": [{"f_hz": float(a), "dbc": float(b)} for a, b in self.spurs],
                 "source": str(source if source is not None else self.source)}
-        with p.open("w", encoding="utf-8") as fh:
-            yaml.safe_dump(data, fh, sort_keys=False)
-        return p
+        return write_text_atomic(p, yaml.safe_dump(data, sort_keys=False))
 
     def spur_amplitudes_s(self) -> list[tuple[float, float]]:
         """``(offset_hz, peak_amplitude_s)`` per spur.

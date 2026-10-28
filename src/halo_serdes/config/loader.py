@@ -178,14 +178,16 @@ def _replace_tree(obj: Any, tree: dict[str, Any]) -> Any:
 
 
 def dump_config(cfg: LinkConfig, path: str | Path) -> None:
-    """Write ``cfg`` to YAML (round-trips through ``load_config``)."""
+    """Write ``cfg`` to YAML (round-trips through ``load_config``), whole or
+    not at all."""
     data = dataclasses.asdict(cfg)
     data = _tuples_to_lists(data)
     data["schema_version"] = SCHEMA_VERSION
     import yaml  # local: see load_config
 
-    with open(path, "w", encoding="utf-8") as fh:
-        yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=True)
+    from ..core.files import write_text_atomic
+
+    write_text_atomic(path, yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
 
 
 def _tuples_to_lists(obj: Any) -> Any:

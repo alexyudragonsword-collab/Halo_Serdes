@@ -68,7 +68,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 光互联 | `optical/` + `LinkConfig.topology` | **LPO / CPO / retimed,阶段 1–3**:电段 A → E/O(VCSEL 二阶 / EML 单极点)→ 光纤(OM4 模式带宽 / SMF 色散+啁啾)→ O/E(PD+TIA)→ 电段 B 作为级联 H(f) 进信道;散粒 + RIN + TIA 噪声随每个 PAM4 电平的光功率变化,两个引擎共用一个噪声对象(`examples/32`);重定时串联(`engine/cascade.py`,`examples/33`);L-I / EAM 大信号曲线与 802.3 TDECQ(`analysis/tdecq.py`,`examples/34`) |
 | 引擎 | `engine/` | 时域 MC、StatEye 统计(PDF 卷积外推 1e-15)、静态快评、Tx-FIR 背channel 训练 |
 | 分析 | `analysis/` | 眼图/浴盆、三层抖动分解、JTOL、IEEE 802.3 COM(93A/178A)、波形重建;**按模块的功耗估计**(`analysis/power.py`:ADC 按 Walden / Schreier FOM、FFE / DFE / Viterbi 按运算次数、比较器、光路(可插拔模块 / 共封装光引擎)与重定时器,pJ/bit;系数是公开数据的估计,读比值,`examples/41`);**共享时钟的 lane 间 skew 预算**(`analysis/skew.py`:lane 偏离锁定点、均衡器在那里重新适应后的 BER 曲线,窗口与三种时钟放法,`examples/45`);多条 lane 共一个时钟的时域运行(`engine/shared_clock.py`:主 lane 带 / 平均环路,混合信号与 ADC 两种接收机) |
-| 编码 | `fec/` | RS-KP4/KR4 + pre/post-FEC 换算、级联内码模型;误码位置按 lane 复用与码字交织映射到 RS 符号、成串误码的帧错误率(`fec/interleave.py`,`examples/43`) |
+| 编码 | `fec/` | RS-KP4/KR4 + pre/post-FEC 换算、级联内码模型;误码位置按 lane 复用与码字交织映射到 RS 符号、成串误码的帧错误率,一组 lane 的误码合起来分事件(一个时钟上的 lane 一起出错时,`burst_profile_lanes`)(`fec/interleave.py`,`examples/43`) |
 | 接口 | `io/` | IBIS-AMI(真实 C ABI 执行编译模型 / pyibisami 厂商模型)、COM 适配器 |
 | 界面 | `halo_serdes_gui/` | 17 标签页 Plotly Dash 工作台 + Windows 桌面打包 |
 | 硬件 | `rtl/` | FFE+DFE+slicer、带 CDR 的数字后端、sliding / Viterbi / 降状态(DFSE)MLSD 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |

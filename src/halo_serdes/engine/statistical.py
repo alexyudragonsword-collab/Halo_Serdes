@@ -1067,6 +1067,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     lock_pos = None
     if cfg.rx.arch in ("mixed_signal", "adc_dsp"):
         lock_pos = _lock_position(cfg, h_pre_ffe, h_chan, tx_pipe, has_ffe, ffe_pre)
+    lock_base = lock_pos
     if phase_ui is not None and lock_pos is not None:
         # a sampling point set from outside: the grid is centred on it, as
         # for a PR target below, so the labels stay put at any offset
@@ -1199,11 +1200,16 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     n_feedback = ((n_t - 1 if pr_active else 0) + n_dfe
                   if cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "ffe" else 0)
     pulse_pre = pulse_from_impulse(Waveform(h_pre_ffe, cfg.dt), osr)
+    # the detector's cursors where the loop samples (the base lock, not a
+    # lane's offset read): with the feedback taken there its mean is zero
+    lock_shift = (int(np.round(lock_base - int(np.argmax(np.abs(pulse.y)))))
+                  if n_feedback > 0 and lock_base is not None else 0)
     sigma_ui, loop_sol = _sampling_jitter_ui(
         cfg, pulse if cfg.mm_pd_input == "ffe" else pulse_pre, levels_norm, swing,
         cfg.rx.noise_rms, n_feedback=n_feedback,
         ffe_track=_ffe_lms_track(cfg, pulse_pre, n_dfe) if has_ffe else 0.0,
-        loop=not (cfg.rx.arch == "mixed_signal" and has_ffe), voters=int(voters))
+        loop=not (cfg.rx.arch == "mixed_signal" and has_ffe), voters=int(voters),
+        lock_shift=lock_shift)
     # The smear is a sampling instant that moves (the loop's hunting and the
     # clock it leaves, the receiver's RJ), faster than the decision feedback
     # adapts: the receiver's DFE stays where it adapted, at the phase it is
@@ -2562,8 +2568,8 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
 
 def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
                         swing: float, noise_sigma: float, n_feedback: int = 0,
-                        loop: bool = True, ffe_track: float = 0.0, voters: int = 1
-                        ) -> tuple[float, LoopSolution | None]:
+                        loop: bool = True, ffe_track: float = 0.0, voters: int = 1,
+                        lock_shift: int = 0) -> tuple[float, LoopSolution | None]:
     """RMS sampling-instant jitter [UI] to smear the bathtub with, and the loop model behind it.
 
     The transmitter's white jitter is not in it: it moves each edge on its
@@ -2642,7 +2648,7 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
         k_pd, pd_noise = mm_pd_statistics(
             pulse_pd.y, cfg.osr, peak, levels_v, noise_sigma, n_feedback=n_feedback,
             n_lanes=max(int(cfg.rx.adc.n_lanes), 1),
-            period_levels=None if period is None else levels_v[period])
+            period_levels=None if period is None else levels_v[period], lock_shift=lock_shift)
         if k_pd <= 0:
             # no timing gradient: the loop does not move, nothing is tracked
             return untracked(lambda f: np.ones_like(np.asarray(f, dtype=np.float64))), None

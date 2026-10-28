@@ -192,7 +192,14 @@ profiles, lowest at mid gain where the preset's loop (`ki_shift 15` with a
 tiny detector gain: integrator-dominated, underdamped) peaks. Measured with a
 frozen loop the detector's gain is 0.0276 V/UI, the model's 0.032; with the
 DFE's postcursor left in the model's samples it was 0.0195, and the CDR error
-26-39 % high at both ends of the sweep.
+26-39 % high at both ends of the sweep. (2026-10-28: the 0.032 was read at the
+equalised pulse's peak, two samples after where the loop samples; read there
+(`mm_pd_statistics(lock_shift=)`) it is the kernel's, 0.0292 against 0.0292 with
+the equalisers frozen, and the loop's |E(f)| under sinusoidal jitter matches
+the kernel's to 2 % at 0.5-4 MHz -- 13-15 % low in band and 1.65x low at
+kp_shift 8's resonance before. Example 31's model CDR error moved 1-4 %,
+its loop bandwidth 1.78 / 0.89 / 0.75 -> 1.56 / 0.82 / 0.71 MHz at
+kp_shift 4 / 5 / 6.)
 
 (2026-10-15 correction, ROADMAP P2 #28: the 112 GBd row above and the
 "0.81-1.07x" were one seed -- example 31's seed 3, its second half -- against

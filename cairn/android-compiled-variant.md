@@ -29,7 +29,7 @@
 ```
 --package halo_serdes --compile \
   __init__,afe,analysis,channel,engine,io,tx,fec,config/__init__,config/schema,\
-cdr/__init__,core/__init__,core/fixed,core/mapping,core/waveform,dsp/__init__,dsp/ffe
+cdr/__init__,core/__init__,core/files,core/fixed,core/mapping,core/waveform,dsp/__init__,dsp/ffe
 --package halo_serdes_app --compile all
 ```
 

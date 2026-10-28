@@ -286,3 +286,38 @@ def test_mixed_signal_pam4_holds_its_thresholds_too(monkeypatch):
         assert n_err >= 90, (d, n_err)
         ratio = float(np.interp(center + d, phi, curve)) / (n_err / n_chk)
         assert 0.85 < ratio < 1.3, (d, ratio, n_err)
+
+
+@pytest.mark.needs_jit
+def test_the_mm_gain_is_read_where_the_loop_samples():
+    """The Mueller-Muller gain behind the loop model against the kernel's own
+    detector, the loop frozen and the transmitter delayed by -1 / 0 / +1
+    samples (equalisers frozen, no noise): the loop samples 2 samples before
+    the equalised pulse's peak, and read there the gain is the kernel's
+    (0.0292 /UI). Read at the peak it was 0.0328, and the loop's |E| ran
+    13-15 % high in band and 1.65x at kp 8's resonance (2026-10-28)."""
+    from halo_serdes.config.schema import ClockConfig
+
+    base, clocks = _ex31()
+    n = 100_000
+    rx = dataclasses.replace(base.rx, noise_rms=0.0,
+                             cdr=dataclasses.replace(base.rx.cdr, kp_shift=40, ki_shift=50),
+                             ffe=dataclasses.replace(base.rx.ffe, adapt="none"),
+                             dfe=dataclasses.replace(base.rx.dfe, adapt="none"))
+    cfg = dataclasses.replace(base, tx=dataclasses.replace(base.tx, clock=ClockConfig()), rx=rx,
+                              sim=dataclasses.replace(base.sim, n_symbols=n))
+    pd = []
+    for d in (-1.0, 0.0, 1.0):
+        steps = timedomain._adc_link_steps(cfg, None, False, False, None, None, None, None,
+                                           tx_clock_s=np.full(n + 1, d * cfg.dt))
+        loop = next(steps)
+        res = timedomain._adc_finish(steps, timedomain._run_rx(loop.run, loop.rx_y, cfg, None))
+        x = np.asarray(loop.run.out[2])[5000:loop.run.done]        # the slicer input it reads
+        a = np.where(x > 0, 1.0, -1.0)
+        pd.append(float(np.mean(-(x[1:-1] * (a[2:] - a[:-2])))))
+    k_time = (pd[2] - pd[0]) / 2.0 * cfg.osr          # a later edge: the sampler early
+    held = dataclasses.replace(cfg, tx=dataclasses.replace(cfg.tx, clock=clocks["CPPLL 200 fs"]),
+                               rx=dataclasses.replace(rx, cdr=dataclasses.replace(rx.cdr, kp_shift=6)))
+    k_model = st.run_statistical(held, ffe_taps=res.ffe_taps, ffe_pre=4).extras["clock_loop"].k_pd
+    assert abs(pd[1]) < 0.05 * abs(pd[2] - pd[0])
+    assert abs(k_time) == pytest.approx(k_model, rel=0.03), (k_time, k_model)

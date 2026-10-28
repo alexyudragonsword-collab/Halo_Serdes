@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-28 · MM 鉴相增益、原子写入、P2 #37 再查、审计(feat/followups-1028)
+
+- P2 #37:去噪 / 加噪分开纯噪声(相邻 −0.28)与残余 ISI(+0.33,σ 0.46 mV);ISI 协方差只占 8 %,计入后 224G 2.11 → 2.10、示例 31 链路 −2 → −4 %,回退。
+  上次"尾部相关 0.7 倍"是标准误 0.12 的回归,更正。链里的错之后逆推实测 0.8 mV 对高斯 MA 1.97 mV,仍未明。ROADMAP P2 #37 补证据。
+- MM σ 低 4 %:白钟自猎振 0.02–0.03 个样本(可忽略);正弦抖动量 |E(f)| 带内时域高 13–15 %、kp 8 谐振 1.65× —— `k_pd` 在峰值读(0.0328),
+  环路在峰值前 2 个样本采,那里读 0.0292 = 内核冻结环路量的。改 `mm_pd_statistics(lock_shift=)`;|E| 0.98–1.00。σ 只动 1–2 %,剩下的在剖面积分侧。DSP §38 末。
+- 示例 31 并发写:`ClockProfile.save` / `dump_config` 原子写入(`core/files`,进 Android 编译集);pitfalls 一条。
+- 审计:README / COMPARISON 补多 lane FEC 与共享发端时钟;clock_profile.md、invariants 记鉴相增益;示例 31 重接受,derived 全对。
+- 编译集:statistical、tx/clock、core/files 本地真编 .so,HALO_NO_JIT 下 `k_pd` 与源码逐位相同、原子写测试过。指纹逐位不变。探针 `p62`–`p70`。
+- CI(PR #116,头 a76d25d,一次全绿):矩阵 jit 16.4–18.2 分钟、nojit 21.8–25.0,examples 20.2、examples-full 20.5;Android 构建 1.5 / 编译版 10.2、编译版模拟器 3.9、API 34 5.3 / 35 5.0、Chaquopy 实际轮子版本 2.6;不触发 Windows / 打包腿。
+
 ## 2026-10-27 · PAM4 多 lane FEC、ADC 对照重算、按类误码传播与示例 31 余项(feat/followups-1027b)
 
 - 多 lane FEC 上 PAM4:224G ADC(2.3 mV + RJ 0.02 UI)共享 CDR 同时出错不变、门限对各自独立时不动;PAM4 32G(10 mV + 0.03 UI)同时出错 1.3–1.8×、
