@@ -670,7 +670,8 @@ def lock_offset_samples(pulse_y: np.ndarray, peak_idx: int, osr: int, half_span:
 def mm_pd_statistics(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.ndarray,
                      noise_sigma: float, n_symbols: int = 1 << 17, n_pre: int = 24,
                      n_post: int = 64, seed: int = 0, n_feedback: int = 0, n_lanes: int = 1,
-                     period_levels: np.ndarray | None = None) -> tuple[float, PdNoise]:
+                     period_levels: np.ndarray | None = None,
+                     lock_shift: int = 0) -> tuple[float, PdNoise]:
     """Mueller-Muller PD gain [V/UI] at lock and its noise per loop update.
 
     ``pd = x[n] (sign x[n+1] - sign x[n-1])`` on the raw samples the PD sees.
@@ -694,7 +695,13 @@ def mm_pd_statistics(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.
     them read the gain 1.41x low on example 31's 112 GBd link (ROADMAP P2
     #24); with it, 1.17x high (0.032 vs 0.0276 V/UI measured with a frozen
     loop), and its timing function follows the kernel's over +-3 samples on
-    the fingerprint's 53 Gb/s link.
+    the fingerprint's 53 Gb/s link. ``lock_shift``: where the receiver
+    samples, in samples from ``peak_idx`` -- the cursors and the feedback are
+    taken there. On example 31's link the loop samples 2 samples before the
+    equalised pulse's peak (``statistical._lock_position``); read at the peak
+    the gain came out 1.12x the kernel's (0.0328 against 0.0292, with the
+    detector's mean there 0.002, not 0), read at the lock it is the kernel's
+    (2026-10-28).
 
     The noise: a loop updating every ``n_lanes`` symbols and closing far below
     that rate integrates the output's density at low frequency, not its
@@ -719,7 +726,7 @@ def mm_pd_statistics(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.
     """
     y = np.asarray(pulse_y, dtype=np.float64)
     ks = np.arange(-n_pre, n_post + 1)
-    cursors, fb = _mm_cursor_set(y, osr, peak_idx, n_feedback, n_pre, n_post)
+    cursors, fb = _mm_cursor_set(y, osr, peak_idx, n_feedback, n_pre, n_post, lock_shift)
 
     rng = np.random.default_rng(seed)
     levels_v = np.asarray(levels_v, dtype=np.float64)
@@ -814,14 +821,15 @@ def mm_hold_range_ui(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.
 
 
 def _mm_cursor_set(y: np.ndarray, osr: int, peak_idx: int, n_feedback: int, n_pre: int,
-                   n_post: int) -> tuple[Callable[[int], np.ndarray], np.ndarray]:
+                   n_post: int, lock_shift: int = 0) -> tuple[Callable[[int], np.ndarray], np.ndarray]:
     """The baud-spaced cursors a Mueller-Muller detector sees around its lock
     point, as a function of a timing shift in samples, and the decision
     feedback taken from them: the lock point's postcursors 1..n_feedback,
     fixed while the phase moves (:func:`mm_pd_statistics`). Without feedback
-    the lock point is where ``h(-T) = h(+T)``; with it, the pulse peak."""
+    the lock point is where ``h(-T) = h(+T)``; with it, where the receiver
+    samples (``peak_idx + lock_shift``)."""
     if n_feedback > 0:
-        c = peak_idx
+        c = peak_idx + int(lock_shift)
     else:
         c = peak_idx + int(round(lock_offset_samples(y, peak_idx, osr, osr)))
     ks = np.arange(-n_pre, n_post + 1)

@@ -45,7 +45,7 @@ target="${CHAQUOPY_TARGET:-$(grep -E '^chaquopyTarget=' "$root/android/gradle.pr
 #                        exactly this boundary.
 CORE_SPEC="__init__,afe,analysis,channel,engine,io,tx,fec"
 CORE_SPEC="$CORE_SPEC,config/__init__,config/schema,cdr/__init__"
-CORE_SPEC="$CORE_SPEC,core/__init__,core/fixed,core/mapping,core/waveform"
+CORE_SPEC="$CORE_SPEC,core/__init__,core/files,core/fixed,core/mapping,core/waveform"
 CORE_SPEC="$CORE_SPEC,dsp/__init__,dsp/ffe"
 
 ndk="${ANDROID_NDK_HOME:-${NDK:-}}"

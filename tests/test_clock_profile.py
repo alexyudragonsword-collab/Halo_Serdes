@@ -426,3 +426,31 @@ def test_every_bundled_profile_runs_the_pam4_112g_link(path):
     assert math.isfinite(res.ber.ber) and 0.0 <= res.ber.ber <= 1.0
     assert res.n_symbols > 0
 
+
+
+def test_save_is_whole_or_nothing(tmp_path, monkeypatch):
+    """A profile is written through a temporary file renamed over the target:
+    a failed write leaves the old file and no temporary, a good one the new
+    file with the mode a plain write would give."""
+    import os
+
+    from halo_serdes.tx.clock import ClockProfile
+
+    prof = ClockProfile(f0_hz=1e9, f_hz=np.array([1e3, 1e6]), l_dbc_hz=np.array([-80.0, -120.0]))
+    path = prof.save(tmp_path / "p.yaml")
+    old = path.read_text()
+    umask = os.umask(0)
+    os.umask(umask)
+    assert (path.stat().st_mode & 0o777) == (0o666 & ~umask)
+
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+
+    import halo_serdes.core.files as files
+
+    monkeypatch.setattr(files.os, "replace", boom)
+    with pytest.raises(RuntimeError, match="disk full"):
+        ClockProfile(f0_hz=2e9, f_hz=np.array([1e3, 1e6]), l_dbc_hz=np.array([-90.0, -130.0])).save(path)
+    assert path.read_text() == old
+    assert [q.name for q in tmp_path.iterdir()] == ["p.yaml"]
+    assert ClockProfile.load(path).f0_hz == 1e9
