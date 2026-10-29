@@ -41,16 +41,22 @@ fun FieldRow(
     onChange: (Any) -> Unit,
 ) {
     when {
-        field.isBool -> Row(
-            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(field.label, style = MaterialTheme.typography.bodyMedium)
-            Switch(checked = value == true, onCheckedChange = onChange)
+        field.isBool -> Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(field.label, style = MaterialTheme.typography.bodyMedium)
+                Switch(checked = value == true, onCheckedChange = onChange)
+            }
+            HelpText(field.help)
         }
 
-        field.isEnum -> EnumField(field, value?.toString().orEmpty(), onChange)
+        field.isEnum -> Column(Modifier.fillMaxWidth()) {
+            EnumField(field, value?.toString().orEmpty(), onChange)
+            HelpText(field.help)
+        }
 
         else -> OutlinedTextField(
             value = value?.toString().orEmpty(),
@@ -59,6 +65,7 @@ fun FieldRow(
             isError = error != null,
             supportingText = when {
                 error != null -> ({ Text(error) })
+                field.help.isNotBlank() -> ({ Text(field.help) })
                 field.optional -> ({ Text("optional — blank means unset") })
                 else -> null
             },
@@ -68,6 +75,17 @@ fun FieldRow(
             keyboardOptions = KeyboardOptions(keyboardType = field.keyboardType()),
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         )
+    }
+}
+
+/** The field's help sentence under a switch or a drop-down (text fields carry it
+ * as their supporting text). */
+@Composable
+private fun HelpText(help: String) {
+    if (help.isNotBlank()) {
+        Text(help, style = MaterialTheme.typography.labelSmall,
+             color = MaterialTheme.colorScheme.onSurfaceVariant,
+             modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
     }
 }
 

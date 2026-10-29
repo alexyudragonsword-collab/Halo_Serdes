@@ -17,7 +17,8 @@ authoring_mode: ai_generated
 
 一切由 frozen dataclass `LinkConfig` 决定:引擎、GUI 表单、COM、RTL 参数导出全部读它,
 **没有全局状态**。新增参数的完整动作是三步:加字段 + 在 `__post_init__` 里校验 +
-在 `config_bridge.SECTIONS` 里加一行(GUI 表单会自动生成)。
+在 `config_bridge.SECTIONS` 里加一行(GUI 表单会自动生成;桌面与手机都是)。字段说明、是否常用、
+显示条件可选,加在 `halo_serdes_app.form_meta`(2026-10-29 起两端共用,规则是数据,由 `derive` 求值)。
 纯函数的记忆化不算全局状态:键含全部输入、命中与重算逐位相同(`tx/driver.py` 的 `lru_cache`;2026-10-26 起 `_pattern_phase_factor` 按输入摘要缓存最近 8 个结果)。
 
 **校验的取舍:只拦真正的非法值。** 已知两处**故意不拦**:

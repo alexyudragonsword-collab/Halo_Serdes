@@ -50,7 +50,9 @@ DFE 2`, ...): Link & run, Transmitter, Channel (with crosstalk and the optical
 topology), Receiver front end, ADC (on an `adc_dsp` receiver only),
 Equaliser (FFE, DFE, MLSD, partial response), CDR. Click a stage to open its
 parameters below the chain: the common ones first, the rest behind
-**Advanced (n)**. Only what the configuration uses is shown (`field_meta.py`):
+**Advanced (n)**. Only what the configuration uses is shown (the rules, help
+texts, common fields and stages are `halo_serdes_app.form_meta`, which the
+phone app's form reads too):
 the RLGC line or the Touchstone file by `channel.kind`, the optical fields when
 `topology.optical.kind` is not `none`, the parameter of the chosen driver
 nonlinearity, and so on. Hidden fields keep their values. Labels with a dotted
@@ -124,9 +126,9 @@ src/halo_serdes_gui/
   config_bridge.py  form <-> LinkConfig <-> YAML, presets, envelope
   config_form.py    schema-driven form (pattern-matching ids)
   history.py        the Runs strip: entries, labels, pins
-  field_meta.py     stages, common fields, hover help and show-when rules for
-                    the form (desktop only;
-                    phase 3 of the GUI plan moves them into the shared schema)
+  field_meta.py     the desktop's view of halo_serdes_app.form_meta (stages,
+                    common fields, help, show-when rules, shared with the
+                    phone app) plus the chain's one-line stage summaries
   runner.py         engine execution + in-process result registry
   studies.py        cached sweep/projection computes
   figures.py        Plotly builders from result objects

@@ -6,6 +6,22 @@
 
 ---
 
+## [未发布] — GUI 改版阶段 3:表单元数据两端共用
+
+### 变更
+- 字段说明、常用字段、链路分段和显示条件从桌面专用的 `halo_serdes_gui/field_meta.py` 移到 `halo_serdes_app/form_meta.py`(进 Android 编译集)。
+  显示条件改成数据(`{"path", "in" / "not_in" / "min_items"}`、`all` / `any`),`config_bridge.SECTIONS` 的每个字段带 `help` / `common` /
+  `stage` / `show_if`;`schema` 多给 `stages` 与 `section_show_if`;`derive` 多给 `hidden`(按传入的值求出该隐藏的字段、分组、分段,
+  配置非法时也给),只有一个求值器。桌面 `field_meta` 变成对它的再导出,外加链路卡片上的摘要。
+- 手机表单按链路分段:每段一张可折叠卡片,先常用字段、其余在 "Advanced (n)" 里;文本框下方是字段说明;按 `hidden` 隐去用不到的字段、
+  分组、分段;有错的字段即使在 Advanced 里也照样显示。
+
+### 测试
+- 宿主 `tests/test_form_meta.py`:元数据只引用真实字段、分段恰好覆盖每个分组、规则过 JSON 不变、手机写法的值(字符串、"")与桌面同答案、
+  `derive` 的 `hidden` 按预设对、桌面与共用规则同答案。设备 `FormContractTest` 两条:分段覆盖与说明、`derive` 隐藏 ADC 组 / 信道二选一。
+
+---
+
 ## [未发布] — 桌面 GUI 改版阶段 2:按链路组织的页面、四个工作区、对比
 
 ### 变更
