@@ -3,6 +3,20 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-29 · 桌面 GUI 改版阶段 2(feat/gui-phase2)
+
+- 用户看过新旧对照后要求进入阶段 2。顶栏 + 左侧链路分段(`field_meta.STAGES` / `COMMON` / `stage_summary`,常用 / Advanced)+ 四个工作区
+  (结论 / 诊断 / 研究 / 对比,`view` store 存当前视图的 TAB_ID,旧测试的视图 id 不变);窄屏结果在前(Bootstrap order 类)。只动桌面 GUI。
+- `rx.arch` 不在表单里,是顶栏开关本身(同一个 pattern id,ALL 读回照样拿到)—— 避免"开关 ↔ 表单字段"互相写的循环回调。
+- 对比工作区(`panels/compare.py`):浴盆同轴 + 结果表 + 配置差异;"用另一种架构运行"跑完由 `_finish` 直接渲染两者并排
+  (第一版靠另一个回调改选择,渲染时还不知道,选错成最新两次)。
+- 截图时修:ADC 结论页的 "no eye" → 重建的 FFE 输出眼;CTLE 节点 TJ 只给混合信号;StatEye 0 写明下溢;过期横幅对另一预设只给计数。
+- 测试里又踩一次"Dash 组件为假":遍历组件树写了 `children or []`,整棵子树被跳过(pitfalls 那条补一句)。
+- 验证:GUI / API / 文档 / 导入卫生 / 示例 API 257 项;Playwright 全流程 0 报错(分段 + 高级、四个工作区、诊断跟随分段、顶栏切架构出 ADC 段、
+  对比与另一架构重跑、窄屏);导览 20 张重拍。
+- CI(PR #120,头 7616b52,一次全绿):矩阵 jit 12.4–20.4 分钟、nojit 21.8–26.2,examples 11.2 / 11.3,import-clean 2.2–2.3;Windows PyInstaller 3.0、
+  Nuitka 37.4、onefile 42.6;不触发 Android(只动桌面 GUI)。
+
 ## 2026-10-29 · 桌面 GUI 改版阶段 1(feat/gui-phase1)
 
 - 用户"继续":做阶段 1。Run 改走 `api.start_job`(把手机的后台任务抽成桌面也能调的函数;JSON 合同、错误类型不变)+ `dcc.Interval` 轮询;

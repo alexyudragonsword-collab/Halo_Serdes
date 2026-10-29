@@ -249,6 +249,8 @@ CDR 锁偏(`pd_input: adc`),不是均衡器。只看全程 BER 或只看 `y_slic
 **Dash 组件不能用 `a or b` 选。** 组件有 `__len__`(子元素个数),没有子元素的 `dcc.Graph` 判为假。Channel 页写的
 `com_fig or figures.placeholder(...)`,于是 COM 分解图从合入起就没显示过,页面拿到的是裸 Plotly figure(浏览器 React #31,
 Python 侧不报错,只看面板文字的测试也不报)。改为 `is not None`;`tests/test_gui_phase0.py` 遍历各页,不许 figure 出现在组件位置(2026-10-28)。
+2026-10-29 又咬一次,这回在测试里:遍历组件树写了 `walk(getattr(n, "children", None) or [])`,单个无子元素的子组件为假,整棵子树被跳过,
+"每个字段恰好出现一次"的检查拿到空列表。遍历组件树一律 `is not None`。
 
 **测试里"取第一个预设"要先确认它在这个用途下成立。** `preset_names()[0]` 是
 "Library defaults",信道是无文件的 touchstone。这条坑本文件下方已经记过一次(M4 仪器化测试),

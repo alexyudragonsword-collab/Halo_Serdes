@@ -80,8 +80,9 @@ def test_readme_example_count_is_current():
 
 def test_readme_tab_count_is_current():
     text = README.read_text()
-    counts = {int(x) for x in re.findall(r"共 (\d+) 个能力标签页", text)}
-    counts |= {int(x) for x in re.findall(r"(\d+) 个标签页的图文导览", text)}
+    # 2026-10-29: the 17 flat tabs became four workspaces of 18 views
+    counts = {int(x) for x in re.findall(r"共 (\d+) 个视图", text)}
+    counts |= {int(x) for x in re.findall(r"(\d+) 个视图的图文导览", text)}
     assert counts, "README no longer states a GUI tab count"
     assert counts == {_n_tabs()}, (counts, _n_tabs())
 

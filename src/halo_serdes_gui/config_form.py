@@ -3,6 +3,11 @@
 Every input carries a pattern-matching id ``{"type": "cfg", "path": <dotted>}``
 so a single callback can read the whole form back with
 ``State({"type": "cfg", "path": ALL}, ...)`` and reconstruct a ``LinkConfig``.
+
+The form is laid out by link stage (``field_meta.STAGES``): every stage's
+fields are in the page, one stage's are shown, and within it the common ones
+unless "Advanced" is open. Hiding never removes an input, so the ALL-pattern
+read-back always sees the whole configuration.
 """
 
 from __future__ import annotations
@@ -14,7 +19,9 @@ from dash import html
 
 from . import theme
 from .config_bridge import SECTIONS
-from .field_meta import HELP, field_shown, section_shown
+from .field_meta import (
+    COMMON, HELP, NOT_IN_FORM, STAGES, field_shown, section_shown,
+)
 
 _NUMERIC = {"float", "int", "opt_float", "opt_int"}
 
@@ -79,28 +86,71 @@ def _field_row(field: dict, value: Any, shown: bool = True):
         className="g-1 mb-1", style=None if shown else _HIDDEN)
 
 
-def render_form(values: dict[str, Any], open_sections=("link", "channel",
-                "tx", "rx", "sim")):
-    """Return an Accordion with one item per section, showing only what the
-    configuration in ``values`` uses (``field_meta``)."""
-    items = []
-    for sid, title, fields in SECTIONS:
-        rows = [_field_row(f, values.get(f["path"]), field_shown(f["path"], values))
-                for f in fields]
-        items.append(dbc.AccordionItem(
-            rows, title=title, item_id=sid, id={"type": "cfg-sec", "sid": sid},
-            style=None if section_shown(sid, values) else _HIDDEN))
-    return dbc.Accordion(items, active_item=list(open_sections),
-                         always_open=True, flush=True)
+_SECTION_TITLE = {sid: title for sid, title, _ in SECTIONS}
+_SECTION_FIELDS = {sid: [f["path"] for f in fields] for sid, _, fields in SECTIONS}
 
 
-def visibility(values: dict[str, Any], row_ids: list[dict],
-               sec_ids: list[dict]) -> tuple[list, list]:
-    """Styles for the form's rows and sections, in the order of their ids:
-    hidden where the configuration in ``values`` does not use them."""
-    rows = [None if field_shown(i["path"], values) else _HIDDEN for i in row_ids]
-    secs = [None if section_shown(i["sid"], values) else _HIDDEN for i in sec_ids]
-    return rows, secs
+def _row_shown(path: str, values: dict[str, Any], advanced: bool) -> bool:
+    return field_shown(path, values) and (advanced or path in COMMON)
+
+
+def _section_shown(sid: str, values: dict[str, Any], advanced: bool) -> bool:
+    """A section shows when the configuration uses it and at least one of its
+    rows is on screen (a stage's all-advanced section waits for Advanced)."""
+    return section_shown(sid, values) and any(
+        _row_shown(p, values, advanced) for p in _SECTION_FIELDS[sid] if p not in NOT_IN_FORM)
+
+
+def advanced_count(stage: str, values: dict[str, Any]) -> int:
+    """How many fields of ``stage`` the configuration uses beyond the common ones."""
+    secs = next(s for sid, _, s in STAGES if sid == stage)
+    return sum(1 for sec in secs if section_shown(sec, values)
+               for p in _SECTION_FIELDS[sec]
+               if p not in NOT_IN_FORM and p not in COMMON and field_shown(p, values))
+
+
+def render_form(values: dict[str, Any], stage: str = "link", advanced: bool = False):
+    """Every stage's fields, grouped by section; only ``stage`` shown, and in
+    it the fields the configuration uses (``field_meta``)."""
+    by_sec = {sid: fields for sid, _, fields in SECTIONS}
+    blocks = []
+    for sid, _title, secs in STAGES:
+        parts = []
+        for sec in secs:
+            rows = [_field_row(f, values.get(f["path"]),
+                               _row_shown(f["path"], values, advanced))
+                    for f in by_sec[sec] if f["path"] not in NOT_IN_FORM]
+            parts.append(html.Div([theme.section_title(_SECTION_TITLE[sec]), *rows],
+                                  id={"type": "cfg-sec", "sid": sec},
+                                  style=None if _section_shown(sec, values, advanced)
+                                  else _HIDDEN))
+        blocks.append(html.Div(parts, id={"type": "cfg-stage", "sid": sid},
+                               style=None if sid == stage else _HIDDEN))
+    return html.Div(blocks)
+
+
+def visibility(values: dict[str, Any], row_ids: list[dict], sec_ids: list[dict],
+               stage_ids: list[dict] | None = None, stage: str = "link",
+               advanced: bool = False) -> tuple[list, list, list]:
+    """Styles for the form's rows, sections and stage blocks, in the order of
+    their ids: the chosen stage, and in it what the configuration uses."""
+    rows = [None if _row_shown(i["path"], values, advanced) else _HIDDEN for i in row_ids]
+    secs = [None if _section_shown(i["sid"], values, advanced) else _HIDDEN
+            for i in sec_ids]
+    stages = [None if i["sid"] == stage else _HIDDEN for i in stage_ids or ()]
+    return rows, secs, stages
+
+
+def arch_control(value: Any):
+    """``rx.arch`` as the top bar's two-way switch: the same pattern id as every
+    form input, so the read-back finds it wherever it sits."""
+    return dbc.RadioItems(
+        id=_cid("rx.arch"), value=value or "mixed_signal", inline=True,
+        options=[{"label": "Mixed-signal", "value": "mixed_signal"},
+                 {"label": "ADC + DSP", "value": "adc_dsp"}],
+        className="btn-group", inputClassName="btn-check",
+        labelClassName="btn btn-outline-primary btn-sm",
+        labelCheckedClassName="active")
 
 
 def values_from_states(ids: list[dict], vals: list[Any]) -> dict[str, Any]:

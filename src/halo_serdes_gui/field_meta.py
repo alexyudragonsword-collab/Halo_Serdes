@@ -173,3 +173,96 @@ def section_shown(sid: str, values: Values) -> bool:
     """Whether the form shows the section ``sid`` for these values."""
     rule = SECTION_SHOWN.get(sid)
     return rule is None or bool(rule(values))
+
+
+# --- the link as stages --------------------------------------------------------
+# The form is laid out as the link it describes: a chain of stages on the left,
+# each opening the sections that configure it. A stage shows its common fields
+# first; the rest are behind "Advanced". rx.arch is not in any stage: it is the
+# architecture switch in the top bar.
+
+#: (stage id, title, the config sections it holds)
+STAGES: list[tuple[str, str, list[str]]] = [
+    ("link", "Link & run", ["link", "sim", "numeric"]),
+    ("tx", "Transmitter", ["tx"]),
+    ("channel", "Channel", ["channel", "crosstalk", "topology"]),
+    ("fe", "Receiver front end", ["rx", "ctle"]),
+    ("adc", "ADC", ["adc"]),
+    ("eq", "Equaliser", ["ffe", "dfe", "mlsd", "pr"]),
+    ("cdr", "CDR", ["cdr"]),
+]
+STAGE_OF_SECTION = {sec: sid for sid, _, secs in STAGES for sec in secs}
+STAGE_SHOWN: dict[str, Callable[[Values], bool]] = {"adc": _ADC}
+
+#: Paths outside every stage's form (shown elsewhere on the page).
+NOT_IN_FORM = {"rx.arch"}
+
+#: The fields a stage shows before "Advanced": what one changes in the course of
+#: an ordinary study. Everything else is one click away, not removed.
+COMMON: set[str] = {
+    "modulation", "symbol_rate", "sim.n_symbols", "sim.seed", "sim.engine", "sim.pattern",
+    "tx.fir_taps", "tx.fir_n_pre", "tx.swing", "tx.rlm", "tx.noise_rms",
+    "tx.clock.kind", "tx.clock.file", "tx.clock.rj_ui",
+    "channel.kind", "channel.file", "channel.length_m", "channel.r_skin",
+    "channel.loss_tangent", "crosstalk.n_fext", "crosstalk.n_next",
+    "crosstalk.coupling_db", "topology.optical.kind", "topology.optical.oma_dbm",
+    "topology.optical.er_db", "topology.optical.rin_db_hz", "topology.optical.length_m",
+    "topology.retimer",
+    "rx.noise_rms", "rx.clock.rj_ui", "rx.ctle.enable", "rx.ctle.peak_db", "rx.ctle.gdc_db",
+    "rx.adc.n_bits", "rx.adc.enob", "rx.adc.n_lanes", "rx.adc.fullscale", "rx.adc.cal.mode",
+    "rx.ffe.n_pre", "rx.ffe.n_post", "rx.ffe.adapt", "rx.dfe.n_taps", "rx.dfe.adapt",
+    "rx.mlsd.kind", "pr.target",
+    "rx.cdr.kind", "rx.cdr.kp_shift", "rx.cdr.ki_shift",
+}
+
+
+def stage_shown(sid: str, values: Values) -> bool:
+    """Whether the chain shows the stage ``sid`` for these values."""
+    rule = STAGE_SHOWN.get(sid)
+    return rule is None or bool(rule(values))
+
+
+def _num(v, fmt="{:g}") -> str:
+    try:
+        return fmt.format(float(v))
+    except (TypeError, ValueError):
+        return "?"
+
+
+def stage_summary(sid: str, v: Values) -> str:
+    """One line under a stage in the chain: what it is set to now."""
+    if sid == "link":
+        return (f"{str(v.get('modulation', '')).upper()} {_num(v.get('symbol_rate'))} GBd · "
+                f"{v.get('sim.engine', '')} · {_num(v.get('sim.n_symbols'), '{:,.0f}')} sym")
+    if sid == "tx":
+        taps = [t for t in str(v.get("tx.fir_taps") or "").split(",") if t.strip()]
+        return f"FIR {len(taps)} taps · {_num(v.get('tx.swing'))} V · {v.get('tx.clock.kind')}"
+    if sid == "channel":
+        if v.get("channel.kind") == "touchstone":
+            base = str(v.get("channel.file") or "no file").replace("\\", "/").split("/")[-1]
+        else:
+            base = f"RLGC {_num(v.get('channel.length_m'))} m"
+        if v.get("topology.optical.kind") not in (None, "", "none"):
+            base += f" · {v.get('topology.optical.kind')}"
+        n_x = sum(int(_num(v.get(p), "{:.0f}")) for p in ("crosstalk.n_fext", "crosstalk.n_next")
+                  if _num(v.get(p)) != "?")
+        return base + (f" · {n_x} aggressors" if n_x else "")
+    if sid == "fe":
+        ctle = (f"CTLE {_num(v.get('rx.ctle.peak_db'))} dB" if v.get("rx.ctle.enable")
+                else "no CTLE")
+        return f"{ctle} · noise {_num(v.get('rx.noise_rms'))} V"
+    if sid == "adc":
+        enob = v.get("rx.adc.enob")
+        enob = "ideal" if enob in (None, "") else _num(enob)
+        return (f"{_num(v.get('rx.adc.n_bits'))} b · ENOB {enob} · "
+                f"{_num(v.get('rx.adc.n_lanes'))} lanes")
+    if sid == "eq":
+        out = (f"FFE {_num(v.get('rx.ffe.n_pre'))}+{_num(v.get('rx.ffe.n_post'))} · "
+               f"DFE {_num(v.get('rx.dfe.n_taps'))}")
+        if v.get("rx.mlsd.kind") not in (None, "", "none"):
+            out += f" · {v.get('rx.mlsd.kind')}"
+        return out
+    if sid == "cdr":
+        return (f"{v.get('rx.cdr.kind', '')} · kp 2^-{_num(v.get('rx.cdr.kp_shift'))} · "
+                f"ki 2^-{_num(v.get('rx.cdr.ki_shift'))}")
+    return ""

@@ -94,11 +94,11 @@ def test_a_partial_response_target_keeps_its_section_on_a_mixed_signal_receiver(
 
 
 def test_labels_carry_their_help_and_rows_their_visibility():
-    form = render_form(_values(NRZ))
+    form = render_form(_values(NRZ), stage="channel")
     text = _text(form)
     assert field_meta.HELP["channel.r_skin"] in text      # the label's title
-    sec = {item.id["sid"]: item for item in form.children}
-    assert sec["adc"].style == {"display": "none"} and sec["link"].style is None
+    secs = {sec.id["sid"]: sec for stage in form.children for sec in stage.children}
+    assert secs["adc"].style == {"display": "none"} and secs["channel"].style is None
 
 
 def test_the_visibility_callback_follows_the_architecture(callbacks):
@@ -106,10 +106,11 @@ def test_the_visibility_callback_follows_the_architecture(callbacks):
     rows = [{"type": "cfg-row", "path": p} for p in cb.ALL_PATHS]
     secs = [{"type": "cfg-sec", "sid": sid} for sid, _, _ in cb.SECTIONS]
     order = [s["sid"] for s in secs]
+    stages = [{"type": "cfg-stage", "sid": sid} for sid, _, _ in field_meta.STAGES]
     for preset, adc_shown in ((NRZ, False), (ADC, True)):
         v = _values(preset)
-        _, sec_styles = callbacks["_visibility"]([v.get(i["path"]) for i in ids],
-                                                 ids, rows, secs)
+        _, sec_styles, _ = callbacks["_visibility"]([v.get(i["path"]) for i in ids],
+                                                    "adc", True, ids, rows, secs, stages)
         assert (sec_styles[order.index("adc")] is None) is adc_shown
 
 
@@ -249,3 +250,9 @@ def test_no_tab_puts_a_figure_where_a_component_goes():
         assert _bare_figures(p.render(rec)) == 0, p.TAB_ID
     assert "COM unavailable" not in _text(next(p for p in PANELS
                                                if p.TAB_ID == "channel").render(rec))
+
+
+def test_a_run_of_another_configuration_is_counted_not_listed():
+    v = _values(NRZ)
+    banner = _text(gui_app._stale_banner(_values(ADC), v))
+    assert "different configuration" in banner and "fields differ" in banner
