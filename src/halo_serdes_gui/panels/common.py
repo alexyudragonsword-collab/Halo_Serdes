@@ -77,6 +77,8 @@ def _engine_call(ber: float, n: int, errors: int, thr: float) -> tuple[str, str]
         return "open", (f"0 errors in {n:,} bits only bounds the BER at {sci(bound)}, "
                         f"above the threshold -- run more symbols")
     call = "pass" if ber < thr else "fail"
+    if not n and ber == 0.0:
+        return call, "0 (below double precision)"
     return call, f"{sci(ber)}" + (f" ({errors:,} errors)" if n else "")
 
 

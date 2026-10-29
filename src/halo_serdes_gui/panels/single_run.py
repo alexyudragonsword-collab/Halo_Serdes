@@ -26,12 +26,17 @@ def _metric_cards(rec: RunRecord):
         cards.append(theme.metric_card("Slicer SNR", f"{sim.slicer_snr_db:.1f} dB",
                                        "info"))
         jb = sim.extras.get("jitter_budget")
-        if isinstance(jb, dict) and "_note" not in jb and jb:
+        # the jitter budget is read at the analog nodes: on a mixed-signal
+        # receiver that is the CTLE output the slicer works on; on an ADC
+        # receiver the CTLE output is the closed analog eye before the DSP
+        # (151 %UI on the 224G preset), which would mislead as a headline
+        if (isinstance(jb, dict) and "_note" not in jb and jb
+                and rec.cfg.rx.arch == "mixed_signal"):
             from halo_serdes.analysis.jitter import total_jitter
             stage = "ctle" if "ctle" in jb else next(iter(jb))
             tj = total_jitter(jb[stage], 1e-12) / rec.cfg.ui * 100
             cards.append(theme.metric_card("TJ@1e-12", f"{tj:.1f} %UI", "info",
-                                           f"@{stage}"))
+                                           f"at the {stage} output"))
     cards.append(theme.metric_card("Engine", "+".join(rec.engines) or "—",
                                    "muted", f"{rec.elapsed_s:.2f} s"))
     return common.cards_row(cards)
@@ -83,9 +88,12 @@ def verdict_block(rec: RunRecord):
 
     cards = []
     if rec.stat is not None:
+        # an exact 0 is an underflow, not a measurement: the tail is below
+        # what a double holds
         cards.append(theme.metric_card("StatEye BER", common.sci(rec.stat.ber),
                                        common.rate_text(rec.stat.ber, 0)[1],
-                                       "extrapolated"))
+                                       "below double precision" if rec.stat.ber == 0
+                                       else "extrapolated"))
     if v["ratio"] is not None:
         n = v["errors"]
         # under ~10 counted errors the time BER itself is uncertain by more
@@ -96,7 +104,11 @@ def verdict_block(rec: RunRecord):
     elif rec.sim is not None and rec.stat is not None:
         cards.append(theme.metric_card("Time / StatEye", "—", "muted",
                                        "no time-domain errors to compare"))
-    return html.Div([head, common.cards_row(cards)])
+    bathtub = None
+    if rec.stat is not None:
+        mc = rec.sim.ber.ber if rec.sim is not None else None
+        bathtub = common.graph(figures.bathtub_fig(rec.stat, mc_ber=mc, height=300))
+    return html.Div([head, common.cards_row(cards), bathtub])
 
 
 def verdict_slot(rec: RunRecord):
@@ -130,9 +142,17 @@ def render(rec: RunRecord):
     if sim is not None:
         levels = sim.extras.get("levels")
         ffe_pre = cfg.rx.ffe.n_pre
+        if sim.eye_data is not None:
+            eye = figures.eye_fig(sim.eye_data, title="Eye (post-EQ node)")
+        elif cfg.rx.arch == "adc_dsp":
+            # an ADC receiver captures no analog post-EQ eye: show the FFE
+            # output reconstructed from the converged taps (the Eyes view's)
+            from .eyes import _post_ffe_eye_fig
+            eye = _post_ffe_eye_fig(rec)
+        else:
+            eye = figures.eye_fig(None, title="Eye (post-EQ node)")
         row = dbc.Row([
-            dbc.Col(common.graph(figures.eye_fig(
-                sim.eye_data, title="Eye (post-EQ node)")), lg=6),
+            dbc.Col(common.graph(eye), lg=6),
             dbc.Col(common.graph(figures.slicer_hist_fig(
                 sim.y_slicer, levels, title="Slicer-input histogram")), lg=6),
         ], className="g-2")

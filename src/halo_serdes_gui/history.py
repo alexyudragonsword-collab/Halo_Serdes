@@ -68,7 +68,7 @@ def summary(rec) -> str:
 def entry(rec, values: dict, preset: str | None, history: list | None) -> dict:
     """The history entry for a finished run."""
     seq = 1 + max((e["seq"] for e in history or ()), default=0)
-    return {"rid": rec.id, "seq": seq, "label": label(values, preset),
+    return {"rid": rec.id, "seq": seq, "label": label(values, preset), "preset": preset,
             "summary": summary(rec), "ok": rec.ok,
             "time": time.strftime("%H:%M:%S"), "values": values, "pinned": False}
 

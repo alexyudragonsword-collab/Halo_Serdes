@@ -33,3 +33,26 @@ body { font-family: Inter, "Segoe UI", system-ui, sans-serif; }
 /* Keep the sidebar scrollbar unobtrusive */
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 5px; }
+
+/* Shell: top bar over two panes. On a wide screen each pane scrolls on its
+   own under a fixed top bar; below 992 px the page scrolls as one, results
+   first (order classes in app.py). */
+.app-topbar { padding: 0.5rem 1rem; border-bottom: 1px solid #e6eaf0; background: #fff; }
+@media (min-width: 992px) {
+  .app-shell { display: flex; flex-direction: column; height: 100vh; }
+  .app-body { flex: 1 1 auto; min-height: 0; }
+  .app-body > div { height: 100%; }
+  .app-body .pane { height: 100%; overflow-y: auto; }
+}
+
+/* The link chain: one card per stage */
+.stage-card { display: block; width: 100%; text-align: left; padding: 0.35rem 0.6rem;
+  margin-bottom: 0.25rem; border: 1px solid #e2e6ec; border-radius: 6px; background: #fff; }
+.stage-card:hover { border-color: #9ab3d6; }
+.stage-card.active { border-color: #2b6cb0; background: #eef4fb; }
+.stage-card .stage-name { font-size: 0.82rem; font-weight: 600; color: #1a202c; }
+.stage-card .stage-sub { font-size: 0.72rem; color: #5b6472; }
+
+/* Workspace sub-navigation and the architecture switch: a tight button row */
+#sub .form-check, #sub-wrap .form-check,
+[id*='rx.arch'] .form-check { padding-left: 0; margin: 0 0.25rem 0.25rem 0; }
