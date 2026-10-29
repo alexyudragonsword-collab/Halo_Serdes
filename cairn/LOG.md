@@ -13,6 +13,8 @@
   渲染 Channel 0.15 s,心跳最长卡 1.8 s)。登记 ROADMAP P2 #41,界面文案如实写"当前阶段结束时停"。
 - 验证:GUI / API / 文档 / 示例 API 246 项;Playwright 全流程(运行中切页 0.65 s、取消、两次运行、回看出过期横幅、钉住、载回配置后横幅消失、0 报错);
   编译集 `halo_serdes_app/api`、`runner` 本地真编 .so:API 合同 + 阶段 1 63 项,HALO_NO_JIT 下阶段 1 10 项。动了共用层,Android CI 会跑。
+- CI(PR #119,头 bcd9dcc,一次全绿):矩阵 jit 20.4–23.7 分钟、nojit 13.8–25.8,examples 11.1 / 16.4、examples-full 31.3;Android 构建 1.8 / 编译版 6.5、
+  编译版模拟器 4.2、API 34 4.1 / 35 5.3、Chaquopy 实际轮子版本 1.8;Windows PyInstaller 2.3、Nuitka 38.0、onefile 31.0。
 
 ## 2026-10-28 · 桌面 GUI 改版阶段 0(feat/gui-phase0)
 
