@@ -241,6 +241,11 @@ CDR 锁偏(`pd_input: adc`),不是均衡器。只看全程 BER 或只看 `y_slic
 桌面页面点开才 `AttributeError`。光互联阶段 2 的「Optical」页就这样交付了(阶段 3 发现并修复)。现在有守卫测试:`api._STUDIES` 里每个 study 都必须能从
 兼容层拿到;Optical 页另有一条渲染测试,其它页仍只测 study 函数(`tests/test_gui_studies.py`)。
 
+**Dash 里轮询的回调不要输出到 `dcc.Loading` 盯着的组件。** `dcc.Loading` 在任何"输出到它的子组件"的回调进行中都显示遮罩;
+阶段 1 第一版的 `_poll` 每 400 ms 一次、输出列表里带着 `tab-content`(运行结束时要渲染),于是整个运行期间标签区一直被盖住(Playwright 用
+`innerText` 读不到内容)。拆成只管进度的 `_poll` 和结束时才触发的 `_finish`;测试检查 `_poll` 的输出里没有 `tab-content`。
+另:Playwright 的 `innerText` 受 CSS `text-transform` 影响(指标卡标签是大写),查文字用 `textContent`(2026-10-29)。
+
 **Dash 组件不能用 `a or b` 选。** 组件有 `__len__`(子元素个数),没有子元素的 `dcc.Graph` 判为假。Channel 页写的
 `com_fig or figures.placeholder(...)`,于是 COM 分解图从合入起就没显示过,页面拿到的是裸 Plotly figure(浏览器 React #31,
 Python 侧不报错,只看面板文字的测试也不报)。改为 `is not None`;`tests/test_gui_phase0.py` 遍历各页,不许 figure 出现在组件位置(2026-10-28)。

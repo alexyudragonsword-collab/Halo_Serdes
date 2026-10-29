@@ -30,7 +30,13 @@ projection formulas and the native reference AMI model still work.
 - **Presets**: the bundled `configs/*.yaml` plus library defaults. Choosing one
   loads it into the form.
 - **▶ Run**: runs the engine(s) selected by `sim.engine` (`time` / `stat` /
-  `both`) and populates every tab from the one result.
+  `both`) on a background job and populates every tab from the one result.
+  While it runs: the stage, the elapsed time and a progress bar (the receiver
+  loop's fraction; a moving stripe outside it), and **■ Cancel**. A cancel
+  takes effect when the current stage ends: the time engine's front end
+  (transmitter waveform, channel filtering) has no cancel point inside it,
+  about 10 s per million symbols on a desktop (a 3 M-symbol NRZ 28G run
+  stopped 47 s after the click). The page stays usable during a run.
 - **Derived chips**: live UI / dt / Nyquist / data-rate, and a **mixed-signal
   envelope banner** (comfort / limit / hard-ceiling) computed from the
   `MS_*` constants.
@@ -48,6 +54,12 @@ projection formulas and the native reference AMI model still work.
 **Main area** — capability tabs. A run is cached server-side; switching tabs
 re-renders from it instantly. Above the tabs:
 
+- the **Runs** strip: each run of this session as `#n preset · k changed ·
+  BER`, the one on screen highlighted. Click one to put it back on screen;
+  ☆ pins it (pinned runs stay in the strip and are never evicted from the
+  server's result registry, which otherwise keeps the last 24); **↺ Load this
+  run's config** puts the shown run's configuration back into the form.
+  Eight unpinned runs are kept.
 - a banner when the form has changed since the run on screen, naming the
   fields;
 - the run's warnings, once (not on every tab). The mixed-signal envelope
@@ -83,8 +95,9 @@ is kept per run, so returning to the tab does not recompute it.
 ## Performance notes
 
 
-- Engines are blocking + numba-jitted (first call pays a one-time compile).
-  The main area shows a spinner while a run is in flight.
+- Engines are numba-jitted (first call pays a one-time compile) and run on
+  the background job runner the phone app also uses
+  (`halo_serdes_app.api.start_job`); the page polls it every 400 ms.
 - Study tabs use the analytic StatEye engine and the fixed-point datapath
   *replay* (no engine re-run), but a reach sweep is still ~20 s on the 28G
   preset; they run on their own button (above).
@@ -100,6 +113,7 @@ src/halo_serdes_gui/
   app.py            shell + tabs + callbacks
   config_bridge.py  form <-> LinkConfig <-> YAML, presets, envelope
   config_form.py    schema-driven form (pattern-matching ids)
+  history.py        the Runs strip: entries, labels, pins
   field_meta.py     hover help and show-when rules for the form (desktop only;
                     phase 3 of the GUI plan moves them into the shared schema)
   runner.py         engine execution + in-process result registry

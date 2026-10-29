@@ -204,10 +204,31 @@ def test_preset_load_and_yaml_round_trip_through_the_form(callbacks):
     assert callbacks["_toggle_yaml"](1, False) is True
 
 
+def run_through_job(callbacks, vals, ids, active, preset=None, history=None):
+    """Press Run, wait for the background job, take the poll that sees it
+    finish and the render that follows: (job ref, (run id, tab, values,
+    warnings, history, polling off, Run disabled, Cancel style, status))."""
+    import time
+
+    from halo_serdes_app import api
+
+    ref, _poll_off, run_disabled, _cancel_style, _status = \
+        callbacks["_start"](1, vals, ids, preset)
+    assert run_disabled is True
+    job = api.get_job(ref["id"])
+    deadline = time.monotonic() + 600
+    while job.active and time.monotonic() < deadline:
+        time.sleep(0.05)
+    done, *after = callbacks["_poll"](1, ref)
+    assert done == ref["id"], after
+    return ref, (*callbacks["_finish"](done, ref, history or [], active), *after)
+
+
 def test_run_renders_the_active_tab_and_tabs_switch_on_the_stored_run(callbacks):
     ids, vals = _form()
     vals = [20000 if i["path"] == "sim.n_symbols" else v for i, v in zip(ids, vals)]
-    rid, content, ran_with, _warns = callbacks["_run"](1, vals, ids, "channel")
+    _, (rid, content, ran_with, _warns, *_rest) = run_through_job(callbacks, vals, ids,
+                                                                  "channel")
     assert get_result(rid) is not None
     assert "Loss @ Nyquist" in _text(content)
     assert ran_with["sim.n_symbols"] == 20000

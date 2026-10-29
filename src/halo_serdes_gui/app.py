@@ -4,19 +4,30 @@ Left sidebar edits a ``LinkConfig`` (presets, YAML I/O, live derived values,
 mixed-signal envelope banner, the config form showing only what the
 configuration uses). The main area is a set of capability tabs; each run
 stashes its result in the server-side registry and every tab renders from it.
-Above the tabs: a banner when the form has changed since the run, and the
-run's warnings, once. Study tabs (``STUDY`` on the panel) wait for their own
-Run button. Run the app with ``halo-serdes-gui`` or ``python -m halo_serdes_gui``.
+Above the tabs: the runs of this session (``history``), a banner when the form
+has changed since the run shown, and that run's warnings, once. Study tabs
+(``STUDY`` on the panel) wait for their own Run button.
+
+Run starts a background job (``halo_serdes_app.api.start_job``, the same job
+runner the phone uses) and an interval polls it: a progress bar with the stage
+and the receiver loop's fraction, and a Cancel button that stops the run at the
+next receiver chunk. Run the app with ``halo-serdes-gui`` or
+``python -m halo_serdes_gui``.
 """
 
 from __future__ import annotations
 
 from collections import OrderedDict
 
+import time
+
 import dash_bootstrap_components as dbc
-from dash import ALL, MATCH, Dash, Input, Output, State, dcc, html, no_update
+from dash import ALL, MATCH, Dash, Input, Output, State, ctx, dcc, html, no_update
+
+from halo_serdes_app import api
 
 from . import config_bridge as cb
+from . import history as hist
 from . import theme
 from .config_form import render_form, values_from_states, visibility
 from .panels import (
@@ -25,7 +36,6 @@ from .panels import (
 )
 from .panels import common
 from .runner import get as get_result
-from .runner import run_from_values
 
 # --- panel registry --------------------------------------------------------
 PANELS = [single_run, eyes, dual_engine, channel, ctle, jitter,
@@ -38,6 +48,12 @@ _PANEL_BY_ID = {p.TAB_ID: p for p in PANELS}
 _names = cb.preset_names()
 DEFAULT_PRESET = next((n for n in _names if "analytic" in n), _names[0])
 INITIAL = cb.config_to_values(cb.load_preset(DEFAULT_PRESET))
+
+
+_HIDDEN = {"display": "none"}
+
+#: How often the browser asks how the background run is doing.
+POLL_MS = 400
 
 
 def _sidebar():
@@ -61,7 +77,12 @@ def _sidebar():
                    for n in cb.preset_names()], value=DEFAULT_PRESET,
                    size="sm", className="mb-2"),
 
-        dbc.Button("▶  Run", id="run-btn", color="primary", className="w-100 mb-2"),
+        html.Div([
+            dbc.Button("▶  Run", id="run-btn", color="primary", className="flex-grow-1"),
+            dbc.Button("■ Cancel", id="cancel-btn", color="secondary", outline=True,
+                       className="ms-2", style=_HIDDEN),
+        ], className="d-flex mb-2"),
+        html.Div(id="run-status"),
 
         html.Div(id="derived", className="mb-1"),
         html.Div(id="envelope"),
@@ -95,6 +116,7 @@ def _main():
     content area (only the active tab is built)."""
     tabs = [dbc.Tab(label=p.TITLE, tab_id=p.TAB_ID) for p in PANELS]
     return html.Div([
+        html.Div(id="history-strip"),
         html.Div(id="stale"),
         html.Div(id="run-warnings"),
         dbc.Tabs(tabs, id="tabs", active_tab=PANELS[0].TAB_ID, className="mb-2"),
@@ -121,6 +143,10 @@ def build_app() -> Dash:
     app.layout = dbc.Container([
         dcc.Store(id="run-store"),
         dcc.Store(id="run-values"),
+        dcc.Store(id="job"),
+        dcc.Store(id="job-done"),
+        dcc.Store(id="history", data=[]),
+        dcc.Interval(id="job-poll", interval=POLL_MS, disabled=True),
         dbc.Row([
             dbc.Col(_sidebar(), width=12, lg=4, xl=3, style={"padding": 0}),
             dbc.Col(_main(), width=12, lg=8, xl=9, style={"padding": 0}),
@@ -166,6 +192,28 @@ def _run_study(panel, rec):
     while len(_STUDY_CACHE) > _STUDY_CACHE_MAX:
         _STUDY_CACHE.popitem(last=False)
     return out
+
+
+def _progress(job):
+    """The running job's stage, elapsed time and progress bar. The fraction
+    is the receiver loop's; outside it (channel, StatEye) the bar is an
+    indeterminate stripe."""
+    if job is None:
+        return None
+    elapsed = time.perf_counter() - job.started
+    if job.cancel.is_set():
+        # the time engine's front end (transmitter, channel filtering) has no
+        # cancel point inside it: ~10 s per million symbols on a desktop
+        text = "Cancelling — stops when the current stage ends…"
+    else:
+        text = f"{job.stage or 'starting'} · {elapsed:.1f} s"
+    frac = job.fraction
+    bar = dbc.Progress(value=100 if frac is None else 100 * frac,
+                       label="" if frac is None else f"{100 * frac:.0f} %",
+                       striped=frac is None, animated=frac is None,
+                       style={"height": "14px"})
+    return html.Div([html.Div(text, style={"fontSize": "0.75rem", "color": theme.MUTED}),
+                     bar], className="mb-2")
 
 
 def _stale_banner(now: dict, then: dict | None):
@@ -281,22 +329,127 @@ def _register_callbacks(app: Dash) -> None:
         """Open / close the YAML card."""
         return not is_open
 
-    @app.callback(Output("run-store", "data"), Output("tab-content", "children"),
-                  Output("run-values", "data"), Output("run-warnings", "children"),
+    @app.callback(Output("job", "data"), Output("job-poll", "disabled"),
+                  Output("run-btn", "disabled"), Output("cancel-btn", "style"),
+                  Output("run-status", "children"),
                   Input("run-btn", "n_clicks"),
                   State({"type": "cfg", "path": ALL}, "value"),
                   State({"type": "cfg", "path": ALL}, "id"),
-                  State("tabs", "active_tab"), prevent_initial_call=True)
-    def _run(_n, vals, ids, active):
-        """Run the form's config (eye and jitter capture on, so those tabs have
-        data) and render the active tab from the new record; keep the values
-        it ran with, for the stale banner, and show its warnings once."""
+                  State("preset", "value"), prevent_initial_call=True)
+    def _start(_n, vals, ids, preset):
+        """Start the form's config on a background job (eye and jitter capture
+        on, so those tabs have data) and start polling it. A run already
+        going (another browser tab, a reload) is followed rather than refused."""
         values = values_from_states(ids, vals)
-        # capture jitter opportunistically so the Jitter tab has data when the
-        # pattern repeats enough; harmless (returns a note otherwise)
-        rec = run_from_values(values, collect_eye=True, collect_jitter=True)
+        try:
+            # capture jitter opportunistically so the Jitter tab has data when
+            # the pattern repeats enough; harmless (returns a note otherwise)
+            job = api.start_job(values, collect_eye=True, collect_jitter=True)
+        except api.Busy as exc:
+            job = api.get_job(exc.job)
+            # following a run that is being cancelled would show "cancelled"
+            # for a press of Run; one that finished in between is just gone
+            if job is None or job.cancel.is_set():
+                return no_update, True, False, _HIDDEN, theme.banner(
+                    "warn", "The previous run is still stopping; press ▶ Run again "
+                            "in a moment.")
+        return {"id": job.id, "preset": preset}, False, True, None, _progress(job)
+
+    @app.callback(Output("job-done", "data"),
+                  Output("job-poll", "disabled", allow_duplicate=True),
+                  Output("run-btn", "disabled", allow_duplicate=True),
+                  Output("cancel-btn", "style", allow_duplicate=True),
+                  Output("run-status", "children", allow_duplicate=True),
+                  Input("job-poll", "n_intervals"), State("job", "data"),
+                  prevent_initial_call=True)
+    def _poll(_n, ref):
+        """The running job's progress; when it ends, polling stops and the
+        finished job is handed to ``_finish``. Nothing here outputs to the tab
+        area: the spinner over it would cover the page at every poll."""
+        job = api.get_job((ref or {}).get("id"))
+        idle = (True, False, _HIDDEN)
+        if job is None:
+            return (no_update, *idle, None)
+        if job.active:
+            return (no_update, no_update, no_update, no_update, _progress(job))
+        if job.state == "cancelled":
+            return (no_update, *idle, theme.banner(
+                "info", f"Run cancelled after {job.elapsed_s:.1f} s; the results "
+                        "shown are from the previous run."))
+        if get_result(job.record) is None:      # the job died outside the run itself
+            msg = (job.error or {}).get("message", "unknown error")
+            return (no_update, *idle, theme.banner("crit", f"Run failed: {msg}"))
+        return (job.id, *idle, None)
+
+    @app.callback(Output("run-store", "data"), Output("tab-content", "children"),
+                  Output("run-values", "data"), Output("run-warnings", "children"),
+                  Output("history", "data"),
+                  Input("job-done", "data"), State("job", "data"),
+                  State("history", "data"), State("tabs", "active_tab"),
+                  prevent_initial_call=True)
+    def _finish(job_id, ref, history, active):
+        """A finished run: on screen, with its warnings, and first in the history."""
+        job = api.get_job(job_id)
+        rec = get_result(job.record) if job is not None else None
+        if rec is None:
+            return (no_update,) * 5
         panel = _PANEL_BY_ID.get(active, single_run)
-        return rec.id, _tab_view(panel, rec), values, common.warnings_block(rec)
+        return (rec.id, _tab_view(panel, rec), job.values, common.warnings_block(rec),
+                hist.add(history, hist.entry(rec, job.values, (ref or {}).get("preset"),
+                                             history)))
+
+    @app.callback(Output("run-status", "children", allow_duplicate=True),
+                  Input("cancel-btn", "n_clicks"), State("job", "data"),
+                  prevent_initial_call=True)
+    def _cancel(_n, ref):
+        """Ask the running job to stop; the poll reports when it has."""
+        return _progress(api.cancel_job((ref or {}).get("id")))
+
+    @app.callback(Output("history-strip", "children"),
+                  Input("history", "data"), Input("run-store", "data"))
+    def _strip(history, rid):
+        """The runs of this session, the one on screen highlighted."""
+        return hist.strip(history, rid)
+
+    @app.callback(Output("run-store", "data", allow_duplicate=True),
+                  Output("tab-content", "children", allow_duplicate=True),
+                  Output("run-values", "data", allow_duplicate=True),
+                  Output("run-warnings", "children", allow_duplicate=True),
+                  Input({"type": "hist-view", "rid": ALL}, "n_clicks"),
+                  State("history", "data"), State("tabs", "active_tab"),
+                  prevent_initial_call=True)
+    def _view(clicks, history, active):
+        """Put an earlier run on screen (its tabs, its warnings, and its values
+        for the stale banner)."""
+        if not ctx.triggered_id or not any(clicks or ()):
+            return (no_update,) * 4      # the strip was redrawn, nothing clicked
+        rid = ctx.triggered_id["rid"]
+        e, rec = hist.find(history, rid), get_result(rid)
+        if e is None or rec is None:
+            return (no_update,) * 4
+        panel = _PANEL_BY_ID.get(active, single_run)
+        return rid, _tab_view(panel, rec), e["values"], common.warnings_block(rec)
+
+    @app.callback(Output("history", "data", allow_duplicate=True),
+                  Input({"type": "hist-pin", "rid": ALL}, "n_clicks"),
+                  State("history", "data"), prevent_initial_call=True)
+    def _pin(clicks, history):
+        """Pin a run (kept in the strip and in the result registry) or unpin it."""
+        if not ctx.triggered_id or not any(clicks or ()):
+            return no_update
+        return hist.toggle_pin(history, ctx.triggered_id["rid"])
+
+    @app.callback(Output({"type": "cfg", "path": ALL}, "value", allow_duplicate=True),
+                  Input("hist-load", "n_clicks"),
+                  State("run-store", "data"), State("history", "data"),
+                  State({"type": "cfg", "path": ALL}, "id"),
+                  prevent_initial_call=True)
+    def _load_run(n, rid, history, ids):
+        """Put the shown run's configuration back into the form."""
+        e = hist.find(history, rid)
+        if not n or e is None:
+            return [no_update] * len(ids)
+        return _aligned(e["values"], ids)
 
     @app.callback(Output("tab-content", "children", allow_duplicate=True),
                   Input("tabs", "active_tab"), State("run-store", "data"),

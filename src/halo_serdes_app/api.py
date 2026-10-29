@@ -446,7 +446,13 @@ def _m_release(payload: dict) -> dict:
 
 @dataclasses.dataclass
 class _Job:
-    """A background time-domain run as ``poll`` reports it."""
+    """A background run as ``poll`` reports it.
+
+    ``record`` is the run's registry id whether it succeeded or not (``handle``
+    is set only on success, which is what the phone reads); ``values`` are the
+    form values it ran with. Both are for an in-process client -- the desktop
+    GUI shows a failed run's error from its record and keeps the values for
+    its history -- and neither crosses the JSON boundary."""
     id: str
     state: str = "queued"           # queued | running | done | error | cancelled
     stage: str = ""
@@ -456,25 +462,78 @@ class _Job:
     started: float = 0.0
     elapsed_s: float = 0.0
     cancel: threading.Event = dataclasses.field(default_factory=threading.Event)
+    record: str | None = None
+    values: dict = dataclasses.field(default_factory=dict)
+
+    @property
+    def active(self) -> bool:
+        """Queued or running: not yet finished one way or another."""
+        return self.state in ("queued", "running")
 
 
 _JOBS: dict[str, _Job] = {}
 _JOBS_LOCK = threading.Lock()
 
 
-def _m_start_time_run(payload: dict) -> dict:
-    """Start a time-domain run on a background thread and return its job id.
+class Busy(RuntimeError):
+    """A run is already in progress; ``job`` is its id."""
+
+    def __init__(self, job: str):
+        super().__init__(f"a run is already in progress (job {job}); "
+                         "cancel it or wait for it to finish")
+        self.job = job
+
+
+def start_job(values: dict, **run_kw) -> _Job:
+    """Start ``runner.run_from_values(values, **run_kw)`` on a background
+    thread and return its job; :class:`Busy` if one is already running.
+
+    The one job runner for both clients: the phone reaches it through
+    ``start_time_run`` (time engine, symbols by quality tier), the desktop GUI
+    calls it directly with the form's own engines and symbol count.
 
     One at a time. Two concurrent runs would share one interpreter and thrash
     the same registry for no gain — numpy releases the GIL, so a single worker
     already leaves the UI thread responsive.
     """
+    job = _Job(id=uuid.uuid4().hex[:12], started=time.perf_counter(),
+               values=dict(values))
     with _JOBS_LOCK:
-        busy = [j for j in _JOBS.values() if j.state in ("queued", "running")]
+        busy = [j for j in _JOBS.values() if j.active]
         if busy:
-            raise RuntimeError(
-                f"a run is already in progress (job {busy[0].id}); "
-                "cancel it or wait for it to finish")
+            raise Busy(busy[0].id)
+        _JOBS[job.id] = job
+    threading.Thread(target=_run_job, args=(job, job.values, run_kw), daemon=True,
+                     name=f"halo-job-{job.id}").start()
+    return job
+
+
+def get_job(job_id: str | None) -> _Job | None:
+    """The job with this id, or None."""
+    return _JOBS.get(job_id) if job_id else None
+
+
+def active_job() -> _Job | None:
+    """The job still queued or running, if any."""
+    with _JOBS_LOCK:
+        return next((j for j in _JOBS.values() if j.active), None)
+
+
+def cancel_job(job_id: str | None) -> _Job | None:
+    """Ask a job to stop at its next receiver chunk or stage boundary."""
+    job = get_job(job_id)
+    if job is not None:
+        job.cancel.set()
+    return job
+
+
+def _m_start_time_run(payload: dict) -> dict:
+    """Start a time-domain run on a background thread and return its job id
+    (one at a time; see :func:`start_job`)."""
+    active = active_job()
+    if active is not None:
+        # as a plain RuntimeError: the wire's error kind stays what it was
+        raise RuntimeError(str(Busy(active.id)))
 
     quality = str(payload.get("quality") or "fast")
     if quality not in QUALITY_SYMBOLS:
@@ -483,17 +542,15 @@ def _m_start_time_run(payload: dict) -> dict:
     values = dict(payload.get("values") or {})
     values["sim.n_symbols"] = str(QUALITY_SYMBOLS[quality])
 
-    job = _Job(id=uuid.uuid4().hex[:12], started=time.perf_counter())
-    with _JOBS_LOCK:
-        _JOBS[job.id] = job
-
-    threading.Thread(target=_run_job, args=(job, values), daemon=True,
-                     name=f"halo-job-{job.id}").start()
+    try:
+        job = start_job(values, engines=("time",))
+    except Busy as exc:
+        raise RuntimeError(str(exc)) from None
     return {"job": job.id, "quality": quality,
             "n_symbols": QUALITY_SYMBOLS[quality]}
 
 
-def _run_job(job: _Job, values: dict) -> None:
+def _run_job(job: _Job, values: dict, run_kw: dict) -> None:
     """Body of the worker thread: run, record the handle or the error, honour
     cancellation at the progress callbacks."""
     def progress(stage: str, fraction: float | None = None) -> None:
@@ -505,8 +562,8 @@ def _run_job(job: _Job, values: dict) -> None:
 
     job.state = "running"
     try:
-        rec = runner.run_from_values(values, engines=("time",),
-                                     progress=progress)
+        rec = runner.run_from_values(values, progress=progress, **run_kw)
+        job.record = rec.id
         if rec.ok:
             job.handle, job.state = rec.id, "done"
         else:
@@ -544,10 +601,9 @@ def _m_cancel(payload: dict) -> dict:
     until the unwind actually happens, which with the default chunk is well
     under a second.
     """
-    job = _JOBS.get(payload.get("job"))
+    job = cancel_job(payload.get("job"))
     if job is None:
         raise KeyError(f"unknown job {payload.get('job')!r}")
-    job.cancel.set()
     return {"job": job.id, "state": job.state,
             "note": "takes effect at the next receiver chunk or stage boundary"}
 
