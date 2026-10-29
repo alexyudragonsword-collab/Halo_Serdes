@@ -22,6 +22,7 @@ pytest.importorskip("dash")
 pytest.importorskip("yaml")
 
 from test_gui_error_surfaces import _text  # noqa: E402
+from test_gui_panels import run_through_job  # noqa: E402
 
 from halo_serdes_gui import app as gui_app  # noqa: E402
 from halo_serdes_gui import config_bridge as cb  # noqa: E402
@@ -169,7 +170,7 @@ def test_single_run_fills_its_verdict_after_the_cards(callbacks):
     ids = _ids()
     vals = [20000 if i["path"] == "sim.n_symbols" else _values(NRZ).get(i["path"])
             for i in ids]
-    rid, content, _, _ = callbacks["_run"](1, vals, ids, "single")
+    _, (rid, content, *_rest) = run_through_job(callbacks, vals, ids, "single")
     text = _text(content)
     assert "pre-FEC BER" in text and "Computing the StatEye cross-check" in text
     verdict = _text(callbacks["_fill_verdict"]({"type": "verdict", "rid": rid}))
@@ -205,7 +206,7 @@ def test_study_tabs_wait_for_their_button_and_keep_the_result(callbacks, monkeyp
     ids = _ids()
     vals = [20000 if i["path"] == "sim.n_symbols" else _values(NRZ).get(i["path"])
             for i in ids]
-    rid, *_ = callbacks["_run"](1, vals, ids, "channel")
+    _, (rid, *_rest) = run_through_job(callbacks, vals, ids, "channel")
     calls = []
     for p in studies:
         monkeypatch.setattr(p, "render", lambda rec, p=p: calls.append(p.TAB_ID) or "done")

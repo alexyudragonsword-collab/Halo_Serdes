@@ -1,7 +1,8 @@
 """Engine execution + an in-process result registry.
 
-The GUI runs the (blocking, numba-jitted) engines inside the request thread
-behind a ``dcc.Loading`` spinner and stashes the rich result objects
+The engines (blocking, numba-jitted) run on a background job thread
+(``api.start_job``) for both the desktop GUI and the phone, which stash the rich
+result objects
 (numpy-heavy, non-JSON) in a server-side registry keyed by a short run id.
 Only that id travels through Dash stores. Engine warnings (mixed-signal
 envelope) and optional-dependency errors are captured, not raised.
@@ -29,6 +30,9 @@ from .config_bridge import build_config
 _RESULTS: dict[str, "RunRecord"] = {}
 _ORDER: list[str] = []
 _MAX_KEEP = 24
+#: Records the eviction below passes over: runs the desktop GUI's history has
+#: pinned. Without it the 25th run would drop a pinned one.
+_PINNED: set[str] = set()
 
 # third-party warning noise (scikit-rf etc.) that isn't actionable for a user
 _WARN_DENY = ("Frequency unit not passed", "does not correspond to a valid",
@@ -194,10 +198,16 @@ def get(rid: str | None) -> RunRecord | None:
     return _RESULTS.get(rid) if rid else None
 
 
+def pin(rid: str, on: bool = True) -> None:
+    """Keep ``rid`` past the registry cap (or stop keeping it)."""
+    (_PINNED.add if on else _PINNED.discard)(rid)
+
+
 def _register(rec: RunRecord) -> None:
-    """Store a record, evicting the oldest past the cap."""
+    """Store a record, evicting the oldest unpinned one past the cap."""
     _RESULTS[rec.id] = rec
     _ORDER.append(rec.id)
-    while len(_ORDER) > _MAX_KEEP:
-        old = _ORDER.pop(0)
+    while len(_ORDER) - len(_PINNED & set(_ORDER)) > _MAX_KEEP:
+        old = next(r for r in _ORDER if r not in _PINNED)
+        _ORDER.remove(old)
         _RESULTS.pop(old, None)

@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-29 · 桌面 GUI 改版阶段 1(feat/gui-phase1)
+
+- 用户"继续":做阶段 1。Run 改走 `api.start_job`(把手机的后台任务抽成桌面也能调的函数;JSON 合同、错误类型不变)+ `dcc.Interval` 轮询;
+  进度条 / 取消 / Runs 历史条(回看、☆ 钉住 → `runner.pin` 不被注册表挤掉、载回配置)。`history.py` 新增。
+- 两个坑:轮询回调若输出到 `tab-content`,外层 `dcc.Loading` 每 400 ms 把整个标签区盖住 —— 拆成 `_poll`(只管进度)+ `_finish`(结束时渲染);
+  历史标签比较表单值要先 `coerce_in`(浏览器回传 "" 而非 None,未改的预设显示 "6 changed")。pitfalls 记一条。
+- 量到的限制:时域引擎前端(发端波形 + 信道 FFT 滤波)无回调,NRZ 28G 300 万符号前端 36 s、取消 47 s 才生效;GIL 不是问题(前端期间进程内
+  渲染 Channel 0.15 s,心跳最长卡 1.8 s)。登记 ROADMAP P2 #41,界面文案如实写"当前阶段结束时停"。
+- 验证:GUI / API / 文档 / 示例 API 246 项;Playwright 全流程(运行中切页 0.65 s、取消、两次运行、回看出过期横幅、钉住、载回配置后横幅消失、0 报错);
+  编译集 `halo_serdes_app/api`、`runner` 本地真编 .so:API 合同 + 阶段 1 63 项,HALO_NO_JIT 下阶段 1 10 项。动了共用层,Android CI 会跑。
+
 ## 2026-10-28 · 桌面 GUI 改版阶段 0(feat/gui-phase0)
 
 - 用户认可 GUI 审视方案(四阶段,线框画布已看)并要求从阶段 0 开始;阶段 1–3 登记 ROADMAP P2 #41。只动 `halo_serdes_gui/`(Android 构建排除此包,共用层未动)。
