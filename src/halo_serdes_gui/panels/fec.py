@@ -38,8 +38,8 @@ def render(rec: RunRecord):
         if pre > 0:
             from halo_serdes.fec import pre_to_post_fec_ber
             post = pre_to_post_fec_ber(pre, "kp4")
-            cards = [theme.metric_card("This run pre-FEC", f"{pre:.2e}", "info"),
-                     theme.metric_card("→ post-KP4", f"{post:.1e}",
+            cards = [theme.metric_card("This run pre-FEC", common.sci(pre), "info"),
+                     theme.metric_card("→ post-KP4", common.sci(post),
                                        "good" if post < 1e-15 else "warn")]
             fig.add_vline(x=pre, line=dict(color=theme.MUTED, dash="dash", width=1),
                           annotation_text="this run")

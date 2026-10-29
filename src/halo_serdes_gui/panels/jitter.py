@@ -131,7 +131,7 @@ def render(rec: RunRecord):
         return common.need_run_message()
     if not rec.ok:
         return common.error_block(rec)
-    blocks = [common.warnings_block(rec)]
+    blocks = []
     if rec.cfg.tx.clock.kind == "profile":
         blocks.append(_profile_section(rec))
     jb = rec.sim.extras.get("jitter_budget") if rec.sim is not None else None

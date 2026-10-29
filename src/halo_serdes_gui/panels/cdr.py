@@ -23,7 +23,6 @@ def render(rec: RunRecord):
     e = rec.sim.extras
     settle, train_end = e.get("settle", 0), e.get("train_end", 0)
     return html.Div([
-        common.warnings_block(rec),
         dbc.Row([
             dbc.Col(common.graph(figures.cdr_phase_fig(
                 e.get("phase_track"), rec.cfg.osr, settle, train_end)), lg=7),

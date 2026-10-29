@@ -12,6 +12,9 @@ from . import common
 
 TITLE = "JTOL"
 TAB_ID = "jtol"
+#: Shown with a Run button instead of computing on tab switch (app.py).
+STUDY = ("Tolerated sinusoidal jitter at each frequency, by binary search on "
+         "short time-domain runs. A few seconds.")
 
 
 def render(rec: RunRecord):

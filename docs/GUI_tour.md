@@ -11,11 +11,19 @@ pip install -e ".[gui,jit,fec]"
 halo-serdes-gui        # → http://127.0.0.1:8050/
 ```
 
+> 2026-10-28 更正:界面改版阶段 0 之后,图 1 与图 4 已重拍;其余截图仍是旧界面,侧栏里的
+> **Load** 按钮已经去掉(选中预设即加载),研究类标签页(Sweeps / Crosstalk / JTOL / AMI·COM /
+> Fixed-Point / Optical)切过去先显示说明和 **▶ Run** 按钮,点了才计算。原图 4 实际截的是 CDR
+> 页,不是 Channel 页。
+
 ---
 
 ## 1. Single Run — 单次链路总览
-结果卡(pre-FEC BER / SER / slicer SNR / TJ@1e-12 / 引擎耗时)、密度眼图、slicer 输入直方图
-(带判决电平线)、收敛后的 FFE/DFE 抽头。顶部是全部 16 个能力标签页。
+最上面是**结论**:对照 FEC 门限(NRZ 用 KR4,PAM 用 KP4,均按 post-FEC 1e-15 反推 pre-FEC
+门限)给出通过 / 不通过 / 两引擎不一致 / 无法判定,逐个列出时域与 StatEye 各自的判断;旁边是
+StatEye BER 和 时域/StatEye 比值卡。结论要等 StatEye 算完,所以先显示下面的时域结果卡
+(pre-FEC BER / SER / slicer SNR / TJ@1e-12 / 引擎耗时),再补上结论。下面是密度眼图、slicer
+输入直方图(带判决电平线)、收敛后的 FFE/DFE 抽头。
 
 ![Single Run](figures/gui/01_single_run.png)
 
@@ -33,6 +41,7 @@ halo-serdes-gui        # → http://127.0.0.1:8050/
 
 ## 4. Channel — 信道特征
 插入损耗 Bode(带 Nyquist 线)、冲激响应、脉冲响应 + UI 光标,以及行为级 COM 卡片/分解。
+(2026-10-28 前 COM 分解图从未显示过:`com_fig or 占位图` 里没有子元素的 Graph 判为假。)
 
 ![Channel](figures/gui/04_channel.png)
 

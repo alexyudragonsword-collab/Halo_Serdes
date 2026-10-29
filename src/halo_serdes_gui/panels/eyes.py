@@ -117,7 +117,6 @@ def render(rec: RunRecord):
             "captured slicer-input fold.")
 
     return html.Div([
-        common.warnings_block(rec),
         dbc.Row(cols, className="g-2"),
         note,
     ])

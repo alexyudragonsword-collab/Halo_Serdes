@@ -12,6 +12,9 @@ from . import common
 
 TITLE = "Fixed-Point"
 TAB_ID = "fixed"
+#: Shown with a Run button instead of computing on tab switch (app.py).
+STUDY = ("Bit-true replay of the captured ADC codes at each weight word length "
+         "(the BER wall). Needs an ADC run.")
 
 
 def render(rec: RunRecord):

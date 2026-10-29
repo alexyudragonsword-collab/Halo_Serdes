@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-28 · 桌面 GUI 改版阶段 0(feat/gui-phase0)
+
+- 用户认可 GUI 审视方案(四阶段,线框画布已看)并要求从阶段 0 开始;阶段 1–3 登记 ROADMAP P2 #41。只动 `halo_serdes_gui/`(Android 构建排除此包,共用层未动)。
+- 预设即加载;`field_meta.py` 按配置隐藏字段(预设上 38–84 / 162)+ 悬停说明;改参后"结果已过期"横幅;研究页手动 Run、结果按(运行、页)保留。
+- Single Run 结论:对 KR4(NRZ)/ KP4(PAM)门限,两引擎各自判断;零误码只在 1/n 低于门限时算通过;时域 / StatEye 比值少于 10 个错不评判。
+  StatEye 由占位块出现后的回调补算,时域卡先显示;外层 Loading 只盯 tab-content,否则补算时整页被遮。
+- 警告只显示一次:包络警告交给侧栏,数值警告折叠。速率统一写法。
+- 修 Channel 页 COM 分解图从未显示(`Graph or 占位图`,无子元素的组件为假);pitfalls 一条,测试遍历全部页面查裸 figure。
+- 验证:GUI + 文档新鲜度 + 导入卫生 + API 合同 138 项全过;Playwright 实跑:切预设 ADC 组出现、运行 2.9 s 出卡 + 1.5 s 补结论、改参出横幅、研究页 0.2 s 出按钮、COM 点后 0.7 s、回页不重算,控制台 0 报错。
+  导览图 1、4 重拍。
+- CI(PR #118,头 4781bff,一次全绿):矩阵 jit 16.7–22.8 分钟、nojit 12.4–25.1,examples 20.2,import-clean 1.4–2.2;Windows 打包 PyInstaller 2.9、
+  Nuitka 22.4、Nuitka onefile 37.5(GUI 改动触发,桌面打包通过);不触发 Android。
+
 ## 2026-10-28 · ROADMAP 记待办与方向候选(docs/roadmap-1028)
 
 - 按用户要求只记录、不开工:P2 #38 bang-bang 鉴相增益的读点(照搬 MM 的核法)、#39 MM 剩下的 2–6 % σ、#40 224G 从 lane +1/4 UI 0.74×(#37 已在);

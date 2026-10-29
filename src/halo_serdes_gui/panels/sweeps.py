@@ -13,6 +13,9 @@ from . import common
 
 TITLE = "Sweeps / Reach"
 TAB_ID = "sweeps"
+#: Shown with a Run button instead of computing on tab switch (app.py).
+STUDY = ("Pre- and post-FEC BER over a sweep of channel lengths, through "
+         "StatEye. Analytic channels only; about 20 s on the 28G preset.")
 
 
 def render(rec: RunRecord):

@@ -23,7 +23,7 @@ COLORWAY = ["#2b6cb0", "#dd6b20", "#2f855a", "#c53030", "#805ad5",
 TEMPLATE = "plotly_white"
 BOOTSTRAP = dbc.themes.FLATLY  # clean professional bootstrap theme
 
-_TONE = {"ok": GOOD, "good": GOOD, "warn": WARN, "crit": CRIT,
+TONE = _TONE = {"ok": GOOD, "good": GOOD, "warn": WARN, "crit": CRIT,
          "info": PRIMARY, "muted": MUTED}
 
 

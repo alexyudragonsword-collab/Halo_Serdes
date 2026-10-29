@@ -1,24 +1,29 @@
 """Halo_Serdes GUI — Dash application shell, sidebar, tabs, and callbacks.
 
 Left sidebar edits a ``LinkConfig`` (presets, YAML I/O, live derived values,
-mixed-signal envelope banner, full config form). The main area is a set of
-capability tabs; each run stashes its result in the server-side registry and
-every tab renders from it. Run the app with ``halo-serdes-gui`` or
-``python -m halo_serdes_gui``.
+mixed-signal envelope banner, the config form showing only what the
+configuration uses). The main area is a set of capability tabs; each run
+stashes its result in the server-side registry and every tab renders from it.
+Above the tabs: a banner when the form has changed since the run, and the
+run's warnings, once. Study tabs (``STUDY`` on the panel) wait for their own
+Run button. Run the app with ``halo-serdes-gui`` or ``python -m halo_serdes_gui``.
 """
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
 import dash_bootstrap_components as dbc
-from dash import ALL, Dash, Input, Output, State, dcc, html, no_update
+from dash import ALL, MATCH, Dash, Input, Output, State, dcc, html, no_update
 
 from . import config_bridge as cb
 from . import theme
-from .config_form import render_form, values_from_states
+from .config_form import render_form, values_from_states, visibility
 from .panels import (
     adaptation, adc, ami_com, backchannel, cdr, channel, crosstalk, ctle,
     dual_engine, eyes, fec, fixed_point, jitter, jtol, optical, single_run, sweeps,
 )
+from .panels import common
 from .runner import get as get_result
 from .runner import run_from_values
 
@@ -51,12 +56,10 @@ def _sidebar():
             ]),
         ], className="mb-2 d-flex align-items-center"),
 
-        dbc.InputGroup([
-            dbc.Select(id="preset", options=[{"label": n, "value": n}
-                       for n in cb.preset_names()], value=DEFAULT_PRESET,
-                       size="sm"),
-            dbc.Button("Load", id="preset-load", size="sm", color="secondary"),
-        ], className="mb-2"),
+        # choosing a preset loads it; there is no separate Load step
+        dbc.Select(id="preset", options=[{"label": n, "value": n}
+                   for n in cb.preset_names()], value=DEFAULT_PRESET,
+                   size="sm", className="mb-2"),
 
         dbc.Button("▶  Run", id="run-btn", color="primary", className="w-100 mb-2"),
 
@@ -92,9 +95,15 @@ def _main():
     content area (only the active tab is built)."""
     tabs = [dbc.Tab(label=p.TITLE, tab_id=p.TAB_ID) for p in PANELS]
     return html.Div([
+        html.Div(id="stale"),
+        html.Div(id="run-warnings"),
         dbc.Tabs(tabs, id="tabs", active_tab=PANELS[0].TAB_ID, className="mb-2"),
+        # the spinner covers the tab only while the tab itself is being built:
+        # the verdict and a study's result fill in inside it, and must not
+        # blank the cards already on screen while they compute
         dcc.Loading(html.Div(single_run.render(None), id="tab-content"),
-                    type="default", color=theme.PRIMARY),
+                    type="default", color=theme.PRIMARY,
+                    target_components={"tab-content": "children"}),
     ], style={"height": "100vh", "overflowY": "auto", "padding": "0.8rem 1rem"})
 
 
@@ -111,6 +120,7 @@ def build_app() -> Dash:
                suppress_callback_exceptions=True)
     app.layout = dbc.Container([
         dcc.Store(id="run-store"),
+        dcc.Store(id="run-values"),
         dbc.Row([
             dbc.Col(_sidebar(), width=12, lg=4, xl=3, style={"padding": 0}),
             dbc.Col(_main(), width=12, lg=8, xl=9, style={"padding": 0}),
@@ -118,6 +128,59 @@ def build_app() -> Dash:
     ], fluid=True, style={"padding": 0})
     _register_callbacks(app)
     return app
+
+
+# --- study tabs --------------------------------------------------------------
+# A study (reach sweep, crosstalk, JTOL, COM, fixed point, optical) costs from
+# a second to ~20 s. Computing it on tab switch left the tab spinning with no
+# word of what it was doing; it now waits for its own Run button, and a result
+# is kept per (run, tab) so coming back to the tab does not recompute it.
+_STUDY_CACHE: OrderedDict[tuple[str, str], object] = OrderedDict()
+_STUDY_CACHE_MAX = 24
+
+
+def _study_gate(panel, rec):
+    """A study tab before it has run: what it computes, and its Run button."""
+    return html.Div([
+        html.Div(panel.STUDY, style={"fontSize": "0.85rem", "color": theme.INK,
+                                     "marginBottom": "0.5rem"}),
+        dbc.Button(f"▶  Run {panel.TITLE}", id="study-run", color="primary",
+                   size="sm", className="mb-2"),
+        dcc.Loading(html.Div(id="study-body"), type="default", color=theme.PRIMARY),
+    ])
+
+
+def _tab_view(panel, rec):
+    """What a tab shows for ``rec``: a study's gate (or its kept result), or
+    the panel itself."""
+    if getattr(panel, "STUDY", None) and rec is not None and rec.ok:
+        kept = _STUDY_CACHE.get((rec.id, panel.TAB_ID))
+        return kept if kept is not None else _study_gate(panel, rec)
+    return panel.render(rec)
+
+
+def _run_study(panel, rec):
+    """Compute a study tab for ``rec`` and keep the result."""
+    out = panel.render(rec)
+    _STUDY_CACHE[(rec.id, panel.TAB_ID)] = out
+    while len(_STUDY_CACHE) > _STUDY_CACHE_MAX:
+        _STUDY_CACHE.popitem(last=False)
+    return out
+
+
+def _stale_banner(now: dict, then: dict | None):
+    """The banner for a form that has moved on from the run shown, or None."""
+    if not then:
+        return None
+    changed = [p for p in now if now.get(p) != then.get(p)]
+    if not changed:
+        return None
+    labels = [cb.FIELD_BY_PATH[p]["label"] for p in changed if p in cb.FIELD_BY_PATH]
+    more = f" and {len(labels) - 3} more" if len(labels) > 3 else ""
+    return theme.banner(
+        "warn", f"These results are from an earlier configuration: "
+                f"{', '.join(labels[:3])}{more} changed since the run. "
+                f"Press ▶ Run to update them.")
 
 
 def _aligned(target: dict, ids: list[dict]) -> list:
@@ -149,13 +212,32 @@ def _register_callbacks(app: Dash) -> None:
         return html.Div(chips), theme.banner(lvl, msg)
 
     @app.callback(Output({"type": "cfg", "path": ALL}, "value"),
-                  Input("preset-load", "n_clicks"),
-                  State("preset", "value"),
+                  Input("preset", "value"),
                   State({"type": "cfg", "path": ALL}, "id"),
                   prevent_initial_call=True)
-    def _load_preset(_n, name, ids):
-        """Fill the form from the chosen preset."""
+    def _load_preset(name, ids):
+        """Fill the form from the preset as soon as it is chosen."""
         return _aligned(cb.config_to_values(cb.load_preset(name)), ids)
+
+    @app.callback(Output({"type": "cfg-row", "path": ALL}, "style"),
+                  Output({"type": "cfg-sec", "sid": ALL}, "style"),
+                  Input({"type": "cfg", "path": ALL}, "value"),
+                  State({"type": "cfg", "path": ALL}, "id"),
+                  State({"type": "cfg-row", "path": ALL}, "id"),
+                  State({"type": "cfg-sec", "sid": ALL}, "id"),
+                  prevent_initial_call=True)
+    def _visibility(vals, ids, row_ids, sec_ids):
+        """Show the fields and sections the configuration uses (architecture,
+        channel kind, optics, ...); the rest stay in the form, hidden."""
+        return visibility(values_from_states(ids, vals), row_ids, sec_ids)
+
+    @app.callback(Output("stale", "children"),
+                  Input({"type": "cfg", "path": ALL}, "value"),
+                  Input("run-values", "data"),
+                  State({"type": "cfg", "path": ALL}, "id"))
+    def _stale(vals, then, ids):
+        """Say so when the form no longer matches the run on screen."""
+        return _stale_banner(values_from_states(ids, vals), then)
 
     @app.callback(Output({"type": "cfg", "path": ALL}, "value",
                          allow_duplicate=True),
@@ -200,19 +282,21 @@ def _register_callbacks(app: Dash) -> None:
         return not is_open
 
     @app.callback(Output("run-store", "data"), Output("tab-content", "children"),
+                  Output("run-values", "data"), Output("run-warnings", "children"),
                   Input("run-btn", "n_clicks"),
                   State({"type": "cfg", "path": ALL}, "value"),
                   State({"type": "cfg", "path": ALL}, "id"),
                   State("tabs", "active_tab"), prevent_initial_call=True)
     def _run(_n, vals, ids, active):
         """Run the form's config (eye and jitter capture on, so those tabs have
-        data) and render the active tab from the new record."""
+        data) and render the active tab from the new record; keep the values
+        it ran with, for the stale banner, and show its warnings once."""
         values = values_from_states(ids, vals)
         # capture jitter opportunistically so the Jitter tab has data when the
         # pattern repeats enough; harmless (returns a note otherwise)
         rec = run_from_values(values, collect_eye=True, collect_jitter=True)
         panel = _PANEL_BY_ID.get(active, single_run)
-        return rec.id, panel.render(rec)
+        return rec.id, _tab_view(panel, rec), values, common.warnings_block(rec)
 
     @app.callback(Output("tab-content", "children", allow_duplicate=True),
                   Input("tabs", "active_tab"), State("run-store", "data"),
@@ -220,7 +304,32 @@ def _register_callbacks(app: Dash) -> None:
     def _switch_tab(active, rid):
         """Render the newly selected tab from the stored run (or its empty state)."""
         panel = _PANEL_BY_ID.get(active, single_run)
-        return panel.render(get_result(rid))
+        return _tab_view(panel, get_result(rid))
+
+    @app.callback(Output({"type": "verdict", "rid": MATCH}, "children"),
+                  Input({"type": "verdict", "rid": MATCH}, "id"))
+    def _fill_verdict(slot):
+        """The verdict, once the StatEye cross-check it needs has run. Fired
+        by the placeholder appearing, so the time-domain cards are already
+        on screen while this computes."""
+        rec = get_result(slot["rid"])
+        if rec is None:
+            return common.need_run_message()
+        common.ensure_stat(rec)
+        return single_run.verdict_block(rec)
+
+    @app.callback(Output("study-body", "children"),
+                  Output("study-run", "disabled"),
+                  Input("study-run", "n_clicks"),
+                  State("tabs", "active_tab"), State("run-store", "data"),
+                  prevent_initial_call=True)
+    def _study(_n, active, rid):
+        """Run the active study tab on the stored run."""
+        panel = _PANEL_BY_ID.get(active)
+        rec = get_result(rid)
+        if panel is None or rec is None:
+            return common.need_run_message(), False
+        return _run_study(panel, rec), True
 
 
 def main() -> None:

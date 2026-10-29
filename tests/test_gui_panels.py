@@ -186,7 +186,7 @@ def test_live_values_follow_the_form_and_ignore_a_half_edited_one(callbacks):
 
 def test_preset_load_and_yaml_round_trip_through_the_form(callbacks):
     ids, vals = _form()
-    loaded = callbacks["_load_preset"](1, "PAM4 224G ADC (106 GBd)", ids)
+    loaded = callbacks["_load_preset"]("PAM4 224G ADC (106 GBd)", ids)
     by_path = dict(zip((i["path"] for i in ids), loaded))
     assert by_path["rx.arch"] == "adc_dsp"
 
@@ -207,9 +207,10 @@ def test_preset_load_and_yaml_round_trip_through_the_form(callbacks):
 def test_run_renders_the_active_tab_and_tabs_switch_on_the_stored_run(callbacks):
     ids, vals = _form()
     vals = [20000 if i["path"] == "sim.n_symbols" else v for i, v in zip(ids, vals)]
-    rid, content = callbacks["_run"](1, vals, ids, "channel")
+    rid, content, ran_with, _warns = callbacks["_run"](1, vals, ids, "channel")
     assert get_result(rid) is not None
     assert "Loss @ Nyquist" in _text(content)
+    assert ran_with["sim.n_symbols"] == 20000
     assert "pre-FEC BER" in _text(callbacks["_switch_tab"]("single", rid))
     # an unknown tab id falls back to Single Run; an unknown run to its empty state
     assert "pre-FEC BER" in _text(callbacks["_switch_tab"]("nope", rid))

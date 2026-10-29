@@ -14,6 +14,7 @@ from dash import html
 
 from . import theme
 from .config_bridge import SECTIONS
+from .field_meta import HELP, field_shown, section_shown
 
 _NUMERIC = {"float", "int", "opt_float", "opt_int"}
 
@@ -53,25 +54,53 @@ def _control(field: dict, value: Any):
                      debounce=True)
 
 
-def _field_row(field: dict, value: Any):
+_HIDDEN = {"display": "none"}
+
+
+def _label(field: dict):
+    """The field's label; one with help text carries it as a hover title and
+    a dotted underline that says there is something to hover for."""
+    style = {"fontSize": "0.78rem", "color": theme.INK}
+    tip = HELP.get(field["path"])
+    if not tip:
+        return html.Label(field["label"], style=style)
+    return html.Label(field["label"], title=tip,
+                      style={**style, "cursor": "help",
+                             "textDecoration": "underline dotted #9aa5b4",
+                             "textUnderlineOffset": "3px"})
+
+
+def _field_row(field: dict, value: Any, shown: bool = True):
     """Label and control on one row."""
     return dbc.Row([
-        dbc.Col(html.Label(field["label"],
-                           style={"fontSize": "0.78rem", "color": theme.INK}),
-                width=6, className="d-flex align-items-center"),
+        dbc.Col(_label(field), width=6, className="d-flex align-items-center"),
         dbc.Col(_control(field, value), width=6),
-    ], className="g-1 mb-1")
+    ], id={"type": "cfg-row", "path": field["path"]},
+        className="g-1 mb-1", style=None if shown else _HIDDEN)
 
 
 def render_form(values: dict[str, Any], open_sections=("link", "channel",
                 "tx", "rx", "sim")):
-    """Return an Accordion with one item per section."""
+    """Return an Accordion with one item per section, showing only what the
+    configuration in ``values`` uses (``field_meta``)."""
     items = []
     for sid, title, fields in SECTIONS:
-        rows = [_field_row(f, values.get(f["path"])) for f in fields]
-        items.append(dbc.AccordionItem(rows, title=title, item_id=sid))
+        rows = [_field_row(f, values.get(f["path"]), field_shown(f["path"], values))
+                for f in fields]
+        items.append(dbc.AccordionItem(
+            rows, title=title, item_id=sid, id={"type": "cfg-sec", "sid": sid},
+            style=None if section_shown(sid, values) else _HIDDEN))
     return dbc.Accordion(items, active_item=list(open_sections),
                          always_open=True, flush=True)
+
+
+def visibility(values: dict[str, Any], row_ids: list[dict],
+               sec_ids: list[dict]) -> tuple[list, list]:
+    """Styles for the form's rows and sections, in the order of their ids:
+    hidden where the configuration in ``values`` does not use them."""
+    rows = [None if field_shown(i["path"], values) else _HIDDEN for i in row_ids]
+    secs = [None if section_shown(i["sid"], values) else _HIDDEN for i in sec_ids]
+    return rows, secs
 
 
 def values_from_states(ids: list[dict], vals: list[Any]) -> dict[str, Any]:
