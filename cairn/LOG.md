@@ -14,6 +14,8 @@
 - 测试里又踩一次"Dash 组件为假":遍历组件树写了 `children or []`,整棵子树被跳过(pitfalls 那条补一句)。
 - 验证:GUI / API / 文档 / 导入卫生 / 示例 API 257 项;Playwright 全流程 0 报错(分段 + 高级、四个工作区、诊断跟随分段、顶栏切架构出 ADC 段、
   对比与另一架构重跑、窄屏);导览 20 张重拍。
+- CI(PR #120,头 7616b52,一次全绿):矩阵 jit 12.4–20.4 分钟、nojit 21.8–26.2,examples 11.2 / 11.3,import-clean 2.2–2.3;Windows PyInstaller 3.0、
+  Nuitka 37.4、onefile 42.6;不触发 Android(只动桌面 GUI)。
 
 ## 2026-10-29 · 桌面 GUI 改版阶段 1(feat/gui-phase1)
 
