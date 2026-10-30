@@ -152,7 +152,7 @@ class LaneCurve:
 def _pre_ffe_lock_ui(cfg: LinkConfig, channel) -> float:
     """Where an ADC receiver's own Mueller-Muller loop samples, in UI from
     the pre-FFE pulse peak -- the statistical engine's rule
-    (``statistical._lock_position``): the peak itself when the detector reads
+    (``stat_loop._lock_position``): the peak itself when the detector reads
     the equalised samples, h(-1) = h(+1) when it reads the raw ones."""
     if cfg.mm_pd_input == "ffe":
         return 0.0

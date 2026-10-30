@@ -6,6 +6,27 @@
 
 ---
 
+## [未发布] — 对外校验(serdespy)与统计引擎拆模块
+
+### 新增
+- `tools/external_check.py`:同一条链路过 serdespy 1.0(PyPI;它自己的 Touchstone 混模 + 端接、冲激、`Receiver` 的切片与 DFE)与我们的
+  静态 / 统计引擎,比信道 |H| 与脉冲峰值处的 SER;附教科书 ISI 枚举 × Q()。serdespy 不是依赖,解开 wheel 传目录。结果与解读见
+  `cairn/external-validation.md`。
+- 发现(未修,ROADMAP P1 #42):冲激响应按一阶差分能量 99.99 % 截断,丢掉慢尾 ISI,三个引擎与 COM 一起偏乐观 ——
+  PAM4 16 GBd Whisper 4 mV 静态 / 统计 0.70× / 0.79× 于 serdespy,整段冲激时 1.01× / 1.20×(NRZ 16G + CTLE 0.82 / 0.81× → 0.98 / 0.91×);预设 NRZ 16G 统计 BER ×2.4、NRZ 28G ×21。
+
+### 变更
+- `engine/statistical.py`(2994 行)拆成 `statistical.py`(`run_statistical`、`StatResult`、近似清单,1272 行)与 `stat_pdf`(ISI PDF)、
+  `stat_noise`(ADC / 发端噪声与边沿抖动)、`stat_pr`(PR 检测器的错误事件与判决)、`stat_loop`(锁定点、bang-bang 鉴相、采样抖动与告警)、
+  `stat_pattern_phase`(码型-相位因子)。47 个定义逐个 AST 相同,旧名照旧可从 `engine.statistical` 导入;指纹 986 值逐位不变。
+  例外:探针钩子 `_PATTERN_PHASE_TRACE` 要设在 `stat_pattern_phase` 上(在 `statistical` 上重新绑定不会传过去)。
+
+### 测试
+- `tests/test_statistical_layout.py`:每个部件的顶层名从 `statistical` 拿到的是同一个对象、部件不反向导入 `statistical`、缓存共享。
+- `tests/test_external_check.py`:工具的链路是合法配置、整段冲激保留了截断丢掉的尾巴(不需要 serdespy)。
+
+---
+
 ## [未发布] — GUI 改版阶段 3:表单元数据两端共用
 
 ### 变更

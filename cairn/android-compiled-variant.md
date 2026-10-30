@@ -81,6 +81,8 @@ APK 里 `halo_serdes` 是 7 source / 82 native、`halo_serdes_app` 是 0 source 
 82 = 41 × 2 个 ABI,10 = 5 × 2,7 个 source 正是上表排除的那 7 个。
 (2026-10-29:`halo_serdes_app` 加了 `form_meta`,`--compile all` 自动收进编译集,应为 6 个模块 / 12 native;
 本地 Cython 3 真编 6 个 `.so`、删 `.py` 后 API 合同 + 表单元数据 + 桌面表单测试 88 项过。)
+(2026-10-30:`engine/statistical.py` 拆出 `stat_pdf` / `stat_noise` / `stat_pr` / `stat_loop` / `stat_pattern_phase`,`engine` 整包在编译集里,
+自动收进:`engine` 应为 19 个 `.so`,`halo_serdes` 46 个模块 / 92 native;本地 Cython 3 真编这 6 个 `.so`、删 `.py` 后在 `HALO_NO_JIT=1` 下跑统计引擎相关测试。)
 
 **pip 确实按 tag 挑了 wheel**,这不是推断:Chaquopy 的安装日志里 `halo-serdes`
 在 arm64-v8a 和 x86_64 两个列表里**各出现一次**,而 `scikit-rf`/`six`/`pytz`
