@@ -12,6 +12,10 @@
   LinkScreen 按分段卡片 + Advanced,FormFields 显示说明;`FormContractTest` 加两条。本地无 Android SDK,Kotlin 只能等 CI 编译 + 模拟器。
 - 验证:宿主 270 项;编译集 `halo_serdes_app` 6 个模块本地真编 .so,API 合同 + 表单元数据 + 桌面表单 88 项、HALO_NO_JIT 下 14 项。
   `android/README.md` 的"12 个分组、78 个字段"是旧数,更正为 15 / 162。
+- CI(PR #121,头 f33cd45,全绿):Android 构建 2.0–2.2 分钟、编译版 9.9–10.3、编译版模拟器 4.2–5.6、API 34 5.4–6.0 / 35 4.0–5.7,
+  仪器化 36 tests / 0 failures(FormContractTest 8,含新加 2 条);一个 API 34 首次在 sdkmanager 下载模拟器包时 "Error reading Zip content"
+  (测试未开始,基础设施)而失败,重跑一次过。矩阵 jit 12.8–23.7、nojit 19.5–25.3,examples 16.4,examples-full 31.4;Windows Nuitka 86.0、
+  onefile 125.2(平时约 37 / 43,疑缓存未命中,未查;本 PR 未动打包)。
 
 ## 2026-10-29 · 桌面 GUI 改版阶段 2(feat/gui-phase2)
 
