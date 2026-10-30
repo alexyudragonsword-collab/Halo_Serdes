@@ -698,7 +698,7 @@ def mm_pd_statistics(pulse_y: np.ndarray, osr: int, peak_idx: int, levels_v: np.
     the fingerprint's 53 Gb/s link. ``lock_shift``: where the receiver
     samples, in samples from ``peak_idx`` -- the cursors and the feedback are
     taken there. On example 31's link the loop samples 2 samples before the
-    equalised pulse's peak (``statistical._lock_position``); read at the peak
+    equalised pulse's peak (``stat_loop._lock_position``); read at the peak
     the gain came out 1.12x the kernel's (0.0328 against 0.0292, with the
     detector's mean there 0.002, not 0), read at the lock it is the kernel's
     (2026-10-28).

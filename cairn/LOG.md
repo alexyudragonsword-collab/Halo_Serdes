@@ -3,6 +3,21 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-30 · 对外校验(serdespy)与统计引擎拆模块(feat/external-validation)
+
+- 用户选"对外校验 + 拆分 statistical.py"。外部参考只有 serdespy 1.0 可用(PyPI `pybert` 是 NLP 包;PyBERT / serdespy 源码仓、IEEE COM 表格经代理 403)。
+  `tools/external_check.py`:信道 |H| 与三条 Whisper 链路脉冲峰值处 SER,serdespy 自己的混模 / 冲激 / `Receiver` DFE。
+- 信道:文件网格上与 serdespy 差 0.000 / 0.037 / 0.057 dB;后两个是 serdespy 端口重排对非互易文件的毛病(S23/S32 对称化后 3e-15 dB)。
+- **发现**:冲激按一阶差分能量 99.99 % 截断(三个引擎 + COM 共用),Whisper 16 GBd 只留 13.9 UI,丢掉慢尾 ISI。CTLE 两条链路静态 / 统计
+  0.82 / 0.81×(NRZ 16G)、0.70 / 0.79×(PAM4)于 serdespy;整段冲激 0.98 / 0.91×、1.01 / 1.20×。预设统计 BER NRZ 16G ×2.4、28G ×21。
+  未修 —— 动指纹与文档数字,记 ROADMAP P1 #42。双引擎看不出(两边丢的一样),pitfalls 记一条。`cairn/external-validation.md`。
+- 拆分:2994 → 1272 行 + `stat_pdf` / `stat_noise` / `stat_pr` / `stat_loop` / `stat_pattern_phase`(按行段切、脚本生成 import);
+  47 个定义 AST 逐个相同,指纹 986 值逐位不变;旧名从 `statistical` 照旧可导入(探针钩子 `_PATTERN_PHASE_TRACE` 要设在新模块上)。
+- 对照时自己踩的:把 bang-bang 增益调到 2^-28 想"关环路",码型-相位链十几分钟不收敛 → 改无操作 FFE `[1, 0]`;
+  serdespy 侧波形用 `np.convolve` 直卷 1920 万 × 3.2 万 → `fftconvolve`;`pgrep -f` 的模式又匹配到自己的 shell(已知坑)。
+- 验证:编译集 6 个模块本地真编 .so、删 `.py`,`HALO_NO_JIT=1` 下统计 / PR / 码型-相位 / COM / skew 等 131 passed / 58 skipped;
+  新测试 `test_statistical_layout`(7)、`test_external_check`(4);ruff。
+
 ## 2026-10-29 · GUI 改版阶段 3:表单元数据两端共用(feat/gui-phase3)
 
 - 用户"进入阶段 3"。`halo_serdes_app/form_meta.py`:HELP / COMMON / STAGES 搬入,显示条件从 lambda 改成数据规则 + `holds()`;

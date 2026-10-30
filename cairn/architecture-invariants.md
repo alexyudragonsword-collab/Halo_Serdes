@@ -62,7 +62,12 @@ lane 的偏移、时钟停在起点(`LaneCurve.pd_sees_offset`,`cairn/多lane建
 
 加了非 LTI 环节(TI-ADC 失配、MLSD、CDR 残余抖动)后偏差会变大 —— 这些在统计引擎里
 是**近似**,`engine/statistical.py` 顶部逐条列了假设清单。**新增近似必须往那儿补一条**,
-否则下一个人无法判断偏差是 bug 还是已知近似。
+否则下一个人无法判断偏差是 bug 还是已知近似。(2026-10-30 起统计引擎分成 `statistical.py`(`run_statistical`、清单)
+与 `stat_pdf` / `stat_noise` / `stat_pr` / `stat_loop` / `stat_pattern_phase` 五个模块;清单仍在 `statistical.py` 顶部,
+旧名照旧可从 `statistical` 导入。)
+
+铁律 3 的边界:两个引擎**共用**的步骤(信道导入与冲激截断、脉冲构造、电平与噪声约定)互证看不出错,要外部参考 ——
+2026-10-30 对 serdespy 就查出了共用的冲激截断丢长尾(`cairn/external-validation.md`,ROADMAP P1 #42)。
 
 剖面时钟(`tx.clock.kind: profile`)的交叉校验口径(2026-10-01 阶段 2):统计引擎用
 `cdr/linear.py` 的线性化环路算采样时刻 σ,**时域引擎是裁判,不为迎合统计引擎而改**;

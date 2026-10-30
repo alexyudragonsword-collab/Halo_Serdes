@@ -334,7 +334,7 @@ def curve_pattern_offsets(cfg: LinkConfig, channel: ChannelModel,
 
     m_lv = lv_drive.size
     # skip the start-up (zero history) and the end; neighbour -j is the symbol
-    # sent j later, +j the one sent j earlier (statistical._BINNED_NEIGHBOURS)
+    # sent j later, +j the one sent j earlier (stat_pdf._BINNED_NEIGHBOURS)
     edge = pulse.size // osr + 2 + max(abs(j) for j in neighbours)
     idx = np.arange(edge, n - edge)
     key = sym[idx]

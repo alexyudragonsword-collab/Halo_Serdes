@@ -98,6 +98,8 @@ JTOL、RTL lockstep、Windows 打包。
 
 关键达标指标:
 - 统计引擎 vs 蒙特卡洛交叉校验比值 **0.92×**(要求 <2×;示例 04,2026-10-13 静态引擎的 FFE 改为 DFE 感知前 1.03×);
+- 对外部独立实现 serdespy 1.0(`tools/external_check.py`):信道 |H| 一致到 0.06 dB;三条 Whisper 链路在整段冲激下 SER 为它的
+  0.87–1.20×,而默认的冲激截断丢掉长尾 ISI,带 CTLE 的两条读 0.70–0.82×(偏乐观,待修,ROADMAP P1 #42);
 - 10⁶ 符号 @106.25 GBd 时域全链路 **OSR16 8.1 s / OSR32 11.6 s**(要求 ≤2 min;
   本机实测,峰值内存约 0.9 GB;长跑开 `sim.stream`,10⁶ 符号 OSR32 峰值 0.33 GB、5×10⁶ 符号可跑);
 - 双架构对比复现业界结论:mixed-signal 在 Nyquist 损耗 −10 到 −15 dB 之间崩溃(−14.8 dB 时 SER 2.6e-2),

@@ -1,6 +1,6 @@
 """One step of the pattern-phase vote chain, as a fused loop (numba when available).
 
-The statistical engine's pattern-phase factor (``engine/statistical.py``
+The statistical engine's pattern-phase factor (``engine/stat_pattern_phase.py``
 ``_pattern_phase_factor``) runs the bang-bang loop's Markov chain over
 (pattern class, phase, pairing state) to its fixed point. Its numpy step
 there defines the arithmetic -- about thirty passes over the mass arrays a
