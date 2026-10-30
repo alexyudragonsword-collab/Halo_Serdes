@@ -80,6 +80,58 @@ def test_trim_impulse_keeps_peak():
     assert np.isclose(trimmed.y.max(), y.max())
 
 
+def _slow_tail_impulse(osr=16, n_ui=4096, tail=0.2, tau_ui=150.0):
+    """A sharp main lobe and a slow exponential tail -- the shape of a lossy
+    backplane's dielectric / skin tail, small in slope and not in ISI."""
+    t = np.arange(n_ui * osr)
+    y = np.exp(-0.5 * ((t - 100 * osr) / (0.4 * osr)) ** 2) / (0.4 * osr * np.sqrt(2 * np.pi))
+    late = t > 100 * osr
+    y[late] += tail / (tau_ui * osr) * np.exp(-(t[late] - 100 * osr) / (tau_ui * osr))
+    return Waveform(y, 1e-12)
+
+
+def _cursor_tail_rms(y, osr, start, stop):
+    """RMS of the postcursors the cut at ``stop`` leaves out, relative to
+    the main cursor (pulse sampled from the peak)."""
+    s = np.cumsum(y)
+    p = int(np.argmax(np.abs(y)))
+    idx = np.arange(p + osr // 2, y.size // 2 + p, osr)
+    c = np.diff(s[idx])
+    main = s[p + osr // 2] - s[p + osr // 2 - osr]
+    first_out = np.searchsorted(idx, stop)          # cursor k spans idx[k]..idx[k+1]
+    return float(np.sqrt(np.sum(c[first_out:] ** 2)) / main)
+
+
+def test_trim_keeps_a_slow_isi_tail_when_it_knows_the_ui():
+    """ROADMAP P1 #42: the difference-energy criterion cuts a slow tail at
+    a few UI; with the UI the cut moves out until what it leaves out is
+    under the tolerance."""
+    osr = 16
+    h = _slow_tail_impulse(osr)
+    old, start = trim_impulse(h, keep_energy=0.9999)
+    new, start_new = trim_impulse(h, keep_energy=0.9999, osr=osr)
+    assert start_new == start                                  # the front is not moved
+    assert old.y.size / osr < 20 < 200 < new.y.size / osr
+    assert _cursor_tail_rms(h.y, osr, start, start + old.y.size) > 1e-2
+    assert _cursor_tail_rms(h.y, osr, start, start + new.y.size) <= 1e-3
+
+
+def test_the_isi_trim_ignores_the_wrapped_far_end():
+    """The second half of a periodic record is the pre-peak side wrapped
+    round: ringing there must not hold the cut open to the end."""
+    osr = 16
+    h = _slow_tail_impulse(osr, tail=0.0)
+    y = h.y.copy()
+    # a slow pre-peak tail, wrapped to the far end: too gentle for the
+    # difference criterion, ISI-sized if it were a postcursor tail
+    ramp = 1e-5 * np.linspace(0.0, 1.0, 3008)
+    y[-3008:] += ramp
+    per_ui = ramp.reshape(-1, osr).sum(axis=1)               # its "cursors"
+    assert np.sqrt(np.sum(per_ui ** 2)) > 1e-3 * 0.79        # main cursor 0.79
+    cut, _ = trim_impulse(Waveform(y, h.dt), keep_energy=0.9999, osr=osr)
+    assert cut.y.size < y.size // 4
+
+
 def test_pulse_response_of_ideal_channel():
     """Identity channel: pulse response is a 1-UI rectangle."""
     osr = 8

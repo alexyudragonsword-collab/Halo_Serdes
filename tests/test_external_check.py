@@ -1,5 +1,5 @@
 """tools/external_check.py without serdespy: its links are valid configs, and
-the whole-impulse channel it compares against keeps what the trim drops.
+the whole-impulse channel it compares against is the same channel uncut.
 
 The comparison itself needs an unpacked serdespy 1.0 and runs by hand
 (``cairn/external-validation.md``); this keeps the tool from rotting between
@@ -29,9 +29,13 @@ def test_every_case_is_a_valid_link(case):
     assert Path(cfg.channel.file).exists()
 
 
-def test_the_whole_impulse_keeps_the_tail_the_trim_drops():
+def test_the_whole_impulse_is_the_same_channel_uncut():
     cfg = ec._config(ec.CASES[2], 1000)
-    trimmed = ChannelModel.from_config(cfg).response_set(cfg.dt).h.y
+    model = ChannelModel.from_config(cfg)
+    trimmed = model.response_set(cfg.dt).h.y
     whole = ec._untrimmed(cfg).response_set(cfg.dt).h.y
-    assert trimmed.size / cfg.osr < 20 < 1000 < whole.size / cfg.osr   # 13.9 / 2047.5 UI
-    assert np.allclose(ec._untrimmed(cfg).H, ChannelModel.from_config(cfg).H)
+    # the ISI-tail trim keeps 505 UI of Whisper at 16 GBd (the difference
+    # criterion alone kept 13.9, ROADMAP P1 #42); uncut is the whole record
+    assert 300 < trimmed.size / cfg.osr < 1000 < 2000 < whole.size / cfg.osr
+    assert np.allclose(ec._untrimmed(cfg).H, model.H)
+    assert ec._untrimmed(cfg).ui == model.ui == 1.0 / cfg.symbol_rate

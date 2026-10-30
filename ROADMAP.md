@@ -22,14 +22,9 @@ SV 逐位对照,见 CHANGELOG 与 `rtl/README.md`;原 #2 流式见 P2 #2;原 #3 
 深 LR 阶梯 31 → 33 → 36.3 / 38.5 → 42.8 dB 变为 31 → 36.0 → 40.5 / 44.2 → 47.8 dB,"DSP 深度收益小"不再成立。余项见 P2 #22–#24。
 见 CHANGELOG 与 `cairn/DSP发端与PR.md` §22。)
 
-### 42. 信道冲激的截断丢掉慢尾 ISI,三个引擎一起偏乐观(对外校验发现,2026-10-30)
-`ChannelModel.response_set` 默认按一阶差分能量 99.99 % 截断冲激(`channel/response.py::trim_impulse`),静态 / 时域 / 统计引擎和 COM 都走它。
-差分准则对慢衰减的尾巴几乎不计权:Whisper 背板 16 GBd 只留 13.9 UI,主光标后 24–64 UI 的游标 rms 0.0039、64–400 UI 0.0014 全丢。
-证据(`tools/external_check.py`,serdespy 1.0 保留 400 UI):PAM4 16 GBd、CTLE 7 dB、4 抽头 DFE、4 mV、60 万符号 —— serdespy 5.71e-3,我们静态 4.02e-3(0.70×)、
-统计 4.51e-3(0.79×);整段冲激时 5.77e-3(1.01×)/ 6.86e-3(1.20×);NRZ 16G + CTLE 25 mV 0.82 / 0.81× → 0.98 / 0.91×。预设统计 BER 截断 / 整段:NRZ 16G 9.63e-9 / 2.30e-8(×2.4)、
-NRZ 28G 2.4e-33 / 5.0e-32(×21)、PAM4 32G ×1.02、NRZ 32G ×1.01(PAM4 32G 本就留 2043 UI)。双引擎看不出来:两边丢的一样。
-要定的:截断准则(按脉冲游标能量而不是差分能量?留到残余游标低于某个比例?)与长度上限(时域引擎的 FIR 长度 / 统计引擎 `n_post` 64 UI 也会截);
-改动会移动指纹、预设与示例输出(`tools/example_drift.py`)和引用它们的文档。`cairn/external-validation.md` §3。
+(2026-10-30 清空:原 #42 信道冲激的截断丢掉慢尾 ISI —— 对外校验(serdespy)查出:按一阶差分能量截断,Whisper 16 GBd 只留 13.9 UI,
+带 CTLE 的链路静态 / 统计 0.70–0.82× 于 serdespy。`trim_impulse` 加 ISI 尾巴准则(截掉的后光标 RMS < 主光标 1e-3,只在峰后半段记录里找),
+`ChannelModel` 记下 UI;修后 0.94–1.04× / 0.87–1.20×,与整段冲激一致;预设 NRZ 16G 统计 9.6e-9 → 2.3e-8。`cairn/external-validation.md` §4。)
 
 ---
 

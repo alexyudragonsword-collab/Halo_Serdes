@@ -124,8 +124,13 @@ def run_link(cfg: LinkConfig, engines: tuple[str, ...] | None = None,
                 kernel_progress = None
                 if progress:
                     def kernel_progress(done, total):
-                        """Receiver-loop progress, as a fraction of the time engine stage."""
-                        progress("time-domain engine", done / max(total, 1))
+                        """Receiver-loop progress, as a fraction of the time engine
+                        stage; before the loop (``done`` 0, between the front
+                        end's steps) the stage is the front end, with no fraction."""
+                        if done == 0:
+                            progress("time-domain front end")
+                        else:
+                            progress("time-domain engine", done / max(total, 1))
                 rec.sim = run_time_link(cfg, channel=channel,
                                         collect_eye=collect_eye,
                                         collect_jitter=collect_jitter,

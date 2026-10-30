@@ -214,10 +214,29 @@ def test_study_tabs_wait_for_their_button_and_keep_the_result(callbacks, monkeyp
         gate = _text(callbacks["_switch_tab"](p.TAB_ID, rid))
         assert p.STUDY in gate and f"Run {p.TITLE}" in gate
     assert calls == []                         # switching computed nothing
-    body, disabled = callbacks["_study"](1, "amicom", rid)
-    assert body == "done" and disabled and calls == ["amicom"]
+    content = run_study_through_job(callbacks, "amicom", rid)
+    assert content == "done" and calls == ["amicom"]
     assert callbacks["_switch_tab"]("amicom", rid) == "done"
     assert calls == ["amicom"]                 # kept, not recomputed
+
+
+def run_study_through_job(callbacks, tab, rid):
+    """Press a study's Run, wait for its background job, and return what
+    ``_finish`` puts on the tab."""
+    import time
+
+    from halo_serdes_app import api
+
+    ref, poll_off, run_off, _cancel, _status, study_off = callbacks["_study"](1, tab, rid)
+    assert ref["study"] == tab and poll_off is False and run_off is True and study_off
+    job = api.get_job(ref["id"])
+    deadline = time.monotonic() + 600
+    while job.active and time.monotonic() < deadline:
+        time.sleep(0.02)
+    done, *_ = callbacks["_poll"](1, ref)
+    assert done == ref["id"]
+    _, content, *_ = callbacks["_finish"](done, ref, [], tab)
+    return content
 
 
 # ------------------------------------------------------- render hygiene ---

@@ -1,13 +1,17 @@
 """Parameter-sweep / projection computations for the study tabs.
 
-All studies are cheap enough to run on render: the statistical engine
-(analytic, ~tens of ms), pure FEC formulas, behavioral COM, and fixed-point
-datapath *replay* on already-captured ADC codes (no engine re-run). Results
-are cached per run id so switching away and back is instant.
+Each runs the statistical engine (tens of ms a point), pure FEC formulas,
+behavioral COM, fixed-point datapath *replay* on already-captured ADC codes
+(no engine re-run) or, for JTOL, short time-domain runs: 0.5-20 s for a
+study. Results are cached per run id so switching away and back is instant;
+between engine runs a study passes a ``checkpoint`` where a client that
+runs it in the background (``api.start_task``) can abandon it.
 """
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import dataclasses
 
 import numpy as np
@@ -18,6 +22,29 @@ from halo_serdes.config import LinkConfig
 _CACHE: dict[tuple, object] = {}
 _ORDER: list[tuple] = []
 _MAX = 64
+
+
+#: the running study's cancel check (``cancellable``); None outside one
+_CHECK: contextvars.ContextVar = contextvars.ContextVar("study_check", default=None)
+
+
+def checkpoint() -> None:
+    """A point between a study's engine runs where it may be abandoned:
+    calls the check ``cancellable`` installed, which raises to stop."""
+    check = _CHECK.get()
+    if check is not None:
+        check()
+
+
+@contextlib.contextmanager
+def cancellable(check):
+    """Run the studies inside under ``check`` (called at each
+    ``checkpoint``; it raises to abandon the study, which caches nothing)."""
+    token = _CHECK.set(check)
+    try:
+        yield
+    finally:
+        _CHECK.reset(token)
 
 
 def _cached(key, fn):
@@ -40,6 +67,7 @@ def _stat_ber(cfg: LinkConfig, channel=None, xtalk_pulses=None) -> float:
     from halo_serdes.engine.statistical import run_statistical
 
     from .runner import stat_equaliser
+    checkpoint()
     if channel is None:
         channel = ChannelModel.from_config(cfg)
     taps, pre = stat_equaliser(cfg, channel)
@@ -139,6 +167,7 @@ def multilane_study(rec) -> dict:
         counts = [0, 1, 2, 4, 6, 8, 12]
         icn, com = [], []
         for nlane in counts:
+            checkpoint()
             if nlane == 0:
                 bank = []
             else:
@@ -172,6 +201,7 @@ def com_study(rec) -> dict:
         base = cfg.channel.length_m or 0.2
         loss, comdb, com93 = [], [], []
         for L in np.linspace(0.5 * base, 2.0 * base, 9):
+            checkpoint()
             c = dataclasses.replace(cfg, channel=dataclasses.replace(
                 cfg.channel, length_m=float(L)))
             cm = ChannelModel.from_config(c)
@@ -234,6 +264,7 @@ def fixedpoint_study(rec) -> dict:
         wls = [4, 5, 6, 7, 8, 10, 12]
         mism = []
         for wl in wls:
+            checkpoint()
             num = NumericConfig(ffe_weight=QFormat(wl, wl - 2),
                                 dfe_weight=QFormat(wl, wl - 2))
             dec, *_ = run_fixed_datapath(codes, rec.sim.ffe_taps, rec.sim.dfe_taps,
@@ -258,12 +289,15 @@ def jtol_study(rec) -> dict:
         # reduced-fidelity sweep for GUI responsiveness (each point is a full
         # time-domain run x binary search); raise n_symbols in scripts.
         freqs = _np.array([1e6, 5e6, 2e7, 5e7, 1e8, 2e8, 4e8])
-        jt = jitter_tolerance(cfg, freqs, ber_threshold=1e-3, amp_lo=0.05,
-                              amp_hi=4.0, iters=4,
-                              n_symbols=min(cfg.sim.n_symbols, 12000))
+        channel = ChannelModel.from_config(cfg)
+        tol = []
+        for f in freqs:         # one at a time: each is its own search, and a cancel point
+            checkpoint()
+            tol.append(jitter_tolerance(cfg, [f], ber_threshold=1e-3, amp_lo=0.05,
+                                        amp_hi=4.0, iters=4, channel=channel,
+                                        n_symbols=min(cfg.sim.n_symbols, 12000)).tol_ui[0])
         mask = jtol_mask(freqs, lf_max_ui=4.0, f_corner=3e6, hf_floor_ui=0.15)
-        return {"freqs": jt.freqs, "tol_ui": jt.tol_ui, "mask": mask,
-                "threshold": jt.ber_threshold}
+        return {"freqs": freqs, "tol_ui": _np.array(tol), "mask": mask, "threshold": 1e-3}
     return _cached(("jtol", rec.id), compute)
 
 #: How each study's flat result should be plotted.
@@ -304,6 +338,7 @@ def optical_study(rec) -> dict:
 
         def measurer(retimer):
             def measure(L):
+                checkpoint()
                 top = dc.replace(cfg.topology, retimer=retimer,
                                  optical=dc.replace(cfg.topology.optical, length_m=float(L)))
                 return float(L), max(run_cascade_statistical(dc.replace(cfg, topology=top)).stat_ber, 1e-300)
@@ -338,6 +373,8 @@ def _tdecq_settings(cfg) -> dict:
 def tdecq_value(cfg, n_symbols: int = 8191):
     """TDECQ of the configured transmitter after its fibre (TP2 + the "D")."""
     import dataclasses as dc
+
+    checkpoint()
 
     from halo_serdes.analysis.tdecq import tdecq
     from halo_serdes.core.mapping import level_probabilities

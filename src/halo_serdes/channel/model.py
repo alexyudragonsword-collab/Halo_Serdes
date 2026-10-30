@@ -47,11 +47,15 @@ class ChannelModel:
     """
 
     def __init__(self, H: np.ndarray, f: np.ndarray, name: str = "",
-                 ref_gain: float = 0.5) -> None:
+                 ref_gain: float = 0.5, ui: float | None = None) -> None:
         self.H = np.asarray(H, dtype=complex)
         self.f = np.asarray(f, dtype=np.float64)
         self.name = name
         self.ref_gain = float(ref_gain)
+        #: the link's unit interval [s] when the model was built for one
+        #: (``from_config``): the impulse is then trimmed where the ISI it
+        #: leaves out is negligible (``response_set``)
+        self.ui = ui
         self.optical: OpticalStages | None = None
         if self.H.shape != self.f.shape:
             raise ValueError("H and f must have the same shape")
@@ -95,9 +99,12 @@ class ChannelModel:
         if cfg.kind == "touchstone":
             if not cfg.file:
                 raise ValueError(f"{label}.kind is 'touchstone' but {label}.file is unset")
-            return cls.from_touchstone(cfg.file, f_max, cfg.n_freq,
-                                       cfg.zs_diff, cfg.zl_diff, cfg.renumber, cfg.lane)
-        return cls.from_rlgc(cfg, f_max, cfg.n_freq)
+            model = cls.from_touchstone(cfg.file, f_max, cfg.n_freq,
+                                        cfg.zs_diff, cfg.zl_diff, cfg.renumber, cfg.lane)
+        else:
+            model = cls.from_rlgc(cfg, f_max, cfg.n_freq)
+        model.ui = 1.0 / symbol_rate
+        return model
 
     @classmethod
     def from_optical(cls, opt: OpticalConfig, f: np.ndarray, block: str) -> "ChannelModel":
@@ -191,7 +198,8 @@ class ChannelModel:
         for m in models:
             H = H * m.H
             gain *= m.ref_gain
-        return cls(H, f, name=" x ".join(m.name or "?" for m in models), ref_gain=gain)
+        ui = next((m.ui for m in models if m.ui is not None), None)
+        return cls(H, f, name=" x ".join(m.name or "?" for m in models), ref_gain=gain, ui=ui)
 
     def band_limited(self) -> "ChannelModel":
         """This response rolled off over the top quarter of its grid and
@@ -215,7 +223,7 @@ class ChannelModel:
         x = np.clip((self.f - 0.75 * fm) / (0.25 * fm), 0.0, 1.0)
         taper = 0.5 * (1.0 + np.cos(np.pi * x))
         return ChannelModel(self.H * taper * np.exp(-2j * np.pi * self.f * 32.0 / fm),
-                            self.f, name=self.name, ref_gain=self.ref_gain)
+                            self.f, name=self.name, ref_gain=self.ref_gain, ui=self.ui)
 
     # -- derived quantities -------------------------------------------------
 
@@ -234,14 +242,24 @@ class ChannelModel:
         return freq2impulse(H_zp, f_zp)
 
     def response_set(self, dt: float, trim: bool = True,
-                     keep_energy: float = 0.9999) -> ResponseSet:
+                     keep_energy: float = 0.9999, ui: float | None = None) -> ResponseSet:
+        """The impulse response at ``dt``, trimmed to its significant span.
+
+        With a unit interval (``ui``, else the one the model was built for)
+        the span reaches until the postcursors past it carry less than
+        ``response.ISI_TAIL_TOL`` of the main cursor (RMS); without one only
+        the first-difference energy decides, which drops a slow ISI tail
+        (ROADMAP P1 #42)."""
         h = self.impulse(dt)
         if trim:
-            h, _ = trim_impulse(h, keep_energy=keep_energy)
+            ui = self.ui if ui is None else ui
+            osr = int(round(ui / dt)) if ui else None
+            h, _ = trim_impulse(h, keep_energy=keep_energy,
+                                osr=osr if osr and osr >= 1 else None)
         return ResponseSet(h, name=self.name or "channel")
 
     def pulse(self, dt: float, osr: int, trim: bool = True) -> Waveform:
-        rs = self.response_set(dt, trim=trim)
+        rs = self.response_set(dt, trim=trim, ui=osr * dt)
         return pulse_from_impulse(rs.h, osr)
 
 

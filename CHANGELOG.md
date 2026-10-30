@@ -6,6 +6,30 @@
 
 ---
 
+## [未发布] — 冲激截断按 ISI 尾巴、GUI 余项、拆 run_statistical
+
+### 修正
+- 信道冲激的截断(ROADMAP P1 #42,对外校验查出):`trim_impulse` 原来只按一阶差分能量 99.99 % 截,慢衰减的 ISI 尾巴差分小而积分不小,
+  Whisper 16 GBd 只留 13.9 UI,带 CTLE 的链路三个引擎一起偏乐观(对 serdespy 0.70–0.82×)。新增 ISI 尾巴准则:终点推到截掉的后光标 RMS
+  小于主光标 1e-3(`response.ISI_TAIL_TOL`;只在峰后半段记录里找,避开绕回的峰前一侧与带边振铃)。`ChannelModel` 记下建模时的 UI
+  (`from_config` 等设,`cascade` / `band_limited` 传递),`response_set` 自动使用;没有 UI 的模型照旧。修后对 serdespy 静态 0.94–1.04×、
+  统计 0.87–1.20×,与整段冲激一致。数字会变:指纹 986 值中 246 个(PAM4 32G 预设本就留整段,不变);预设统计 BER NRZ 16G 9.6e-9 → 2.3e-8、
+  NRZ 28G 2.4e-33 → 9.3e-33;示例输出与文档见下。
+
+### 变更
+- GUI 研究页改走后台任务(`api.start_task`,与运行共用"一次一个"):顶栏显示进度,■ Cancel 在研究的两次引擎运行之间生效(`studies.checkpoint`),
+  取消不缓存;跑完时若不在该标签,结果在缓存里等着。JTOL 研究逐频点调用(每点本就独立,读数相同),频点之间可取消。
+- 时域引擎前端加取消点:发端波形、信道滤波、串扰、抖动预算、噪声之间各调一次 `progress(0, total)`(结果不变,JIT / NO_JIT 逐位);
+  GUI 在这一段显示 "time-domain front end"。
+- 窄屏(< 992 px):配置成为结果之上的抽屉,底部栏 ⚙ Configure / ▶ Run / ▤ Results。宽屏不变。
+- 后台任务先写错误再置 `error` 状态(轮询看到 error 时一定读得到消息;原来顺序反了,有极短的窗口)。
+
+### 测试
+- `test_response.py` 两条(慢尾按 UI 截够、绕回的远端不撑开截断)、`test_gui_study_jobs.py`(任务结果 / 忙 / 取消 / 不在标签时缓存 / JTOL 拆分同值)、
+  `test_gui_narrow.py`(底部栏与抽屉)、`test_chunked_kernels.py` 的进度测试改为先前端检查点后分块、并在前端取消。
+
+---
+
 ## [未发布] — 对外校验(serdespy)与统计引擎拆模块
 
 ### 新增

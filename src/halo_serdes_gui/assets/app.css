@@ -56,3 +56,19 @@ body { font-family: Inter, "Segoe UI", system-ui, sans-serif; }
 /* Workspace sub-navigation and the architecture switch: a tight button row */
 #sub .form-check, #sub-wrap .form-check,
 [id*='rx.arch'] .form-check { padding-left: 0; margin: 0 0.25rem 0.25rem 0; }
+
+/* Narrow screens (below 992 px): the configuration is a drawer over the
+   results, opened from a bottom bar (Configure / Run / Results) -- the page
+   no longer scrolls through 160 fields to reach the form or back. */
+.bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; height: 52px; z-index: 1045;
+  display: flex; background: #fff; border-top: 1px solid #e6eaf0;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06); }
+.bottom-nav-btn { flex: 1 1 0; font-weight: 600; font-size: 0.85rem; text-decoration: none; }
+@media (max-width: 991.98px) {
+  body { padding-bottom: 52px; }
+  .cfg-drawer { position: fixed; top: 0; bottom: 52px; left: 0; z-index: 1040;
+    width: min(92vw, 440px) !important; max-width: 92vw; overflow-y: auto; background: #fff;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15); transform: translateX(-105%);
+    transition: transform 0.2s ease-out; }
+  .cfg-drawer.open { transform: none; }
+}

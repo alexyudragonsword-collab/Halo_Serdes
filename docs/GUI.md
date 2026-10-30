@@ -39,10 +39,12 @@ The page is laid out as the link it simulates.
   `both`) on a background job and fills every view from the one result.
   While it runs: the stage, the elapsed time and a progress bar (the receiver
   loop's fraction; a moving stripe outside it), and **■ Cancel**. A cancel
-  takes effect when the current stage ends: the time engine's front end
-  (transmitter waveform, channel filtering) has no cancel point inside it,
-  about 10 s per million symbols on a desktop (a 3 M-symbol NRZ 28G run
-  stopped 47 s after the click). The page stays usable during a run.
+  takes effect at the next receiver chunk or, before the receiver starts,
+  at the next step of the time engine's front end (transmitter waveform,
+  channel filter, crosstalk, jitter budget, noise -- a few seconds each on
+  millions of symbols; until 2026-10-30 the front end had no cancel point
+  and a 3 M-symbol NRZ 28G run stopped 47 s after the click). The page stays
+  usable during a run. A study (below) runs the same way and shows here too.
 
 **Left: the link** — a chain of stages, each card saying what it is set to
 now (`FIR 3 taps · 1 V`, `RLGC 0.28 m`, `CTLE 7 dB · noise 0.004 V`, `FFE 4+12 ·
@@ -74,7 +76,9 @@ re-renders from it instantly. Above them:
   top bar; the solvers' numerical warnings (an overflow inside a fit, a
   covariance that could not be estimated) fold into one collapsed line.
 
-Below 992 px the results come first and the link after them.
+Below 992 px the results fill the page and the configuration is a drawer
+over them: a bottom bar opens it (**⚙ Configure**), runs (**▶ Run**, the top
+bar's button) and closes it again (**▤ Results**; a run closes it too).
 
 ## Workspaces and views
 
@@ -102,7 +106,11 @@ Below 992 px the results come first and the link after them.
 In Diagnose, clicking a stage on the left shows that stage's view (Channel →
 Channel, Receiver front end → CTLE, Equaliser → Equaliser, ...). Studies take
 from about a second to about 20 s, so each shows what it computes and a
-**▶ Run** button; the result is kept per run.
+**▶ Run** button. A study runs in the background like a run (one job at a
+time: Run waits for a study and a study for a run), with its progress and
+**■ Cancel** in the top bar; a cancel stops it between two of its engine
+runs. The result is kept per run, and one that finishes while another view
+is on screen is there when you come back to its tab.
 
 ## Performance notes
 
@@ -112,7 +120,7 @@ from about a second to about 20 s, so each shows what it computes and a
   (`halo_serdes_app.api.start_job`); the page polls it every 400 ms.
 - Studies use the analytic StatEye engine and the fixed-point datapath
   *replay* (no engine re-run), but a reach sweep is still ~20 s on the 28G
-  preset; they run on their own button (above).
+  preset; they run on their own button, in the background (above).
 - Verdict computes StatEye after the time-domain cards are on screen
   (0.1–3.4 s on the presets), for the verdict.
 - For heavy time-domain runs, lower `sim.n_symbols` while exploring, then
