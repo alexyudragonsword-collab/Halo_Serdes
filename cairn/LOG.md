@@ -17,6 +17,8 @@
   serdespy 侧波形用 `np.convolve` 直卷 1920 万 × 3.2 万 → `fftconvolve`;`pgrep -f` 的模式又匹配到自己的 shell(已知坑)。
 - 验证:编译集 6 个模块本地真编 .so、删 `.py`,`HALO_NO_JIT=1` 下统计 / PR / 码型-相位 / COM / skew 等 131 passed / 58 skipped;
   新测试 `test_statistical_layout`(7)、`test_external_check`(4);ruff。
+- CI(PR #122,头 071836f,一次全绿):矩阵 jit 16.7–24.8 分钟、nojit 17.6–22.4,examples 16.2 / 20.4,examples-full 25.4;Android 构建 2.0、
+  编译版 10.1、编译版模拟器 5.0、API 34 / 35 5.0 / 4.8;Windows PyInstaller 3.2、Nuitka 38.2、onefile 32.2(回到平时,上次 86 / 125 未复现)。
 
 ## 2026-10-29 · GUI 改版阶段 3:表单元数据两端共用(feat/gui-phase3)
 
