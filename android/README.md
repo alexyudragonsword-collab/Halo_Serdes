@@ -40,8 +40,17 @@ Compose UI  ──►  HaloApi (信封解析)  ──►  HaloPython (单线程 
 
 ### 表单不是手写的
 
-12 个分组、78 个字段全部由 `config_bridge.SECTIONS` 生成 —— 和桌面 Dash 版读的是同一份
+15 个分组、162 个字段全部由 `config_bridge.SECTIONS` 生成 —— 和桌面 Dash 版读的是同一份
 规格。**给配置层加一个字段,手机上就会出现,Kotlin 一行都不用改。** 这是这一层存在的理由。
+(2026-10-29 更正:原写"12 个分组、78 个字段",是早期的数。)
+
+2026-10-29 起表单的其余部分也和桌面共用一份(`halo_serdes_app.form_meta`,GUI 改版阶段 3):
+字段按链路分段(Link & run / 发端 / 信道 / 接收前端 / ADC / 均衡 / CDR,`schema` 的 `stages`),
+每段先给常用字段、其余在 "Advanced (n)" 里,文本框下方是字段说明(`help`)。当前配置用不到的
+字段、分组、分段不显示(混合信号收端的 ADC 组、touchstone 信道的 RLGC 参数、电学链路的光字段):
+规则在 Python 侧求值,每次 `derive` 返回 `hidden`,Kotlin 不带第二份规则。有错的字段即使在
+"Advanced" 里也照样显示,折叠藏不住 Run 为什么不能按。设备侧 `FormContractTest` 的
+`stagesCoverEverySectionAndFieldsCarryTheirHelp` / `deriveHidesWhatTheConfigurationDoesNotUse` 钉住。
 
 一个必须守住的不对称:**bool 要以 JSON 布尔过界,不能当文本发。** Python 侧每个数值
 kind 都接受字符串(`float(value)`),这正是"表单一律按文本编辑"能成立的原因;但
@@ -407,7 +416,7 @@ android/
 ├── app/src/main/python/halo_probe.py     探针:版本/scipy 入口/计算核/golden 比对
 ├── app/src/main/java/.../HaloPython.kt   与 Python 的唯一接触面 + 单线程 dispatcher
 ├── app/src/main/java/.../api/HaloApi.kt  信封 -> ApiResult,跨界契约都在这
-├── app/src/main/java/.../ui/FormModel.kt      SECTIONS -> 表单模型 + 值编解码
+├── app/src/main/java/.../ui/FormModel.kt      SECTIONS / stages / hidden -> 表单模型 + 值编解码
 ├── app/src/main/java/.../ui/FormFields.kt     按 kind 渲染的控件
 ├── app/src/main/java/.../ui/LinkViewModel.kt  状态、去抖校验、handle 生命周期
 ├── app/src/main/java/.../ui/LinkScreen.kt     Compose 界面

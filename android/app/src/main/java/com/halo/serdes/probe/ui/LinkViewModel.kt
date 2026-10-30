@@ -77,6 +77,10 @@ data class Envelope(val level: String, val message: String)
 
 data class LinkUiState(
     val sections: List<FormSection> = emptyList(),
+    /** The link as stages over `sections`; empty means draw the sections flat. */
+    val stages: List<FormStage> = emptyList(),
+    /** What the form hides for the current values (from `derive`). */
+    val hidden: Hidden = Hidden(),
     val presets: List<String> = emptyList(),
     val selected: String = "",
     val configsDir: String = "",
@@ -204,6 +208,7 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(
                         busy = false,
                         sections = parseSections(r.data),
+                        stages = parseStages(r.data),
                         presets = names,
                         studies = parseStudies(r.data),
                         bundledChannels = parseChannels(r.data),
@@ -296,6 +301,8 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
                         busy = false,
                         validating = false,
                         fieldErrors = errs,
+                        hidden = data.optJSONObject("hidden")
+                            ?.let { h -> parseHidden(h) } ?: it.hidden,
                         // An invalid config carries no derived quantities and no
                         // channel verdict; keep the last good ones rather than
                         // blanking the panel mid-edit.

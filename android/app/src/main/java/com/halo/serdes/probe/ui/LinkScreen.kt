@@ -147,8 +147,20 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
             "Parameters",
             style = MaterialTheme.typography.titleMedium,
         )
-        s.sections.forEach { section ->
-            SectionCard(section, s, onChange = vm::setField)
+        if (s.stages.isEmpty()) {
+            // a schema without stages (an older Python side): flat sections
+            s.sections.forEach { section ->
+                StageCard(FormStage(section.id, section.title, listOf(section.id)),
+                          listOf(section), s, onChange = vm::setField)
+            }
+        } else {
+            val byId = s.sections.associateBy { it.id }
+            s.stages.filter { it.id !in s.hidden.stages }.forEach { stage ->
+                StageCard(stage,
+                          stage.sections.mapNotNull { byId[it] }
+                              .filter { it.id !in s.hidden.sections },
+                          s, onChange = vm::setField)
+            }
         }
 
         // Where the presets came from. Invisible plumbing until it breaks,
@@ -163,21 +175,27 @@ fun LinkScreen(vm: LinkViewModel = viewModel()) {
 }
 
 /**
- * One collapsible group.
+ * One stage of the link, collapsible: its sections, each showing the fields
+ * the configuration uses, the common ones first and the rest behind
+ * "Advanced" -- the desktop's chain, as cards.
  *
- * Collapsed by default: 78 fields open at once is a wall, and the presets
- * already carry sensible values for all of them. A section holding an invalid
- * field says so in its header, so a fold can never hide the reason Run is
- * disabled.
+ * Collapsed by default: the presets already carry sensible values. A stage
+ * holding an invalid field says so in its header, and an invalid field is
+ * shown even when it is an advanced one, so a fold can never hide the reason
+ * Run is disabled.
  */
 @Composable
-private fun SectionCard(
-    section: FormSection,
+private fun StageCard(
+    stage: FormStage,
+    sections: List<FormSection>,
     s: LinkUiState,
     onChange: (String, Any) -> Unit,
 ) {
-    var open by rememberSaveable(section.id) { mutableStateOf(false) }
-    val bad = section.fields.count { s.fieldErrors.containsKey(it.path) }
+    var open by rememberSaveable(stage.id) { mutableStateOf(false) }
+    var advanced by rememberSaveable(stage.id + ".adv") { mutableStateOf(false) }
+    val used = sections.flatMap { it.fields }.filter { it.path !in s.hidden.fields }
+    val bad = used.count { s.fieldErrors.containsKey(it.path) }
+    val nAdvanced = used.count { !it.common }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
@@ -187,18 +205,40 @@ private fun SectionCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "${if (open) "▾" else "▸"}  ${section.title}",
+                    "${if (open) "▾" else "▸"}  ${stage.title}",
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    if (bad > 0) "$bad invalid" else "${section.fields.size}",
+                    if (bad > 0) "$bad invalid" else "${used.size}",
                     style = MaterialTheme.typography.labelMedium,
                     color = if (bad > 0) MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             AnimatedVisibility(visible = open) {
-                FormSectionBody(section, s.values, s.fieldErrors, onChange)
+                Column(Modifier.fillMaxWidth()) {
+                    sections.forEach { section ->
+                        val shown = section.fields.filter {
+                            it.path !in s.hidden.fields &&
+                                (it.common || advanced || s.fieldErrors.containsKey(it.path))
+                        }
+                        if (shown.isNotEmpty()) {
+                            if (sections.size > 1) {
+                                Text(section.title.uppercase(),
+                                     style = MaterialTheme.typography.labelSmall,
+                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                     modifier = Modifier.padding(top = 8.dp))
+                            }
+                            FormSectionBody(section.copy(fields = shown), s.values,
+                                            s.fieldErrors, onChange)
+                        }
+                    }
+                    if (nAdvanced > 0) {
+                        TextButton(onClick = { advanced = !advanced }) {
+                            Text(if (advanced) "Hide advanced" else "Advanced ($nAdvanced)")
+                        }
+                    }
+                }
             }
         }
     }

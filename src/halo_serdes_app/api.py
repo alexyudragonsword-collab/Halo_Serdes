@@ -36,7 +36,7 @@ from typing import Any
 
 import numpy as np
 
-from . import runner, studies
+from . import form_meta, runner, studies
 from .config_bridge import (
     SECTIONS,
     build_config,
@@ -162,6 +162,12 @@ def _m_schema(_payload: dict) -> dict:
     from .config_bridge import CONFIGS_DIR, bundled_channels, bundled_clock_profiles
 
     return {"sections": _jsonable(SECTIONS),
+            # the link as a chain of stages over those sections, and the
+            # show-when rules of sections and stages (fields carry their own)
+            "stages": [{"id": sid, "title": title, "sections": secs,
+                        "show_if": _jsonable(form_meta.STAGE_SHOW_IF.get(sid))}
+                       for sid, title, secs in form_meta.STAGES],
+            "section_show_if": _jsonable(form_meta.SECTION_SHOW_IF),
             "presets": preset_names(),
             # Touchstone files this build ships. Listed here because on a
             # phone they are otherwise unreachable: they live in the app's
@@ -198,14 +204,18 @@ def _m_derive(payload: dict) -> dict:
     the client can mark the offending input rather than showing a dialog.
     """
     values = payload.get("values") or {}
+    # what the form hides for these values (form_meta's rules, evaluated here
+    # so no client carries a second evaluator); valid or not, the form is
+    # still on screen
+    hidden = form_meta.hidden(values, SECTIONS)
     try:
         cfg = build_config(values)
     except Exception as exc:
         msg = str(exc)
         field = next((p for p in (values or {}) if p and p in msg), None)
-        return {"valid": False, "field_errors": {field or "_form": msg}}
+        return {"valid": False, "field_errors": {field or "_form": msg}, "hidden": hidden}
     level, message = envelope_status(cfg)
-    return {"valid": True, "field_errors": {},
+    return {"valid": True, "field_errors": {}, "hidden": hidden,
             "derived": _jsonable(derived(cfg)),
             "channel": _channel_status(cfg),
             "envelope": {"level": level, "message": message}}

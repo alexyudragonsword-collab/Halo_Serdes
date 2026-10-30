@@ -5,7 +5,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.halo.serdes.probe.api.ApiResult
 import com.halo.serdes.probe.api.HaloApi
 import com.halo.serdes.probe.ui.RENDERABLE_KINDS
+import com.halo.serdes.probe.ui.parseHidden
 import com.halo.serdes.probe.ui.parseSections
+import com.halo.serdes.probe.ui.parseStages
 import com.halo.serdes.probe.ui.toFormValues
 import com.halo.serdes.probe.ui.toJson
 import kotlinx.coroutines.runBlocking
@@ -127,6 +129,54 @@ class FormContractTest {
         assertTrue("expected invalid", !d.getBoolean("valid"))
         val errs = d.getJSONObject("field_errors")
         assertTrue("error not keyed by path: ${errs}", errs.has("osr"))
+    }
+
+    /**
+     * The form is the desktop's: stages over the sections, help text and the
+     * common fields from `form_meta`, through the same `schema` call.
+     */
+    @Test
+    fun stagesCoverEverySectionAndFieldsCarryTheirHelp() = runBlocking<Unit> {
+        val data = schema()
+        val sections = parseSections(data)
+        val stages = parseStages(data)
+        assertTrue("no stages in schema", stages.isNotEmpty())
+        assertEquals("every section in exactly one stage",
+                     sections.map { it.id }.sorted(),
+                     stages.flatMap { it.sections }.sorted())
+        val fields = sections.flatMap { it.fields }
+        assertTrue("no field has help", fields.count { it.help.isNotBlank() } > 30)
+        assertTrue("no common fields", fields.count { it.common } > 20)
+        assertTrue("every field common", fields.any { !it.common })
+    }
+
+    /**
+     * What the configuration does not use is hidden, and `derive` says what:
+     * the ADC group on a mixed-signal receiver, not on an ADC one. The rules
+     * are evaluated on the Python side, so this is the phone reading the
+     * desktop's answer.
+     */
+    @Test
+    fun deriveHidesWhatTheConfigurationDoesNotUse() = runBlocking<Unit> {
+        val fields = parseSections(schema()).flatMap { it.fields }
+        val name = TestPresets.runnable(ctx)
+        val values = (HaloApi.preset(ctx, name) as ApiResult.Ok)
+            .data.getJSONObject("values").toFormValues(fields)
+
+        suspend fun hidden(v: Map<String, Any>) = parseHidden(
+            (HaloApi.derive(ctx, v.toJson()) as ApiResult.Ok).data.optJSONObject("hidden"))
+
+        val ms = hidden(values + ("rx.arch" to "mixed_signal"))
+        assertTrue("ADC group shown on a mixed-signal receiver: $ms", "adc" in ms.sections)
+        assertTrue("ADC stage shown on a mixed-signal receiver", "adc" in ms.stages)
+        val adc = hidden(values + ("rx.arch" to "adc_dsp"))
+        assertTrue("ADC group hidden on an ADC receiver: $adc", "adc" !in adc.sections)
+        // the channel is a file or a line, never both
+        val line = hidden(values + ("channel.kind" to "analytic"))
+        assertTrue("channel.file" in line.fields && "channel.r_skin" !in line.fields)
+        // an invalid form is still on screen, so it still says what it hides
+        val bad = (HaloApi.derive(ctx, (values + ("osr" to "0")).toJson()) as ApiResult.Ok).data
+        assertTrue(!bad.getBoolean("valid") && bad.has("hidden"))
     }
 
     /**

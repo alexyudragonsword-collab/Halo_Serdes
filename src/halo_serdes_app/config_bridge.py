@@ -23,6 +23,8 @@ from typing import Any
 from halo_serdes.config import LinkConfig, apply_overrides, load_config
 from halo_serdes.config.schema import SCHEMA_VERSION, TopologyConfig
 
+from . import form_meta as _form_meta
+
 #: Environment override for the directory holding ``configs/`` (and any other
 #: bundled data). Android is the reason it exists: Chaquopy's importer serves
 #: Python modules out of an asset archive, so ``__file__``-relative lookups do
@@ -398,6 +400,10 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
         _f("topology.retimer_tx.fir_n_pre", "Retimer TX FIR precursors", "int"),
     ]),
 ]
+
+# help, common, stage and show-when rule on every field (form_meta), so the
+# schema hands both clients the same form
+_form_meta.annotate(SECTIONS)
 
 # flat lookup path -> field spec
 FIELD_BY_PATH: dict[str, dict] = {
