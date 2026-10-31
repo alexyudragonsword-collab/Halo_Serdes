@@ -11,7 +11,8 @@
   |H| 到 4 % 内,但码型-相位因子 1.3 → 0.84、6 条测试出界 —— 鉴相噪声侧在补偿,**没留**;清单 + §39 + ROADMAP #38 改写为余项。
 - #41 余项:`schema.FIELD_BOUNDS`(70 条)是校验读的数据,`derive` 按表单路径报越界(原来落到 `_form`),桌面 min / max + 行标红 + 悬停范围;
   #41 清空。`tests/test_field_bounds.py`(84)。
-- 验证:见下(全套、编译集 .so + HALO_NO_JIT)。
+- 验证:宿主全套通过(含 `test_field_bounds` 84);编译集 schema / statistical / api / config_bridge / form_meta 本地真编 .so、删 `.py`,
+  `HALO_NO_JIT=1` 下配置 / 表单 / API / 统计 313 passed;ruff。CI 见 PR。
 
 ## 2026-10-31 · 冲激按 ISI 尾巴截断、GUI 余项、拆 run_statistical(feat/impulse-trim-gui-split)
 
