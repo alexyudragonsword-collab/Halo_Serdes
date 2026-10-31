@@ -39,7 +39,8 @@ from . import field_meta as fm
 from . import history as hist
 from . import theme
 from .config_form import (
-    advanced_count, arch_control, render_form, values_from_states, visibility,
+    ROW_BAD, ROW_CLASS, advanced_count, arch_control, render_form, values_from_states,
+    visibility,
 )
 from .panels import (
     adaptation, adc, ami_com, backchannel, cdr, channel, compare, crosstalk, ctle,
@@ -339,6 +340,19 @@ def _register_callbacks(app: Dash) -> None:
                            style={"fontWeight": 500}) for k, v in d.items()]
         lvl, msg = cb.envelope_status(cfg)
         return html.Div(chips), theme.banner(lvl, msg)
+
+    @app.callback(Output({"type": "cfg-row", "path": ALL}, "className"),
+                  Output({"type": "cfg-hint", "path": ALL}, "children"),
+                  Input({"type": "cfg", "path": ALL}, "value"),
+                  State({"type": "cfg", "path": ALL}, "id"),
+                  State({"type": "cfg-row", "path": ALL}, "id"))
+    def _ranges(vals, ids, row_ids):
+        """Mark the rows whose value is outside the field's range, with the
+        range under the input -- before Run says the configuration is
+        invalid (the bounds ``__post_init__`` reads, ``schema.FIELD_BOUNDS``)."""
+        bad = cb.range_errors(values_from_states(ids, vals))
+        return ([ROW_BAD if r["path"] in bad else ROW_CLASS for r in row_ids],
+                [bad.get(r["path"], "") for r in row_ids])
 
     @app.callback(Output({"type": "cfg", "path": ALL}, "value"),
                   Input("preset", "value"),

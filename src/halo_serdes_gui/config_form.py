@@ -52,9 +52,14 @@ def _control(field: dict, value: Any):
         return dbc.Select(id=cid, options=opts, value="" if value is None else str(value),
                           size="sm")
     if kind in _NUMERIC:
+        # closed bounds as the browser's own min / max; the open ones (> 0)
+        # only through the row's mark (``range_marks``)
+        rng = field.get("range") or {}
+        lim = {k: rng[k] for k in ("min", "max")
+               if rng.get(k) is not None and not rng.get(f"{k}_open")}
         return dbc.Input(id=cid, type="number", value=value, size="sm",
                          step=1 if kind in ("int", "opt_int") else "any",
-                         debounce=True)
+                         debounce=True, **lim)
     # text-like: str, opt_str, tuple_float, opt_tuple_float
     return dbc.Input(id=cid, type="text",
                      value="" if value is None else str(value), size="sm",
@@ -68,7 +73,9 @@ def _label(field: dict):
     """The field's label; one with help text carries it as a hover title and
     a dotted underline that says there is something to hover for."""
     style = {"fontSize": "0.78rem", "color": theme.INK}
-    tip = HELP.get(field["path"])
+    tip = HELP.get(field["path"], "")
+    if field.get("range"):
+        tip = (tip + "\n" if tip else "") + f"Range: {field['range']['text']}"
     if not tip:
         return html.Label(field["label"], style=style)
     return html.Label(field["label"], title=tip,
@@ -77,13 +84,20 @@ def _label(field: dict):
                              "textUnderlineOffset": "3px"})
 
 
+ROW_CLASS = "g-1 mb-1"
+ROW_BAD = ROW_CLASS + " cfg-out-of-range"
+
+
 def _field_row(field: dict, value: Any, shown: bool = True):
-    """Label and control on one row."""
+    """Label and control on one row; the control's hint under it, filled
+    when the value is outside the field's range (``range_marks``)."""
     return dbc.Row([
         dbc.Col(_label(field), width=6, className="d-flex align-items-center"),
-        dbc.Col(_control(field, value), width=6),
+        dbc.Col([_control(field, value),
+                 html.Div(id={"type": "cfg-hint", "path": field["path"]},
+                          className="cfg-hint")], width=6),
     ], id={"type": "cfg-row", "path": field["path"]},
-        className="g-1 mb-1", style=None if shown else _HIDDEN)
+        className=ROW_CLASS, style=None if shown else _HIDDEN)
 
 
 _SECTION_TITLE = {sid: title for sid, title, _ in SECTIONS}

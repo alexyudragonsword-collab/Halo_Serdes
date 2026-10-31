@@ -58,7 +58,12 @@ phone app's form reads too):
 the RLGC line or the Touchstone file by `channel.kind`, the optical fields when
 `topology.optical.kind` is not `none`, the parameter of the chosen driver
 nonlinearity, and so on. Hidden fields keep their values. Labels with a dotted
-underline have hover help. Frequencies show in GHz/GBd; optional fields accept
+underline have hover help, and a field with a bound says it there ("Range: > 0").
+A value outside the bound outlines its input in red with the range under it as
+you type, before Run is refused (the bounds are `schema.FIELD_BOUNDS`, which the
+configuration's own checks read; rules across two fields, such as
+`tx.fir_n_pre < len(tx.fir_taps)`, still only show when the configuration is
+built). Frequencies show in GHz/GBd; optional fields accept
 blank = "unset". **YAML** exports the form or imports a config.
 
 **Right: four workspaces.** A run is cached server-side; switching views

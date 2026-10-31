@@ -72,6 +72,122 @@ def _require_in(value, allowed, field: str) -> None:
              f"{field} must be one of {sorted(allowed)}, got {value!r}")
 
 
+#: The per-field numeric bounds ``__post_init__`` enforces, as data: what a
+#: form shows before the configuration is built and which field to mark when
+#: a value is out of range (ROADMAP P2 #41). ``"Class.field": (label, low,
+#: high, low_open, high_open, unit)``; ``None`` is unbounded, and a field
+#: whose value may be ``None`` is only bounded when set. Rules that read two
+#: fields (``fir_n_pre < len(fir_taps)``, DAC fields needing ``dac_bits``)
+#: stay in code.
+FIELD_BOUNDS: dict[str, tuple[str, float | None, float | None, bool, bool, str]] = {
+    "LinkConfig.symbol_rate": ("symbol_rate", 0, None, True, False, " Baud"),
+    "LinkConfig.osr": ("osr", 1, None, False, False, " sample/UI"),
+    "ChannelConfig.n_freq": ("channel.n_freq", 2, None, False, False, ""),
+    "ChannelConfig.length_m": ("channel.length_m", 0, None, False, False, ""),
+    "ChannelConfig.f_max": ("channel.f_max", 0, None, True, False, ""),
+    "ClockConfig.f0_hz": ("clock.f0_hz", 0, None, True, False, ""),
+    "ClockConfig.rj_ui": ("clock.rj_ui", 0, None, False, False, ""),
+    "ClockConfig.sj_ui": ("clock.sj_ui", 0, None, False, False, ""),
+    "ClockConfig.dcd_ui": ("clock.dcd_ui", 0, None, False, False, ""),
+    "ClockConfig.sj_freq": ("clock.sj_freq", 0, None, False, False, ""),
+    "TxConfig.swing": ("tx.swing", 0, None, True, False, ""),
+    "TxConfig.rlm": ("tx.rlm", 0, 1, True, False, ""),
+    "TxConfig.fir_n_pre": ("tx.fir_n_pre", 0, None, False, False, ""),
+    "TxConfig.dac_bits": ("tx.dac_bits", 1, 16, False, False, ""),
+    "TxConfig.drv_compression": ("tx.drv_compression", 0, 1, False, True, ""),
+    "TxConfig.drv_p1db_v": ("tx.drv_p1db_v", 0, None, True, False, ""),
+    "TxConfig.drv_oip3_v": ("tx.drv_oip3_v", 0, None, True, False, ""),
+    "TxConfig.noise_rms": ("tx.noise_rms", 0, None, False, False, ""),
+    "AdcCalConfig.fg_samples": ("adc.cal.fg_samples", 1, None, False, False, ""),
+    "AdcCalConfig.fg_ref": ("adc.cal.fg_ref", 0, 1, True, True, ""),
+    "AdcCalConfig.mu_offset": ("adc.cal.mu_offset", 0, 1, False, True, ""),
+    "AdcCalConfig.mu_gain": ("adc.cal.mu_gain", 0, 1, False, True, ""),
+    "AdcCalConfig.mu_skew": ("adc.cal.mu_skew", 0, 1, False, True, ""),
+    "AdcConfig.n_bits": ("adc.n_bits", 1, None, False, False, ""),
+    "AdcConfig.n_lanes": ("adc.n_lanes", 1, None, False, False, ""),
+    "AdcConfig.fullscale": ("adc.fullscale", 0, None, True, False, ""),
+    "AdcConfig.enob": ("adc.enob", 0, None, True, False, ""),
+    "FfeConfig.n_pre": ("ffe.n_pre", 0, None, False, False, ""),
+    "FfeConfig.n_post": ("ffe.n_post", 0, None, False, False, ""),
+    "FfeConfig.mu": ("ffe.mu", 0, None, False, False, ""),
+    "DfeConfig.n_taps": ("dfe.n_taps", 0, None, False, False, ""),
+    "DfeConfig.mu": ("dfe.mu", 0, None, False, False, ""),
+    "DfeConfig.loop_delay_ui": ("dfe.loop_delay_ui", 0, None, False, False, ""),
+    "DfeConfig.sum_bw": ("dfe.sum_bw", 0, None, True, False, ""),
+    "MlsdConfig.memory": ("mlsd.memory", 1, None, False, False, ""),
+    "MlsdConfig.state_memory": ("mlsd.state_memory", 1, None, False, False, ""),
+    "MlsdConfig.seq_len": ("mlsd.seq_len", 2, None, False, False, ""),
+    "MlsdConfig.margin": ("mlsd.margin", 0, None, False, False, ""),
+    "CdrConfig.clamp": ("cdr.clamp", 0, None, True, False, ""),
+    "CdrConfig.loop_latency_symbols": ("cdr.loop_latency_symbols", 0, None, False, False, ""),
+    "SimConfig.n_symbols": ("sim.n_symbols", 1, None, False, False, ""),
+    "SimConfig.chunk_symbols": ("sim.chunk_symbols", 1, None, False, False, ""),
+    "SimConfig.cdr_settle": ("sim.cdr_settle", 0, None, False, False, ""),
+    "SimConfig.train_symbols": ("sim.train_symbols", 0, None, False, False, ""),
+    "SimConfig.warmup_discard": ("sim.warmup_discard", 0, None, False, False, ""),
+    "NumericConfig.pi_bits": ("numeric.pi_bits", 1, 20, False, False, ""),
+    "NumericConfig.phase_frac_bits": ("numeric.phase_frac_bits", 0, 32, False, False, ""),
+    "NumericConfig.lms_guard_bits": ("numeric.lms_guard_bits", 0, 40, False, False, ""),
+    "NumericConfig.cal_frac_bits": ("numeric.cal_frac_bits", 1, 24, False, False, ""),
+    "NumericConfig.cal_gain_bits": ("numeric.cal_gain_bits", 4, 24, False, False, ""),
+    "NumericConfig.mlsd_metric_bits": ("numeric.mlsd_metric_bits", 4, 62, False, False, ""),
+    "OpticalConfig.f_r_hz": ("optical.f_r_hz", 0, None, True, False, ""),
+    "OpticalConfig.damping_hz": ("optical.damping_hz", 0, None, True, False, ""),
+    "OpticalConfig.er_db": ("optical.er_db", 0, None, True, False, ""),
+    "OpticalConfig.responsivity_a_w": ("optical.responsivity_a_w", 0, None, True, False, ""),
+    "OpticalConfig.tia_bw_hz": ("optical.tia_bw_hz", 0, None, True, False, ""),
+    "OpticalConfig.tz_ohm": ("optical.tz_ohm", 0, None, True, False, ""),
+    "OpticalConfig.wavelength_nm": ("optical.wavelength_nm", 0, None, True, False, ""),
+    "OpticalConfig.length_m": ("optical.length_m", 0, None, False, False, ""),
+    "OpticalConfig.tia_noise_pa_sqrthz": ("optical.tia_noise_pa_sqrthz", 0, None, False, False, ""),
+    "OpticalConfig.rin_db_hz": ("optical.rin_db_hz", None, 0, False, True, " dB/Hz"),
+    "OpticalConfig.li_compression": ("optical.li_compression", 0, 1, False, True, ""),
+    "OpticalConfig.drv_ctle_db": ("optical.drv_ctle_db", 0, 12, False, False, " dB"),
+    "OpticalConfig.tia_ctle_db": ("optical.tia_ctle_db", 0, 12, False, False, " dB"),
+    "PrConfig.mu": ("pr.mu", 0, None, True, False, ""),
+    "AggressorConfig.skew_ui": ("crosstalk aggressor skew_ui", 0, None, False, False, ""),
+    "AggressorConfig.f3db_hz": ("crosstalk aggressor f3db_hz", 0, None, True, False, ""),
+    "CrosstalkConfig.spread_db": ("crosstalk.spread_db", 0, None, False, False, ""),
+    "CrosstalkConfig.skew_ui": ("crosstalk.skew_ui", 0, None, False, False, ""),
+}
+
+
+def _num(x: float) -> str:
+    return f"{x:g}"
+
+
+def bound_text(bound: tuple) -> str:
+    """``'> 0'``, ``'>= 1'``, ``'< 0 dB/Hz'``, ``'in [0, 1)'``: what a
+    ``FIELD_BOUNDS`` entry requires, as its message and a form's hint say it."""
+    _, lo, hi, lo_open, hi_open, unit = bound
+    if lo is not None and hi is not None:
+        return (f"in {'(' if lo_open else '['}{_num(lo)}, {_num(hi)}{')' if hi_open else ']'}"
+                + unit)
+    if lo is not None:
+        return f"{'>' if lo_open else '>='} {_num(lo)}{unit}"
+    return f"{'<' if hi_open else '<='} {_num(hi)}{unit}"
+
+
+def within_bound(bound: tuple, v) -> bool:
+    """Whether ``v`` satisfies a ``FIELD_BOUNDS`` entry (``None``: not set)."""
+    if v is None:
+        return True
+    _, lo, hi, lo_open, hi_open, _ = bound
+    if lo is not None and (v <= lo if lo_open else v < lo):
+        return False
+    return not (hi is not None and (v >= hi if hi_open else v > hi))
+
+
+def _bounded(obj, *names: str) -> None:
+    """Check ``obj``'s fields against ``FIELD_BOUNDS``."""
+    cls = type(obj).__name__
+    for nm in names:
+        b = FIELD_BOUNDS[f"{cls}.{nm}"]
+        v = getattr(obj, nm)
+        opt = " when set" if obj.__dataclass_fields__[nm].default is None else ""
+        _require(within_bound(b, v), f"{b[0]} must be {bound_text(b)}{opt}, got {v}")
+
+
 @dataclass(frozen=True)
 class QFormat:
     """Fixed-point format: signed two's-complement, ``wl`` total bits with
@@ -111,12 +227,7 @@ class ChannelConfig:
 
     def __post_init__(self):
         _require_in(self.kind, {"touchstone", "analytic"}, "channel.kind")
-        _require(self.n_freq >= 2,
-                 f"channel.n_freq must be >= 2, got {self.n_freq}")
-        _require(self.length_m >= 0.0,
-                 f"channel.length_m must be >= 0, got {self.length_m}")
-        _require(self.f_max is None or self.f_max > 0,
-                 f"channel.f_max must be > 0 when set, got {self.f_max}")
+        _bounded(self, "n_freq", "length_m", "f_max")
 
 
 @dataclass(frozen=True)
@@ -159,11 +270,7 @@ class ClockConfig:
         # out of the engine three layers down.
         _require(self.kind != "profile" or bool(self.file),
                  "clock.file is required when clock.kind is 'profile' (tx.clock / rx.clock)")
-        _require(self.f0_hz is None or self.f0_hz > 0,
-                 f"clock.f0_hz must be > 0 when set, got {self.f0_hz}")
-        for nm in ("rj_ui", "sj_ui", "dcd_ui", "sj_freq"):
-            _require(getattr(self, nm) >= 0,
-                     f"clock.{nm} must be >= 0, got {getattr(self, nm)}")
+        _bounded(self, "f0_hz", "rj_ui", "sj_ui", "dcd_ui", "sj_freq")
 
 
 @dataclass(frozen=True)
@@ -197,13 +304,10 @@ class TxConfig:
     clock: ClockConfig = field(default_factory=ClockConfig)
 
     def __post_init__(self):
-        _require(self.swing > 0, f"tx.swing must be > 0, got {self.swing}")
-        _require(0.0 < self.rlm <= 1.0,
-                 f"tx.rlm is a level-mismatch ratio in (0, 1], got {self.rlm}")
+        _bounded(self, "swing", "rlm", "fir_n_pre", "dac_bits", "drv_compression",
+                 "drv_p1db_v", "drv_oip3_v", "noise_rms")
         _require_in(self.pam6_map, {"corner32"}, "tx.pam6_map")
         _require(len(self.fir_taps) >= 1, "tx.fir_taps must not be empty")
-        _require(self.fir_n_pre >= 0,
-                 f"tx.fir_n_pre must be >= 0, got {self.fir_n_pre}")
         # a 1-tap "FIR" is a passthrough the engine skips outright, so its
         # n_pre is meaningless; only constrain it where the FIR is applied
         _require(len(self.fir_taps) == 1
@@ -211,8 +315,6 @@ class TxConfig:
                  f"tx.fir_n_pre must be < len(fir_taps)={len(self.fir_taps)}, "
                  f"got {self.fir_n_pre}")
         dac = self.dac_bits is not None
-        _require(not dac or 1 <= self.dac_bits <= 16,
-                 f"tx.dac_bits must be in [1, 16] when set, got {self.dac_bits}")
         _require(self.dac_fs is None or (dac and self.dac_fs > 0),
                  f"tx.dac_fs needs tx.dac_bits and must be > 0, got {self.dac_fs}")
         _require(0 <= self.dac_thermo_msbs <= (self.dac_bits if dac else 0),
@@ -220,18 +322,12 @@ class TxConfig:
         _require(self.dac_unit_sigma >= 0 and (dac or self.dac_unit_sigma == 0),
                  f"tx.dac_unit_sigma must be >= 0 and needs tx.dac_bits, got {self.dac_unit_sigma}")
         _require_in(self.drv_nl, ("none", "curve", "tanh", "cubic"), "tx.drv_nl")
-        _require(0.0 <= self.drv_compression < 1.0,
-                 f"tx.drv_compression must be in [0, 1), got {self.drv_compression}")
         _require(self.drv_compression == 0.0 or self.drv_nl == "curve",
                  "tx.drv_compression is the 'curve' driver's parameter: set tx.drv_nl='curve'")
-        for name in ("drv_p1db_v", "drv_oip3_v"):
-            v = getattr(self, name)
-            _require(v is None or v > 0, f"tx.{name} must be > 0 when set, got {v}")
         _require(self.drv_nl != "tanh" or self.drv_p1db_v is not None,
                  "tx.drv_nl='tanh' needs tx.drv_p1db_v")
         _require(self.drv_nl != "cubic" or self.drv_oip3_v is not None,
                  "tx.drv_nl='cubic' needs tx.drv_oip3_v")
-        _require(self.noise_rms >= 0.0, f"tx.noise_rms must be >= 0, got {self.noise_rms}")
 
 
 @dataclass(frozen=True)
@@ -278,11 +374,7 @@ class AdcCalConfig:
 
     def __post_init__(self):
         _require_in(self.mode, {"off", "background", "foreground"}, "adc.cal.mode")
-        _require(self.fg_samples >= 1, f"adc.cal.fg_samples must be >= 1, got {self.fg_samples}")
-        _require(0.0 < self.fg_ref < 1.0, f"adc.cal.fg_ref must be in (0, 1), got {self.fg_ref}")
-        for nm in ("mu_offset", "mu_gain", "mu_skew"):
-            v = getattr(self, nm)
-            _require(0.0 <= v < 1.0, f"adc.cal.{nm} must be in [0, 1), got {v}")
+        _bounded(self, "fg_samples", "fg_ref", "mu_offset", "mu_gain", "mu_skew")
 
 
 @dataclass(frozen=True)
@@ -298,16 +390,10 @@ class AdcConfig:
     cal: AdcCalConfig = field(default_factory=AdcCalConfig)   # a real (background) one
 
     def __post_init__(self):
-        _require(self.n_bits >= 1, f"adc.n_bits must be >= 1, got {self.n_bits}")
+        _bounded(self, "n_bits", "n_lanes", "fullscale", "enob")
         _require(not (self.calibrated and self.cal.mode != "off"),
                  "adc.calibrated (ideal: mismatch zeroed) and adc.cal.mode (a real "
                  "calibration of the mismatch) exclude each other; choose one")
-        _require(self.n_lanes >= 1,
-                 f"adc.n_lanes must be >= 1, got {self.n_lanes}")
-        _require(self.fullscale > 0,
-                 f"adc.fullscale must be > 0, got {self.fullscale}")
-        _require(self.enob is None or self.enob > 0,
-                 f"adc.enob must be > 0 when set, got {self.enob}")
 
 
 @dataclass(frozen=True)
@@ -318,10 +404,8 @@ class FfeConfig:
     mu: float = 1e-3
 
     def __post_init__(self):
-        _require(self.n_pre >= 0, f"ffe.n_pre must be >= 0, got {self.n_pre}")
-        _require(self.n_post >= 0, f"ffe.n_post must be >= 0, got {self.n_post}")
+        _bounded(self, "n_pre", "n_post", "mu")
         _require_in(self.adapt, {"none", "lms", "wiener"}, "ffe.adapt")
-        _require(self.mu >= 0, f"ffe.mu must be >= 0, got {self.mu}")
 
 
 @dataclass(frozen=True)
@@ -353,14 +437,9 @@ class DfeConfig:
     # cold start from zero (exercises the full adaptation transient)
 
     def __post_init__(self):
-        _require(self.n_taps >= 0, f"dfe.n_taps must be >= 0, got {self.n_taps}")
+        _bounded(self, "n_taps", "mu", "loop_delay_ui", "sum_bw")
         _require_in(self.adapt, {"none", "lms", "sign_sign"}, "dfe.adapt")
         _require_in(self.level_adapt, {"none", "sign_sign"}, "dfe.level_adapt")
-        _require(self.mu >= 0, f"dfe.mu must be >= 0, got {self.mu}")
-        _require(self.loop_delay_ui >= 0,
-                 f"dfe.loop_delay_ui must be >= 0, got {self.loop_delay_ui}")
-        _require(self.sum_bw is None or self.sum_bw > 0,
-                 f"dfe.sum_bw must be > 0 when set, got {self.sum_bw}")
         _require_in(self.tap1_mode, {"direct", "unrolled"}, "dfe.tap1_mode")
         _require_in(self.init, {"cursor", "zero"}, "dfe.init")
         _require(self.tap_limits is None
@@ -394,16 +473,9 @@ class MlsdConfig:
 
     def __post_init__(self):
         _require_in(self.kind, {"none", "sliding", "viterbi"}, "mlsd.kind")
-        _require(self.memory >= 1,
-                 f"mlsd.memory must be >= 1, got {self.memory}")
-        _require(self.state_memory is None or self.state_memory >= 1,
-                 f"mlsd.state_memory must be >= 1 when set, got {self.state_memory}")
+        _bounded(self, "memory", "state_memory", "seq_len", "margin")
         _require(self.state_memory is None or self.kind == "viterbi",
                  f"mlsd.state_memory reduces a Viterbi trellis; rx.mlsd.kind is {self.kind!r}")
-        _require(self.seq_len >= 2,
-                 f"mlsd.seq_len must be >= 2, got {self.seq_len}")
-        _require(self.margin >= 0,
-                 f"mlsd.margin must be >= 0, got {self.margin}")
 
 
 @dataclass(frozen=True)
@@ -424,11 +496,7 @@ class CdrConfig:
     def __post_init__(self):
         _require_in(self.kind, {"bang_bang", "mueller_muller"}, "cdr.kind")
         _require_in(self.pd_input, {"auto", "adc", "ffe"}, "cdr.pd_input")
-        _require(self.clamp is None or self.clamp > 0,
-                 f"cdr.clamp must be > 0 when set, got {self.clamp}")
-        _require(self.loop_latency_symbols >= 0,
-                 f"cdr.loop_latency_symbols must be >= 0, "
-                 f"got {self.loop_latency_symbols}")
+        _bounded(self, "clamp", "loop_latency_symbols")
 
 
 @dataclass(frozen=True)
@@ -482,17 +550,9 @@ class SimConfig:
     warmup_discard: int | None = None   # symbols excluded from BER (default: settle+train)
 
     def __post_init__(self):
-        _require(self.n_symbols >= 1,
-                 f"sim.n_symbols must be >= 1, got {self.n_symbols}")
+        _bounded(self, "n_symbols", "chunk_symbols", "cdr_settle", "train_symbols",
+                 "warmup_discard")
         _require_in(self.engine, {"time", "stat", "both"}, "sim.engine")
-        _require(self.chunk_symbols >= 1,
-                 f"sim.chunk_symbols must be >= 1, got {self.chunk_symbols}")
-        for nm in ("cdr_settle", "train_symbols"):
-            _require(getattr(self, nm) >= 0,
-                     f"sim.{nm} must be >= 0, got {getattr(self, nm)}")
-        _require(self.warmup_discard is None or self.warmup_discard >= 0,
-                 f"sim.warmup_discard must be >= 0 when set, "
-                 f"got {self.warmup_discard}")
 
 
 @dataclass(frozen=True)
@@ -520,17 +580,8 @@ class NumericConfig:
 
     def __post_init__(self):
         _require_in(self.mode, {"float", "fixed"}, "numeric.mode")
-        _require(1 <= self.pi_bits <= 20, f"numeric.pi_bits must be in [1, 20], got {self.pi_bits}")
-        _require(0 <= self.phase_frac_bits <= 32,
-                 f"numeric.phase_frac_bits must be in [0, 32], got {self.phase_frac_bits}")
-        _require(0 <= self.lms_guard_bits <= 40,
-                 f"numeric.lms_guard_bits must be in [0, 40], got {self.lms_guard_bits}")
-        _require(1 <= self.cal_frac_bits <= 24,
-                 f"numeric.cal_frac_bits must be in [1, 24], got {self.cal_frac_bits}")
-        _require(4 <= self.cal_gain_bits <= 24,
-                 f"numeric.cal_gain_bits must be in [4, 24], got {self.cal_gain_bits}")
-        _require(4 <= self.mlsd_metric_bits <= 62,
-                 f"numeric.mlsd_metric_bits must be in [4, 62], got {self.mlsd_metric_bits}")
+        _bounded(self, "pi_bits", "phase_frac_bits", "lms_guard_bits", "cal_frac_bits",
+                 "cal_gain_bits", "mlsd_metric_bits")
 
 
 @dataclass(frozen=True)
@@ -599,21 +650,9 @@ class OpticalConfig:
         _require_in(self.kind, {"none", "vcsel_mmf", "eml_smf"}, "optical.kind")
         if self.kind == "none":
             return
-        for nm in ("f_r_hz", "damping_hz", "er_db", "responsivity_a_w",
-                   "tia_bw_hz", "tz_ohm", "wavelength_nm"):
-            _require(getattr(self, nm) > 0,
-                     f"optical.{nm} must be > 0, got {getattr(self, nm)}")
-        _require(self.length_m >= 0.0,
-                 f"optical.length_m must be >= 0, got {self.length_m}")
-        _require(self.tia_noise_pa_sqrthz >= 0.0,
-                 f"optical.tia_noise_pa_sqrthz must be >= 0, got {self.tia_noise_pa_sqrthz}")
-        _require(self.rin_db_hz < 0.0,
-                 f"optical.rin_db_hz must be < 0 dB/Hz, got {self.rin_db_hz}")
-        _require(0.0 <= self.li_compression < 1.0,
-                 f"optical.li_compression must be in [0, 1), got {self.li_compression}")
-        for nm in ("drv_ctle_db", "tia_ctle_db"):
-            _require(0.0 <= getattr(self, nm) <= 12.0,
-                     f"optical.{nm} must be in [0, 12] dB, got {getattr(self, nm)}")
+        _bounded(self, "f_r_hz", "damping_hz", "er_db", "responsivity_a_w", "tia_bw_hz",
+                 "tz_ohm", "wavelength_nm", "length_m", "tia_noise_pa_sqrthz", "rin_db_hz",
+                 "li_compression", "drv_ctle_db", "tia_ctle_db")
         if self.kind == "vcsel_mmf":
             _require(self.modal_bw_mhz_km is not None and self.modal_bw_mhz_km > 0,
                      "optical.modal_bw_mhz_km must be set (> 0) for kind 'vcsel_mmf'")
@@ -743,7 +782,7 @@ class PrConfig:
         _require(self.adapt == "none" or (len(self.target) >= 2 and self.at == "rx"),
                  f"pr.adapt={self.adapt!r} chooses a receive-side target: it needs "
                  f"pr.target=(1.0, a[, b[, c]]) and pr.at='rx', got {self.target!r}, at={self.at!r}")
-        _require(self.mu > 0.0, f"pr.mu must be > 0, got {self.mu}")
+        _bounded(self, "mu")
 
     @property
     def active(self) -> bool:
@@ -792,10 +831,8 @@ class AggressorConfig:
 
     def __post_init__(self):
         _require_in(self.kind, {"fext", "next"}, "crosstalk aggressor kind")
-        _require(self.skew_ui >= 0, f"crosstalk aggressor skew_ui must be >= 0, got {self.skew_ui}")
+        _bounded(self, "skew_ui", "f3db_hz")
         _require(abs(self.ppm) < 1e4, f"crosstalk aggressor ppm must be within +-1e4, got {self.ppm}")
-        _require(self.f3db_hz is None or self.f3db_hz > 0,
-                 f"crosstalk aggressor f3db_hz must be > 0 when set, got {self.f3db_hz}")
         _require(self.victim_port >= 0 and self.aggressor_port >= 0
                  and self.victim_port != self.aggressor_port,
                  f"crosstalk aggressor ports must be distinct and >= 0, got "
@@ -832,8 +869,7 @@ class CrosstalkConfig:
     def __post_init__(self):
         _require(self.n_fext >= 0 and self.n_next >= 0,
                  f"crosstalk.n_fext / n_next must be >= 0, got {self.n_fext} / {self.n_next}")
-        _require(self.spread_db >= 0, f"crosstalk.spread_db must be >= 0, got {self.spread_db}")
-        _require(self.skew_ui >= 0, f"crosstalk.skew_ui must be >= 0, got {self.skew_ui}")
+        _bounded(self, "spread_db", "skew_ui")
         _require(abs(self.ppm) < 1e4, f"crosstalk.ppm must be within +-1e4, got {self.ppm}")
         # a mapping per aggressor is accepted (a flat override, a form) and
         # built here, so the frozen config always holds AggressorConfig
@@ -880,10 +916,8 @@ class LinkConfig:
         # the one representation the engines test for: topology is None.
         if self.topology is not None and self.topology.optical.kind == "none":
             object.__setattr__(self, "topology", None)
-        _require(self.symbol_rate > 0,
-                 f"symbol_rate must be > 0 Baud, got {self.symbol_rate}")
         # a non-positive osr silently yields a negative/infinite dt
-        _require(self.osr >= 1, f"osr must be >= 1 sample/UI, got {self.osr}")
+        _bounded(self, "symbol_rate", "osr")
         # a DAC that cannot even hold the symbol alphabet is a typo, not a design
         n_lv = self.n_levels
         _require(self.tx.dac_bits is None or 2 ** self.tx.dac_bits >= n_lv,
@@ -953,3 +987,21 @@ class LinkConfig:
     def data_rate(self) -> float:
         """Data rate [bit/s] = symbol_rate * bits_per_symbol."""
         return self.symbol_rate * self.bits_per_symbol
+
+
+def field_bound(path: str) -> tuple | None:
+    """The ``FIELD_BOUNDS`` entry behind a dotted ``LinkConfig`` path
+    (``"rx.adc.n_bits"`` is ``AdcConfig.n_bits``), or ``None``."""
+    import dataclasses
+    import typing
+
+    cls = LinkConfig
+    parts = path.split(".")
+    for name in parts[:-1]:
+        hints = typing.get_type_hints(cls)
+        t = hints.get(name)
+        args = [a for a in typing.get_args(t) if dataclasses.is_dataclass(a)]
+        cls = args[0] if args else t
+        if not dataclasses.is_dataclass(cls):
+            return None
+    return FIELD_BOUNDS.get(f"{cls.__name__}.{parts[-1]}")

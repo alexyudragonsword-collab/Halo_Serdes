@@ -173,14 +173,14 @@ The earlier demos used a benign −18 dB C2M channel; real 802.3dj LR is 35-45 d
   发端 PR 少 3.0–5.5 dB 噪声容限。调制器的低通本身就是 1 + D,发端该做的是预加重。 / Optical duobinary still belongs in the
   receiver: with the VCSEL as the band limit and the noise after it, receive PR lowers the f_r needed from 14.24 to 11.88 GHz while
   transmit PR needs 16.69-17.15 GHz; with the noise in the transmitter no PR helps and transmit PR loses 3.0-5.5 dB.
-- **第三个受控光标实测 +0.52 dB,恰在门槛上**(示例 38,2026-10-10 实现):四光标目标 memory 1(与三光标 + memory 2 同为 256 状态)
-  reach 39.11 dB,memory 2(1024 状态)39.11 dB,三光标 38.59 dB。2026-10-30 冲激按 ISI 尾巴截断之前是 38.88 / 38.89 / 38.60 dB(+0.28),
-  换三个种子 +0.18 / +0.31 / +0.48 dB,四个种子都低于事先定的 0.5 dB 门槛;截断修正后只重跑了示例自己的种子,其余三个没重跑,
-  所以"越过门槛"还不成立 —— 只是不再明确低于它。更正此前的估计:基带 MC(`tools/pr_target_length.py`)折算后估 +0.6–0.7 dB 并据此越过门槛,实测约其一半 ——
+- **第三个受控光标四个种子平均 +0.33 dB,不到门槛**(示例 38,2026-10-10 实现):示例的种子 3 上四光标目标 memory 1(与三光标 + memory 2 同为 256 状态)
+  reach 39.11 dB,memory 2(1024 状态)39.11 dB,三光标 38.59 dB(+0.52);种子 7 / 8 / 9 +0.27 / +0.28 / +0.25 dB —— 四个里三个低于事先定的 0.5 dB 门槛,
+  均值 +0.33 dB。2026-10-30 冲激按 ISI 尾巴截断之前四个种子 +0.28 / +0.18 / +0.31 / +0.48(均值 +0.31);截断后示例自己的种子读到 +0.52,
+  一度写成"恰在门槛上",2026-10-31 重跑另三个种子后更正:越过门槛的只是种子 3。更正此前的估计:基带 MC(`tools/pr_target_length.py`)折算后估 +0.6–0.7 dB 并据此越过门槛,实测约其一半 ——
   MC 不建的 CDR / LMS 对更强的目标反作用更重。实现保留(旧配置的数一个不变),不作推荐配置。 / A third controlled cursor
-  measures +0.52 dB (39.11 vs 38.59 dB), at the 0.5 dB bar: before the 2026-10-30 ISI-tail trim it read +0.28 dB and +0.2-0.5 dB over
-  four seeds, all under it; only the example's own seed has been rerun since. The baseband MC's +0.6-0.7 dB estimate was about twice
-  the old measurement. Built, not recommended yet.
+  measures +0.52 dB (39.11 vs 38.59 dB) on the example's seed 3 and +0.27 / +0.28 / +0.25 on seeds 7 / 8 / 9: +0.33 dB on average,
+  three of four under the 0.5 dB bar (+0.31 on average before the 2026-10-30 ISI-tail trim). The baseband MC's +0.6-0.7 dB estimate
+  was about twice the measurement. Built, not recommended.
 - **网格只需要目标的受控光标**(示例 42,2026-10-11):降状态网格(`rx.mlsd.state_memory`,DFSE —— 状态只记最近 K 个符号,其余光标按各幸存路径的判决反馈)在示例 38 的链路上,K = 受控光标数时 reach 与全网格逐点相同:1 + aD 4 状态 = 64 状态(36.33 dB),1 + aD + bD² 16 状态 = 256 状态(38.59 dB),三光标 64 状态 = 256 状态(39.11 dB);两光标只留 4 状态 37.75 dB(2026-10-30 截断修正前 38.60 / 38.88 / 37.77 dB)。两光标目标的收端估计 17.68 → 5.97 pJ/b。FFE 砍到 3 抽头(网格里多了残余光标)时只留目标本身的 4 状态也只差 ≤ 0.07 dB —— 这条链路上 3 抽头 FFE 留在网格窗口里的残余只有 0.02–0.06。 / The trellis needs only the target's controlled cursors: a reduced-state trellis (DFSE) with K = the controlled cursors matches the full one point for point -- 16 states hold the two-cursor target's 38.59 dB that took 256, the receiver estimate dropping from 17.68 to 5.97 pJ/b; with a 3-tap FFE the 4-state trellis is within 0.07 dB of the full one.
 - 21 抽头 FFE:到 −27.3 dB 零误码(−28.8 dB 处 40 万符号里 6 个错;2026-10-09 前只数 2 万符号,记为到 −28.8 dB 零误码),−28.8 / −30.3 / −33.3 dB 处 MLSD memory-2 与 FFE-only 一样(1.0×)。
   原先"−27 dB 处 5.3e-4 → 5.0e-5、29× 增益"是 CDR 锁偏峰值时的数(2026-10-03 更正)。 / MLSD gains nothing on this sweep: FFE alone is

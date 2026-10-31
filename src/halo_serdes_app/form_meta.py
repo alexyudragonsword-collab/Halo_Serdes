@@ -262,9 +262,31 @@ def hidden(values: Values, sections) -> dict[str, list[str]]:
     }
 
 
+_NUMERIC = ("float", "int", "opt_float", "opt_int")
+
+
+def field_range(field: dict) -> dict | None:
+    """The bound ``__post_init__`` enforces on a numeric field, in the form's
+    units (``scale`` undone): ``{"min", "max", "min_open", "max_open",
+    "text"}``, ``None`` ends unbounded -- from ``schema.FIELD_BOUNDS``, the
+    same data the checks read (ROADMAP P2 #41)."""
+    from halo_serdes.config.schema import bound_text, field_bound
+
+    b = field_bound(field["path"]) if field["kind"] in _NUMERIC else None
+    if b is None:
+        return None
+    label, lo, hi, lo_open, hi_open, unit = b
+    scale = field.get("scale", 1.0)
+    lo = None if lo is None else lo / scale
+    hi = None if hi is None else hi / scale
+    # the text in the form's units: a scaled field's label carries its own
+    text = bound_text((label, lo, hi, lo_open, hi_open, unit if scale == 1.0 else ""))
+    return {"min": lo, "max": hi, "min_open": lo_open, "max_open": hi_open, "text": text}
+
+
 def annotate(sections) -> None:
-    """Add ``help``, ``common``, ``stage`` and ``show_if`` to every field spec
-    of ``config_bridge.SECTIONS`` in place, so the schema carries them."""
+    """Add ``help``, ``common``, ``stage``, ``show_if`` and ``range`` to every
+    field spec of ``config_bridge.SECTIONS`` in place, so the schema carries them."""
     stage_of = {sec: sid for sid, _, secs in STAGES for sec in secs}
     for sid, _, fields in sections:
         for f in fields:
@@ -274,3 +296,6 @@ def annotate(sections) -> None:
             rule = field_rule(f["path"])
             if rule is not None:
                 f["show_if"] = rule
+            rng = field_range(f)
+            if rng is not None:
+                f["range"] = rng

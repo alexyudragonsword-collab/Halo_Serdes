@@ -153,7 +153,17 @@ Non-LTI approximations (each cross-checked against the time engine):
   jitter at its input, which here is the untracked clock, the loop's own
   hunting, and AWGN + ISI at the edge sample converted through the edge
   slope of the pre-DFE pulse (first order; a lossy channel's data-dependent
-  edge shape is only in it as variance). A receiver clock (``rx.clock``)
+  edge shape is only in it as variance). That variance is taken Gaussian,
+  and the gain is the density at zero: the edge's ISI, a few large cursors,
+  has 0.86x (NRZ 16G) / 0.85-0.88x (PAM4 32G) a Gaussian's density there, so
+  the gain reads high -- against the kernel frozen at its lock, 1.22 / 1.07x,
+  and the loop's |H| under transmit SJ 10-15 % high at 0.5-4x its bandwidth.
+  The lock point itself is the kernel's (+0.34 / +1.99 samples after the
+  peak, the kernel's zero +0.35 / +1.99). Taking the exact density brings
+  |H| to within 4 % but moves the hunting and the pattern-phase factor off
+  the kernel (factor 1.3 -> 0.84 on NRZ 16G), which are matched at this gain:
+  the detector-noise side compensates and has to change with it (ROADMAP
+  P2 #38, 2026-10-31). A receiver clock (``rx.clock``)
   rides through the same error response, since the loop tracks the
   difference of the two clocks; on the bang-bang loop that also means the
   bandwidth shrinks with the *total* input, so two clocks' residues do not

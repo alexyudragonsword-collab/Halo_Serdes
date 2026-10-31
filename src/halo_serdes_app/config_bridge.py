@@ -453,6 +453,30 @@ def coerce_in(field: dict, value: Any) -> Any:
     raise ValueError(f"unknown field kind {kind!r}")
 
 
+def range_errors(values: dict[str, Any]) -> dict[str, str]:
+    """``{path: message}`` for the shown fields whose value is outside the
+    bound ``__post_init__`` would reject (``schema.FIELD_BOUNDS``): which
+    input to mark, before the configuration is built. A value that does not
+    parse is left to ``build_config``."""
+    from halo_serdes.config.schema import field_bound, within_bound
+
+    hidden = set(_form_meta.hidden(values, SECTIONS)["fields"])
+    out: dict[str, str] = {}
+    for path, value in values.items():
+        f = FIELD_BY_PATH.get(path)
+        if f is None or "range" not in f or path in hidden:
+            continue
+        b = field_bound(path)
+        try:
+            v = coerce_in(f, value)
+        except (TypeError, ValueError):
+            continue
+        if not within_bound(b, v):
+            # the configuration's own name for it, as its message says it
+            out[path] = f"{b[0]} must be {f['range']['text']}"
+    return out
+
+
 def coerce_out(field: dict, value: Any) -> Any:
     """Python value from ``LinkConfig`` -> form value (undoes scale)."""
     kind = field["kind"]

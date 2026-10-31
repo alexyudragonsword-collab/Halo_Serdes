@@ -22,6 +22,7 @@ from halo_serdes_app.config_bridge import (  # noqa: F401
     get_by_path,
     load_preset,
     preset_names,
+    range_errors,
     resolve_data_file,
     yaml_to_config,
 )
@@ -30,5 +31,5 @@ __all__ = [
     "ALL_PATHS", "CONFIGS_DIR", "FIELD_BY_PATH", "PATTERNS", "SECTIONS",
     "build_config", "coerce_in", "coerce_out", "config_to_values",
     "config_to_yaml", "derived", "envelope_status", "get_by_path",
-    "load_preset", "preset_names", "resolve_data_file", "yaml_to_config",
+    "load_preset", "preset_names", "range_errors", "resolve_data_file", "yaml_to_config",
 ]
