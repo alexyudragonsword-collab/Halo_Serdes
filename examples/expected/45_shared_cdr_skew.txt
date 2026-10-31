@@ -2,44 +2,44 @@ A lane sampled off its own lock point, its equalisers adapted there; 32 phases p
 
 PAM4 32G mixed-signal  (noise 7.0 mV, target 2.19e-04 = KP4 threshold)
   offset from lock [UI]   -0.375   -0.250   -0.125   +0.000   +0.125   +0.250   +0.375
-  BER                    3.2e-03  1.7e-04  1.9e-06  1.1e-05  6.9e-04  3.0e-02  1.7e-01
-  own loop: 1.15e-05 at its lock point (on another lane's clock 1.15e-05); lowest 1.11e-06 at -0.094 UI
-  window: at the target -0.260 ... +0.090 UI -> 0.351 UI; at 10x the lock BER -0.238 ... +0.071 UI -> 0.308 UI
-  on one loop over the four lanes' detectors: 7.34e-06 at the lock point
+  BER                    2.9e-03  1.4e-04  1.5e-06  1.1e-05  6.7e-04  2.9e-02  1.7e-01
+  own loop: 1.10e-05 at its lock point (on another lane's clock 1.10e-05); lowest 9.98e-07 at -0.094 UI
+  window: at the target -0.267 ... +0.091 UI -> 0.358 UI; at 10x the lock BER -0.243 ... +0.071 UI -> 0.313 UI
+  on one loop over the four lanes' detectors: 7.32e-06 at the lock point
   four lanes, skews +0.00 +0.06 -0.09 +0.13 UI:
-    master   clock at +0.000 UI   lanes  1.1e-05  1.9e-06  2.2e-04  2.3e-06   worst 2.2e-04 (lane 2), mean 5.8e-05
+    master   clock at +0.000 UI   lanes  1.1e-05  1.8e-06  2.1e-04  1.8e-06   worst 2.1e-04 (lane 2), mean 5.6e-05
     average  clock at +0.026 UI   lanes  1.7e-05  2.4e-06  3.2e-04  3.9e-07   worst 3.2e-04 (lane 2), mean 8.6e-05
-    minmax   clock at -0.063 UI   lanes  1.8e-06  1.9e-06  2.7e-05  2.6e-05   worst 2.7e-05 (lane 2), mean 1.4e-05
-  minmax worst lane / one lane on its own loop: 2.35
+    minmax   clock at -0.066 UI   lanes  1.6e-06  1.6e-06  2.4e-05  2.3e-05   worst 2.4e-05 (lane 2), mean 1.2e-05
+  minmax worst lane / one lane on its own loop: 2.14
   [~s]
 
 NRZ 28G analytic (COM/xtalk)  (noise 12.0 mV, target 1.00e-12 = 1e-12)
   offset from lock [UI]   -0.375   -0.250   -0.125   +0.000   +0.125   +0.250   +0.375
-  BER                    4.7e-06  5.5e-08  1.8e-10  1.7e-11  9.1e-09  1.5e-05  6.3e-03
-  own loop: 1.30e-11 at its lock point (on another lane's clock 1.68e-11); lowest 5.32e-12 at -0.031 UI
-  window: at the target none (never that low) -> 0.000 UI; at 10x the lock BER -0.122 ... +0.054 UI -> 0.176 UI
-  on one loop over the four lanes' detectors: 3.51e-12 at the lock point
+  BER                    5.2e-06  7.8e-08  3.3e-10  2.0e-11  1.1e-08  1.4e-05  5.2e-03
+  own loop: 1.52e-11 at its lock point (on another lane's clock 1.96e-11); lowest 6.90e-12 at -0.031 UI
+  window: at the target none (never that low) -> 0.000 UI; at 10x the lock BER -0.106 ... +0.053 UI -> 0.160 UI
+  on one loop over the four lanes' detectors: 3.67e-12 at the lock point
   four lanes, skews +0.00 +0.06 -0.09 +0.13 UI:
-    master   clock at +0.000 UI   lanes  1.3e-11  7.8e-12  1.1e-09  2.7e-10   worst 1.1e-09 (lane 2), mean 3.6e-10
-    average  clock at +0.026 UI   lanes  7.4e-12  1.4e-12  5.5e-10  8.8e-13   worst 5.5e-10 (lane 2), mean 1.4e-10
-    minmax   clock at -0.011 UI   lanes  1.1e-11  1.5e-11  6.6e-10  6.4e-10   worst 6.6e-10 (lane 2), mean 3.3e-10
-  minmax worst lane / one lane on its own loop: 50.65
+    master   clock at +0.000 UI   lanes  1.5e-11  1.3e-11  1.4e-09  4.8e-10   worst 1.4e-09 (lane 2), mean 4.7e-10
+    average  clock at +0.026 UI   lanes  7.7e-12  1.4e-12  5.9e-10  9.3e-13   worst 5.9e-10 (lane 2), mean 1.5e-10
+    minmax   clock at -0.008 UI   lanes  1.5e-11  2.0e-11  9.2e-10  8.7e-10   worst 9.2e-10 (lane 2), mean 4.6e-10
+  minmax worst lane / one lane on its own loop: 60.92
   [~s]
 
 PAM4 224G ADC (106 GBd)  (noise 1.5 mV, target 2.19e-04 = KP4 threshold)
   offset from lock [UI]   -0.375   -0.250   -0.125   +0.000   +0.125   +0.250   +0.375
-  FFE re-solved          2.4e-03  4.4e-04  1.1e-04  5.7e-05  7.0e-05  2.3e-04  4.2e-03
-  FFE held at lock       1.6e-01  3.8e-02  1.8e-03  5.7e-05  6.0e-04  2.1e-02  1.2e-01
-  own loop: 5.73e-05 at its lock point (on another lane's clock 5.73e-05); lowest 5.66e-05 at +0.031 UI
-  window (FFE re-solved): at the target -0.194 ... +0.247 UI -> 0.441 UI; at 10x the lock BER -0.272 ... +0.299 UI -> 0.570 UI
-  window (FFE held at lock): at the target -0.058 ... +0.091 UI -> 0.150 UI; at 10x the lock BER -0.089 ... +0.123 UI -> 0.212 UI
-  held / re-solved: 86.1x at -0.25 UI, 93.8x at +0.25 UI
-  on one loop over the four lanes' detectors: 5.73e-05 at the lock point
+  FFE re-solved          2.4e-03  4.8e-04  1.2e-04  6.1e-05  7.5e-05  2.6e-04  4.2e-03
+  FFE held at lock       1.6e-01  3.9e-02  2.0e-03  6.1e-05  6.0e-04  2.1e-02  1.2e-01
+  own loop: 6.06e-05 at its lock point (on another lane's clock 6.06e-05); lowest 5.98e-05 at +0.031 UI
+  window (FFE re-solved): at the target -0.186 ... +0.237 UI -> 0.424 UI; at 10x the lock BER -0.269 ... +0.296 UI -> 0.565 UI
+  window (FFE held at lock): at the target -0.056 ... +0.091 UI -> 0.146 UI; at 10x the lock BER -0.088 ... +0.125 UI -> 0.213 UI
+  held / re-solved: 80.1x at -0.25 UI, 81.5x at +0.25 UI
+  on one loop over the four lanes' detectors: 6.06e-05 at the lock point
   four lanes, skews +0.00 +0.06 -0.09 +0.13 UI:
-    master   clock at +0.000 UI   lanes  5.7e-05  7.4e-05  6.0e-05  1.2e-04   worst 1.2e-04 (lane 3), mean 7.7e-05
-    average  clock at +0.000 UI   lanes  5.7e-05  7.4e-05  6.0e-05  1.2e-04   worst 1.2e-04 (lane 3), mean 7.7e-05
-    minmax   clock at +0.057 UI   lanes  5.7e-05  5.8e-05  7.9e-05  7.9e-05   worst 7.9e-05 (lane 3), mean 6.8e-05
-  minmax worst lane / one lane on its own loop: 1.38
+    master   clock at +0.000 UI   lanes  6.1e-05  7.8e-05  6.3e-05  1.3e-04   worst 1.3e-04 (lane 3), mean 8.3e-05
+    average  clock at +0.000 UI   lanes  6.1e-05  7.8e-05  6.3e-05  1.3e-04   worst 1.3e-04 (lane 3), mean 8.3e-05
+    minmax   clock at +0.056 UI   lanes  6.0e-05  6.2e-05  8.5e-05  8.5e-05   worst 8.5e-05 (lane 3), mean 7.3e-05
+  minmax worst lane / one lane on its own loop: 1.40
   [~s]
 
 NRZ 16G mixed-signal (noise 15.0 mV), four lanes at skew 0 on lane 0's loop, time domain:
@@ -49,6 +49,6 @@ NRZ 16G mixed-signal (noise 15.0 mV), four lanes at skew 0 on lane 0's loop, tim
 
 PAM4 224G ADC (106 GBd) (noise 2.5 mV), four lanes, skews +0.00 +0.06 -0.09 +0.13 UI, one loop over all of them, time domain:
   lanes                 3.9e-04  5.3e-04  4.1e-04  5.8e-04   errors 150 205 160 225
-  statistical, clock where it starts   3.7e-04  4.5e-04  4.3e-04  7.0e-04   ratio 0.96 0.86 1.03 1.21
-  statistical, clock at the mean skew (+0.026 UI)  4.0e-04  4.3e-04  5.2e-04  6.2e-04   ratio 1.03 0.81 1.26 1.07  [~s]
+  statistical, clock where it starts   3.9e-04  4.8e-04  4.6e-04  7.6e-04   ratio 1.02 0.91 1.11 1.31
+  statistical, clock at the mean skew (+0.026 UI)  4.3e-04  4.6e-04  5.6e-04  6.7e-04   ratio 1.10 0.87 1.36 1.16  [~s]
 wrote examples/output/45_shared_cdr_skew.png

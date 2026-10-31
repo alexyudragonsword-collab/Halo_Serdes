@@ -1,11 +1,11 @@
 28 GBd NRZ, 0.28 m — loss @ Nyquist 13.6 dB
 
 == Crosstalk strength sweep (FEXT+NEXT, time engine) ==
-  coupling  -40 dB : SNR 15.08 dB | time BER 0.00e+00 | stat BER 2.24e-27
-  coupling  -34 dB : SNR 14.66 dB | time BER 0.00e+00 | stat BER 2.75e-21
-  coupling  -30 dB : SNR 13.91 dB | time BER 0.00e+00 | stat BER 1.87e-16
-  coupling  -26 dB : SNR 12.46 dB | time BER 0.00e+00 | stat BER 3.48e-12
-  coupling  -22 dB : SNR 10.13 dB | time BER 0.00e+00 | stat BER 5.03e-08
-  coupling  -18 dB : SNR  6.98 dB | time BER 5.52e-03 | stat BER 4.17e-03
+  coupling  -40 dB : SNR 15.08 dB | time BER 0.00e+00 | stat BER 5.79e-27
+  coupling  -34 dB : SNR 14.66 dB | time BER 0.00e+00 | stat BER 1.64e-20
+  coupling  -30 dB : SNR 13.91 dB | time BER 0.00e+00 | stat BER 1.35e-15
+  coupling  -26 dB : SNR 12.46 dB | time BER 0.00e+00 | stat BER 2.20e-11
+  coupling  -22 dB : SNR 10.13 dB | time BER 0.00e+00 | stat BER 5.75e-08
+  coupling  -18 dB : SNR  6.98 dB | time BER 5.52e-03 | stat BER 4.19e-03
 
 wrote examples/output/24_crosstalk.png
