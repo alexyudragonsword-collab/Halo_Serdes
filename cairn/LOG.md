@@ -15,6 +15,7 @@
   示例 43 在 4 并行下被杀(内存),单跑零漂移。指纹 18 / 986 动,全是混合信号统计。
 - 验证:全量 1417 passed / 8 skipped(1 条 layout 测试因新 helper 未从 statistical 再导出,已补);Cython 构建 engine/stat_loop + statistical 删 .py、
   `HALO_NO_JIT=1` 相关 65 passed / 4 skipped;ruff 通过。
+- CI(PR #126,头 978bdbf,29 项全绿):test 运行 30 分钟(full 32)、Android 14.6;Windows PyInstaller 2.7、Nuitka 27.2、onefile 43.5(热,main 在新镜像上的链已在)。
 
 ## 2026-10-31 · Windows onefile 变慢的原因、手机常驻显示范围(feat/onefile-phone-ranges)
 
