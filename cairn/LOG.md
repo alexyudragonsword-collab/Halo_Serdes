@@ -12,7 +12,9 @@
 - #41 余项:`schema.FIELD_BOUNDS`(70 条)是校验读的数据,`derive` 按表单路径报越界(原来落到 `_form`),桌面 min / max + 行标红 + 悬停范围;
   #41 清空。`tests/test_field_bounds.py`(84)。
 - 验证:宿主全套通过(含 `test_field_bounds` 84);编译集 schema / statistical / api / config_bridge / form_meta 本地真编 .so、删 `.py`,
-  `HALO_NO_JIT=1` 下配置 / 表单 / API / 统计 313 passed;ruff。CI 见 PR。
+  `HALO_NO_JIT=1` 下配置 / 表单 / API / 统计 313 passed;ruff。
+- CI(PR #124,一次全绿):矩阵 jit 13.9 / 21.3 分钟、nojit 13.9 / 17.5,examples 20.7,examples-full 36.5;Android 构建 1.4、编译版 9.4、
+  编译版模拟器 5.4、API 34 / 35 5.3 / 3.9;Windows PyInstaller 3.0、Nuitka 38.0、onefile 约 105(平时约 45,又一次慢,未查;本 PR 未动打包)。
 
 ## 2026-10-31 · 冲激按 ISI 尾巴截断、GUI 余项、拆 run_statistical(feat/impulse-trim-gui-split)
 
