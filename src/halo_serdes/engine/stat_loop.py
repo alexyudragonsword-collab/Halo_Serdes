@@ -16,7 +16,7 @@ from dataclasses import replace
 import numpy as np
 
 from ..cdr.linear import (
-    ErrorResponse, LoopParams, LoopSolution, bb_loop_fixed_point, error_response,
+    BbEdgeStats, ErrorResponse, LoopParams, LoopSolution, bb_loop_fixed_point, error_response,
     lock_offset_samples, mm_hold_range_ui, mm_loop_solution, mm_pd_statistics,
 )
 from ..channel.response import pulse_from_impulse
@@ -273,6 +273,7 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
         # PAM4's off-lock sign changes give an output the data sets, which
         # consecutive transitions largely cancel: through the pattern's lines
         level_probs = level_probabilities(cfg.modulation)
+        edge = _bb_edge_stats(cfg, pulse_pd, levels_norm, swing, noise_sigma, level_probs)
         pairs = _bb_pairs(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
                           extra_edge_ui=float(cfg.tx.clock.rj_ui), level_probs=level_probs)
         sol = bb_loop_fixed_point(
@@ -280,7 +281,7 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
             transitions=_bb_transitions(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
                                         pairs=pairs, level_probs=level_probs),
             mean_output=lambda sigma_e: _bb_mean_output(pairs, levels_norm.size, sigma_e),
-            period=_pattern_period(cfg), voters=voters)
+            period=_pattern_period(cfg), voters=voters, edge=edge)
     # the same loop once it has forgotten its start: what a longer run, and
     # the link in service, settles at
     steady = float(np.hypot(untracked(lambda f, k=sol.k_pd: error_response(f, lp, k)),
@@ -330,6 +331,30 @@ def _pattern_period(cfg: LinkConfig, max_symbols: int = 1 << 21) -> np.ndarray |
 
         sym = precode_1plusd(sym, cfg.n_levels)
     return sym[:per] if np.array_equal(sym[:per], sym[per:]) else sym
+
+
+def _bb_edge_stats(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray, swing: float,
+                   noise_sigma: float, level_probs: np.ndarray | None = None,
+                   n_symbols: int = 1 << 17) -> BbEdgeStats:
+    """The Alexander detector's edge samples over the configured pattern --
+    one period of a repeating one, else seeded random symbols at the
+    modulation's level probabilities -- at the lock point the symmetric
+    transitions set (``lock_offset_samples``, fractional: the sampler
+    interpolates), with the transmitter's white edge jitter on the edge."""
+    y = np.asarray(pulse_pd.y, dtype=np.float64)
+    peak = int(np.argmax(np.abs(y)))
+    half = cfg.osr // 2
+    lock = peak + lock_offset_samples(y, peak, cfg.osr, half)
+    levels_v = np.asarray(levels_norm, dtype=np.float64) * swing
+    period = _pattern_period(cfg)
+    if period is not None:
+        amps, periodic = levels_v[period], True
+    else:
+        rng = np.random.default_rng(0)
+        pw = None if level_probs is None else np.asarray(level_probs, dtype=np.float64)
+        amps, periodic = levels_v[rng.choice(levels_v.size, size=n_symbols, p=pw)], False
+    return BbEdgeStats.build(y, cfg.osr, lock, half, amps, noise_sigma,
+                             edge_ui=float(cfg.tx.clock.rj_ui), periodic=periodic)
 
 
 def _bb_pairs(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,

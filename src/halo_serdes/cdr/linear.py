@@ -537,13 +537,136 @@ def bb_data_noise(mean_out: np.ndarray, period: np.ndarray | None = None) -> tup
     return counted, PdNoise(0.0, np.arange(spec.size)[1:] / n, power[1:])
 
 
+_GH_X, _GH_W = np.polynomial.hermite_e.hermegauss(16)   # E over a standard normal
+_GH_W = _GH_W / _GH_W.sum()
+
+
+@dataclass(frozen=True)
+class BbEdgeStats:
+    """An Alexander detector's edge samples over a symbol sequence: what its
+    gain and its noise are, without taking the edge's ISI for a Gaussian.
+
+    ``u[k]``: the edge voltage at transition ``k``, signed toward the old
+    symbol (the detector reads early, +1, when it is positive), its ISI and
+    the main cursors' offset from the lock included; ``du[k]`` its slope per
+    UI of sampling delay; ``at[k]`` the symbol it ends at (from the first one counted). The edge's ISI is
+    a sum of a few large cursors: on the NRZ 16G / PAM4 32G presets its
+    density at zero is 0.85-0.88x a Gaussian's of the same variance, and the
+    gain the Gaussian gave read 1.22 / 1.07x the kernel's frozen slope.
+    And the ISI is data, not noise: consecutive edges share symbols, so the
+    detector's output at low frequency -- what a slow loop integrates -- is
+    0.6-0.8x its variance in the kernel, which a white model counts in full.
+    The two errors had cancelled in the hunting (ROADMAP P2 #38, 2026-10-31).
+
+    ``periodic``: the sequence is one period of a repeating pattern, whose
+    data noise the loop sees as lines; otherwise independent symbols, whose
+    data noise is the density at zero frequency (autocovariance summed over
+    the ISI span). ``noise_sigma`` is the AWGN at the edge sample [V],
+    ``edge_ui`` the transmitter's white edge jitter.
+    """
+
+    u: np.ndarray
+    du: np.ndarray
+    at: np.ndarray
+    n_symbols: int
+    noise_sigma: float
+    edge_ui: float
+    periodic: bool
+    span: int
+
+    @staticmethod
+    def build(pulse_y: np.ndarray, osr: int, lock_pos: float, half_span: int,
+              amps: np.ndarray, noise_sigma: float, edge_ui: float = 0.0,
+              periodic: bool = False, n_pre: int = 24, n_post: int = 64) -> "BbEdgeStats":
+        """From the pre-DFE pulse, the lock (fractional sample of the data
+        sample), and the symbols' amplitudes [V]."""
+        y = np.asarray(pulse_y, dtype=np.float64)
+        dy = np.gradient(y)
+        grid = np.arange(y.size, dtype=np.float64)
+        pos = lock_pos - half_span + np.arange(-n_pre, n_post + 1) * osr
+        c = np.interp(pos, grid, y, left=0.0, right=0.0)
+        dc = np.interp(pos, grid, dy, left=0.0, right=0.0) * osr     # per UI
+        a = np.asarray(amps, dtype=np.float64)
+        n = a.size
+        if periodic:
+            ext = a[np.arange(-n_post, n + n_pre) % n]                # circular
+            v = np.convolve(ext, c)[n_pre + n_post: n_pre + n_post + n]
+            dv = np.convolve(ext, dc)[n_pre + n_post: n_pre + n_post + n]
+            prev = np.roll(a, 1)
+            keep = np.ones(n, dtype=bool)
+            first = 0
+        else:
+            v = np.convolve(a, c)[n_pre: n_pre + n]
+            dv = np.convolve(a, dc)[n_pre: n_pre + n]
+            prev = np.concatenate([[0.0], a[:-1]])
+            k = np.arange(n)
+            keep = (k >= n_post) & (k < n - n_pre)                  # whole ISI in view
+            first = n_post
+        trans = keep & (np.sign(a) != np.sign(prev)) & (prev != 0.0)
+        sg = np.sign(prev[trans])
+        return BbEdgeStats(u=v[trans] * sg, du=dv[trans] * sg,
+                           at=np.flatnonzero(trans) - first, n_symbols=int(keep.sum()),
+                           noise_sigma=float(noise_sigma), edge_ui=float(edge_ui),
+                           periodic=bool(periodic), span=int(n_pre + n_post + 1))
+
+    @property
+    def rho(self) -> float:
+        return self.u.size / max(self.n_symbols, 1)
+
+    def _s(self, sigma_e: float) -> np.ndarray:
+        return np.sqrt(self.noise_sigma ** 2 + self.du ** 2 * (sigma_e ** 2 + self.edge_ui ** 2)) + 1e-300
+
+    def gain(self, sigma_e: float) -> float:
+        """Mean output per symbol per UI of delay at loop jitter ``sigma_e``
+        [UI]: the edges' density at zero times their slope, exactly over
+        the sequence (``bb_pd_gain`` for a Gaussian edge)."""
+        s = self._s(sigma_e)
+        dens = np.exp(-0.5 * (self.u / s) ** 2) / (np.sqrt(2.0 * np.pi) * s)
+        return float(np.sum(-2.0 * self.du * dens) / max(self.n_symbols, 1))
+
+    def noise(self, sigma_e: float) -> PdNoise:
+        """The output's noise per update as the loop sees it, at each phase
+        the loop's own jitter puts it (Gauss-Hermite over ``sigma_e``): the
+        part the AWGN and the edge jitter randomise (white), and the part
+        the data set, as lines on a repeating pattern or its density at
+        zero frequency on random data. The sequence's mean at that phase is
+        the response to it -- the signal, not noise."""
+        from scipy.special import erf
+
+        s0 = np.sqrt(self.noise_sigma ** 2 + self.du ** 2 * self.edge_ui ** 2) + 1e-300
+        nn = max(self.n_symbols, 1)
+        nodes = ((0.0, 1.0),) if sigma_e <= 0.0 else tuple(zip(_GH_X * sigma_e, _GH_W))
+        white = 0.0
+        power = 0.0
+        for t, w in nodes:
+            m = erf((self.u + self.du * t) / (np.sqrt(2.0) * s0))
+            white += w * float(np.sum(1.0 - m ** 2)) / nn
+            g = np.zeros(nn)
+            g[self.at] = m
+            g -= g.mean()
+            if self.periodic:
+                spec = np.fft.rfft(g)
+                p = 2.0 * np.abs(spec) ** 2 / nn ** 2
+                if nn % 2 == 0:
+                    p[-1] /= 2.0
+                power = power + w * p[1:]
+            else:
+                f = np.fft.rfft(g, 2 * nn)
+                acov = np.fft.irfft(np.abs(f) ** 2)[: self.span + 2] / nn
+                power += w * float(acov[0] + 2.0 * np.sum(acov[1:]))
+        if self.periodic:
+            return PdNoise(white, np.arange(1, np.size(power) + 1) / nn, power)
+        return PdNoise(white + max(power, 0.0))
+
+
 def bb_loop_fixed_point(loop: LoopParams,
                         untracked_ui: Callable[[Callable[[np.ndarray], np.ndarray]], float],
                         rho: float = 0.5, sigma_edge_ui: float = 0.0,
                         n_iter: int = 60,
                         transitions: Sequence[tuple[float, float, float]] | None = None,
                         mean_output: Callable[[float], np.ndarray] | None = None,
-                        period: np.ndarray | None = None, voters: int = 1) -> LoopSolution:
+                        period: np.ndarray | None = None, voters: int = 1,
+                        edge: BbEdgeStats | None = None) -> LoopSolution:
     """Self-consistent operating point of a bang-bang loop.
 
     ``untracked_ui(err_fn)`` must return the RMS clock jitter [UI] left when
@@ -580,15 +703,22 @@ def bb_loop_fixed_point(loop: LoopParams,
     gain are one lane's, the output's noise power 1/N of it. On NRZ 16G at
     15 mV the time engine's hunting went 1.92 / 1.33 / 0.92 / 0.65 samples
     RMS on 1 / 2 / 4 / 8 such lanes (ROADMAP P3 #9c).
+
+    ``edge``: the detector's edge samples over the sequence
+    (:class:`BbEdgeStats`), whose gain and noise replace the classes' and
+    the mean output's -- both read off the same samples, so neither is taken
+    Gaussian or white while the other is not (ROADMAP P2 #38).
     """
     classes = ((rho, 0.0, sigma_edge_ui),) if transitions is None else tuple(transitions)
     rho_all = sum(p for p, _, _ in classes)
 
     def gain(sigma_e: float) -> tuple[float, float]:
         """The linearised gain and the classes' timing share at input jitter sigma_e."""
+        if edge is not None:
+            return edge.gain(sigma_e), 0.0
         k = info = 0.0
-        for p, offset, edge in classes:
-            s = float(np.hypot(sigma_e, edge))
+        for p, offset, edge_ui in classes:
+            s = float(np.hypot(sigma_e, edge_ui))
             w = float(np.exp(-0.5 * (offset / max(s, 1e-12)) ** 2))
             k += bb_pd_gain(s, p) * w
             info += p * w
@@ -599,6 +729,8 @@ def bb_loop_fixed_point(loop: LoopParams,
     k_pd, info = gain(sigma_e)
     sig_u = sig_s = 0.0
     def pd_noise(sigma_e: float, info: float) -> float | PdNoise:
+        if edge is not None:
+            return edge.noise(sigma_e)
         # E[pd^2] less the power of the mean response (bb_pd_noise_var)
         white = rho_all - info ** 2 / 3.0
         if mean_output is None:

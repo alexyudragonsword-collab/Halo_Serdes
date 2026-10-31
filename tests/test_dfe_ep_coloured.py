@@ -6,7 +6,10 @@ along the DFE's push and a first error is followed more often than one the
 DFE made. On example 31's link frozen at its lock (CDR gains ~0, no
 transmit jitter, FFE / DFE not adapting) the time engine made 1.77-1.84
 errors per first one at 2.5-4 mV; the two-state chain read 1.50-1.71, the
-three-state one 1.74-1.81.
+three-state one 1.74-1.81. Deeper in a chain the noises before an error
+are both a chain error's, small, and it is followed more often again (p3):
+at 4 mV the time engine's p1 / p2 / p3 0.57 / 0.25 / 0.43, the model's
+0.58 / 0.23 / 0.38 (ROADMAP P2 #37, 2026-10-31).
 """
 
 import dataclasses
@@ -45,7 +48,8 @@ def test_errors_per_first_error_behind_an_ffe():
 
     2026-10-30, the impulse trimmed by its ISI tail (ROADMAP P1 #42): 1.82
     per first one (971 / 533), this chain 1.75, the chain without colour
-    1.56 on the same taps -- the bound sits between the two chains."""
+    1.56 on the same taps -- the bound sits between the two chains.
+    2026-10-31, with p3 (ROADMAP P2 #37): this chain 1.79."""
     first = total = 0
     for seed in (1, 2, 3, 4):
         cfg = _frozen(0.004, 500_000, seed)
