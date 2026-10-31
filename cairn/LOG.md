@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-31 · 截断后重核、bang-bang 增益核查、字段范围(feat/recheck-bb-ranges)
+
+- 用户选 P2 #43 + #38 + #41 余项。第三光标种子 7 / 8 / 9 重跑 +0.27 / +0.28 / +0.25 dB(同脚本先复现种子 3 的 +0.52),均值 +0.33,三个不过 0.5 dB
+  门槛 —— 上一轮"不再明确低于门槛"更正(SUMMARY / USAGE / COMPARISON / derived.yaml / §13);#43 清空(交叉校验测试截断后全过,点值只留日期注)。
+- #38:读点没问题;增益按高斯边沿噪声偏高(冻结 0.82 / 0.93、SJ |H| +10–15 %,边沿 ISI 零点密度 0.85–0.88×,不是截断)。按 `isi_pdf` 取密度试过:
+  |H| 到 4 % 内,但码型-相位因子 1.3 → 0.84、6 条测试出界 —— 鉴相噪声侧在补偿,**没留**;清单 + §39 + ROADMAP #38 改写为余项。
+- #41 余项:`schema.FIELD_BOUNDS`(70 条)是校验读的数据,`derive` 按表单路径报越界(原来落到 `_form`),桌面 min / max + 行标红 + 悬停范围;
+  #41 清空。`tests/test_field_bounds.py`(84)。
+- 验证:见下(全套、编译集 .so + HALO_NO_JIT)。
+
 ## 2026-10-31 · 冲激按 ISI 尾巴截断、GUI 余项、拆 run_statistical(feat/impulse-trim-gui-split)
 
 - 用户选 P1 #42 + P2 #41 + 拆 run_statistical。`trim_impulse(osr=)`:截掉的后光标 RMS < 主光标 1e-3(只在峰后半段找),`ChannelModel.ui`

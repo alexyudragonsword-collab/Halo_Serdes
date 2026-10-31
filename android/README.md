@@ -58,6 +58,10 @@ kind 都接受字符串(`float(value)`),这正是"表单一律按文本编辑"�
 `toFormValues` 因此保持 bool 的类型,设备侧 `boolFieldsStayBooleanThroughTheValueMap`
 与宿主侧 `test_bool_fields_must_not_be_sent_as_text` 两头钉住。
 
+超出范围的值(`schema.FIELD_BOUNDS`,配置自己的校验读的同一份数据)由 `derive` 按**表单路径**报在
+`field_errors` 里(`rx.adc.n_bits`,而不是配置报错里的 `adc.n_bits`),于是这些字段像别的错一样就地标红,
+Kotlin 不用改;字段的范围另在 `schema` 每个字段的 `range` 里(`min` / `max` / 开闭 / `text`),目前手机不显示。
+
 校验是**去抖**的(300 ms):半个数字("1e"、"-")还不算用户犯的错,逐键闪红只会训练人无视
 标记。配置非法时 `derive` 只回 `valid` 与 `field_errors`,没有 `derived`/`envelope`/`channel`,
 所以界面保留上一次的派生量而不是在编辑中途清空面板。

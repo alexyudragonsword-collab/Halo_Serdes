@@ -72,3 +72,9 @@ body { font-family: Inter, "Segoe UI", system-ui, sans-serif; }
     transition: transform 0.2s ease-out; }
   .cfg-drawer.open { transform: none; }
 }
+
+/* a value outside the field's range (ROADMAP P2 #41): the input outlined,
+   the range under it */
+.cfg-out-of-range input, .cfg-out-of-range select { border-color: #c0392b; }
+.cfg-hint { font-size: 0.7rem; color: #c0392b; line-height: 1.1; }
+.cfg-hint:empty { display: none; }

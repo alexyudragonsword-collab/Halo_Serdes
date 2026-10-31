@@ -46,6 +46,7 @@ from .config_bridge import (
     envelope_status,
     load_preset,
     preset_names,
+    range_errors,
     yaml_to_config,
 )
 
@@ -208,6 +209,11 @@ def _m_derive(payload: dict) -> dict:
     # so no client carries a second evaluator); valid or not, the form is
     # still on screen
     hidden = form_meta.hidden(values, SECTIONS)
+    # a value outside its bound names its own input (the config's message
+    # names the dataclass field, "adc.n_bits", not the form's path)
+    out_of_range = range_errors(values)
+    if out_of_range:
+        return {"valid": False, "field_errors": out_of_range, "hidden": hidden}
     try:
         cfg = build_config(values)
     except Exception as exc:

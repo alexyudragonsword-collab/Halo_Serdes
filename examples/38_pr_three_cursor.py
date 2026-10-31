@@ -130,8 +130,8 @@ for name, v in reach.items():
 names = list(CASES)
 assert reach[names[2]] > reach[names[1]] > ctrl, reach
 assert abs(reach[names[3]] - reach[names[2]]) < 0.5, reach
-# a third controlled cursor helps a little (+0.52 dB on this seed since the
-# 2026-10-30 ISI-tail trim; +0.2-0.5 dB over four seeds before it), and the
+# a third controlled cursor helps a little (+0.52 dB on this seed, +0.25-0.28
+# on seeds 7 / 8 / 9 since the 2026-10-30 ISI-tail trim), and the
 # 1024-state trellis buys nothing over the 256-state one. With n_symbols capped
 # (tools/run_examples.py --smoke) the ladder cannot resolve half a dB: there it
 # only must not lose.
