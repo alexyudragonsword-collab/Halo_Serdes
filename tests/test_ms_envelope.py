@@ -1,7 +1,11 @@
 """Product mixed-signal envelope: three tiers calibrated by examples/12.
 
-    default anchor 16 GBd | comfort NRZ 24 / PAM4 32 / PAM6 30 / PAM8 24 Gb/s |
-    absolute limit NRZ 30 / PAM4 36 / PAM6 32.5 / PAM8 33 Gb/s | hard ceiling 30 GBd
+    default anchor 16 GBd | comfort NRZ 24 / PAM4 28 / PAM6 30 / PAM8 24 Gb/s |
+    absolute limit NRZ 28 / PAM4 32 / PAM6 32.5 / PAM8 33 Gb/s | hard ceiling 30 GBd
+
+(Recalibrated 2026-10-30 with the impulse trimmed by its ISI tail, ROADMAP
+P1 #42: NRZ's limit was 30, PAM4's 36 with comfort 32. The PAM4 32G
+mixed-signal preset, 16 GBd, now sits at its limit and is warned marginal.)
 """
 
 import pathlib
@@ -48,14 +52,15 @@ def _envelope_warnings(cfg):
 
 def test_constants_are_consistent():
     assert MS_DEFAULT_BAUD == 16e9
-    assert MS_COMFORT_DATA_RATE == {"nrz": 24e9, "pam4": 32e9, "pam6": 30e9, "pam8": 24e9}
-    assert MS_LIMIT_DATA_RATE == {"nrz": 30e9, "pam4": 36e9, "pam6": 32.5e9, "pam8": 33e9}
+    assert MS_COMFORT_DATA_RATE == {"nrz": 24e9, "pam4": 28e9, "pam6": 30e9, "pam8": 24e9}
+    assert MS_LIMIT_DATA_RATE == {"nrz": 28e9, "pam4": 32e9, "pam6": 32.5e9, "pam8": 33e9}
     assert MS_HARD_MAX_BAUD == 30e9
-    # comfort < limit per modulation; NRZ limit coincides with the ceiling
+    # comfort < limit per modulation
     for m in ("nrz", "pam4", "pam6", "pam8"):
         assert MS_COMFORT_DATA_RATE[m] < MS_LIMIT_DATA_RATE[m]
     # the limits sit at the same closing loss once the level penalty is paid:
-    # Whisper's last open eye at -30.2 / -20.4 / -16.1 / -14.5 dB (examples/12)
+    # Whisper's last open eye at -29.0 / -18.7 / -16.1 / -14.5 dB (examples/12,
+    # recalibrated 2026-10-30 with the impulse trimmed by its ISI tail)
 
 
 def test_default_linkconfig_is_16g_nrz():
@@ -79,23 +84,26 @@ def test_product_mixed_signal_factory():
 
 
 def test_comfort_zone_is_silent():
-    # NRZ 24 Gb/s and PAM4 32 Gb/s sit exactly on the comfort boundary
+    # NRZ 24 Gb/s and PAM4 28 Gb/s sit exactly on the comfort boundary
     assert _envelope_warnings(_ms_cfg("nrz", 24e9)) == []
-    assert _envelope_warnings(_ms_cfg("pam4", 16e9)) == []
+    assert _envelope_warnings(_ms_cfg("pam4", 14e9)) == []
 
 
 def test_marginal_zone_warns_marginal():
     msgs = _envelope_warnings(_ms_cfg("nrz", 26e9))
     assert any("marginal zone" in m for m in msgs)
     assert not any("exceeds" in m for m in msgs)
-    msgs = _envelope_warnings(_ms_cfg("pam4", 17e9))  # 34 Gb/s
+    msgs = _envelope_warnings(_ms_cfg("pam4", 15e9))  # 30 Gb/s
     assert any("marginal zone" in m for m in msgs)
+    # the PAM4 32G preset's 16 GBd is the limit itself: marginal, not beyond
+    msgs = _envelope_warnings(_ms_cfg("pam4", 16e9))
+    assert any("marginal zone" in m for m in msgs) and not any("exceeds" in m for m in msgs)
 
 
 def test_beyond_limit_warns_exceeds():
-    msgs = _envelope_warnings(_ms_cfg("nrz", 32e9))
+    msgs = _envelope_warnings(_ms_cfg("nrz", 30e9))   # > 28
     assert any("exceeds the mixed-signal envelope" in m for m in msgs)
-    msgs = _envelope_warnings(_ms_cfg("pam4", 20e9))  # 40 Gb/s > 36
+    msgs = _envelope_warnings(_ms_cfg("pam4", 17e9))  # 34 Gb/s > 32
     assert any("exceeds the mixed-signal envelope" in m for m in msgs)
 
 
@@ -154,9 +162,12 @@ def test_canonical_yaml_runs_clean():
 
 
 def test_canonical_pam4_yaml_runs_clean():
+    """Error-free on its own channel -- and, since the 2026-10-30
+    recalibration, at the PAM4 limit, so the run says "marginal"."""
     cfg = load_config(ROOT / "configs" / "pam4_32g_ms.yaml",
                       overrides={"sim.n_symbols": 40_000})
     assert cfg.data_rate == 32e9
-    res = run_time_link(cfg)
+    with pytest.warns(UserWarning, match="marginal zone"):
+        res = run_time_link(cfg)
     assert res.ber.n_errors == 0
     assert res.slicer_snr_db > 14

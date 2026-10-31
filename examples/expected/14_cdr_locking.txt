@@ -1,9 +1,9 @@
-NRZ 16 Gb/s: initial -0.2 UI -> pull-in to 0.05 UI in 50 symbols
-NRZ 16 Gb/s: initial +0.2 UI -> pull-in to 0.05 UI in 94 symbols
-NRZ 16 Gb/s: initial +0.4 UI -> pull-in to 0.05 UI in 95 symbols
-NRZ 16 Gb/s: +200 ppm static offset +0.01 UI, detrended tracking jitter RMS = 0.0580 UI
-NRZ 16 Gb/s: -200 ppm static offset +0.01 UI, detrended tracking jitter RMS = 0.0579 UI
-NRZ 16 Gb/s: lock @ 1823 symbols; SER before/after lock = 5.49e-04 / 0.00e+00
+NRZ 16 Gb/s: initial -0.2 UI -> pull-in to 0.05 UI in 56 symbols
+NRZ 16 Gb/s: initial +0.2 UI -> pull-in to 0.05 UI in 95 symbols
+NRZ 16 Gb/s: initial +0.4 UI -> pull-in to 0.05 UI in 93 symbols
+NRZ 16 Gb/s: +200 ppm static offset +0.01 UI, detrended tracking jitter RMS = 0.0588 UI
+NRZ 16 Gb/s: -200 ppm static offset +0.01 UI, detrended tracking jitter RMS = 0.0584 UI
+NRZ 16 Gb/s: lock @ 1858 symbols; SER before/after lock = 1.61e-03 / 0.00e+00
 PAM4 32 Gb/s: initial -0.4 UI -> pull-in to 0.05 UI in 60 symbols
 PAM4 32 Gb/s: initial -0.2 UI -> pull-in to 0.05 UI in 22 symbols
 PAM4 32 Gb/s: initial +0.2 UI -> pull-in to 0.05 UI in 93 symbols

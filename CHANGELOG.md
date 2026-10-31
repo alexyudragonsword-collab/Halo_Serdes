@@ -23,8 +23,23 @@
   GUI 在这一段显示 "time-domain front end"。
 - 窄屏(< 992 px):配置成为结果之上的抽屉,底部栏 ⚙ Configure / ▶ Run / ▤ Results。宽屏不变。
 - 后台任务先写错误再置 `error` 状态(轮询看到 error 时一定读得到消息;原来顺序反了,有极短的窗口)。
+- mixed-signal 包络按截断修正后的示例 12 重新标定(`config.schema.MS_COMFORT_DATA_RATE` / `MS_LIMIT_DATA_RATE`):舒适区 NRZ 24 / PAM4 28、
+  极限 NRZ 28 / PAM4 32 Gb/s(此前 24 / 32、30 / 36);PAM6 30 / 32.5、PAM8 24 / 33 与 30 GBd 硬顶不变。舒适区的规则写成数:第一次闭眼之前、
+  眼高 ≥ 电平间距(主光标 × 最近一对电平)25 % 的最后一点 —— 拿修正前的输出按同一规则读回原来的常数。PAM4 32G 预设(16 GBd)现落在极限上,
+  跑时 marginal 告警。示例 12 的 PAM4 扫描从 24 Gb/s 起,并打印舒适区一节。
+- `run_statistical` 拆成 `_stat_setup`(配置、信道、ISI / 噪声准备)/ `_stat_phase`(每个相位的 PDF 与 BER)/ `_stat_read`(组装结果),
+  共享状态放在一个 `SimpleNamespace` 里;指纹 986 值逐位不变。
+- 示例 32 阶梯里不到扫描起点就过不了的 reach 打印 "<30m" 与 "-"(原来 "0m nandB")。
+
+### 文档
+- 示例期望输出按新读数接受(47 个里 36 个动了);README / SUMMARY / summary.html / USAGE / COMPARISON / clock_profile 的头条数字逐处改
+  (包络、示例 32 均衡表 5.52 → 5.46 dB、示例 33 杠杆表 +188 → +189 m、示例 18 / 36 / 37 / 39 / 40 / 43 / 44 / 45),旧值留在日期注里;
+  `examples/derived.yaml` 的 103 处推导数全部按新输出成立。第三个受控光标(示例 38)从 +0.28 变成 +0.52 dB,恰在 0.5 dB 门槛上,
+  其余三个种子没重跑,结论写成"不再明确低于门槛"。`cairn/` 专题文档受影响的 45 个小节加日期注,历史测量表不逐个改;没重核的列在 ROADMAP P2 #43。
 
 ### 测试
+- `test_ms_envelope.py` 改到新常数(PAM4 14 GBd 静默、15 / 16 GBd marginal、17 GBd 与 NRZ 30 GBd exceeds),`test_mapping_formats.py` 同步;
+  `test_dfe_ep_coloured.py` 的界改到两条链之间(1.82 / 1.75 对 1.56,`ep > 1.65`)。
 - `test_response.py` 两条(慢尾按 UI 截够、绕回的远端不撑开截断)、`test_gui_study_jobs.py`(任务结果 / 忙 / 取消 / 不在标签时缓存 / JTOL 拆分同值)、
   `test_gui_narrow.py`(底部栏与抽屉)、`test_chunked_kernels.py` 的进度测试改为先前端检查点后分块、并在前端取消。
 

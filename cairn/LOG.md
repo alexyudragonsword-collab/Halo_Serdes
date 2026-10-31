@@ -3,6 +3,20 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-31 · 冲激按 ISI 尾巴截断、GUI 余项、拆 run_statistical(feat/impulse-trim-gui-split)
+
+- 用户选 P1 #42 + P2 #41 + 拆 run_statistical。`trim_impulse(osr=)`:截掉的后光标 RMS < 主光标 1e-3(只在峰后半段找),`ChannelModel.ui`
+  由 from_config 设、cascade / band_limited 传;Whisper 16 GBd 13.9 → 505 UI,对 serdespy 0.94–1.04× / 0.87–1.20×。指纹 246 / 986 值动。
+- 包络重标(示例 12,舒适区规则写成"首次闭眼前眼高 ≥ 25 % 电平间距的最后一点",先拿旧输出读回旧常数):NRZ 24 / 28、PAM4 28 / 32 Gb/s
+  (此前 24 / 30、32 / 36);PAM4 32G 预设现 marginal。`test_dfe_ep_coloured` 界 1.76 → 1.65(两条链 1.82 / 1.75 对 1.56)。
+- 文档按用户选的"结论级更新":36 个示例期望输出接受;头条数字逐处改(README / SUMMARY / summary.html / USAGE / COMPARISON / clock_profile),
+  旧值留日期注;derived 103 处成立;第三光标 +0.28 → +0.52 dB 只重跑了一个种子,写成"不再明确低于门槛";cairn 45 个小节加日期注;
+  没重核的记 ROADMAP P2 #43。踩坑:自写替换脚本照新值符号写(检查器不看符号)、pitfalls 里讲历史的例子被登记成活引用 → pitfalls。
+- GUI:研究页走 `api.start_task`(`studies.checkpoint`,JTOL 逐频点);时域前端 5 处 `progress(0, total)` 取消点 —— NRZ 28G 300 万符号
+  点取消后 2–6 s 停(此前 47 s);窄屏底部导航 + 配置抽屉;任务先写 error 再置状态。示例 32 不到扫描起点的 reach 打 "<30m"。
+- 拆分:`_stat_setup` / `_stat_phase` / `_stat_read` + `SimpleNamespace`,入口 40 行;指纹逐位不变。
+- 验证:受影响 277 项 + 包络 11 项;编译集 .so 本地真编(引擎拆分之后)、HALO_NO_JIT 下 182 passed / 36 skipped;前端 JIT / NO_JIT 逐位。
+
 ## 2026-10-30 · 对外校验(serdespy)与统计引擎拆模块(feat/external-validation)
 
 - 用户选"对外校验 + 拆分 statistical.py"。外部参考只有 serdespy 1.0 可用(PyPI `pybert` 是 NLP 包;PyBERT / serdespy 源码仓、IEEE COM 表格经代理 403)。

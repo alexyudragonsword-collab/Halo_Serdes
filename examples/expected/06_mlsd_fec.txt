@@ -1,9 +1,9 @@
 == baseline (FFE only, no DFE): residual ISI left on purpose ==
-  n=293976  BER=7.995e-02 (47007/587952)  SER=1.599e-01  slicer SNR=9.2 dB
-  residual channel fit: main=1.0000, h1=0.2184 (22%), h2=0.0625 (6%)
+  n=293976  BER=7.995e-02 (47006/587952)  SER=1.599e-01  slicer SNR=9.2 dB
+  residual channel fit: main=1.0000, h1=0.2186 (22%), h2=0.0625 (6%)
   slicer          BER = 7.995e-02
-  MLSE (memory 1) BER = 3.781e-02  (gain 2.1x)
-  MLSE (memory 2) BER = 3.362e-02  (gain 2.4x)
+  MLSE (memory 1) BER = 3.782e-02  (gain 2.1x)
+  MLSE (memory 2) BER = 3.371e-02  (gain 2.4x)
 == KP4 / KR4 projection from pre-FEC BER ==
   pre-FEC 1.0e-03  ->  post KP4 7.15e-07   post KR4 3.75e-04
   pre-FEC 3.0e-04  ->  post KP4 1.00e-13   post KR4 5.45e-07

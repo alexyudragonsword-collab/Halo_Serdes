@@ -159,7 +159,6 @@
     - {doc: cairn/DSP发端与PR.md, text: "delta 目标 {delta} → 两光标 {adbd} dB"}
     - {doc: cairn/DSP发端与PR.md, text: "memory 1 与 2 差 {c4m2 - c4m1} dB,也与 §12 相符"}
     - {doc: cairn/engineering-pitfalls.md, text: '示例 38 的"再加 {adbd - ad} dB"所在段'}
-    - {doc: cairn/engineering-pitfalls.md, text: '("约 {c4m1 - adbd} dB"对上了目标光标 0.30)'}
     - {doc: cairn/DSP发端与PR.md, text: "SUMMARY 杠杆表里\"第二个受控光标 +{adbd - ad} dB 要 +9.48 pJ/b\""}
     - {doc: cairn/功耗建模.md, text: "第二个(示例 38,再 +{adbd - ad} dB)+9.48 pJ/b"}
     - {doc: docs/SUMMARY.md, text: "第二个光标的 +{adbd - ad} dB 要 +9.48 pJ/b"}

@@ -18,13 +18,17 @@ SCHEMA_VERSION = 1
 # ---------------------------------------------------------------------------
 # Product mixed-signal envelope (CTLE + DFE + BB-CDR, no RX FFE) — three
 # tiers, calibrated by the limit sweep on the Whisper reference backplane
-# (examples/12; closure loss -30.2 dB NRZ / -20.4 dB PAM4 / -16.1 dB PAM6 /
-# -14.5 dB PAM8 -- the gaps are the level penalties, 20 log10 of 3, 5, 7):
+# (examples/12; last open eye at -29.0 dB NRZ / -18.7 dB PAM4 / -16.1 dB PAM6 /
+# -14.5 dB PAM8 -- the gaps are roughly the level penalties, 20 log10 of 3,
+# 5, 7. Recalibrated 2026-10-30 when the impulse began to be trimmed by its
+# ISI tail (ROADMAP P1 #42): NRZ's limit 30 -> 28, PAM4's 36 -> 32 and its
+# comfort 32 -> 28 Gb/s; the rest stayed):
 #
-#   default anchor : 16 GBd (canonical validated configs, ample margin)
-#   comfort zone   : NRZ <= 24 Gb/s, PAM4 <= 32, PAM6 <= 30, PAM8 <= 24 Gb/s
+#   default anchor : 16 GBd (canonical validated configs; NRZ with ample
+#                    margin, PAM4 at its limit since the 2026-10-30 recalibration)
+#   comfort zone   : NRZ <= 24 Gb/s, PAM4 <= 28, PAM6 <= 30, PAM8 <= 24 Gb/s
 #                    (post-DFE eye >= ~25% of level spacing on Whisper)
-#   absolute limit : NRZ <= 30 Gb/s, PAM4 <= 36, PAM6 <= 32.5, PAM8 <= 33 Gb/s
+#   absolute limit : NRZ <= 28 Gb/s, PAM4 <= 32, PAM6 <= 32.5, PAM8 <= 33 Gb/s
 #                    (last-open points; a few-mV eye — expect FEC territory;
 #                    PAM6 / PAM8 swept in 1 GBd steps on 2026-10-17, the
 #                    mixed-signal receiver is 12-13 / 10-11 GBd there)
@@ -36,8 +40,8 @@ SCHEMA_VERSION = 1
 # comfort < rate <= limit: the time engine warns "marginal"; beyond the limit
 # or ceiling it warns "exceeds" — ADC/DSP is the supported path there.
 MS_DEFAULT_BAUD = 16.0e9
-MS_COMFORT_DATA_RATE: dict[str, float] = {"nrz": 24.0e9, "pam4": 32.0e9, "pam6": 30.0e9, "pam8": 24.0e9}
-MS_LIMIT_DATA_RATE: dict[str, float] = {"nrz": 30.0e9, "pam4": 36.0e9, "pam6": 32.5e9, "pam8": 33.0e9}
+MS_COMFORT_DATA_RATE: dict[str, float] = {"nrz": 24.0e9, "pam4": 28.0e9, "pam6": 30.0e9, "pam8": 24.0e9}
+MS_LIMIT_DATA_RATE: dict[str, float] = {"nrz": 28.0e9, "pam4": 32.0e9, "pam6": 32.5e9, "pam8": 33.0e9}
 MS_HARD_MAX_BAUD = 30.0e9
 
 

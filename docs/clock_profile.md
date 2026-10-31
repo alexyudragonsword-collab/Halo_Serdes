@@ -199,7 +199,8 @@ the equalisers frozen, and the loop's |E(f)| under sinusoidal jitter matches
 the kernel's to 2 % at 0.5-4 MHz -- 13-15 % low in band and 1.65x low at
 kp_shift 8's resonance before. Example 31's model CDR error moved 1-4 %,
 its loop bandwidth 1.78 / 0.89 / 0.75 -> 1.56 / 0.82 / 0.71 MHz at
-kp_shift 4 / 5 / 6.)
+kp_shift 4 / 5 / 6; since the 2026-10-30 ISI-tail impulse trim it reads
+1.62 / 0.84 / 0.72 MHz, the CDR errors within 2 %.)
 
 (2026-10-15 correction, ROADMAP P2 #28: the 112 GBd row above and the
 "0.81-1.07x" were one seed -- example 31's seed 3, its second half -- against

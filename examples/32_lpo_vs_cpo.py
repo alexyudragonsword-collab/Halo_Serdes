@@ -158,7 +158,10 @@ for loss_db, (rows, rc) in ladder.items():
     reach = rc.value if rc.value is not None else 0.0 if rc.note == "below sweep" else rc.lo
     snr = float(np.interp(reach, L, [rows[x]["snr"] for x in L])) if reach > 0 else float("nan")
     summary.append((loss_db, 2 * loss_db, reach, snr))
-    print(f"{loss_db:11.0f}dB {2 * loss_db:10.0f}dB {reach:6.0f}m {snr:10.1f}dB")
+    if reach > 0:
+        print(f"{loss_db:11.0f}dB {2 * loss_db:10.0f}dB {reach:6.0f}m {snr:10.1f}dB")
+    else:                       # fails at the shortest fibre of the ladder
+        print(f"{loss_db:11.0f}dB {2 * loss_db:10.0f}dB {'<' + format(L[0], '.0f'):>6}m {'-':>10}  ")
 
 reaches = [s[2] for s in summary]
 monotone = all(a >= b for a, b in zip(reaches, reaches[1:]))

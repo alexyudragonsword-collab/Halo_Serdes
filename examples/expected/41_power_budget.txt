@@ -31,17 +31,17 @@ Power model (analysis/power.py): coefficients are public-figure estimates; read 
   same receivers: CPO's engine against LPO's module, 2.10 pJ/b (the module's own overhead)
 
    host ADC each link needs at 100 m of OM4 (time engine; 9-tap FFE, CTLE 6 / 7.5 / 9 dB, the best kept): pre-FEC BER, pass <= 2.19e-04
-  LPO (8 dB segments)  ENOB 6.0: CTLE 6 dB 6.44e-05  CTLE 7.5 dB 6.19e-05  CTLE 9 dB 4.64e-05
-  LPO (8 dB segments)  ENOB 5.5: CTLE 6 dB 1.24e-04  CTLE 7.5 dB 8.51e-05  CTLE 9 dB 6.96e-05
-  LPO (8 dB segments)  ENOB 5.0: CTLE 6 dB 3.81e-04  CTLE 7.5 dB 2.53e-04  CTLE 9 dB 1.68e-04
-  LPO (8 dB segments)  ENOB 4.5: CTLE 6 dB 1.92e-03  CTLE 7.5 dB 1.17e-03  CTLE 9 dB 5.93e-04  -> fails
-  CPO (4 dB segments)  ENOB 6.0: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 1.44e-04
-  CPO (4 dB segments)  ENOB 5.5: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 1.44e-04
-  CPO (4 dB segments)  ENOB 5.0: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 1.42e-04
-  CPO (4 dB segments)  ENOB 4.5: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 1.42e-04
-  CPO (4 dB segments)  ENOB 4.0: CTLE 6 dB 1.29e-05  CTLE 7.5 dB 2.58e-06  CTLE 9 dB 1.57e-04
-  CPO (4 dB segments)  ENOB 3.5: CTLE 6 dB 2.96e-04  CTLE 7.5 dB 1.06e-04  CTLE 9 dB 2.11e-04
-  CPO (4 dB segments)  ENOB 3.0: CTLE 6 dB 3.49e-03  CTLE 7.5 dB 1.63e-03  CTLE 9 dB 1.00e-03  -> fails
+  LPO (8 dB segments)  ENOB 6.0: CTLE 6 dB 6.19e-05  CTLE 7.5 dB 5.16e-05  CTLE 9 dB 4.64e-05
+  LPO (8 dB segments)  ENOB 5.5: CTLE 6 dB 1.16e-04  CTLE 7.5 dB 7.99e-05  CTLE 9 dB 6.96e-05
+  LPO (8 dB segments)  ENOB 5.0: CTLE 6 dB 3.84e-04  CTLE 7.5 dB 2.73e-04  CTLE 9 dB 1.50e-04
+  LPO (8 dB segments)  ENOB 4.5: CTLE 6 dB 1.90e-03  CTLE 7.5 dB 1.19e-03  CTLE 9 dB 6.01e-04  -> fails
+  CPO (4 dB segments)  ENOB 6.0: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 1.98e-04
+  CPO (4 dB segments)  ENOB 5.5: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 2.01e-04
+  CPO (4 dB segments)  ENOB 5.0: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 2.06e-04
+  CPO (4 dB segments)  ENOB 4.5: CTLE 6 dB 0.00e+00  CTLE 7.5 dB 0.00e+00  CTLE 9 dB 2.14e-04
+  CPO (4 dB segments)  ENOB 4.0: CTLE 6 dB 1.55e-05  CTLE 7.5 dB 2.58e-06  CTLE 9 dB 2.29e-04
+  CPO (4 dB segments)  ENOB 3.5: CTLE 6 dB 2.86e-04  CTLE 7.5 dB 1.06e-04  CTLE 9 dB 2.71e-04
+  CPO (4 dB segments)  ENOB 3.0: CTLE 6 dB 3.52e-03  CTLE 7.5 dB 1.63e-03  CTLE 9 dB 1.02e-03  -> fails
                           ENOB     ADC  host TX+RX   optics    total
   LPO, its receiver        5.0    1.12        3.57     9.00    12.57
   CPO, LPO's receiver      5.0    1.12        3.57     6.90    10.47

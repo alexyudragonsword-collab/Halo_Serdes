@@ -1,6 +1,6 @@
 """224G long-reach: how many trellis states does the reach actually need?
 
-Example 38 bought +7.3 dB of reach with a second controlled cursor, 1 + aD +
+Example 38 bought +7.2 dB of reach with a second controlled cursor, 1 + aD +
 bD^2, at the price of a 256-state Viterbi (target + memory 2 for PAM4), and
 example 41 priced that trellis above any published 224G receiver. A reduced-
 state trellis (``rx.mlsd.state_memory`` = K, decision-feedback sequence

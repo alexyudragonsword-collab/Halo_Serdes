@@ -1,6 +1,6 @@
-NRZ 16 Gb/s: taps zero-init -> [0.3845, 0.1799, 0.1236, 0.0833]
+NRZ 16 Gb/s: taps zero-init -> [0.3834, 0.1791, 0.1241, 0.0835]
           cursor targets      [0.3857, 0.1861, 0.1211, 0.0879]
-          n=113992  BER=1.755e-04 (20/113992)  SER=1.755e-04  slicer SNR=11.7 dB
+          n=113992  BER=2.544e-04 (29/113992)  SER=2.544e-04  slicer SNR=11.5 dB
 PAM4 32 Gb/s: taps zero-init -> [-0.0296, 0.0085, 0.012, 0.0087]
           cursor targets      [-0.0168, 0.0059, 0.0135, 0.01]
           n=113976  BER=0.000e+00 (0/227952)  SER=0.000e+00  slicer SNR=16.9 dB
