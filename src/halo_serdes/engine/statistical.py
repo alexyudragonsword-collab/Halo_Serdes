@@ -21,7 +21,9 @@ Non-LTI approximations (each cross-checked against the time engine):
   its DFE engaged read 0.35-0.55x the time engine; with it 0.81-1.25x.
   Behind an FFE the noise is coloured and a first error is followed more
   often than an error the DFE made (p1 > p2, from the FFE taps' lag
-  covariances); the chain is then three-state;
+  covariances), and an error deep in a chain more often than the first one
+  the DFE made (p3 > p2: the noises before it are both small); the chain
+  then has four states (ROADMAP P2 #37);
 - FFE: noise enhancement sigma_eq = sigma * ||w||_2;
 - ADC receiver: the ADC's noise, fullscale^2/12 * 2^(-2 ENOB) (bare
   quantisation without an ENOB), joins the receiver noise at the FFE input
@@ -152,18 +154,20 @@ Non-LTI approximations (each cross-checked against the time engine):
   and mu 0-1e-2 (ROADMAP P2 #29). The bang-bang detector's gain is set by the
   jitter at its input, which here is the untracked clock, the loop's own
   hunting, and AWGN + ISI at the edge sample converted through the edge
-  slope of the pre-DFE pulse (first order; a lossy channel's data-dependent
-  edge shape is only in it as variance). That variance is taken Gaussian,
-  and the gain is the density at zero: the edge's ISI, a few large cursors,
-  has 0.86x (NRZ 16G) / 0.85-0.88x (PAM4 32G) a Gaussian's density there, so
-  the gain reads high -- against the kernel frozen at its lock, 1.22 / 1.07x,
-  and the loop's |H| under transmit SJ 10-15 % high at 0.5-4x its bandwidth.
-  The lock point itself is the kernel's (+0.34 / +1.99 samples after the
-  peak, the kernel's zero +0.35 / +1.99). Taking the exact density brings
-  |H| to within 4 % but moves the hunting and the pattern-phase factor off
-  the kernel (factor 1.3 -> 0.84 on NRZ 16G), which are matched at this gain:
-  the detector-noise side compensates and has to change with it (ROADMAP
-  P2 #38, 2026-10-31). A receiver clock (``rx.clock``)
+  slope of the pre-DFE pulse. Gain and detector noise are both read off
+  the edge samples over the configured pattern (``BbEdgeStats``: one
+  period of a repeating pattern, else seeded random symbols), so neither is
+  taken Gaussian: the edge's ISI, a few large cursors, has 0.86x (NRZ 16G)
+  / 0.85-0.88x (PAM4 32G) a Gaussian's density at zero, and taken Gaussian
+  the gain read 1.22 / 1.07x the kernel frozen at its lock -- compensated
+  by a white detector noise counting the data's whole power where a slow
+  loop sees its density at zero (0.6-0.8x). Now the frozen gain is 1.04 /
+  0.99x the kernel's and the hunting 1.03 / 1.06 / 0.96x the time engine's
+  (NRZ 16G / NRZ 28G / PAM4 32G; 1.04 / 1.03 / 1.01x before); the data
+  noise is taken at each phase the loop's own jitter puts the detector
+  (taken after averaging over it, the hunting read 0.78-0.91x). The lock
+  point is the kernel's (+0.34 / +1.99 samples after the peak, the
+  kernel's zero +0.35 / +1.99; ROADMAP P2 #38). A receiver clock (``rx.clock``)
   rides through the same error response, since the loop tracks the
   difference of the two clocks; on the bang-bang loop that also means the
   bandwidth shrinks with the *total* input, so two clocks' residues do not
@@ -289,7 +293,7 @@ from .stat_noise import (  # noqa: F401
     gaussian_kernel, tx_edge_jitter, tx_noise_covariance, TxEdgeJitter,
 )
 from .stat_loop import (  # noqa: F401
-    _BB_DAMPING_WARN, _bb_mean_curve, _bb_mean_output, _bb_pairs, _bb_transitions,
+    _BB_DAMPING_WARN, _bb_edge_stats, _bb_mean_curve, _bb_mean_output, _bb_pairs, _bb_transitions,
     _ffe_lms_track, _lock_position, _MM_HOLD_SIGMAS, _over_run, _pattern_period, _pulse_at,
     _RUN_POINTS, _RUN_STEADY_WARN, _sampling_jitter_ui, _smeared_at, _smeared_with,
     _warn_if_mm_cannot_hold, _warn_if_run_short_of_steady, _warn_if_slew_limited,
@@ -1072,12 +1076,18 @@ def _stat_phase(ctx: SimpleNamespace, pi: int, fixed: bool, frac: float) -> None
             # neighbour's mean follows it (lag 1 is negative behind a
             # peaking FFE: along the DFE's push), so a first error is followed
             # with p1 > p; an error the push made is not noise-driven, the
-            # next one sees the two before it (p2, lower). Errors per first
-            # one 1 + p1 / (1 - p2); the chain's rate s K / (1 + s K) with
-            # K that. Example 31's link frozen at its lock: 1.50-1.71 errors
-            # per first one against the time engine's 1.77-1.84 before, now
-            # 1.74-1.81 (cairn/DSP发端与PR.md §30). Without colour (no FFE,
-            # the mixed-signal receiver) p1 = p2 = p and this is the
+            # next one sees the two before it (p2, lower), and the one after a
+            # chain error two chain errors' small noises (p3, between: the
+            # mean pushes back less). Errors per first one
+            # K = 1 + p1 (1 + p2 / (1 - p3)); the chain's rate s K / (1 + s K).
+            # Example 31's link frozen at its lock: 1.50-1.71 errors per first
+            # one against the time engine's 1.77-1.84 before, 1.74-1.81 with
+            # p2 for all of the chain (cairn/DSP发端与PR.md §30); at 4 mV the
+            # time engine's p1 / p2 / p3 0.57 / 0.25 / 0.43, the model's 0.58 /
+            # 0.23 / 0.38, 1.79 per first against 1.82; the 224G preset 0.72 /
+            # 0.39 / 0.48 against 0.69 / 0.35 / 0.52, 2.20 against 2.32 (2.06
+            # with p2 for all; ROADMAP P2 #37, 2026-10-31). Without colour (no
+            # FFE, the mixed-signal receiver) p1 = p2 = p3 = p and this is the
             # two-state chain above.
             step = float(np.min(np.diff(np.sort(levels_norm)))) * h_dfe1
 
@@ -1130,7 +1140,19 @@ def _stat_phase(ctx: SimpleNamespace, pi: int, fixed: bool, frac: float) -> None
                     cf = np.linalg.solve(np.array([[var_n, c1], [c1, var_n]]), np.array([c2, c1]))
                     m2 = float(cf[0] * n_first + cf[1] * n_second)   # the third's mean there
                     p2 = p_follow(step - m2)
-                    k_chain = 1.0 + p1 / (1.0 - p2)
+                    # deeper in the chain the two noises before are both a
+                    # chain error's, small: the next one's mean pushes back
+                    # less (p3 > p2). Iterated to its steady state, a few steps
+                    p3 = p2
+                    n_prev, m_cur = n_second, m2
+                    for _ in range(12):
+                        shift = step - m_cur
+                        flip = -1.0 if shift >= 0.0 else 1.0
+                        n_cur = flip * m_cur + var_n / var_x * tail_mean(a - abs(shift))
+                        m_cur = float(cf[0] * flip * n_prev + cf[1] * n_cur)
+                        p3 = p_follow(step - m_cur)
+                        n_prev = n_cur
+                    k_chain = 1.0 + p1 * (1.0 + p2 / (1.0 - p3))
                     ep = k_chain / (1.0 + min(ser, 1.0) * k_chain)
             if not fixed:
                 ep_factor_phi[pi] = ep

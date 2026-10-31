@@ -42,13 +42,18 @@ def test_the_factor_is_what_the_kernel_measured_and_fades_with_noise():
     1.00x this engine before the factor (20 / 5 / 3 seeds of 1.6M symbols,
     171 / 348 / 1824 errors); the chain with the loop's integral path gives
     1.35 / 1.18 / 1.05x (the engine then 0.92 / 0.95 / 1.05x the kernel).
-    On PRBS31 the kernel errs 1.54 / 1.16 / 1.03x more than on random data."""
+    On PRBS31 the kernel errs 1.54 / 1.16 / 1.03x more than on random data.
+
+    2026-10-31, the bang-bang gain and detector noise read off the edge
+    samples (ROADMAP P2 #38): the read before the factor fell, so the
+    kernel's ratio to it is 1.74 / 1.36 / 1.04x; the factor 1.58 / 1.28 /
+    1.09, the engine with it 0.91 / 0.94 / 1.05x the kernel as before."""
     f = []
     for noise, rj in ((0.012, 0.03), (0.015, 0.04), (0.018, 0.06)):
         cfg = _preset(noise, rj)
         s = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg))
         f.append(s.extras["pattern_phase"].factor)
-    assert 1.2 < f[0] < 1.5 and 1.08 < f[1] < 1.3 and 1.0 < f[2] < 1.12, f
+    assert 1.35 < f[0] < 1.75 and 1.12 < f[1] < 1.4 and 1.0 < f[2] < 1.15, f
     assert f[0] > f[1] > f[2], f
 
 
@@ -58,10 +63,13 @@ def test_deep_the_factor_follows_the_long_run_classes_tails():
     before the factor; the chain with the integral path (second-order
     fluxes) gives 1.13, the engine 0.88x the kernel. Its class with the
     errors (a run of 2-3 after 6 or more of the other level, a transition
-    next): P(phase > 8.5 samples) 4.2e-5 against the kernel's 6.4e-5."""
+    next): P(phase > 8.5 samples) 4.2e-5 against the kernel's 6.4e-5.
+    2026-10-31 (ROADMAP P2 #38): the read before the factor fell, the kernel
+    1.66x it; the factor 1.59, the engine with it 0.97x the kernel (0.96x
+    with the Gaussian gain)."""
     cfg = _preset(0.008, 0.019)
     pp = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"]
-    assert 0.95 < pp.factor < 1.35, pp.factor
+    assert 1.2 < pp.factor < 1.8, pp.factor
     assert pp.converged and pp.steps < 600
     lbla = _run_lengths(pp.history)
     worst = ~pp.next_same & np.isin(lbla[:, 0], (1, 2)) & (lbla[:, 1] >= 6)
