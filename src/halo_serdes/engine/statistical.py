@@ -293,7 +293,7 @@ from .stat_noise import (  # noqa: F401
     gaussian_kernel, tx_edge_jitter, tx_noise_covariance, TxEdgeJitter,
 )
 from .stat_loop import (  # noqa: F401
-    _BB_DAMPING_WARN, _bb_mean_curve, _bb_mean_output, _bb_pairs, _bb_transitions,
+    _BB_DAMPING_WARN, _bb_edge_stats, _bb_mean_curve, _bb_mean_output, _bb_pairs, _bb_transitions,
     _ffe_lms_track, _lock_position, _MM_HOLD_SIGMAS, _over_run, _pattern_period, _pulse_at,
     _RUN_POINTS, _RUN_STEADY_WARN, _sampling_jitter_ui, _smeared_at, _smeared_with,
     _warn_if_mm_cannot_hold, _warn_if_run_short_of_steady, _warn_if_slew_limited,
