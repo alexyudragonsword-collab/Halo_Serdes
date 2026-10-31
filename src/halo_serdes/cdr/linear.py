@@ -613,6 +613,14 @@ class BbEdgeStats:
     def rho(self) -> float:
         return self.u.size / max(self.n_symbols, 1)
 
+    def mean_output(self, sigma_e: float = 0.0) -> float:
+        """The detector's mean output per symbol: zero where the loop locks
+        (+ early, the edges reading the old symbol)."""
+        from scipy.special import erf
+
+        m = erf(self.u / (np.sqrt(2.0) * self._s(sigma_e)))
+        return float(np.sum(m) / max(self.n_symbols, 1))
+
     def _s(self, sigma_e: float) -> np.ndarray:
         return np.sqrt(self.noise_sigma ** 2 + self.du ** 2 * (sigma_e ** 2 + self.edge_ui ** 2)) + 1e-300
 

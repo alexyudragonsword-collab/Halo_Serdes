@@ -340,7 +340,8 @@ def _bb_edge_stats(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
     one period of a repeating one, else seeded random symbols at the
     modulation's level probabilities -- at the lock point the symmetric
     transitions set (``lock_offset_samples``, fractional: the sampler
-    interpolates), with the transmitter's white edge jitter on the edge."""
+    interpolates), or where the detector's mean output is zero when that
+    is not near it, with the transmitter's white edge jitter on the edge."""
     y = np.asarray(pulse_pd.y, dtype=np.float64)
     peak = int(np.argmax(np.abs(y)))
     half = cfg.osr // 2
@@ -353,8 +354,35 @@ def _bb_edge_stats(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
         rng = np.random.default_rng(0)
         pw = None if level_probs is None else np.asarray(level_probs, dtype=np.float64)
         amps, periodic = levels_v[rng.choice(levels_v.size, size=n_symbols, p=pw)], False
-    return BbEdgeStats.build(y, cfg.osr, lock, half, amps, noise_sigma,
-                             edge_ui=float(cfg.tx.clock.rj_ui), periodic=periodic)
+
+    def at(pos: float) -> BbEdgeStats:
+        return BbEdgeStats.build(y, cfg.osr, pos, half, amps, noise_sigma,
+                                 edge_ui=float(cfg.tx.clock.rj_ui), periodic=periodic)
+
+    edge = at(lock)
+    m0 = edge.mean_output()
+    if abs(m0) <= 0.01:
+        return edge
+    # the symmetric transitions' balance is not the detector's (a pulse
+    # without a slope there -- a flat channel's): lock where the mean output
+    # is zero, as the kernel does; it falls with the sampling delay
+    step = 1.0 if m0 > 0.0 else -1.0
+    lo, m_lo, hi = lock, m0, None
+    for k in range(1, cfg.osr + 1):
+        m = at(lock + step * k).mean_output()
+        if np.sign(m) != np.sign(m_lo):
+            hi = lock + step * k
+            break
+        lo, m_lo = lock + step * k, m
+    if hi is None:
+        return edge
+    for _ in range(24):
+        mid = 0.5 * (lo + hi)
+        if np.sign(at(mid).mean_output()) == np.sign(m_lo):
+            lo = mid
+        else:
+            hi = mid
+    return at(0.5 * (lo + hi))
 
 
 def _bb_pairs(pulse_pd: Waveform, osr: int, noise_sigma: float, swing: float,
