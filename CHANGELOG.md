@@ -6,6 +6,20 @@
 
 ---
 
+## [未发布] — Windows onefile 并进 Nuitka 作业、手机常驻显示字段范围
+
+### 变更
+- `build-windows-desktop`:onefile 不再是单独的 `nuitka-onefile` 作业,改在 `nuitka` 作业里 standalone 之后用同一 `--output-dir` 出包
+  (程序的 3679 个 C 文件就是刚编过的),`release` 改等 `nuitka`;产物名不变。原因:runner 镜像逐作业滚动,两个作业可能落在不同镜像上 ——
+  PR #124 上 standalone(20261021)恢复缓存 3665 / 3679 命中、36 分钟,onefile(20261030)找不到它那条链、全部冷编,105 分钟里 84 分钟在 MSVC。
+  每次镜像滚动原本要付两次冷编译,每次运行两份 Windows 机时。
+- 手机表单:数值框下方与说明一起常驻显示字段范围("Range: > 0",`FormField.range` / `hint`,读 `schema` 里已有的 `range`)。
+
+### 测试
+- 设备侧 `FormContractTest.numericFieldsShowTheirRangeAndAnOutOfRangeValueIsTheirError`。
+
+---
+
 ## [未发布] — 截断后重核、bang-bang 增益核查、字段范围
 
 ### 新增

@@ -60,7 +60,8 @@ kind 都接受字符串(`float(value)`),这正是"表单一律按文本编辑"�
 
 超出范围的值(`schema.FIELD_BOUNDS`,配置自己的校验读的同一份数据)由 `derive` 按**表单路径**报在
 `field_errors` 里(`rx.adc.n_bits`,而不是配置报错里的 `adc.n_bits`),于是这些字段像别的错一样就地标红,
-Kotlin 不用改;字段的范围另在 `schema` 每个字段的 `range` 里(`min` / `max` / 开闭 / `text`),目前手机不显示。
+Kotlin 不用改;字段的范围另在 `schema` 每个字段的 `range` 里(`min` / `max` / 开闭 / `text`),2026-10-31 起手机在数值框下方
+与说明一起常驻显示("Range: > 0",`FormField.hint`),设备侧 `numericFieldsShowTheirRangeAndAnOutOfRangeValueIsTheirError` 钉住。
 
 校验是**去抖**的(300 ms):半个数字("1e"、"-")还不算用户犯的错,逐键闪红只会训练人无视
 标记。配置非法时 `derive` 只回 `valid` 与 `field_errors`,没有 `derived`/`envelope`/`channel`,

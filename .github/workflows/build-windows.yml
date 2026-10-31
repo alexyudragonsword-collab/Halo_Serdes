@@ -60,7 +60,8 @@ jobs:
     # the 4-core runner (64-130 min over 2026-10); the onefile one was
     # cancelled at the old 120 min limit seven times in a week, and the two
     # of 2026-10-24 came within 50 min of 180. The cache makes warm builds
-    # 30-50 min; the limit is for the cold ones, with room
+    # 30-50 min; the limit is for the cold ones, with room -- and since
+    # 2026-10-31 for the onefile build after it, which reuses its objects
     timeout-minutes: 240
     continue-on-error: true        # Nuitka compile of scipy is slow/heavy
     steps:
@@ -129,36 +130,18 @@ jobs:
           name: Halo_Serdes_GUI-nuitka
           path: build_nuitka/desktop.dist
           retention-days: 14
-
-  nuitka-onefile:
-    runs-on: windows-latest
-    timeout-minutes: 240           # see the nuitka job
-    continue-on-error: true        # Nuitka compile of scipy is slow/heavy
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install (gui + desktop + nuitka)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[gui,desktop]"
-          pip install "nuitka>=2.0" ordered-set zstandard
-      # as in the nuitka job (its own key: the build directory differs)
-      - name: Name the toolchain the cache is good for
-        id: tc
-        run: |
-          $nuitka = python -c "import importlib.metadata as m; print(m.version('nuitka'))"
-          $py = python -c "import sys; print('%d.%d.%d' % sys.version_info[:3])"
-          "chain=$env:ImageVersion-nuitka$nuitka-py$py" >> $env:GITHUB_OUTPUT
-      - name: Restore Nuitka's compile cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/nuitka-cache
-          key: nuitka-onefile-${{ runner.os }}-${{ steps.tc.outputs.chain }}-${{ github.run_id }}
-          restore-keys: |
-            nuitka-onefile-${{ runner.os }}-${{ steps.tc.outputs.chain }}-
-      - name: Build (onefile)
+      # The onefile exe is the same program packed with a bootstrap, so it is
+      # built here, after the standalone one, in the same build directory: its
+      # 3679 C files are the ones just compiled (clcache hits on the same
+      # paths). Until 2026-10-31 it was a job of its own with its own cache
+      # chain; the runner image rolls job by job, so on PR #124 the
+      # standalone job (image 20261021) restored its chain and built in 36
+      # min while the onefile job (20261030) found none and compiled
+      # everything cold, 84 of its 105 min -- every image roll cost two cold
+      # builds, and every run twice the Windows minutes.
+      - name: Build (onefile, from the same build)
+        id: onefile
+        continue-on-error: true        # the release then carries PyInstaller alone
         env:
           NUITKA_CACHE_DIR: ${{ runner.temp }}/nuitka-cache
         run: |
@@ -181,25 +164,27 @@ jobs:
             --windows-icon-from-ico=packaging/icon.ico `
             --product-name=Halo_Serdes --product-version=$ver `
             --onefile-tempdir-spec="{CACHE_DIR}/Halo_Serdes/{VERSION}" `
-            --output-dir=build_nuitka_onefile --output-filename=Halo_Serdes_GUI `
+            --output-dir=build_nuitka --output-filename=Halo_Serdes_GUI `
             src/halo_serdes_gui/desktop.py
       - name: Smoke-test onefile exe
-        run: build_nuitka_onefile/Halo_Serdes_GUI.exe --selfcheck
+        if: steps.onefile.outcome == 'success'
+        run: build_nuitka/Halo_Serdes_GUI.exe --selfcheck
       - uses: actions/upload-artifact@v4
+        if: steps.onefile.outcome == 'success'
         with:
           name: Halo_Serdes_GUI-nuitka-onefile
-          path: build_nuitka_onefile/Halo_Serdes_GUI.exe
+          path: build_nuitka/Halo_Serdes_GUI.exe
           retention-days: 14
 
   release:
     # only for a version tag, and only from bundles that passed --selfcheck;
     # the status test is spelled out because the implicit success() would also
-    # skip the release whenever the (allowed-to-fail) onefile build failed
+    # skip the release whenever the (allowed-to-fail) Nuitka build failed
     if: >-
       !cancelled() && startsWith(github.ref, 'refs/tags/v')
       && needs.pyinstaller.result == 'success'
-      && needs.nuitka-onefile.result != 'cancelled'
-    needs: [pyinstaller, nuitka-onefile]
+      && needs.nuitka.result != 'cancelled'
+    needs: [pyinstaller, nuitka]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -218,8 +203,9 @@ jobs:
           path: pyinstaller/Halo_Serdes_GUI
       - name: Zip the PyInstaller folder
         run: (cd pyinstaller && zip -qr "../Halo_Serdes_GUI-${GITHUB_REF_NAME}-windows-pyinstaller.zip" Halo_Serdes_GUI)
-      # nuitka-onefile is allowed to fail (continue-on-error); then the release
-      # carries the PyInstaller build alone rather than not happening
+      # the nuitka job (and its onefile step) is allowed to fail
+      # (continue-on-error); then the release carries the PyInstaller build
+      # alone rather than not happening
       - uses: actions/download-artifact@v4
         id: onefile
         continue-on-error: true

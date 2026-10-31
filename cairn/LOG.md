@@ -3,6 +3,15 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-31 · Windows onefile 并进 Nuitka 作业、手机常驻显示范围(feat/onefile-phone-ranges)
+
+- 用户选"onefile 变慢 + 手机常驻范围"。查 PR #124 两个 Nuitka 作业日志:standalone 在镜像 20261021 上恢复缓存(3665 / 3679 命中,36 分钟),
+  onefile 在 20261030 上 "Cache not found"、3679 个全冷编(MSVC 84 分钟,共 105)—— 不是缓存坏了,是镜像逐作业滚动、两条链各付一次冷编译。
+  作业日志的直链下载被代理 403,改用 MCP 取尾部再切。
+- 改:onefile 并进 `nuitka` 作业,standalone 之后同一 `--output-dir` 出包;`release` 等 `nuitka`;产物名不变。packaging/README、CONTRIBUTING、
+  pitfalls 的超时条同步。效果要等 CI 量(预期热构建多出 onefile 的 bootstrap + 压缩约 6–10 分钟,机时约减半)。
+- 手机:`FormField.range` / `hint`,数值框下方"说明 · Range: > 0";`FormContractTest` 加一条。本地没有 Android SDK,Kotlin 只能等 CI。
+
 ## 2026-10-31 · 截断后重核、bang-bang 增益核查、字段范围(feat/recheck-bb-ranges)
 
 - 用户选 P2 #43 + #38 + #41 余项。第三光标种子 7 / 8 / 9 重跑 +0.27 / +0.28 / +0.25 dB(同脚本先复现种子 3 的 +0.52),均值 +0.33,三个不过 0.5 dB

@@ -20,7 +20,17 @@ data class FormField(
     val help: String = "",
     /** Shown before "Advanced" (`form_meta.COMMON`). */
     val common: Boolean = false,
+    /** The bound the configuration enforces, in the form's units ("> 0",
+     * "in [0, 1)"; `schema.FIELD_BOUNDS` through `form_meta.field_range`), or
+     * blank. A value outside it comes back from `derive` as this field's error. */
+    val range: String = "",
 ) {
+    /** What a text field shows under it while there is no error: its help and
+     * its range. */
+    val hint: String
+        get() = listOf(help, if (range.isBlank()) "" else "Range: $range")
+            .filter { it.isNotBlank() }.joinToString(" · ")
+
     /** Optional fields may be left blank; the loader maps that back to None. */
     val optional: Boolean get() = kind.startsWith("opt_")
 
@@ -117,6 +127,7 @@ fun parseSections(data: JSONObject): List<FormSection> {
                               else (0 until opts.length()).map { k -> opts.getString(k) },
                     help = f.optString("help"),
                     common = f.optBoolean("common", false),
+                    range = f.optJSONObject("range")?.optString("text").orEmpty(),
                 )
             },
         )

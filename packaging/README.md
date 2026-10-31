@@ -58,16 +58,17 @@ Pick **standalone** for a machine you run repeatedly (fast every launch),
 
 ## CI
 
-`.github/workflows/build-windows.yml` builds **all three** on a `windows-latest`
-runner (PyInstaller, Nuitka standalone, Nuitka onefile), smoke-tests each with
+`.github/workflows/build-windows.yml` builds **all three** on `windows-latest`
+runners (PyInstaller in one job; Nuitka standalone, then onefile from the same
+build directory, in another), smoke-tests each with
 `--selfcheck`, and uploads them as artifacts (`Halo_Serdes_GUI-pyinstaller`,
 `Halo_Serdes_GUI-nuitka`, `Halo_Serdes_GUI-nuitka-onefile`). Trigger it from the
 Actions tab (workflow_dispatch) or by pushing changes under
 `src/halo_serdes_gui/` or `packaging/`.
 
 Most of a Nuitka build is MSVC compiling the ~3650 C files Nuitka generates,
-almost all of them for scipy / pandas / matplotlib / dash. The two Nuitka jobs
-keep Nuitka's compile cache (`NUITKA_CACHE_DIR`) between runs with
+almost all of them for scipy / pandas / matplotlib / dash. The Nuitka job
+keeps Nuitka's compile cache (`NUITKA_CACHE_DIR`) between runs with
 `actions/cache`: a cold build took 87-109 min on 2026-10-09 and 117-130 min on
 2026-10-24 (64-130 min over the month), warm ones 31-50 min with every file or
 all but a dependency's from the cache -- the C phase still takes ~25 min with
@@ -83,7 +84,16 @@ chain a dependency upgrade recompiles only its own files (pandas 3.0.6 ->
 run after an image roll is cold on every branch, which is what the 240 min
 limit is for (GitHub allows 360). A job that reaches its limit is
 *cancelled*, not failed -- `continue-on-error` does not cover it, and a
-cancelled onefile build skips the release below.
+cancelled Nuitka job skips the release below.
+
+The onefile build runs in the standalone's job, after it, with the same
+`--output-dir`: the program's C files are the ones just compiled, so it pays
+only the bootstrap and the payload compression. Until 2026-10-31 it was a job
+of its own with its own cache chain, and since the runner image rolls job by
+job the two could land on different images -- on PR #124 the standalone job
+restored its chain (3665 of 3679 hits, 36 min) while the onefile job, on the
+newer image, compiled everything cold (84 of 105 min). Every image roll cost
+two cold builds, and every run twice the Windows minutes.
 
 Artifacts expire after 14 days. For a download that stays, push a version tag:
 

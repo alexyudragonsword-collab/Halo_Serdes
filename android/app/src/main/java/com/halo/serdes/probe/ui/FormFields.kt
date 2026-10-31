@@ -65,7 +65,7 @@ fun FieldRow(
             isError = error != null,
             supportingText = when {
                 error != null -> ({ Text(error) })
-                field.help.isNotBlank() -> ({ Text(field.help) })
+                field.hint.isNotBlank() -> ({ Text(field.hint) })
                 field.optional -> ({ Text("optional — blank means unset") })
                 else -> null
             },
