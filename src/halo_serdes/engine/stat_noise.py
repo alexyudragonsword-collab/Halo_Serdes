@@ -10,6 +10,8 @@ importable from there as before).
 
 from __future__ import annotations
 
+import dataclasses
+
 from dataclasses import dataclass
 
 import numpy as np
@@ -279,6 +281,43 @@ def tx_edge_jitter(cfg: LinkConfig, tx_pipe, h: np.ndarray, osr: int, offset: in
         phi, phi_fall = own(0.0), None
     return TxEdgeJitter(sigma=np.sqrt(var_all), rest=np.sqrt(var_rest), step=step, phi=phi,
                         weight=w, phi_fall=phi_fall, shift=shift)
+
+
+def dcd_absorbed(jit: TxEdgeJitter | None, levels: np.ndarray, probs: np.ndarray,
+                 per_level: bool, prev_axis: int | None) -> TxEdgeJitter | None:
+    """``jit`` with the part of DCD's deterministic offset an adapting
+    receiver takes up: each level's mean (``per_level``: its levels, and so
+    its thresholds, follow the sampled amplitude) and the part linear in the
+    previous symbol (``prev_axis``: the bin axis that holds it, a DFE's first
+    tap adapting). The offset is the other edges' mean (``shift``) and the
+    two own edges' over the RJ grid. Unchanged without DCD."""
+    if jit is None or jit.shift is None or (not per_level and prev_axis is None):
+        return jit
+    shape = jit.shift.shape
+    own = np.zeros(shape)
+    for combo in np.ndindex(*shape):
+        for e in range(jit.phi.shape[0]):
+            st = float(jit.step[combo + (e,)])
+            ph = jit.phi[e] if jit.phi_fall is None or st >= 0.0 else jit.phi_fall[e]
+            own[combo] += st * float(np.sum(jit.weight * ph))
+    d = jit.shift + own
+    lv = np.asarray(levels, dtype=np.float64)
+    pw = np.asarray(probs, dtype=np.float64)
+    w = np.ones(shape)
+    for ax in range(len(shape)):
+        w = w * pw.reshape([-1 if i == ax else 1 for i in range(len(shape))])
+    adj = np.zeros(shape)
+    if per_level:
+        m = np.sum(w * d, axis=tuple(range(1, len(shape))), keepdims=True) / np.sum(
+            w, axis=tuple(range(1, len(shape))), keepdims=True)
+        adj -= np.broadcast_to(m, shape)
+    if prev_axis is not None:
+        x = lv - float(np.sum(pw * lv))
+        xb = x.reshape([-1 if i == prev_axis else 1 for i in range(len(shape))])
+        r = d + adj
+        alpha = float(np.sum(w * r * xb) / np.sum(w * xb * xb))
+        adj -= alpha * np.broadcast_to(xb, shape)
+    return dataclasses.replace(jit, shift=jit.shift + adj)
 
 
 def _convolve_at(pdf: np.ndarray, ker: np.ndarray, lo: int) -> np.ndarray:

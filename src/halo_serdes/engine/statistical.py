@@ -290,7 +290,7 @@ from .stat_pr import (  # noqa: F401
 )
 from .stat_noise import (  # noqa: F401
     adc_noise_sigma, _convolve_at, _dac_cursors, dac_noise_at_slicer, _EXACT_EDGES,
-    gaussian_kernel, tx_edge_jitter, tx_noise_covariance, TxEdgeJitter,
+    dcd_absorbed, gaussian_kernel, tx_edge_jitter, tx_noise_covariance, TxEdgeJitter,
 )
 from .stat_loop import (  # noqa: F401
     _BB_DAMPING_WARN, _bb_edge_stats, _bb_mean_curve, _bb_mean_output, _bb_pairs, _bb_transitions,
@@ -551,6 +551,20 @@ def _stat_setup(cfg: LinkConfig, channel: ChannelModel | None = None,
         at_peak = peak - int(np.argmax(np.abs(pulse.y)))
         tx_jit_phi = [tx_edge_jitter(cfg, tx_pipe, h_after_dac, osr, offset=at_peak + int(off))
                       for off in phi_offsets]
+        if cfg.tx.clock.dcd_ui > 0.0 and cfg.rx.arch == "mixed_signal":
+            # DCD's offset is deterministic, and what the receiver adapts takes
+            # part of it up: its levels each level's mean, its DFE's first tap
+            # the part that follows the previous symbol (stat_noise.dcd_absorbed).
+            # Left in, the NRZ 16G preset read 7x the time engine at 0.1 UI
+            from .stat_pdf import _BINNED_NEIGHBOURS
+
+            lv_tx = np.asarray(tx_pipe.levels(np.arange(cfg.n_levels)), dtype=np.float64)
+            prev_axis = (1 + _BINNED_NEIGHBOURS.index(1)
+                         if n_dfe > 0 and cfg.rx.dfe.adapt != "none" and 1 in _BINNED_NEIGHBOURS
+                         else None)
+            tx_jit_phi = [dcd_absorbed(t, lv_tx, level_probabilities(cfg.modulation),
+                                       cfg.rx.dfe.level_adapt == "sign_sign", prev_axis)
+                          for t in tx_jit_phi]
         # the voltage grid is sized on the UI around the pulse peak wherever
         # the phase axis is centred, so a reading set from outside
         # (phase_ui) lands on the same grid as the bathtub it is read from
