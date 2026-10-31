@@ -254,10 +254,15 @@ def _optical_pass(tx_y: np.ndarray, stages, channel: ChannelModel,
 
 def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipeline,
                line_symbols: np.ndarray, rng: np.random.Generator,
-               tx_ami, rx_ami, xtalk, collect_jitter: bool):
+               tx_ami, rx_ami, xtalk, collect_jitter: bool, tick=None):
     """Tx -> channel + CTLE + VGA -> [AMI] -> [crosstalk] -> noise.
 
     ``xtalk``: aggressors to inject; None takes them from ``cfg.crosstalk``.
+    ``tick()``: called between the steps (the transmit waveform, the channel
+    filter, the crosstalk, the jitter budget, the noise -- seconds each on a
+    few million symbols); whatever it raises abandons the run there, which
+    is where a cancel lands before the receiver loop starts. It sees nothing
+    and changes nothing.
 
     Returns ``(h, rx, jitter_budget)``: the impulse the receivers' pulse
     analysis works from and the received waveform -- an array, or with
@@ -266,6 +271,10 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
     """
     from ..channel.crosstalk import engine_aggressors
 
+    def _tick():
+        if tick is not None:
+            tick()
+
     xtalk = engine_aggressors(cfg, xtalk)
     osr = cfg.osr
     if cfg.sim.stream:
@@ -273,6 +282,7 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
         jit = tx_pipe.edge_offsets(v_sym, rng)
     else:
         tx_wave = tx_pipe.waveform(tx_pipe.symbol_stage(line_symbols), rng)
+    _tick()
 
     if channel is None:
         channel = ChannelModel.from_config(cfg)
@@ -322,6 +332,7 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
             (_jitter_period(cfg)[1] if collect_jitter else None)
 
     rx_y = fft_filter(tx_y, h) if stages is None else _optical_pass(tx_y, stages, channel, rng)
+    _tick()
     if rx_ami is not None and rx_ami.has_getwave:
         rx_y, _ = rx_ami.get_wave(rx_y, cfg.dt, cfg.ui)
 
@@ -330,6 +341,7 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
         from ..channel.crosstalk import inject_crosstalk
 
         rx_y = inject_crosstalk(rx_y, xtalk, osr, cfg.modulation)
+        _tick()
 
     # --- optional per-stage jitter budget (Tx / channel / after-CTLE) ---
     jitter_budget = None
@@ -337,9 +349,11 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
         ch_only = fft_filter(tx_y, ch_rs.h.y * cfg.rx.vga_gain)
         jitter_budget = _stage_jitter(cfg, {
             "tx": tx_y, "chnl": ch_only, "ctle": rx_y})
+        _tick()
 
     if cfg.rx.noise_rms > 0:
         rx_y += receiver_awgn(rng, cfg.rx.noise_rms, rx_y.size, osr)
+    _tick()
     return h, rx_y, jitter_budget
 
 
@@ -355,6 +369,14 @@ def _check_streamable(tx_ami, rx_ami) -> None:
         raise ValueError("sim.stream does not support AMI models in the GetWave flow: "
                          "GetWave takes the whole waveform; run with sim.stream=False, "
                          "or use the model's Init flow")
+
+
+def _front_tick(cfg: LinkConfig, progress):
+    """The front end's cancel point as a ``progress`` call: no receiver
+    symbol done yet (``progress(0, total)``)."""
+    if progress is None:
+        return None
+    return lambda: progress(0, cfg.sim.n_symbols)
 
 
 def _run_rx(run, rx, cfg: LinkConfig, progress):
@@ -395,8 +417,10 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     result is identical to leaving it None.
 
     ``progress(done, total)``: called between receiver chunks of
-    ``sim.chunk_symbols`` symbols; an exception it raises abandons the run
-    (cancellation). The chunk size does not change the result."""
+    ``sim.chunk_symbols`` symbols, and with ``done`` 0 between the front
+    end's steps (transmitter, channel filter, crosstalk, noise); an exception
+    it raises abandons the run (cancellation). The chunk size does not
+    change the result."""
     if cfg.rx.arch == "adc_dsp":
         return _run_adc_link(cfg, channel, collect_eye, collect_jitter,
                              tx_ami, rx_ami, xtalk, symbols, progress)
@@ -446,7 +470,8 @@ def run_time_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     if cfg.numeric.mode == "fixed":
         raise ValueError("numeric.mode='fixed' is the ADC receiver's digital back end; "
                          "the mixed-signal receiver's DFE and CDR are analog (rx.arch='adc_dsp')")
-    lane = _ms_prepare(cfg, channel, collect_eye, collect_jitter, tx_ami, rx_ami, xtalk, symbols)
+    lane = _ms_prepare(cfg, channel, collect_eye, collect_jitter, tx_ami, rx_ami, xtalk, symbols,
+                       tick=_front_tick(cfg, progress))
     return _ms_finish(lane, _run_rx(lane.run, lane.rx_y, cfg, progress))
 
 
@@ -480,7 +505,7 @@ class _MsLane:
 
 def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, rx_ami, xtalk,
                 symbols, start_shift: float = 0.0, rx_clk=None,
-                external_loop: bool = False, tx_clock_s=None) -> _MsLane:
+                external_loop: bool = False, tx_clock_s=None, tick=None) -> _MsLane:
     """The mixed-signal run up to the receiver loop.
 
     ``start_shift`` [samples]: start the sampler that far from the pulse
@@ -489,7 +514,8 @@ def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, r
     instead of drawing them. ``external_loop``: the kernel's own loop gains
     are zero and the caller moves the sampler (``_MsLane.kp`` / ``ki`` /
     ``clamp`` are the loop's). ``tx_clock_s``: the transmit clock's own edge
-    offsets from another lane (``TxPipeline.clock_s``). The defaults are
+    offsets from another lane (``TxPipeline.clock_s``). ``tick``: the front
+    end's cancel point (``_front_end``). The defaults are
     :func:`run_time_link`."""
     rng = np.random.default_rng(cfg.sim.seed)
     osr = cfg.osr
@@ -500,7 +526,7 @@ def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, r
     tx_pipe = TxPipeline.from_config(cfg)
     tx_pipe.clock_s = tx_clock_s
     h, rx_y, jitter_budget = _front_end(cfg, channel, tx_pipe, line_symbols, rng,
-                                        tx_ami, rx_ami, xtalk, collect_jitter)
+                                        tx_ami, rx_ami, xtalk, collect_jitter, tick)
     n_wave = rx_y.size if isinstance(rx_y, np.ndarray) else rx_y.n_total
 
     # --- pulse-response analysis: main cursor, initial phase, initial DFE taps ---
@@ -759,7 +785,7 @@ def _run_adc_link(cfg: LinkConfig, channel: ChannelModel | None = None,
     (post-EQ eye information is low); BER via the same checkers.
     """
     steps = _adc_link_steps(cfg, channel, collect_eye, collect_jitter, tx_ami, rx_ami,
-                            xtalk, symbols)
+                            xtalk, symbols, tick=_front_tick(cfg, progress))
     loop = next(steps)
     return _adc_finish(steps, _run_rx(loop.run, loop.rx_y, cfg, progress))
 
@@ -795,7 +821,7 @@ def _adc_finish(steps, out) -> SimResult:
 
 def _adc_link_steps(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, rx_ami,
                     xtalk, symbols, start_shift: float = 0.0, rx_clk=None,
-                    external_loop: bool = False, tx_clock_s=None):
+                    external_loop: bool = False, tx_clock_s=None, tick=None):
     """:func:`_run_adc_link` as steps: yields an :class:`_AdcLoop` once the
     run is set up, takes its ``run.result()`` back (``send``) and returns the
     scored :class:`SimResult` (``StopIteration.value``; :func:`_adc_finish`).
@@ -819,7 +845,7 @@ def _adc_link_steps(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_am
     tx_pipe = TxPipeline.from_config(cfg)
     tx_pipe.clock_s = tx_clock_s
     h, rx_y, jitter_budget = _front_end(cfg, channel, tx_pipe, line_symbols, rng,
-                                        tx_ami, rx_ami, xtalk, collect_jitter)
+                                        tx_ami, rx_ami, xtalk, collect_jitter, tick)
     n_wave = rx_y.size if isinstance(rx_y, np.ndarray) else rx_y.n_total
 
     # --- pulse analysis: initial FFE (MMSE), DFE, slicer levels ---

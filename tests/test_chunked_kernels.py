@@ -97,12 +97,20 @@ def test_progress_reports_each_chunk_and_can_cancel(make):
     cfg = _chunked(make(), 2_000)
     cm = ChannelModel.from_config(cfg)
     seen = []
-    run_time_link(cfg, channel=cm, progress=lambda done, total: seen.append((done, total)))
-    dones = [d for d, _ in seen]
-    total = seen[0][1]
+    plain = run_time_link(cfg, channel=cm)
+    with_progress = run_time_link(cfg, channel=cm,
+                                  progress=lambda done, total: seen.append((done, total)))
+    assert plain.summary() == with_progress.summary()                  # it watches only
+    assert np.array_equal(plain.y_slicer, with_progress.y_slicer)
+    # the front end's steps first (done 0: transmitter, channel filter,
+    # noise), then one call per receiver chunk
+    front = [i for i, (d, _) in enumerate(seen) if d == 0]
+    assert len(front) >= 3 and front == list(range(len(front)))
+    dones = [d for d, _ in seen[len(front):]]
+    total = seen[-1][1]
     assert dones == sorted(dones) and len(set(dones)) == len(dones)
     assert dones[-1] == total or dones[-1] < total     # a run may stop short of its request
-    assert len(seen) == -(-dones[-1] // 2_000)
+    assert len(dones) == -(-dones[-1] // 2_000)
 
     class Stop(Exception):
         pass
@@ -110,13 +118,20 @@ def test_progress_reports_each_chunk_and_can_cancel(make):
     calls = []
 
     def cancel_after_two(done, total):
-        calls.append(done)
-        if len(calls) == 2:
-            raise Stop
+        if done:
+            calls.append(done)
+            if len(calls) == 2:
+                raise Stop
 
     with pytest.raises(Stop):
         run_time_link(cfg, channel=cm, progress=cancel_after_two)
     assert calls == dones[:2]
+
+    def cancel_in_the_front_end(done, total):
+        raise Stop                      # at the first step: the transmit waveform
+
+    with pytest.raises(Stop):
+        run_time_link(cfg, channel=cm, progress=cancel_in_the_front_end)
 
 
 def test_kernel_runs_out_of_waveform_mid_chunk_the_same_way():

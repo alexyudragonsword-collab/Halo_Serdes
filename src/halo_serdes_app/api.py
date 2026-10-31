@@ -32,7 +32,7 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -474,6 +474,9 @@ class _Job:
     cancel: threading.Event = dataclasses.field(default_factory=threading.Event)
     record: str | None = None
     values: dict = dataclasses.field(default_factory=dict)
+    #: what ``start_task``'s function returned (in-process clients only)
+    result: Any = None
+    kind: str = "run"               # run | task (start_task)
 
     @property
     def active(self) -> bool:
@@ -516,6 +519,49 @@ def start_job(values: dict, **run_kw) -> _Job:
     threading.Thread(target=_run_job, args=(job, job.values, run_kw), daemon=True,
                      name=f"halo-job-{job.id}").start()
     return job
+
+
+def start_task(fn: Callable[[], Any], stage: str) -> _Job:
+    """Run ``fn()`` on the job thread and keep what it returns in
+    ``job.result``; :class:`Busy` while a run or another task is going.
+
+    For an in-process client's long call that is not a run -- the desktop
+    GUI's studies (0.5-20 s), which used to block a request with no progress
+    and no cancel. ``stage`` is what ``poll`` shows meanwhile. A cancel takes
+    effect at the study's next ``studies.checkpoint`` (between its engine
+    runs); the job then reads "cancelled" and keeps no result.
+    """
+    job = _Job(id=uuid.uuid4().hex[:12], started=time.perf_counter(), stage=stage,
+               kind="task")
+    with _JOBS_LOCK:
+        busy = [j for j in _JOBS.values() if j.active]
+        if busy:
+            raise Busy(busy[0].id)
+        _JOBS[job.id] = job
+    threading.Thread(target=_run_task, args=(job, fn), daemon=True,
+                     name=f"halo-task-{job.id}").start()
+    return job
+
+
+def _run_task(job: _Job, fn) -> None:
+    """Body of a task's thread: ``fn`` under the job's cancel check."""
+    def check() -> None:
+        if job.cancel.is_set():
+            raise runner.Cancelled()
+
+    job.state = "running"
+    try:
+        with studies.cancellable(check):
+            job.result = fn()
+        job.state = "done"
+    except runner.Cancelled:
+        job.state = "cancelled"
+    except Exception as exc:
+        job.error = {"kind": type(exc).__name__, "message": str(exc),
+                     "field": None, "traceback": traceback.format_exc()}
+        job.state = "error"
+    finally:
+        job.elapsed_s = time.perf_counter() - job.started
 
 
 def get_job(job_id: str | None) -> _Job | None:
@@ -577,15 +623,16 @@ def _run_job(job: _Job, values: dict, run_kw: dict) -> None:
         if rec.ok:
             job.handle, job.state = rec.id, "done"
         else:
-            job.state = "error"
+            # the error before the state: a poller that sees "error" reads it
             job.error = {"kind": "engine", "message": rec.error,
                          "field": None, "traceback": rec.tb}
+            job.state = "error"
     except runner.Cancelled:
         job.state = "cancelled"
     except Exception as exc:
-        job.state = "error"
         job.error = {"kind": type(exc).__name__, "message": str(exc),
                      "field": None, "traceback": traceback.format_exc()}
+        job.state = "error"
     finally:
         job.elapsed_s = time.perf_counter() - job.started
 

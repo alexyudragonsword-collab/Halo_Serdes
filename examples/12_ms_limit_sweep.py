@@ -1,7 +1,8 @@
 """Probe the mixed-signal envelope: sweep data rate until the eye closes.
 
-NRZ from 16 Gb/s in 2 Gb/s steps and PAM4 from 32 Gb/s in 4 Gb/s steps (2 GBd
-steps — the architecture's real axis is symbol rate); PAM6 from 20 Gb/s in
+NRZ from 16 Gb/s in 2 Gb/s steps and PAM4 from 24 Gb/s in 4 Gb/s steps (2 GBd
+steps — the architecture's real axis is symbol rate; PAM4 started at 32 Gb/s
+until 2026-10-30, when its comfort tier fell below that); PAM6 from 20 Gb/s in
 2.5 Gb/s steps and PAM8 from 18 Gb/s in 3 Gb/s steps (1 GBd steps, added
 2026-10-17 for ROADMAP P2 #34: their eyes close within a few GBd). Product RX
 partition throughout: CTLE (best of 4 peaking gears per point) + 4-tap DFE
@@ -15,6 +16,13 @@ at the sampling instant over 3000 noisy traces. The sweep stops after the
 eye stays closed for two consecutive steps, and the limit is the last open
 eye BEFORE the first closure: PAM6 on Whisper closes at 14 GBd and "reopens"
 by 0.1 mV at 15 GBd -- a fluctuation of the 40k-sample minimum, not an eye.
+The comfort tier is the last point before it where the eye is at least 25 %
+of the level spacing (main cursor x the closest pair of levels).
+
+These are the envelope constants' calibration (``config.schema.MS_*``). Since
+2026-10-30 the impulse is trimmed by its ISI tail (ROADMAP P1 #42): the
+Whisper limits moved NRZ 30 -> 28 Gb/s and PAM4 36 -> 32 Gb/s, PAM4's
+comfort tier 32 -> 28 Gb/s; PAM6 / PAM8 and the other tiers stayed.
 """
 
 import sys
@@ -64,7 +72,8 @@ CHANNELS = {
 
 def measure_inner_eye(modulation: str, symbol_rate: float, ch_cfg: ChannelConfig,
                       peak_db: float) -> tuple[float, float]:
-    """Reconstruct the post-DFE eye; return (worst inner eye [V], SER)."""
+    """Reconstruct the post-DFE eye; return (worst inner eye [V], SER, the
+    closest pair of levels' spacing at the slicer [V])."""
     cfg = LinkConfig(
         modulation=modulation, symbol_rate=symbol_rate, osr=16,
         channel=ch_cfg,
@@ -95,9 +104,10 @@ def measure_inner_eye(modulation: str, symbol_rate: float, ch_cfg: ChannelConfig
     cur = channel_cursors(pulse, osr, 0, 4, peak_idx=peak)
     main = cur[0]
     if abs(main) < 1e-6:
-        return float("-inf"), 1.0
+        return float("-inf"), 1.0, 1.0
     w_dfe = cur[1:] / main
     levels = _levels(cfg) * abs(main)
+    spacing = float(np.min(np.diff(levels)))
     phase = peak % osr
 
     y_baud = rx[phase::osr]
@@ -119,9 +129,9 @@ def measure_inner_eye(modulation: str, symbol_rate: float, ch_cfg: ChannelConfig
         lo_g = v[r == i]
         hi_g = v[r == i + 1]
         if lo_g.size == 0 or hi_g.size == 0:
-            return float("-inf"), ser
+            return float("-inf"), ser, spacing
         sub.append(float(hi_g.min() - lo_g.max()))
-    return float(min(sub)), ser
+    return float(min(sub)), ser, spacing
 
 
 def sweep(modulation: str, start_gbps: float, step_gbps: float, ch_name: str,
@@ -132,18 +142,18 @@ def sweep(modulation: str, start_gbps: float, step_gbps: float, ch_name: str,
     rate = start_gbps
     for _ in range(max_points):
         fs = rate * 1e9 / bits
-        best_eye, best_ser, best_peak = -np.inf, 1.0, None
+        best_eye, best_ser, best_peak, best_sp = -np.inf, 1.0, None, 1.0
         for pk in CTLE_GEARS:
             try:
-                e, s = measure_inner_eye(modulation, fs, ch_cfg, pk)
+                e, s, sp = measure_inner_eye(modulation, fs, ch_cfg, pk)
             except Exception:
-                e, s = float("-inf"), 1.0
+                e, s, sp = float("-inf"), 1.0, 1.0
             if e > best_eye:
-                best_eye, best_ser, best_peak = e, s, pk
+                best_eye, best_ser, best_peak, best_sp = e, s, pk, sp
         cm = ChannelModel.from_config(LinkConfig(
             modulation=modulation, symbol_rate=fs, channel=ch_cfg))
         loss = cm.loss_at(fs / 2)
-        rows.append((rate, best_eye, best_ser, best_peak, loss))
+        rows.append((rate, best_eye, best_ser, best_peak, loss, best_sp))
         state = "OPEN " if best_eye > 0 else "closed"
         print(f"  {modulation.upper():4s} {rate:5g} Gb/s ({fs / 1e9:4.0f} GBd, "
               f"{loss:6.1f} dB@Nyq): eye={best_eye * 1e3:7.1f} mV [{state}] "
@@ -159,7 +169,7 @@ results = {}
 for ch_name, ch_cfg in CHANNELS.items():
     print(f"== {ch_name} ==")
     results[("nrz", ch_name)] = sweep("nrz", 16, 2, ch_name, ch_cfg)
-    results[("pam4", ch_name)] = sweep("pam4", 32, 4, ch_name, ch_cfg)
+    results[("pam4", ch_name)] = sweep("pam4", 24, 4, ch_name, ch_cfg)
     results[("pam6", ch_name)] = sweep("pam6", 20, 2.5, ch_name, ch_cfg)
     results[("pam8", ch_name)] = sweep("pam8", 18, 3, ch_name, ch_cfg)
 
@@ -203,4 +213,19 @@ for (mod, ch_name), rows in results.items():
               f"({fs:.0f} GBd, {last[4]:.1f} dB@Nyq, eye {last[1] * 1e3:.1f} mV)")
     else:
         print(f"  {mod.upper():4s} @ {ch_name}: closed at start")
+
+print("== Comfort (last eye >= 25 % of the level spacing, before the first closure) ==")
+for (mod, ch_name), rows in results.items():
+    comfort = None
+    for r in rows:
+        if r[1] <= 0:
+            break
+        if r[1] >= 0.25 * r[5]:
+            comfort = r
+    if comfort is not None:
+        print(f"  {mod.upper():4s} @ {ch_name}: {comfort[0]:.1f} Gb/s "
+              f"(eye {comfort[1] * 1e3:.1f} mV = {comfort[1] / comfort[5]:.0%} of "
+              f"{comfort[5] * 1e3:.1f} mV)")
+    else:
+        print(f"  {mod.upper():4s} @ {ch_name}: below 25 % at the first point")
 print(f"wrote {OUT / '12_ms_limit_sweep.png'}")

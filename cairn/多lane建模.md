@@ -27,6 +27,8 @@ authoring_mode: ai_generated
 
 ### 2. 探针一:误码成簇,以及它对 KP4 的影响
 
+> 2026-10-30 起冲激按 ISI 尾巴截断(ROADMAP P1 #42),本节引用示例 36 / 42 的数字为之前的读数,重跑见 `examples/expected/`(结论级改动已在本节或 docs 里另注)。
+
 每条链路一次时域运行(100 万符号;示例 42 的链路用它的 `make_cfg`),相隔 ≤ 8 个符号的误码算一个事件;按"5 个 PAM4 符号 = 一个
 10 bit RS 符号、连续映射"(单 lane、不交织)数每个事件碰到几个 RS 符号,与二项投影的 RS 符号误码率 1 − (1 − BER)^10 比:
 
@@ -60,6 +62,8 @@ authoring_mode: ai_generated
 | DFE 误码传播模型 | 1 抽头 DFE 的 Gilbert 模型,传播概率 a,最坏取 0.5–0.75(a ≥ 0.6 时开预编码);预编码把长度 L 的突发变成两个 PAM4 符号误码 | Ran 3df 2022-11;He 3df 2022-11 |
 
 ### 3. 探针二:串扰相位(lane 间 skew)
+
+> 2026-10-30 起冲激按 ISI 尾巴截断(ROADMAP P1 #42),本节引用示例 24 / 26 / 28 / 44 的数字为之前的读数,重跑见 `examples/expected/`(结论级改动已在本节或 docs 里另注)。
 
 `aggressor_bank` 的 4 个 aggressor(FEXT / NEXT 各半),把每个耦合冲激整体延后 0…7/8 UI(等于同步 lane 间的固定 skew),时域 30 万符号;
 统计引擎用同一组 `aggressor.pulse()`:
@@ -115,6 +119,8 @@ COM(`analysis/com.py`)仍按各 aggressor 自己的峰值取 —— 那是它自
 
 ### 5. 拆分与顺序(写进 ROADMAP)
 
+> 2026-10-30 起冲激按 ISI 尾巴截断(ROADMAP P1 #42),本节引用示例 36 的数字为之前的读数,重跑见 `examples/expected/`(结论级改动已在本节或 docs 里另注)。
+
 1. **P2 #19 串扰下双引擎口径不一致**(一致性,先做):两个引擎用同一个、显式的 aggressor 相位(同步 lane 给 skew;统计引擎按它取游标
    而不是峰值),补铁律 3 在串扰下的测试,把口径写进 `statistical.py` 的近似清单。证据见 §3。
 2. **P3 #9a FEC 映射与交织**:误码位置(各 lane 的 `error_idx`)→ 按复用方式(单 lane 连续 / N lane 符号对复用 / 比特复用)与码字交织(1 / 2 / 4)
@@ -126,6 +132,8 @@ COM(`analysis/com.py`)仍按各 aggressor 自己的峰值取 —— 那是它自
 PCS 层的 deskew、对齐标记锁定、lane 重排是数字协议行为,留在「边界 — 有意不做」。
 
 ### 6. FEC 映射与交织(P3 #9a,2026-10-13 已做)
+
+> 2026-10-30 起冲激按 ISI 尾巴截断(ROADMAP P1 #42),本节引用示例 36 / 42 / 43 的数字为之前的读数,重跑见 `examples/expected/`(结论级改动已在本节或 docs 里另注)。
 
 **做法**(`fec/interleave.py`,示例 43):时域引擎的 extras 增加 `reference`(与 `decisions` 同长,−1 是周跳留下的空位;只加键,
 指纹不动)。`bit_errors` 按 Gray 比特(MSB 在前)给出误码的线上比特位置;`FecLayout(lanes, pcs_lanes, mux_bits, interleave, stagger)`
@@ -187,6 +195,8 @@ DFE 两行是 2026-10-13 #21 让抽头用上之后重量的;映射 = 单 lane / 
   2026-10-13 已修,两个引擎都按 Gray 码不同的比特数计)。
 
 ### 7. 准同步 lane 与串扰入配置(P3 #9b,2026-10-13 已做)
+
+> 2026-10-30 起冲激按 ISI 尾巴截断(ROADMAP P1 #42),本节引用示例 44 的数字为之前的读数,重跑见 `examples/expected/`(结论级改动已在本节或 docs 里另注)。
 
 **配置**:`LinkConfig.crosstalk`(`CrosstalkConfig`)= 一组合成 lane(`n_fext` / `n_next`、`coupling_db` ± `spread_db`、`seed`,即
 `aggressor_bank`)+ 逐个列出的 `aggressors`(`AggressorConfig`:合成,或 `file` 从多端口 Touchstone 的两个口之间取耦合)。
@@ -252,6 +262,8 @@ bank 的 lane 共用 `skew_ui` / `ppm`;列出的各自给;列出的 lane 不给 
   (二阶矩 0.4 对均匀 0.467);两引擎同降 0.78–0.93×、比值不动,ICN ×0.926。NRZ / PAM4 / PAM8 不变。`cairn/448G调制格式.md` §2。
 
 ### 8. 共享 CDR 的静态 skew 预算(P3 #9c 静态部分,2026-10-13 已做)
+
+> 2026-10-30 起冲激按 ISI 尾巴截断(ROADMAP P1 #42),本节引用示例 45 的数字为之前的读数,重跑见 `examples/expected/`(结论级改动已在本节或 docs 里另注)。
 
 **做法**(`analysis/skew.py`,示例 45):一个 CDR 的时钟采 N 条 lane,数据晚到 s UI 的 lane 被早采 s UI,即偏离它自己环路的锁定点 −s。
 lane 的其他环路仍在它采样的地方适应 —— DFE 抽头、判决电平、ADC 的 FFE —— 所以要的是**均衡器在每个偏移处重解后**的 BER 曲线:
@@ -368,6 +380,8 @@ DFE 初值随之 ≈ 0,联合 LMS 停在这里:沿"FFE 留 h1、DFE 消 h1"方�
   见 `cairn/DSP发端与PR.md` §22;8.2 / 8.3 里 ADC 的数是修之前的接收机(DFE ≈ 0)量的,修之后的见那一节。
 
 ### 9. 共享 CDR 的动态部分(P3 #9c,2026-10-26)
+
+> 2026-10-30 起冲激按 ISI 尾巴截断(ROADMAP P1 #42),本节引用示例 45 的数字为之前的读数,重跑见 `examples/expected/`(结论级改动已在本节或 docs 里另注)。
 
 **做法**(`engine/shared_clock.py`,示例 45 末段):N 条混合信号 lane 一起逐符号跑。每条 lane 是时域引擎自己的运行
 (`timedomain._ms_prepare`,与 `run_time_link` 同一套前端、起步、训练日程;只是内核的环路增益置 0),每个符号后共享环路取各 lane 的

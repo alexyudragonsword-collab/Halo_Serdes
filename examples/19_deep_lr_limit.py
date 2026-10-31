@@ -1,14 +1,14 @@
 """Deep 224G long-reach: how far can FFE + DFE + deeper MLSD + KP4 reach?
 
-Pushing past the ~31.3 dB reach of example 18's receiver by adding DFE (cancels far
+Pushing past the ~31.4 dB reach of example 18's receiver by adding DFE (cancels far
 postcursors without FFE's noise enhancement) and deeper MLSD memory. Both
 levers pay; the ADC's pays more:
 
-- adding DFE8 + MLSD memory-3 over FFE+memory-2 buys 4.7 dB (31.3 -> 36.0 dB):
+- adding DFE8 + MLSD memory-3 over FFE+memory-2 buys 4.6 dB (31.4 -> 36.0 dB):
   the FFE leaves the DFE's eight post-cursors to it instead of inverting them;
 - the bigger lever is ADC sampling quality — better ENOB / lower noise floor
-  buys ~8.2 dB of reach with the SAME DSP (31.3 -> 36.0 dB from DSP depth, but
-  36.0 -> 44.2 dB from the ADC; 2026-10-13).
+  buys ~8.7 dB of reach with the SAME DSP (31.4 -> 36.0 dB from DSP depth, but
+  36.0 -> 44.7 dB from the ADC; 2026-10-13).
 
 Until 2026-10-13 the ADC receiver's DFE never engaged (ROADMAP P1 #21: the
 FFE started from the full MMSE solution, and the joint LMS has no gradient

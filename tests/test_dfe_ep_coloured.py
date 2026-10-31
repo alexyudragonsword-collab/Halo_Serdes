@@ -41,7 +41,11 @@ def test_errors_per_first_error_behind_an_ffe():
     against ``dfe_ep_factor``: 4 mV, four seeds of 500k symbols (~480 first
     errors, 1.84 per first one). The chain without colour read 1.71; without
     an FFE that colours the noise the factor is that chain's, unchanged (the
-    fingerprint's mixed-signal and FFE-less entries stay bit-identical)."""
+    fingerprint's mixed-signal and FFE-less entries stay bit-identical).
+
+    2026-10-30, the impulse trimmed by its ISI tail (ROADMAP P1 #42): 1.82
+    per first one (971 / 533), this chain 1.75, the chain without colour
+    1.56 on the same taps -- the bound sits between the two chains."""
     first = total = 0
     for seed in (1, 2, 3, 4):
         cfg = _frozen(0.004, 500_000, seed)
@@ -54,5 +58,5 @@ def test_errors_per_first_error_behind_an_ffe():
     ep = run_statistical(cfg, ffe_taps=r.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre).extras["dfe_ep_factor"]
     assert first > 400
     assert ep == pytest.approx(total / first, rel=0.06), (ep, total / first, first)
-    assert ep > 1.76
+    assert ep > 1.65
 

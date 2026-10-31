@@ -133,15 +133,17 @@ IEEE 802.3 peters_01_0605 系列(≤15 GHz,适用于 ≤16G 速率)。
 
 **产品级 mixed-signal 包络**(CTLE + DFE(tap-1 unrolled)+ BB-CDR、
 无 RX FFE),三层结构,由 Whisper 参考背板上的极限扫描标定
-(`examples/12`:第一次闭眼前最后一个开眼点 NRZ −30.2 dB、PAM4 −20.4 dB,相差 9.8 dB(扫描步长 1.6 dB),
+(`examples/12`:第一次闭眼前最后一个开眼点 NRZ −29.0 dB、PAM4 −18.7 dB,相差 10.3 dB(扫描步长 1.6 dB),
 与 PAM4 的电平代价 20·log10 3 ≈ 9.5 dB 相符;2026-10-17 加 PAM6 −16.1 dB、PAM8 −14.5 dB(1 GBd 步长),
-对 PAM4 差 4.3 / 5.9 dB,电平代价 20·log10(5/3) = 4.4、20·log10(7/3) = 7.4 dB —— PAM8 最后一个开眼只剩 1.5 mV):
+对 PAM4 差 2.6 / 4.2 dB,电平代价 20·log10(5/3) = 4.4、20·log10(7/3) = 7.4 dB —— PAM8 最后一个开眼只剩 1.3 mV。
+2026-10-30 起冲激按 ISI 尾巴截断(ROADMAP P1 #42),重新标定:NRZ 极限 30 → 28 Gb/s、PAM4 36 → 32 Gb/s、PAM4 舒适区 32 → 28 Gb/s,
+PAM4 32G 预设因此落在极限上、跑时给 marginal 告警;PAM6 / PAM8 与其余层不变):
 
 | 层级 | NRZ | PAM4 | PAM6 | PAM8 | 引擎行为 |
 |---|---|---|---|---|---|
-| 默认锚点 | 16 Gb/s(`LinkConfig()`,`nrz_16g_ms.yaml`) | 32 Gb/s(`pam4_32g_ms.yaml`) | — | — | 静默 |
-| 舒适区上限 | ≤ 24 Gb/s | ≤ 32 Gb/s | ≤ 30 Gb/s(12 GBd) | ≤ 24 Gb/s(8 GBd) | 静默(参考信道上眼高 ≥ ~25% 电平间距) |
-| 绝对极限 | ≤ 30 Gb/s | ≤ 36 Gb/s | ≤ 32.5 Gb/s(13 GBd) | ≤ 33 Gb/s(11 GBd) | **marginal 告警**(数 mV 眼,FEC 工况,逐信道验证) |
+| 默认锚点 | 16 Gb/s(`LinkConfig()`,`nrz_16g_ms.yaml`) | 32 Gb/s(`pam4_32g_ms.yaml`;在极限上,marginal) | — | — | NRZ 静默 |
+| 舒适区上限 | ≤ 24 Gb/s | ≤ 28 Gb/s(14 GBd) | ≤ 30 Gb/s(12 GBd) | ≤ 24 Gb/s(8 GBd) | 静默(参考信道上眼高 ≥ ~25% 电平间距) |
+| 绝对极限 | ≤ 28 Gb/s | ≤ 32 Gb/s | ≤ 32.5 Gb/s(13 GBd) | ≤ 33 Gb/s(11 GBd) | **marginal 告警**(数 mV 眼,FEC 工况,逐信道验证) |
 | 硬顶 | 30 GBd 符号率(不分调制) | 同左 | 同左 | 同左 | **exceeds 告警**(未建模的电路墙:CTLE 增益带宽/判决器孔径/时钟路径) |
 
 超过绝对极限或硬顶 → `exceeds` 告警并建议 `rx.arch: adc_dsp`

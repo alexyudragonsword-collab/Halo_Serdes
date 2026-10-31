@@ -279,8 +279,10 @@ for fmt in FORMATS:
     own = loss_db(L_r, baud_for(BIT_RATE, fmt, "kp4") / 2.0)
     rat = ratios[fmt]
     rows[fmt] = (r_t, s["pj"])
+    # no point with 30 errors only when n_symbols is capped (--smoke)
+    span = f"{min(rat):4.2f}-{max(rat):4.2f}" if rat else f"{'n/a':>9}"
     print(f"  {fmt_name(fmt):<5} {cell:<30} {r_t:9.2f}      {bch_reach[fmt][0]:6.2f}{' ' if bch_ok[fmt] else '?'}  {own:9.1f} dB"
-          f"      {min(rat):4.2f}-{max(rat):4.2f}  {s['pj']:6.2f}  {s['states']:5d}")
+          f"      {span}  {s['pj']:6.2f}  {s['states']:5d}")
 print("  * at the format's own Nyquist (118 / 95 / 79 GHz), extrapolated by the analytic model -- 未核实")
 if not all(bch_ok.values()):
     print("  ? statistical reach the time engine did not confirm (its loops let go at that operating point)")

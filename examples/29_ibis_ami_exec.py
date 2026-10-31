@@ -86,7 +86,11 @@ for flow, gw in (("Init (LTI)", False), ("GetWave", True)):
     sc = run_time_link(cfg, channel=ch, tx_ami=cm).slicer_snr_db
     sn = run_time_link(cfg, channel=ch, tx_ami=nm).slicer_snr_db
     snr[flow] = (sc, sn)
-    print(f"{flow:12s}: C .so SNR={sc:.3f} dB  native={sn:.3f} dB  (Δ={abs(sc-sn):.1e})")
+    # last-bit rounding differs between machines (0 locally, 1.8e-15 dB on CI):
+    # print the bound, as AMI_Init does above
+    d = abs(sc - sn)
+    print(f"{flow:12s}: C .so SNR={sc:.3f} dB  native={sn:.3f} dB  "
+          + (f"(Δ={d:.1e})" if d >= 1e-12 else "(Δ < 1e-12)"))
     cm.close()
 
 fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(12.4, 4.6))

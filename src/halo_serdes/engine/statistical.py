@@ -245,6 +245,7 @@ factor). Their names are importable from here as before the split
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -309,6 +310,15 @@ class StatResult:
 _PR_LOOP_LOAD_WARN = 0.08
 
 
+def _take(ctx: SimpleNamespace, names: tuple[str, ...]) -> list:
+    """The setup's locals names (_stat_setup), for a part to unpack.
+    One the setup never bound on this run's path reads None: the code that
+    would read it is not on that path either (it would have raised before
+    the split)."""
+    d = vars(ctx)
+    return [d.get(n) for n in names]
+
+
 def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     ffe_taps: np.ndarray | None = None, ffe_pre: int = 0,
                     v_bins: int = 4096, n_pre: int = 24, n_post: int = 64,
@@ -341,6 +351,27 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     or ``xtalk_pulses`` (coupling pulses of synchronous aggressors) replaces
     it. A quasi-synchronous aggressor (``ppm`` != 0) is averaged over the
     phase it drifts through."""
+    # three parts, each read straight through (2026-10-30 split; bit-identical):
+    # the setup, one phase per task, the read at the lock point
+    ctx = _stat_setup(cfg, channel, ffe_taps, ffe_pre, v_bins, n_pre, n_post, xtalk_pulses,
+                      level_sigma, xtalk, phase_ui, own_clock, voters)
+    for pi, fixed, frac in ctx.tasks:
+        _stat_phase(ctx, pi, fixed, frac)
+    return _stat_read(ctx)
+
+
+def _stat_setup(cfg: LinkConfig, channel: ChannelModel | None = None,
+                    ffe_taps: np.ndarray | None = None, ffe_pre: int = 0,
+                    v_bins: int = 4096, n_pre: int = 24, n_post: int = 64,
+                    xtalk_pulses: list[Waveform] | None = None,
+                    level_sigma: np.ndarray | None = None, xtalk=None,
+                    phase_ui: float | None = None, own_clock: bool = True,
+                    voters: int = 1) -> StatResult:
+    """``run_statistical`` up to its phase loop: the equalised pulse, the
+    noise and its kernels, the levels, the lock point and the sampling
+    jitter, the voltage grid, the phases to compute (``tasks``) and the
+    arrays they fill -- every local, as a namespace the other two parts
+    read (``_stat_phase``, ``_stat_read``)."""
     osr = cfg.osr
     if xtalk is not None and xtalk_pulses is not None:
         raise ValueError("pass xtalk (aggressors) or xtalk_pulses, not both")
@@ -349,7 +380,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
             import warnings
 
             warnings.warn("xtalk_pulses replaces cfg.crosstalk; the config's aggressors are ignored",
-                          stacklevel=2)
+                          stacklevel=3)
         x_in = [(xp, 0.0) for xp in xtalk_pulses]
     else:
         from ..channel.crosstalk import engine_aggressors
@@ -361,7 +392,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
 
         warnings.warn(f"a quasi-synchronous aggressor drifts {sweep:.2f} UI over sim.n_symbols: "
                       "the time engine sees part of the phase range this engine averages over",
-                      stacklevel=2)
+                      stacklevel=3)
     if channel is None:
         channel = ChannelModel.from_config(cfg)
     pattern_sigma = None
@@ -399,7 +430,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 "optical topology with a large-signal E/O curve (li_compression > 0) and an "
                 "explicit level_sigma: the curve's bending of ISI is carried by the "
                 "pattern-binned kernels, which level_sigma bypasses -- only its "
-                "steady-state levels are modelled", stacklevel=2)
+                "steady-state levels are modelled", stacklevel=3)
     tx_pipe = TxPipeline.from_config(cfg)
     if cfg.tx.drv_nl != "none":
         import warnings
@@ -407,7 +438,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         warnings.warn(
             f"tx.drv_nl={cfg.tx.drv_nl!r}: the driver's compression is not in the "
             "statistical engine (it is not LTI) and the result is outside the 2x "
-            "cross-check (invariant #3) -- use the time engine", stacklevel=2)
+            "cross-check (invariant #3) -- use the time engine", stacklevel=3)
     # the DAC's error enters after the Tx FFE, before the driver pole
     drv_resp = tx_pipe.after_dac_response(osr)
     h_after_dac = h if drv_resp is None else np.convolve(h, drv_resp)
@@ -674,7 +705,30 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
     fine_vals: dict[float, tuple[float, float]] = {}
     lock_dfe: dict[int, float] = {}
     main_phi: dict[int, float] = {}
-    for pi, fixed, frac in tasks:
+    return SimpleNamespace(**locals())
+
+
+def _stat_phase(ctx: SimpleNamespace, pi: int, fixed: bool, frac: float) -> None:
+    """One entry of ``ctx.tasks``: the slicer PDF at phase ``pi`` (``frac``
+    of a sample further with the pulse interpolated; ``fixed``: with the
+    taps and thresholds held where the receiver adapted them), its SER /
+    BER into ``ctx``'s arrays or ``fine_vals``. What it rebinds that a
+    later phase or the read uses goes back into ``ctx``."""
+    (ber_phi, ber_sym_phi, bit_dist, bits_per_sym, cfg, curve_mu, curve_var, drift_projected,
+        dv, edge_jit, ep_factor_phi, eye_pdf, ffe_taps, fine_vals, head_energy_phi, i_level, i_lock,
+        k_state, level_probs, level_sigma, levels_norm, lock_dfe, main_phi, mlsd_mem, n_dfe,
+        n_levels, n_post, n_pre, n_t, noise_acf, noise_k, noise_sigma, osr, pair_bits, pair_cond,
+        pair_words, pattern_base, pattern_sigma, peak, phi_offsets, pr_active, pr_composite, pulse,
+        rx_sigma, ser_phi, ser_sym_phi, swing, tx_jit_phi, union_ratio, v_bins, v_centers, x_drift,
+        x_slicer) = _take(ctx, ("ber_phi", "ber_sym_phi", "bit_dist", "bits_per_sym", "cfg",
+        "curve_mu", "curve_var", "drift_projected", "dv", "edge_jit", "ep_factor_phi", "eye_pdf",
+        "ffe_taps", "fine_vals", "head_energy_phi", "i_level", "i_lock", "k_state", "level_probs",
+        "level_sigma", "levels_norm", "lock_dfe", "main_phi", "mlsd_mem", "n_dfe", "n_levels",
+        "n_post", "n_pre", "n_t", "noise_acf", "noise_k", "noise_sigma", "osr", "pair_bits",
+        "pair_cond", "pair_words", "pattern_base", "pattern_sigma", "peak", "phi_offsets",
+        "pr_active", "pr_composite", "pulse", "rx_sigma", "ser_phi", "ser_sym_phi", "swing",
+        "tx_jit_phi", "union_ratio", "v_bins", "v_centers", "x_drift", "x_slicer"))
+    try:
         off = phi_offsets[pi]
         if tx_jit_phi is not None:
             edge_jit = tx_jit_phi[pi]
@@ -1082,7 +1136,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                     pair_cond=pair_cond, pair_words=pair_words)
                 ser_v, ber_v = s_sym, b_sym / bits_per_sym
             fine_vals[float(off + frac)] = (ser_v, ber_v)
-            continue
+            return
         ser_phi[pi] = ser
         ber_phi[pi] = nbe / bits_per_sym
         if pr_active:
@@ -1103,7 +1157,27 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
         for j in range(n_levels):
             _shift_add(eye_col, pdf_lv[j], lv[j] / dv, float(level_probs[j]))
         eye_pdf[:, pi] = eye_col
+    finally:
+        ctx.edge_jit = edge_jit
+        ctx.pattern_sigma = pattern_sigma
+        ctx.union_ratio = union_ratio
 
+
+def _stat_read(ctx: SimpleNamespace) -> StatResult:
+    """``run_statistical`` after its phase loop: the smear, the read at the
+    receiver's lock point (its loop's density, the pattern-phase factor),
+    the warnings, and the result."""
+    (as_computed, bb_curve, bb_density, bb_u, ber_phi, cfg, ep_factor_phi, eye_pdf, fine_span,
+        fine_vals, head_energy_phi, held, hi_fix, level_probs, level_sigma, levels_norm, lo_fix,
+        lock_pos, loop_sol, mlsd_mem, n_dfe, n_levels, noise_sigma, osr, own_clock, pattern_phase,
+        peak, phi_offsets, pr_active, pulse, pulse_pre, ser_phi, ser_sym_phi, sigma_ui, smears,
+        swing, tx_jit_phi, v_centers, voters, x_drift, x_slicer) = _take(ctx, ("as_computed",
+        "bb_curve", "bb_density", "bb_u", "ber_phi", "cfg", "ep_factor_phi", "eye_pdf", "fine_span",
+        "fine_vals", "head_energy_phi", "held", "hi_fix", "level_probs", "level_sigma",
+        "levels_norm", "lo_fix", "lock_pos", "loop_sol", "mlsd_mem", "n_dfe", "n_levels",
+        "noise_sigma", "osr", "own_clock", "pattern_phase", "peak", "phi_offsets", "pr_active",
+        "pulse", "pulse_pre", "ser_phi", "ser_sym_phi", "sigma_ui", "smears", "swing", "tx_jit_phi",
+        "v_centers", "voters", "x_drift", "x_slicer"))
     # the curves the smear is read from: the phases as computed, before it
     ber_raw, ser_raw = ber_phi.copy(), ser_phi.copy()
     if fine_span:
@@ -1241,7 +1315,7 @@ def run_statistical(cfg: LinkConfig, channel: ChannelModel | None = None,
                 f">= {_PR_LOOP_LOAD_WARN}: the Mueller-Muller CDR reads those decisions, and "
                 "from 0.09-0.14 it cycle-slipped in the time engine on the PR targets measured, "
                 "which this engine does not model -- its BER is optimistic here; use the time "
-                "engine", stacklevel=2)
+                "engine", stacklevel=3)
     return StatResult(
         ber_phi=ber_phi, ser_phi=ser_phi, best_phi=best,
         ber=ber, ser=ser,

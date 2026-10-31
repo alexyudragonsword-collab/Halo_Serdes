@@ -210,18 +210,20 @@ def serdespy_link(sdp, case: Case, cfg, n_symbols: int, seed: int = 11) -> dict:
 
 
 def _untrimmed(cfg):
-    """The config's channel with its impulse response kept whole: the engines
-    trim it to 99.99 % of its first-difference energy
-    (``ChannelModel.response_set``), which on the Whisper backplane keeps
-    14 UI and drops a slow ISI tail serdespy keeps (its 400 UI)."""
+    """The config's channel with its impulse response kept whole (2048 UI on
+    Whisper at 16 GBd). Until 2026-10-30 the engines trimmed it to 99.99 %
+    of its first-difference energy, 14 UI there, and dropped a slow ISI tail
+    serdespy keeps (its 400 UI); now the trim runs until the postcursors
+    left out are under 1e-3 of the main cursor (RMS, 505 UI), and the two
+    rows should agree (ROADMAP P1 #42)."""
     from halo_serdes.channel import ChannelModel
 
     class Untrimmed(ChannelModel):
-        def response_set(self, dt, trim=True, keep_energy=0.9999):
+        def response_set(self, dt, trim=True, keep_energy=0.9999, ui=None):
             return super().response_set(dt, trim=False)
 
     ch = ChannelModel.from_config(cfg)
-    return Untrimmed(ch.H, ch.f, name=ch.name, ref_gain=ch.ref_gain)
+    return Untrimmed(ch.H, ch.f, name=ch.name, ref_gain=ch.ref_gain, ui=ch.ui)
 
 
 def ours(case: Case, n_symbols: int, channel=None) -> dict:

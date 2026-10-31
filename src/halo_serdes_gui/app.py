@@ -108,6 +108,21 @@ def _topbar():
     ], className="app-topbar")
 
 
+#: the configuration column: beside the results on a wide screen, a drawer
+#: over them on a narrow one (``.cfg-drawer`` in assets/app.css)
+_DRAWER = "order-2 order-lg-1 cfg-drawer"
+
+
+def _bottom_nav():
+    """A phone-width bar (hidden from 992 px): open the configuration
+    drawer, run, back to the results."""
+    def item(label, bid):
+        return dbc.Button(label, id=bid, color="link", className="bottom-nav-btn")
+    return html.Div([item("⚙ Configure", "nav-config"), item("▶ Run", "nav-run"),
+                     item("▤ Results", "nav-results")],
+                    className="bottom-nav d-lg-none")
+
+
 def _config_pane():
     """The link as a chain of stages and the picked stage's parameters, then YAML."""
     return html.Div([
@@ -188,12 +203,14 @@ def build_app() -> Dash:
         dcc.Interval(id="job-poll", interval=POLL_MS, disabled=True),
         _topbar(),
         dbc.Row([
-            # results first on a narrow screen, configuration first beside them
-            dbc.Col(_config_pane(), width=12, lg=4, xl=3, className="order-2 order-lg-1",
-                    style={"padding": 0}),
+            # results first on a narrow screen, configuration first beside them;
+            # below 992 px the configuration is a drawer the bottom bar opens
+            dbc.Col(_config_pane(), id="cfg-col", width=12, lg=4, xl=3,
+                    className=_DRAWER, style={"padding": 0}),
             dbc.Col(_main(), width=12, lg=8, xl=9, className="order-1 order-lg-2",
                     style={"padding": 0}),
         ], className="g-0 app-body"),
+        _bottom_nav(),
     ], className="app-shell")
     _register_callbacks(app)
     return app
@@ -204,6 +221,8 @@ def build_app() -> Dash:
 # a second to ~20 s. Computing it on tab switch left the tab spinning with no
 # word of what it was doing; it now waits for its own Run button, and a result
 # is kept per (run, tab) so coming back to the tab does not recompute it.
+# It runs as a background job (``api.start_task``) like a run does: the top
+# bar shows its progress and its cancel, and the page stays usable meanwhile.
 _STUDY_CACHE: OrderedDict[tuple[str, str], object] = OrderedDict()
 _STUDY_CACHE_MAX = 24
 
@@ -215,7 +234,6 @@ def _study_gate(panel, rec):
                                      "marginBottom": "0.5rem"}),
         dbc.Button(f"▶  Run {panel.TITLE}", id="study-run", color="primary",
                    size="sm", className="mb-2"),
-        dcc.Loading(html.Div(id="study-body"), type="default", color=theme.PRIMARY),
     ])
 
 
@@ -257,9 +275,10 @@ def _progress(job):
         return None
     elapsed = time.perf_counter() - job.started
     if job.cancel.is_set():
-        # the time engine's front end (transmitter, channel filtering) has no
-        # cancel point inside it: ~10 s per million symbols on a desktop
-        text = "Cancelling — stops when the current stage ends…"
+        # a run stops at its next receiver chunk or front-end step (a step
+        # is a few seconds on millions of symbols); a study between two of
+        # its engine runs
+        text = "Cancelling — stops when the current step ends…"
     else:
         text = f"{job.stage or 'starting'} · {elapsed:.1f} s"
     frac = job.fraction
@@ -487,6 +506,10 @@ def _register_callbacks(app: Dash) -> None:
             job = api.start_job(values, collect_eye=True, collect_jitter=True)
         except api.Busy as exc:
             job = api.get_job(exc.job)
+            if job is not None and job.kind == "task":
+                return no_update, no_update, no_update, no_update, theme.banner(
+                    "warn", "A study is running: press ▶ Run when it has finished, "
+                            "or cancel it.")
             # following a run that is being cancelled would show "cancelled"
             # for a press of Run; one that finished in between is just gone
             if job is None or job.cancel.is_set():
@@ -512,6 +535,15 @@ def _register_callbacks(app: Dash) -> None:
             return (no_update, *idle, None)
         if job.active:
             return (no_update, no_update, no_update, no_update, _progress(job))
+        if (ref or {}).get("study"):
+            # a study: _finish puts its tab back on screen however it ended
+            note = None
+            if job.state == "cancelled":
+                note = theme.banner("info", f"Study cancelled after {job.elapsed_s:.1f} s.")
+            elif job.state == "error":
+                msg = (job.error or {}).get("message", "unknown error")
+                note = theme.banner("crit", f"Study failed: {msg}")
+            return (job.id, *idle, note)
         if job.state == "cancelled":
             return (no_update, *idle, theme.banner(
                 "info", f"Run cancelled after {job.elapsed_s:.1f} s; the results "
@@ -528,8 +560,17 @@ def _register_callbacks(app: Dash) -> None:
                   State("history", "data"), State("view", "data"),
                   prevent_initial_call=True)
     def _finish(job_id, ref, history, active):
-        """A finished run: on screen, with its warnings, and first in the history."""
+        """A finished run: on screen, with its warnings, and first in the history.
+        A finished study: its tab redrawn if it is the one on screen (the
+        result kept, or the gate again after a cancel); elsewhere it waits in
+        the cache for the tab."""
         job = api.get_job(job_id)
+        if job is not None and (ref or {}).get("study"):
+            rec = get_result(ref.get("rid"))
+            if rec is None or active != ref["study"]:
+                return (no_update,) * 5
+            return (no_update, _tab_view(_PANEL_BY_ID[active], rec), no_update,
+                    no_update, no_update)
         rec = get_result(job.record) if job is not None else None
         if rec is None:
             return (no_update,) * 5
@@ -655,18 +696,53 @@ def _register_callbacks(app: Dash) -> None:
         common.ensure_stat(rec)
         return single_run.verdict_block(rec)
 
-    @app.callback(Output("study-body", "children"),
+    @app.callback(Output("cfg-col", "className"),
+                  Input("nav-config", "n_clicks"), Input("nav-results", "n_clicks"),
+                  Input("nav-run", "n_clicks"), Input("run-btn", "n_clicks"),
+                  State("cfg-col", "className"), prevent_initial_call=True)
+    def _drawer(_c, _r, _n, _run, cls):
+        """The configuration drawer on a narrow screen: Configure toggles it,
+        Results and Run close it (the results are what a run is for)."""
+        is_open = "open" in (cls or "").split()
+        if ctx.triggered_id == "nav-config" and not is_open:
+            return f"{_DRAWER} open"
+        return _DRAWER
+
+    # the bottom bar's Run is the top bar's: one start path, one set of guards
+    app.clientside_callback(
+        """function (n) {
+            const b = document.getElementById("run-btn");
+            if (n && b && !b.disabled) { b.click(); }
+            return window.dash_clientside.no_update;
+        }""",
+        Output("nav-run", "title"), Input("nav-run", "n_clicks"),
+        prevent_initial_call=True)
+
+    @app.callback(Output("job", "data", allow_duplicate=True),
+                  Output("job-poll", "disabled", allow_duplicate=True),
+                  Output("run-btn", "disabled", allow_duplicate=True),
+                  Output("cancel-btn", "style", allow_duplicate=True),
+                  Output("run-status", "children", allow_duplicate=True),
                   Output("study-run", "disabled"),
                   Input("study-run", "n_clicks"),
                   State("view", "data"), State("run-store", "data"),
                   prevent_initial_call=True)
-    def _study(_n, active, rid):
-        """Run the active study tab on the stored run."""
+    def _study(n, active, rid):
+        """Start the active study tab on the stored run as a background job;
+        the run's poll follows it and ``_finish`` shows it."""
         panel = _PANEL_BY_ID.get(active)
         rec = get_result(rid)
-        if panel is None or rec is None:
-            return common.need_run_message(), False
-        return _run_study(panel, rec), True
+        if not n or panel is None or rec is None:
+            return (no_update,) * 6
+        try:
+            job = api.start_task(lambda: _run_study(panel, rec),
+                                 stage=f"{panel.TITLE} study")
+        except api.Busy:
+            return (no_update, no_update, no_update, no_update, theme.banner(
+                "warn", "A run is in progress: start the study when it has finished, "
+                        "or cancel the run."), False)
+        return ({"id": job.id, "study": active, "rid": rid}, False, True, None,
+                _progress(job), True)
 
 
 def main() -> None:
