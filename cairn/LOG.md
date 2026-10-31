@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-31 · Windows onefile 变慢的原因、手机常驻显示范围(feat/onefile-phone-ranges)
+
+- 用户选"onefile 变慢 + 手机常驻范围"。PR #124 两个 Nuitka 作业的日志:standalone 在镜像 20261021 上恢复缓存(3665 / 3679 命中,36 分钟),
+  onefile 在 20261030 上 "Cache not found"、全冷编(MSVC 84 分钟,共 105)—— 镜像逐作业滚动;分支只读自己的和 main 的缓存,所以 main
+  在新镜像上存链之前每个落上去的分支作业都冷编(本 PR 撤回后的 onefile 又是 0 / 3679、89 分钟,#124 分支存的链它看不见)。
+  作业日志直链下载被代理 403,改用 MCP 取尾部再切。
+- 试过 onefile 并进 standalone 之后的同一作业(预期 6–10 分钟):实测 onefile 一步 41 分钟(3676 / 3679 命中;Python 7.5、生成 C 4、
+  C 阶段 24、压缩 5),作业共 76 分钟,比两个并行作业约 45 分钟慢 —— 撤回,工作流与 main 相同;结论进 packaging/README 与 pitfalls。
+- 手机:`FormField.range` / `hint`,数值框下方"说明 · Range: > 0";`FormContractTest` 加一条,CI 上 Android 两次运行(含新测试)全绿。
+- CI(PR #125,头 1bf6d0b,全绿):test 运行 25.6 分钟、Android 14.5;Windows PyInstaller 3.7、Nuitka 38.1(热)、onefile 91(新镜像冷编,见上)。
+
 ## 2026-10-31 · 截断后重核、bang-bang 增益核查、字段范围(feat/recheck-bb-ranges)
 
 - 用户选 P2 #43 + #38 + #41 余项。第三光标种子 7 / 8 / 9 重跑 +0.27 / +0.28 / +0.25 dB(同脚本先复现种子 3 的 +0.52),均值 +0.33,三个不过 0.5 dB

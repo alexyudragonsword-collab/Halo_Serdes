@@ -85,6 +85,20 @@ limit is for (GitHub allows 360). A job that reaches its limit is
 *cancelled*, not failed -- `continue-on-error` does not cover it, and a
 cancelled onefile build skips the release below.
 
+The runner image rolls job by job, so the two Nuitka jobs of one run can sit
+on different images: on PR #124 the standalone (image 20261021) restored its
+chain, 3665 of 3679 hits and 36 min, while the onefile (20261030) found none
+and compiled everything cold, 84 of its 105 min. A branch reads only its own
+cache and main's, so this repeats on every branch whose job lands on the new
+image until a main run has saved that image's chain: on PR #125 the onefile
+job hit the same image, found no chain (the one saved on PR #124's branch is
+not visible to it) and was cold again, 0 of 3679 hits, 89 min. Building
+the onefile after the standalone in one job, from the same build directory,
+was tried on 2026-10-31 and measured slower: the onefile step still took
+41 min with 3676 of 3679 hits -- Python compilation 7.5, code generation 4,
+the C phase 24 with every file from the cache, compression 5 -- so the job
+ran 76 min where the two in parallel take ~45. Kept as two jobs.
+
 Artifacts expire after 14 days. For a download that stays, push a version tag:
 
 ```bash

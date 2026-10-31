@@ -151,6 +151,30 @@ class FormContractTest {
     }
 
     /**
+     * Numeric fields carry the bound the configuration enforces, shown under
+     * the input with the help, and a value outside it is that field's own
+     * error from `derive` (`rx.adc.n_bits`, not the configuration's
+     * "adc.n_bits" message landing on the whole form).
+     */
+    @Test
+    fun numericFieldsShowTheirRangeAndAnOutOfRangeValueIsTheirError() = runBlocking<Unit> {
+        val fields = parseSections(schema()).flatMap { it.fields }
+        val byPath = fields.associateBy { it.path }
+        assertTrue("no field has a range", fields.count { it.range.isNotBlank() } > 60)
+        assertEquals(">= 1", byPath.getValue("rx.adc.n_bits").range)
+        assertTrue("range not in the hint", "Range: > 0" in byPath.getValue("tx.swing").hint)
+        assertTrue("a non-numeric field has a range",
+                   fields.none { it.range.isNotBlank() && (it.isBool || it.isEnum) })
+        val name = TestPresets.runnable(ctx)
+        val values = (HaloApi.preset(ctx, name) as ApiResult.Ok)
+            .data.getJSONObject("values").toFormValues(fields)
+        val d = (HaloApi.derive(ctx, (values + ("tx.swing" to "-1")).toJson()) as ApiResult.Ok).data
+        assertTrue("expected invalid", !d.getBoolean("valid"))
+        val errs = d.getJSONObject("field_errors")
+        assertTrue("out-of-range not keyed by the form path: $errs", errs.has("tx.swing"))
+    }
+
+    /**
      * What the configuration does not use is hidden, and `derive` says what:
      * the ADC group on a mixed-signal receiver, not on an ADC one. The rules
      * are evaluated on the Python side, so this is the phone reading the
