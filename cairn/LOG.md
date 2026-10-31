@@ -16,6 +16,10 @@
   点取消后 2–6 s 停(此前 47 s);窄屏底部导航 + 配置抽屉;任务先写 error 再置状态。示例 32 不到扫描起点的 reach 打 "<30m"。
 - 拆分:`_stat_setup` / `_stat_phase` / `_stat_read` + `SimpleNamespace`,入口 40 行;指纹逐位不变。
 - 验证:受影响 277 项 + 包络 11 项;编译集 .so 本地真编(引擎拆分之后)、HALO_NO_JIT 下 182 passed / 36 skipped;前端 JIT / NO_JIT 逐位。
+- CI 第一轮红三处,都是截断修正带出来的:smoke(n_symbols 封顶 2 万)下示例 38 的阶梯分不出 +0.5 dB(封顶时只要求不输)、示例 46 没有 ≥ 30 错的点
+  (比值区间打 n/a);全尺寸示例 29 的 C / native SNR 差在 CI 上 1.8e-15 dB(本地 0,改打 "Δ < 1e-12")。
+- CI(PR #123,头 22c683e,全绿):矩阵 jit 20.8–24.2 分钟、nojit 22.3–25.8,examples 16.2 / 21.0,examples-full 19.5;Android(c2f1ac8,其后只动示例)
+  构建 1.4、编译版 9.0、编译版模拟器 5.3、API 34 / 35 4.2 / 4.9;Windows PyInstaller 2.7、Nuitka 39.1、onefile 44.8。
 
 ## 2026-10-30 · 对外校验(serdespy)与统计引擎拆模块(feat/external-validation)
 
