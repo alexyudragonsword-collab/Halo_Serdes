@@ -149,6 +149,10 @@ class LoopSolution:
     # the second-order loop's damping ratio at this gain, kp sqrt(k_pd / ki) / 2
     # (loop_damping); None without an integral path
     damping: float | None = None
+    # what the loop leaves of each sinusoidal tone it was given, (amplitude
+    # [UI], frequency [Hz]) as in, the amplitude now ``A |E(f)|`` -- a phase
+    # that swings, not noise: read as an arcsine, not folded into sigma_ui
+    sj_residual: tuple[tuple[float, float], ...] = ()
 
     @property
     def sigma_ui(self) -> float:
@@ -577,9 +581,13 @@ class BbEdgeStats:
     @staticmethod
     def build(pulse_y: np.ndarray, osr: int, lock_pos: float, half_span: int,
               amps: np.ndarray, noise_sigma: float, edge_ui: float = 0.0,
-              periodic: bool = False, n_pre: int = 24, n_post: int = 64) -> "BbEdgeStats":
+              periodic: bool = False, n_pre: int = 24, n_post: int = 64,
+              dcd_ui: float = 0.0) -> "BbEdgeStats":
         """From the pre-DFE pulse, the lock (fractional sample of the data
-        sample), and the symbols' amplitudes [V]."""
+        sample), and the symbols' amplitudes [V]. ``dcd_ui``: the
+        transmitter's duty-cycle distortion, a rising edge late and a falling
+        one early by half of it -- the edge sample of that transition moves
+        the other way along its slope."""
         y = np.asarray(pulse_y, dtype=np.float64)
         dy = np.gradient(y)
         grid = np.arange(y.size, dtype=np.float64)
@@ -604,6 +612,10 @@ class BbEdgeStats:
             first = n_post
         trans = keep & (np.sign(a) != np.sign(prev)) & (prev != 0.0)
         sg = np.sign(prev[trans])
+        if dcd_ui > 0.0:
+            # an edge later by tau reads like sampling earlier by tau
+            v = v.copy()
+            v[trans] -= dv[trans] * (dcd_ui / 2.0) * np.sign(a[trans] - prev[trans])
         return BbEdgeStats(u=v[trans] * sg, du=dv[trans] * sg,
                            at=np.flatnonzero(trans) - first, n_symbols=int(keep.sum()),
                            noise_sigma=float(noise_sigma), edge_ui=float(edge_ui),
@@ -631,6 +643,33 @@ class BbEdgeStats:
         s = self._s(sigma_e)
         dens = np.exp(-0.5 * (self.u / s) ** 2) / (np.sqrt(2.0 * np.pi) * s)
         return float(np.sum(-2.0 * self.du * dens) / max(self.n_symbols, 1))
+
+    def gain_at(self, x: np.ndarray, sigma_e: float) -> np.ndarray:
+        """The local slope of the mean output per symbol per UI at offsets
+        ``x`` [UI] from the lock, the loop's jitter ``sigma_e`` folded in."""
+        x = np.atleast_1d(np.asarray(x, dtype=np.float64))
+        s = self._s(sigma_e)
+        z = (self.u[None, :] + self.du[None, :] * x[:, None]) / s[None, :]
+        dens = np.exp(-0.5 * z * z) / (np.sqrt(2.0 * np.pi) * s[None, :])
+        return np.sum(-2.0 * self.du[None, :] * dens, axis=1) / max(self.n_symbols, 1)
+
+    def tone_gains(self, amp_ui: float, sigma_e: float, n_theta: int = 48) -> tuple[float, float]:
+        """Under a tone the loop leaves ``amp_ui`` of: the gain the tone itself
+        meets (the describing function, its fundamental over the amplitude)
+        and the slope the loop's own noise meets on average over its swing.
+        Both are ``gain(sigma_e)`` as the tone goes to zero."""
+        if amp_ui <= 1e-9:
+            g = self.gain(sigma_e)
+            return g, g
+        from scipy.special import erf
+
+        th = (np.arange(n_theta) + 0.5) * (2.0 * np.pi / n_theta)
+        x = amp_ui * np.sin(th)
+        s = self._s(sigma_e)
+        m = np.sum(erf((self.u[None, :] + self.du[None, :] * x[:, None]) / (np.sqrt(2.0) * s[None, :])),
+                   axis=1) / max(self.n_symbols, 1)
+        describing = float(-2.0 * np.mean(m * np.sin(th)) / amp_ui)
+        return describing, float(np.mean(self.gain_at(x, sigma_e)))
 
     def noise(self, sigma_e: float) -> PdNoise:
         """The output's noise per update as the loop sees it, at each phase
@@ -674,7 +713,8 @@ def bb_loop_fixed_point(loop: LoopParams,
                         transitions: Sequence[tuple[float, float, float]] | None = None,
                         mean_output: Callable[[float], np.ndarray] | None = None,
                         period: np.ndarray | None = None, voters: int = 1,
-                        edge: BbEdgeStats | None = None) -> LoopSolution:
+                        edge: BbEdgeStats | None = None,
+                        tones: Sequence[tuple[float, float]] = ()) -> LoopSolution:
     """Self-consistent operating point of a bang-bang loop.
 
     ``untracked_ui(err_fn)`` must return the RMS clock jitter [UI] left when
@@ -716,14 +756,37 @@ def bb_loop_fixed_point(loop: LoopParams,
     (:class:`BbEdgeStats`), whose gain and noise replace the classes' and
     the mean output's -- both read off the same samples, so neither is taken
     Gaussian or white while the other is not (ROADMAP P2 #38).
+
+    ``tones``: sinusoidal clock jitter, ``(amplitude [UI], frequency [Hz])``.
+    The loop leaves ``A |E(f)|`` of each, a swing the detector sees on top
+    of its noise: it flattens the detector, so the gain the tone meets (the
+    describing function, ``BbEdgeStats.tone_gains``) and the one the loop's
+    noise meets (the slope averaged over the swing) both fall, which widens
+    what is left of the tone -- solved together with the rest. The first
+    tone is taken exactly, any others as Gaussian jitter of their RMS; on the
+    classes (no ``edge``) every tone is taken that way. What is left of each
+    is in ``LoopSolution.sj_residual``.
     """
     classes = ((rho, 0.0, sigma_edge_ui),) if transitions is None else tuple(transitions)
     rho_all = sum(p for p, _, _ in classes)
 
+    tones = tuple((float(a), float(f)) for a, f in tones if a > 0.0 and f > 0.0)
+    resid = [a for a, _ in tones]          # what the loop leaves of each, refined below
+
+    def with_tones(sigma_e: float) -> tuple[float, float]:
+        """The input jitter less the first tone (taken exactly) and that tone's residual."""
+        if not tones:
+            return sigma_e, 0.0
+        if edge is None:
+            return float(np.sqrt(sigma_e ** 2 + sum(a * a / 2.0 for a in resid))), 0.0
+        rest = sum(a * a / 2.0 for a in resid[1:])
+        return float(np.sqrt(sigma_e ** 2 + rest)), resid[0]
+
     def gain(sigma_e: float) -> tuple[float, float]:
         """The linearised gain and the classes' timing share at input jitter sigma_e."""
+        sigma_e, a0 = with_tones(sigma_e)
         if edge is not None:
-            return edge.gain(sigma_e), 0.0
+            return (edge.tone_gains(a0, sigma_e)[1] if a0 > 0.0 else edge.gain(sigma_e)), 0.0
         k = info = 0.0
         for p, offset, edge_ui in classes:
             s = float(np.hypot(sigma_e, edge_ui))
@@ -738,7 +801,9 @@ def bb_loop_fixed_point(loop: LoopParams,
     sig_u = sig_s = 0.0
     def pd_noise(sigma_e: float, info: float) -> float | PdNoise:
         if edge is not None:
-            return edge.noise(sigma_e)
+            # the tones swing the detector across its edges too, which moves its
+            # noise: taken as Gaussian jitter of their RMS here
+            return edge.noise(float(np.sqrt(sigma_e ** 2 + sum(a * a / 2.0 for a in resid))))
         # E[pd^2] less the power of the mean response (bb_pd_noise_var)
         white = rho_all - info ** 2 / 3.0
         if mean_output is None:
@@ -754,10 +819,27 @@ def bb_loop_fixed_point(loop: LoopParams,
                            np.asarray(noise.line_power) / voters)
         return noise / voters
 
+    def update_tones(sigma_e: float) -> None:
+        """What the loop leaves of each tone, at the gain that tone meets."""
+        for i, (amp, f) in enumerate(tones):
+            for _ in range(40):
+                if i == 0 and edge is not None:
+                    sig, _ = with_tones(sigma_e)
+                    k_tone = edge.tone_gains(resid[0], sig)[0]
+                else:
+                    k_tone = k_pd
+                new_a = amp * float(error_response(np.array([f]), loop, max(k_tone, 0.0))[0])
+                done = abs(new_a - resid[i]) <= 1e-7 + 1e-5 * amp
+                resid[i] = 0.5 * (resid[i] + new_a)
+                if done:
+                    break
+
     for _ in range(n_iter):
         sig_u = untracked_ui(ErrorResponse(loop, k_pd))
         sig_s = self_noise_ui(loop, k_pd, averaged(pd_noise(sigma_e, info)))
         new = float(np.hypot(sig_u, sig_s))
+        if tones:
+            update_tones(new)
         k_new, info = gain(new)
         converged = abs(k_new - k_pd) <= 1e-6 * k_pd
         k_pd, sigma_e = k_new, new
@@ -765,18 +847,22 @@ def bb_loop_fixed_point(loop: LoopParams,
             break
     return LoopSolution(k_pd=float(k_pd), sigma_untracked_ui=float(sig_u),
                         sigma_self_ui=float(sig_s), bandwidth_hz=bandwidth_hz(loop, k_pd),
-                        damping=loop_damping(loop, k_pd))
+                        damping=loop_damping(loop, k_pd),
+                        sj_residual=tuple((float(a), f) for a, (_, f) in zip(resid, tones)))
 
 
 def mm_loop_solution(loop: LoopParams, k_pd: float, pd_noise: float | PdNoise,
-                     untracked_ui: Callable[[Callable[[np.ndarray], np.ndarray]], float]
-                     ) -> LoopSolution:
-    """Operating point of a Mueller-Muller loop: linear, so no iteration."""
+                     untracked_ui: Callable[[Callable[[np.ndarray], np.ndarray]], float],
+                     tones: Sequence[tuple[float, float]] = ()) -> LoopSolution:
+    """Operating point of a Mueller-Muller loop: linear, so no iteration;
+    each tone ``(amplitude [UI], frequency [Hz])`` is left at ``A |E(f)|``."""
     sig_u = untracked_ui(ErrorResponse(loop, k_pd))
     sig_s = self_noise_ui(loop, k_pd, pd_noise)
+    resid = tuple((float(a * error_response(np.array([f]), loop, k_pd)[0]), float(f))
+                  for a, f in tones if a > 0.0 and f > 0.0)
     return LoopSolution(k_pd=float(k_pd), sigma_untracked_ui=float(sig_u),
                         sigma_self_ui=float(sig_s), bandwidth_hz=bandwidth_hz(loop, k_pd),
-                        damping=loop_damping(loop, k_pd))
+                        damping=loop_damping(loop, k_pd), sj_residual=resid)
 
 
 def lock_offset_samples(pulse_y: np.ndarray, peak_idx: int, osr: int, half_span: int) -> float:
