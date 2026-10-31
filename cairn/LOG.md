@@ -11,6 +11,7 @@
 - |H|:描述函数(残差 SJ)、幅度扫描、实测相位上的静态增益三个探针排除了"SJ 抹平增益"与"静态增益错";剩闭环有效增益低约 10 %(PAM4 独有,NRZ 对),
   疑猎振相位与数据相关,未验证,登记 P2 #44。`cairn/DSP发端与PR.md` §39 末。
 - 验证:`test_docs_fresh`、`test_shared_clock` 的 ADC 不变量通过,`derived` 103 处成立,ruff 通过;无库代码改动,不涉及 Android 共用层。
+- CI(PR #127,头 23c9e6a,18 项全绿):test 运行 29.7 分钟(push 那次 23);只动文档与测试说明串,Android / Windows 打包不触发。
 
 ## 2026-10-31 · bang-bang 增益与鉴相噪声一起重建、DFE 误码链 p3、文档审计(feat/bb-noise-p2-audit)
 
