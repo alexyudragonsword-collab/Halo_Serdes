@@ -3,6 +3,16 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-10-31 · 重核 224G 从 lane、PAM4 bang-bang 在 SJ 下的 |H|(feat/p40-recheck-bb-sj)
+
+- 用户选"加 p3 之后重核 P2 #40 + PAM4 bang-bang 在 SJ 下 |H| 偏高"。代码不变,只有核查与文档。
+- #40 清空:时域按截断后的代码重跑(3 种子 × 20 万符号),从 lane 0.74–0.95 → 0.83–1.09×;+1/4 UI 那条每首错 3.27 对 2.92,差在那里的 p2(0.60 对 0.53)。
+  `cairn/多lane建模.md` §9.4 加日期注,USAGE / ROADMAP P3 #9 / `test_shared_clock` 说明串改区间。
+- |H|:描述函数(残差 SJ)、幅度扫描、实测相位上的静态增益三个探针排除了"SJ 抹平增益"与"静态增益错";剩闭环有效增益低约 10 %(PAM4 独有,NRZ 对),
+  疑猎振相位与数据相关,未验证,登记 P2 #44。`cairn/DSP发端与PR.md` §39 末。
+- 验证:`test_docs_fresh`、`test_shared_clock` 的 ADC 不变量通过,`derived` 103 处成立,ruff 通过;无库代码改动,不涉及 Android 共用层。
+- CI(PR #127,头 23c9e6a,18 项全绿):test 运行 29.7 分钟(push 那次 23);只动文档与测试说明串,Android / Windows 打包不触发。
+
 ## 2026-10-31 · bang-bang 增益与鉴相噪声一起重建、DFE 误码链 p3、文档审计(feat/bb-noise-p2-audit)
 
 - 用户选 P2 #38 + P2 #37 + 文档 / ROADMAP 审计。
