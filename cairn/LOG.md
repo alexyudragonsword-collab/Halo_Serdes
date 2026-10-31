@@ -3,14 +3,14 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
-## 2026-10-31 · Windows onefile 并进 Nuitka 作业、手机常驻显示范围(feat/onefile-phone-ranges)
+## 2026-10-31 · Windows onefile 变慢的原因、手机常驻显示范围(feat/onefile-phone-ranges)
 
-- 用户选"onefile 变慢 + 手机常驻范围"。查 PR #124 两个 Nuitka 作业日志:standalone 在镜像 20261021 上恢复缓存(3665 / 3679 命中,36 分钟),
-  onefile 在 20261030 上 "Cache not found"、3679 个全冷编(MSVC 84 分钟,共 105)—— 不是缓存坏了,是镜像逐作业滚动、两条链各付一次冷编译。
-  作业日志的直链下载被代理 403,改用 MCP 取尾部再切。
-- 改:onefile 并进 `nuitka` 作业,standalone 之后同一 `--output-dir` 出包;`release` 等 `nuitka`;产物名不变。packaging/README、CONTRIBUTING、
-  pitfalls 的超时条同步。效果要等 CI 量(预期热构建多出 onefile 的 bootstrap + 压缩约 6–10 分钟,机时约减半)。
-- 手机:`FormField.range` / `hint`,数值框下方"说明 · Range: > 0";`FormContractTest` 加一条。本地没有 Android SDK,Kotlin 只能等 CI。
+- 用户选"onefile 变慢 + 手机常驻范围"。PR #124 两个 Nuitka 作业的日志:standalone 在镜像 20261021 上恢复缓存(3665 / 3679 命中,36 分钟),
+  onefile 在 20261030 上 "Cache not found"、全冷编(MSVC 84 分钟,共 105)—— 镜像逐作业滚动,新镜像的第一次冷编,之后自愈。
+  作业日志直链下载被代理 403,改用 MCP 取尾部再切。
+- 试过 onefile 并进 standalone 之后的同一作业(预期 6–10 分钟):实测 onefile 一步 41 分钟(3676 / 3679 命中;Python 7.5、生成 C 4、
+  C 阶段 24、压缩 5),作业共 76 分钟,比两个并行作业约 45 分钟慢 —— 撤回,工作流与 main 相同;结论进 packaging/README 与 pitfalls。
+- 手机:`FormField.range` / `hint`,数值框下方"说明 · Range: > 0";`FormContractTest` 加一条,CI 上 Android 两次运行(含新测试)全绿。
 
 ## 2026-10-31 · 截断后重核、bang-bang 增益核查、字段范围(feat/recheck-bb-ranges)
 
