@@ -13,6 +13,8 @@
 - 坑:几组配置共用种子时窗口误码一起动;PAM4 `error_idx` 是码元下标(一组数作废重跑)。`cairn/DSP发端与PR.md` §42,pitfalls 补一条。
 - 验证:全量 1427 passed / 8 skipped(2 条测试改成显式 `init="cursor"` 场景后通过);示例 47 / 47,3 个输出变、引用核过;指纹 44 / 986;
   Cython 构建(timedomain / statistical / schema / config_bridge)删 .py、`HALO_NO_JIT=1` 相关 146 passed;ruff 通过。
+- CI(PR #131,头 63bf27d 全绿;代码最后一次改动 846510d 上 Android / Windows 也绿):test 最长 25.7 分钟(full 32.5)、examples 21.3;
+  Android 13.1;Windows PyInstaller 3.0、Nuitka 114.2、onefile 122.4(又是冷缓存:恢复步骤 <1 s,连续两轮)。
 
 ## 2026-11-01 · 统计 JTOL 进 GUI / 手机、带音统计运行提速、PAM4 DCD 读低结案(feat/stat-jtol-gui-dcd)
 
