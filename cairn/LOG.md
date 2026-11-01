@@ -12,6 +12,8 @@
   25 mV 1.517 对 1.724。两份:大噪声下按原始样本符号判跳变(最可能,未建),及静态对上后的动态那份。ROADMAP #44。
 - 文档漂移:clock_profile.md、pitfalls、statistical.py 注释里"电平取在脉冲峰值"加日期更正;派生引用 103 处成立。
 - 验证:只改工作流、文档与注释;ruff 通过,`test_docs_fresh` / `example_drift derived` 见提交。
+- CI(PR #132,头 97f01ef,全绿):test 28.5 分钟、examples 19.4、Android 14.8;Windows PyInstaller 3.0、**Nuitka 26 分钟(clcache 3678 / 3679 命中)**、
+  onefile 121(冷:落到旧镜像 20261021,这条 onefile 链此前没存过)。镜像在 20261021 / 20261030 之间按作业轮换,同时有两套链,各自要冷一次。
 
 ## 2026-11-01 · 时域在锁定点取初值、训练段电平换挡;NRZ SJ 猎振与 #44 同源(feat/level-warmup-nrz-sj)
 
