@@ -106,7 +106,7 @@ def test_phase_ui_reads_the_bathtub_where_it_is_defined():
     on NRZ. On PAM4 too since the time engine's levels adapt to where it
     samples (dLev, ROADMAP P2 #31): the engine's own read and the lane's at
     0 both hold the thresholds at the lock. With the levels held at the pulse
-    peak (``level_adapt: none``) the engine's own read keeps them there while
+    peak (``level_adapt: none``, ``init: cursor``) the engine's own read keeps them there while
     the lane at 0 has them adapted on the lock, two samples on, and reads
     lower (ROADMAP P2 #30)."""
     from halo_serdes.channel import ChannelModel
@@ -130,7 +130,7 @@ def test_phase_ui_reads_the_bathtub_where_it_is_defined():
     assert m0.extras["jitter_sigma_ui"] > 0.02
     assert run_statistical(ms, phase_ui=0.0).ber == pytest.approx(m0.ber, rel=1e-12)
     held = dataclasses.replace(ms, rx=dataclasses.replace(
-        ms.rx, dfe=dataclasses.replace(ms.rx.dfe, level_adapt="none")))
+        ms.rx, dfe=dataclasses.replace(ms.rx.dfe, level_adapt="none", init="cursor")))
     h0 = run_statistical(held)
     assert 1.0 < h0.ber / run_statistical(held, phase_ui=0.0).ber < 1.5
 
