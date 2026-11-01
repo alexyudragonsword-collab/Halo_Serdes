@@ -59,9 +59,25 @@ Non-LTI approximations (each cross-checked against the time engine):
   its own -- and comes in as noise that follows the transitions
   (``tx_edge_jitter``): binned by the sampled symbol's neighbours, its own
   two edges exact, the rest linearised, per phase; it also randomises a
-  bang-bang detector's edges. White SJ and DCD are not modelled, nor an ADC
-  receiver's Mueller-Muller loop on white clocks (its own noise 0.0001-0.006
-  UI on the presets). A bang-bang loop's phase is not Gaussian about the
+  bang-bang detector's edges. A white clock's SJ tone (either side) goes
+  through the receiver's loop -- the ADC's Mueller-Muller loop too, which
+  white clocks otherwise leave out (its own noise 0.0001-0.006 UI on the
+  presets) -- and what is left of it, ``A |E(f)|``, is a swing of the
+  sampling instant read as its arcsine on top of the smear; a bang-bang
+  loop's gain and noise take the swing (it flattens the detector). DCD moves
+  the transmitter's own two edges of the sampled symbol by half of it with
+  their sign, exactly, and the rest linearised; a mixed-signal receiver's
+  adapting levels sit at the offset it leaves and its DFE's first tap takes
+  the part that follows the previous symbol (``stat_noise.dcd_absorbed``).
+  Against the time engine on independent symbols (2026-11-01): the 224G ADC
+  preset 0.85-1.01x under SJ, 0.79 / 0.87x under DCD (0.23-0.78x left out);
+  PAM4 32G 0.61 / 0.85x under SJ, 0.30 / 0.56x under 0.12 / 0.08 UI of DCD;
+  NRZ 16G 0.26-0.65x under 0.05-0.1 UI of SJ above its loop (0.04-0.27x left
+  out) -- its hunting under the tone grows 11 % in the kernel, 2-4 % here,
+  and the pattern-phase factor is left out where the tone swings the loop
+  more than its noise -- and 0.86-0.90x under DCD (ROADMAP P2 #45). A tone
+  the loop must follow faster than ~0.4 of its slew, or a phase error past
+  0.1 UI RMS, slips the kernel's cycles: warned, not modelled. A bang-bang loop's phase is not Gaussian about the
   lock: its detector saturates, so beyond ~2 sigma the density's tails are
   exponential and heavier on the side that saturates first (the late side
   on the NRZ 16G preset: 3-7x a Gaussian's mass 0.23 UI out). Since
@@ -290,13 +306,14 @@ from .stat_pr import (  # noqa: F401
 )
 from .stat_noise import (  # noqa: F401
     adc_noise_sigma, _convolve_at, _dac_cursors, dac_noise_at_slicer, _EXACT_EDGES,
-    gaussian_kernel, tx_edge_jitter, tx_noise_covariance, TxEdgeJitter,
+    dcd_absorbed, gaussian_kernel, tx_edge_jitter, tx_noise_covariance, TxEdgeJitter,
 )
 from .stat_loop import (  # noqa: F401
     _BB_DAMPING_WARN, _bb_edge_stats, _bb_mean_curve, _bb_mean_output, _bb_pairs, _bb_transitions,
     _ffe_lms_track, _lock_position, _MM_HOLD_SIGMAS, _over_run, _pattern_period, _pulse_at,
     _RUN_POINTS, _RUN_STEADY_WARN, _sampling_jitter_ui, _smeared_at, _smeared_with,
-    _warn_if_mm_cannot_hold, _warn_if_run_short_of_steady, _warn_if_slew_limited,
+    bb_edge_jitter_ui, sj_phase_offsets, sj_residual_ui, sj_tones,
+    _warn_if_mm_cannot_hold, _warn_if_run_short_of_steady, _warn_if_slew_limited, _warn_if_tone_slips,
     _warn_if_underdamped,
 )
 from .stat_pattern_phase import (  # noqa: F401
@@ -546,10 +563,22 @@ def _stat_setup(cfg: LinkConfig, channel: ChannelModel | None = None,
     edge_jit = None
     jit_span = 0.0
     pattern_base = pattern_sigma
-    if cfg.tx.clock.rj_ui > 0.0:
+    if cfg.tx.clock.rj_ui > 0.0 or cfg.tx.clock.dcd_ui > 0.0:
         at_peak = peak - int(np.argmax(np.abs(pulse.y)))
         tx_jit_phi = [tx_edge_jitter(cfg, tx_pipe, h_after_dac, osr, offset=at_peak + int(off))
                       for off in phi_offsets]
+        if cfg.tx.clock.dcd_ui > 0.0 and cfg.rx.arch == "mixed_signal":
+            # DCD's offset is deterministic, and what the receiver adapts takes
+            # part of it up: its levels each level's mean, its DFE's first tap
+            # the part that follows the previous symbol (stat_noise.dcd_absorbed).
+            # Left in, the NRZ 16G preset read 7x the time engine at 0.1 UI
+            lv_tx = np.asarray(tx_pipe.levels(np.arange(cfg.n_levels)), dtype=np.float64)
+            prev_axis = (1 + _BINNED_NEIGHBOURS.index(1)
+                         if n_dfe > 0 and cfg.rx.dfe.adapt != "none" and 1 in _BINNED_NEIGHBOURS
+                         else None)
+            tx_jit_phi = [dcd_absorbed(t, lv_tx, level_probabilities(cfg.modulation),
+                                       cfg.rx.dfe.level_adapt == "sign_sign", prev_axis)
+                          for t in tx_jit_phi]
         # the voltage grid is sized on the UI around the pulse peak wherever
         # the phase axis is centred, so a reading set from outside
         # (phase_ui) lands on the same grid as the bathtub it is read from
@@ -663,7 +692,16 @@ def _stat_setup(cfg: LinkConfig, channel: ChannelModel | None = None,
     # high half a sample off the lock -- most of what example 31's profile
     # clocks read high with the taps held (ROADMAP P2 #28). The slicer's
     # thresholds are held with the taps (P2 #29).
-    held = sigma_ui > 0
+    # sinusoidal jitter (either clock): what the loop leaves of each tone is a
+    # swing of the sampling instant, read as its arcsine on top of the smear
+    # (stat_loop.sj_phase_offsets); a third tone and on joins the Gaussian
+    sj_resid = sj_residual_ui(cfg, loop_sol)
+    sj_d, sj_w, sj_rest = sj_phase_offsets(sj_resid, osr)
+    sj_span = float(np.max(np.abs(sj_d)))
+    sj_rms = float(np.sqrt(sum(a * a / 2.0 for a, _ in sj_resid)))
+    if sj_rest > 0.0:
+        sigma_ui = float(np.hypot(sigma_ui, sj_rest))
+    held = sigma_ui > 0 or sj_span > 0
     # the phase whose main cursor sets the slicer's levels: the mixed-signal
     # time engine takes them once, at the pulse peak, where its bang-bang
     # loop does not sample (the PAM4 32G preset locks 2 samples after it);
@@ -686,7 +724,7 @@ def _stat_setup(cfg: LinkConfig, channel: ChannelModel | None = None,
         """The phase as first computed is already what the smear holds there."""
         return not holds or (i == i_lock and i_level == i_lock)
 
-    smears = (tuple(loop_sol.sigma_over_run_ui)
+    smears = (tuple(float(np.hypot(sg, sj_rest)) for sg in loop_sol.sigma_over_run_ui)
               if loop_sol is not None and loop_sol.sigma_over_run_ui else (sigma_ui,))
     # A bang-bang loop's phase is not Gaussian about the lock: its detector
     # saturates, so the density's tails are exponential and asymmetric
@@ -698,10 +736,10 @@ def _stat_setup(cfg: LinkConfig, channel: ChannelModel | None = None,
         span = float(min(8.0 * max(smears) * osr, osr / 2.0))
         bb_u = np.linspace(-span, span, 1601)
         bb_curve = _bb_mean_curve(pulse_pre, osr, cfg.rx.noise_rms, swing, levels_norm, bb_u,
-                                  extra_edge_ui=float(cfg.tx.clock.rj_ui),
+                                  extra_edge_ui=bb_edge_jitter_ui(cfg),
                                   level_probs=level_probabilities(cfg.modulation))
     sub = 4 if sigma_ui * osr < 1.0 else 2 if sigma_ui * osr < 2.0 else 1
-    fine_span = (int(min(osr // 2, np.ceil(8.0 * max(smears) * osr)))
+    fine_span = (int(min(osr // 2, np.ceil(8.0 * max(smears) * osr + sj_span)))
                  if held and (holds or sub > 1) else 0)
     lo_fix, hi_fix = max(i_lock - fine_span, 0), min(i_lock + fine_span, osr - 1)
     tasks = [(i_lock, False, 0.0)] + [(i, False, 0.0) for i in range(osr) if i != i_lock]
@@ -1000,7 +1038,13 @@ def _stat_phase(ctx: SimpleNamespace, pi: int, fixed: bool, frac: float) -> None
             lv = levels_norm * main
             order = np.argsort(lv)
             lv_sorted = lv[order]
-            lt = (levels_norm * thr_main)[order]
+            lt_lv = levels_norm * thr_main
+            jit_lv = tx_jit_phi[i_level] if tx_jit_phi is not None else None
+            if jit_lv is not None and jit_lv.level_mean is not None:
+                # DCD: adapting levels sit at their mean offset, the
+                # thresholds between them (stat_noise.dcd_absorbed)
+                lt_lv = lt_lv + jit_lv.level_mean
+            lt = lt_lv[order]
             if pos_lv is not None:
                 # PAM6 pairs: the partner's level is a shift of the slicer
                 # tails, the bits its error costs the pair's own (P2 #33)
@@ -1210,6 +1254,7 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
         "noise_sigma", "osr", "own_clock", "pattern_phase", "peak", "phi_offsets", "pr_active",
         "pulse", "pulse_pre", "ser_phi", "ser_sym_phi", "sigma_ui", "smears", "swing", "tx_jit_phi",
         "v_centers", "voters", "x_drift", "x_slicer"))
+    sj_d, sj_w, sj_rms, sj_resid = ctx.sj_d, ctx.sj_w, ctx.sj_rms, ctx.sj_resid
     # the curves the smear is read from: the phases as computed, before it
     ber_raw, ser_raw = ber_phi.copy(), ser_phi.copy()
     if fine_span:
@@ -1230,6 +1275,14 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
         ser_phi = np.convolve(sp, k, mode="valid")
         if pr_active:
             ser_sym_phi = np.convolve(np.pad(ser_sym_phi, pad, mode="edge"), k, mode="valid")
+    if sj_d.size > 1:
+        # the tones' swing on the bathtub: its arcsine, ends held as the smear pads them
+        def swung(curve):
+            return np.sum([w * np.interp(phi_offsets + d, phi_offsets, curve)
+                           for d, w in zip(sj_d, sj_w)], axis=0)
+        ber_phi, ser_phi = swung(ber_phi), swung(ser_phi)
+        if pr_active:
+            ser_sym_phi = swung(ser_sym_phi)
 
     best = int(np.argmin(ber_phi))
     ber, ser = float(ber_phi[best]), float(ser_phi[best])
@@ -1266,9 +1319,17 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
             x, cb, cs = ((fine_x, ber_fine, ser_fine) if fine_span
                          else (phi_offsets, ber_raw, ser_raw))
             if bb_curve is not None:
-                densities = [bb_stationary_density(bb_u, bb_curve, sg * osr) for sg in smears]
-                ber = float(np.mean([_smeared_with(cb, x, lock, bb_u, d) for d in densities]))
-                ser = float(np.mean([_smeared_with(cs, x, lock, bb_u, d) for d in densities]))
+                # under a tone the loop's noise meets the detector averaged over
+                # the swing (it flattens sooner): the density's well is that curve's
+                curve_sj = bb_curve
+                if sj_d.size > 1:
+                    curve_sj = np.sum([w * np.interp(bb_u + dj, bb_u, bb_curve)
+                                       for dj, w in zip(sj_d, sj_w)], axis=0)
+                densities = [bb_stationary_density(bb_u, curve_sj, sg * osr) for sg in smears]
+                ber = float(np.mean([sum(w * _smeared_with(cb, x, lock + dj, bb_u, d)
+                                         for dj, w in zip(sj_d, sj_w)) for d in densities]))
+                ser = float(np.mean([sum(w * _smeared_with(cs, x, lock + dj, bb_u, d)
+                                         for dj, w in zip(sj_d, sj_w)) for d in densities]))
                 bb_density = np.mean(densities, axis=0)
                 # the phase and the data are not independent on NRZ with a
                 # DFE: the runs that vote the loop late are the runs whose
@@ -1283,7 +1344,12 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
                 # Nor where the loop is underdamped enough to slip (the warning
                 # below): no stationary joint to find (kp_shift 8 on the NRZ 16G
                 # preset, 600 steps unconverged, 49 s, factor 1)
+                # Nor where a tone the loop leaves swings it more than its own
+                # noise: the factor is the chain over the read without the tone,
+                # and on a read with it collapsed (NRZ 16G preset, 0.5 / 1 UI at
+                # 1 GHz: 6e-4 / 2e-6, the BER falling as the tone grew)
                 votes_hold = (loop_sol.sigma_untracked_ui <= loop_sol.sigma_self_ui
+                              and sj_rms <= loop_sol.sigma_self_ui
                               and (loop_sol.damping is None
                                    or loop_sol.damping >= _BB_DAMPING_WARN))
                 if (n_levels == 2 and n_dfe > 0 and not pr_active and mlsd_mem == 0 and kp_s > 0
@@ -1316,14 +1382,16 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
                     pattern_phase = _pattern_phase_factor(
                         pulse, pulse_pre, osr, lock, noise_sigma, swing, n_dfe, bb_u, bb_density,
                         kp_s, edge_jitter=_jit_at, xtalk_var=x_var,
-                        edge_jitter_ui=float(cfg.tx.clock.rj_ui), ki=ki_s)
+                        edge_jitter_ui=bb_edge_jitter_ui(cfg), ki=ki_s)
                     f_pp = (pattern_phase.factor if own_clock and voters <= 1
                             else pattern_phase.factor_marginal if voters <= 1 else 1.0)
                     ber *= f_pp
                     ser *= f_pp
             else:
-                ber = float(np.mean([_smeared_at(cb, x, lock, sg * osr) for sg in smears]))
-                ser = float(np.mean([_smeared_at(cs, x, lock, sg * osr) for sg in smears]))
+                ber = float(np.mean([sum(w * _smeared_at(cb, x, lock + dj, sg * osr)
+                                         for dj, w in zip(sj_d, sj_w)) for sg in smears]))
+                ser = float(np.mean([sum(w * _smeared_at(cs, x, lock + dj, sg * osr)
+                                         for dj, w in zip(sj_d, sj_w)) for sg in smears]))
         best = int(np.argmin(np.abs(phi_offsets - lock)))
         lock_ui = lock / osr
     loop_load = None
@@ -1356,6 +1424,7 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
         extras={"peak": peak, "noise_sigma": noise_sigma,
                 "level_sigma": level_sigma,
                 "jitter_sigma_ui": sigma_ui,
+                "sj_residual_ui": tuple(sj_resid),
                 "clock_loop": loop_sol,
                 # the bang-bang sampler's phase about the lock [UI] and its
                 # density [1/UI] the read was taken with, and the detector's

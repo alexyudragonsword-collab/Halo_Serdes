@@ -210,7 +210,9 @@ def _pattern_phase_factor(pulse: Waveform, pulse_pd: Waveform, osr: int, lock: f
                 if jit is None:
                     h.update(b"none")
                     continue
-                for part in (jit.sigma, jit.rest, jit.step, jit.phi, jit.weight):
+                for part in (jit.sigma, jit.rest, jit.step, jit.phi, jit.weight,
+                             0.0 if jit.phi_fall is None else jit.phi_fall,
+                             0.0 if jit.shift is None else jit.shift):
                     h.update(np.ascontiguousarray(np.asarray(part, dtype=np.float64)).tobytes())
         if xtalk_var is not None:
             pk = int(np.argmax(np.abs(np.asarray(pulse.y))))

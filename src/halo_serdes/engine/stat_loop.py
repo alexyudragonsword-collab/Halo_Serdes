@@ -17,6 +17,7 @@ import numpy as np
 
 from ..cdr.linear import (
     BbEdgeStats, ErrorResponse, LoopParams, LoopSolution, bb_loop_fixed_point, error_response,
+    loop_gain,
     lock_offset_samples, mm_hold_range_ui, mm_loop_solution, mm_pd_statistics,
 )
 from ..channel.response import pulse_from_impulse
@@ -89,7 +90,11 @@ def _smeared_at(curve: np.ndarray, phi: np.ndarray, center: float, sigma: float)
     linearly between its phases and held at its ends (as the smear of the
     bathtub pads them). Linear, so the read stays an average over phases --
     a drifting aggressor is the mean of its skews' reads; in log between the
-    phases a steep bathtub would read up to ~10 % lower."""
+    phases a steep bathtub would read up to ~10 % lower. ``sigma`` 0 reads
+    the curve at ``center``."""
+    if sigma <= 0.0:
+        return float(np.interp(center, np.asarray(phi, dtype=np.float64),
+                               np.asarray(curve, dtype=np.float64)))
     x = np.linspace(center - 8.0 * sigma, center + 8.0 * sigma, 2001)
     v = np.interp(x, np.asarray(phi, dtype=np.float64), np.asarray(curve, dtype=np.float64))
     g = np.exp(-0.5 * ((x - center) / sigma) ** 2)
@@ -212,8 +217,13 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
     from ..tx.clock import ClockProfile
 
     clocks = (cfg.tx.clock, cfg.rx.clock)
-    if (cfg.rx.arch == "adc_dsp" or not loop) and all(c.kind != "profile" for c in clocks):
-        # white on both sides, ADC or no loop: the receiver's RJ smears the sampling instant
+    tones = sj_tones(cfg)
+    if not loop and all(c.kind != "profile" for c in clocks):
+        # no loop (the static engine): the receiver's RJ smears the sampling
+        # instant, and every tone is left whole (sj_residual)
+        return float(cfg.rx.clock.rj_ui), None
+    if cfg.rx.arch == "adc_dsp" and all(c.kind != "profile" for c in clocks) and not tones:
+        # white on both sides, ADC: the receiver's RJ smears the sampling instant
         return float(cfg.rx.clock.rj_ui), None
     # The loop tracks the *difference* between the two clocks, so both ride
     # through the same error response and their untracked powers add.
@@ -259,7 +269,7 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
         if k_pd <= 0:
             # no timing gradient: the loop does not move, nothing is tracked
             return untracked(lambda f: np.ones_like(np.asarray(f, dtype=np.float64))), None
-        sol = mm_loop_solution(lp, k_pd, pd_noise, untracked)
+        sol = mm_loop_solution(lp, k_pd, pd_noise, untracked, tones=tones)
         # what moves the loop itself: its own noise and the clock it follows
         # late; jitter above its bandwidth only blurs the timing function
         lagged = untracked(lambda f: error_response(f, lp, k_pd)
@@ -275,13 +285,13 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
         level_probs = level_probabilities(cfg.modulation)
         edge = _bb_edge_stats(cfg, pulse_pd, levels_norm, swing, noise_sigma, level_probs)
         pairs = _bb_pairs(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
-                          extra_edge_ui=float(cfg.tx.clock.rj_ui), level_probs=level_probs)
+                          extra_edge_ui=bb_edge_jitter_ui(cfg), level_probs=level_probs)
         sol = bb_loop_fixed_point(
             lp, untracked,
             transitions=_bb_transitions(pulse_pd, cfg.osr, noise_sigma, swing, levels_norm,
                                         pairs=pairs, level_probs=level_probs),
             mean_output=lambda sigma_e: _bb_mean_output(pairs, levels_norm.size, sigma_e),
-            period=_pattern_period(cfg), voters=voters, edge=edge)
+            period=_pattern_period(cfg), voters=voters, edge=edge, tones=tones)
     # the same loop once it has forgotten its start: what a longer run, and
     # the link in service, settles at
     steady = float(np.hypot(untracked(lambda f, k=sol.k_pd: error_response(f, lp, k)),
@@ -294,16 +304,62 @@ def _sampling_jitter_ui(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.nda
     for p in profs:
         if p is not None:
             _warn_if_slew_limited(p, lp, f_lo, sol, cfg)
-    if cfg.rx.arch != "adc_dsp" and sol.sigma_ui > 0.1:
+    if cfg.rx.arch != "adc_dsp":
+        _warn_if_tone_slips(lp, sol, tones)
+    total = float(np.sqrt(sol.sigma_ui ** 2 + sum(a * a / 2.0 for a, _ in sol.sj_residual)))
+    if cfg.rx.arch != "adc_dsp" and total > 0.1:
         import warnings
 
         warnings.warn(
-            f"the bang-bang detector sees {sol.sigma_ui:.3f} UI RMS of phase error "
-            "(clock jitter it cannot track plus its own hunting); its linearisation "
-            "assumes a small error, and the kernel loses lock from about 0.1 UI "
-            "(measured: locked at 0.08, slipping at 0.14) -- the statistical engine's "
+            f"the bang-bang detector sees {total:.3f} UI RMS of phase error "
+            "(clock jitter it cannot track, what it leaves of any SJ tone, plus its own "
+            "hunting); its linearisation assumes a small error, and the kernel loses lock "
+            "from about 0.1 UI (measured: locked at 0.08, slipping at 0.14; under SJ "
+            "locked at 0.095, slipping at 0.118) -- the statistical engine's "
             "sampling-jitter model is noise-limited here", stacklevel=3)
     return sol.sigma_ui, sol
+
+
+def bb_edge_jitter_ui(cfg: LinkConfig) -> float:
+    """The transmitter's edge jitter as the Gaussian-edge parts of the
+    bang-bang model take it [UI]: RJ, and DCD's +-half as its RMS."""
+    return float(np.hypot(cfg.tx.clock.rj_ui, cfg.tx.clock.dcd_ui / 2.0))
+
+
+def sj_tones(cfg: LinkConfig) -> tuple[tuple[float, float], ...]:
+    """The sinusoidal jitter on either clock, ``(amplitude [UI], frequency
+    [Hz])``: the transmitter's moves its edges, the receiver's its sampling
+    instants, and the loop tracks their difference, so both go through the
+    same error response (as the white-kind terms ride on a profile clock too).
+    The time engine starts both at phase zero; taken here as independent
+    tones, so equal ones on the two sides are not seen to cancel."""
+    return tuple((float(c.sj_ui), float(c.sj_freq)) for c in (cfg.tx.clock, cfg.rx.clock)
+                 if c.sj_ui > 0.0 and c.sj_freq > 0.0)
+
+
+def sj_residual_ui(cfg: LinkConfig, loop_sol: LoopSolution | None) -> tuple[tuple[float, float], ...]:
+    """What is left of each tone on the sampling instant: the loop's
+    ``sj_residual``, or the tones whole without a loop."""
+    if loop_sol is not None:
+        return tuple(loop_sol.sj_residual)
+    return sj_tones(cfg)
+
+
+def sj_phase_offsets(resid: tuple[tuple[float, float], ...], osr: int,
+                     n_theta: int = 32) -> tuple[np.ndarray, np.ndarray, float]:
+    """The tones' swing as points to average a read over: offsets [samples],
+    their weights, and the RMS [UI] of any beyond the second, which the
+    caller folds into its Gaussian smear. One tone is its arcsine on an even
+    grid of its phase, two the grid of both phases; ``(0, 1)`` without one."""
+    amps = [a for a, _ in resid if a > 0.0]
+    if not amps:
+        return np.zeros(1), np.ones(1), 0.0
+    th = (np.arange(n_theta) + 0.5) * (2.0 * np.pi / n_theta)
+    d = amps[0] * osr * np.sin(th)
+    if len(amps) > 1:
+        d = (d[:, None] + amps[1] * osr * np.sin(th)[None, :]).ravel()
+    rest = float(np.sqrt(sum(a * a / 2.0 for a in amps[2:])))
+    return d, np.full(d.size, 1.0 / d.size), rest
 
 
 def _pattern_period(cfg: LinkConfig, max_symbols: int = 1 << 21) -> np.ndarray | None:
@@ -357,7 +413,8 @@ def _bb_edge_stats(cfg: LinkConfig, pulse_pd: Waveform, levels_norm: np.ndarray,
 
     def at(pos: float) -> BbEdgeStats:
         return BbEdgeStats.build(y, cfg.osr, pos, half, amps, noise_sigma,
-                                 edge_ui=float(cfg.tx.clock.rj_ui), periodic=periodic)
+                                 edge_ui=float(cfg.tx.clock.rj_ui), periodic=periodic,
+                                 dcd_ui=float(cfg.tx.clock.dcd_ui))
 
     edge = at(lock)
     m0 = edge.mean_output()
@@ -628,6 +685,28 @@ def _warn_if_underdamped(sol: LoopSolution) -> None:
         "cycles at 0.17 and held at 0.34 (NRZ 16G preset, kp_shift 8 / 7); this engine's "
         "loop model converges to a finite error here and its BER is optimistic -- lower "
         "kp_shift (a larger proportional step) or raise ki_shift", stacklevel=3)
+
+
+def _warn_if_tone_slips(loop: LoopParams, sol: LoopSolution,
+                        tones: tuple[tuple[float, float], ...]) -> None:
+    """A bang-bang loop following a tone moves at ``2 pi f A |H(f)|`` (peak),
+    which must stay well inside the ``kp / 2`` per update it can make
+    (``_warn_if_slew_limited``). On the NRZ 16G preset at 12 mV: locked at
+    0.19 / 0.35 / 0.38 of it (0.05 UI at 1 GHz, 0.1 UI at 300 MHz and 2 GHz),
+    slipping at 0.41 (0.3 UI at 50 MHz, the loop's residual model 0.10 UI,
+    the kernel's 2 UI) and 0.50; the warning starts at 0.4."""
+    import warnings
+
+    limit = loop.kp_ui * 0.5
+    for a_in, f in tones:
+        L = loop_gain(np.array([f]), loop, sol.k_pd)[0]
+        rate = 2.0 * np.pi * f * a_in * float(abs(L / (1.0 + L))) / loop.f_update
+        if rate > 0.4 * limit:
+            warnings.warn(
+                f"an SJ tone at {f / 1e6:.1f} MHz has the bang-bang loop follow it at "
+                f"{rate:.2e} UI per update against the {limit:.2e} it can make: the kernel "
+                "slips cycles from about 0.4 of that (measured 0.41 slipping, 0.38 locked), "
+                "where the statistical engine's linearised loop does not apply", stacklevel=4)
 
 
 def _warn_if_slew_limited(prof, loop: LoopParams, f_lo: float, sol: LoopSolution,

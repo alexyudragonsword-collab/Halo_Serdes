@@ -10,6 +10,8 @@ importable from there as before).
 
 from __future__ import annotations
 
+import dataclasses
+
 from dataclasses import dataclass
 
 import numpy as np
@@ -94,13 +96,24 @@ class TxEdgeJitter:
     step: np.ndarray
     phi: np.ndarray
     weight: np.ndarray
+    #: duty-cycle distortion (``tx.clock.dcd_ui``): rising edges come late and
+    #: falling ones early by half of it. ``phi`` is then a rising edge's,
+    #: ``phi_fall`` a falling one's; ``shift`` the mean the other edges' DCD
+    #: adds at the sample per bin (linearised) -- None / zeros without it
+    phi_fall: np.ndarray | None = None
+    shift: np.ndarray | None = None
+    #: each level's mean DCD offset [V], where adapting levels move to
+    #: (``dcd_absorbed``); the slicer's thresholds sit between them
+    level_mean: np.ndarray | None = None
 
     def kernel(self, combo: tuple, dv: float, scale: float = 1.0) -> tuple[np.ndarray, int]:
         """PDF on a ``dv`` grid of the two own edges' contribution for one bin,
         voltages divided by ``scale``: ``(pdf, lo)`` with ``pdf[0]`` at bin ``lo``."""
         out, lo = np.ones(1), 0
         for e in range(self.phi.shape[0]):
-            x = self.step[combo + (e,)] * self.phi[e] / (scale * dv)
+            st = self.step[combo + (e,)]
+            ph = self.phi[e] if self.phi_fall is None or st >= 0.0 else self.phi_fall[e]
+            x = st * ph / (scale * dv)
             if not np.any(x):
                 continue
             k_lo = int(np.floor(x.min()))
@@ -111,6 +124,11 @@ class TxEdgeJitter:
             np.add.at(pdf, i0, self.weight * (1.0 - frac))
             np.add.at(pdf, i0 + 1, self.weight * frac)
             out, lo = np.convolve(out, pdf), lo + k_lo
+        if self.shift is not None and self.shift[combo] != 0.0:
+            pos = float(self.shift[combo]) / (scale * dv)
+            k_lo = int(np.floor(pos))
+            frac = pos - k_lo
+            out, lo = np.convolve(out, np.array([1.0 - frac, frac])), lo + k_lo
         return out, lo
 
 
@@ -119,6 +137,8 @@ def tx_edge_jitter(cfg: LinkConfig, tx_pipe, h: np.ndarray, osr: int, offset: in
                    n_pre: int = 24, n_post: int = 64, n_sigma: float = 8.0,
                    n_eps: int = 321) -> TxEdgeJitter | None:
     """Slicer noise of the transmitter's white edge jitter (``tx.clock.rj_ui``)
+    and duty-cycle distortion (``dcd_ui``: rising edges late, falling ones
+    early by half of it, as ``tx/jitter.py`` places them)
     per level and per pattern of the symbols at ``neighbours``, as
     ``slicer_sigma_binned`` lays them out; None without it.
 
@@ -142,7 +162,8 @@ def tx_edge_jitter(cfg: LinkConfig, tx_pipe, h: np.ndarray, osr: int, offset: in
     what the phase smear it replaces stood for.
     """
     rj = cfg.tx.clock.rj_ui
-    if rj <= 0.0:
+    dcd = cfg.tx.clock.dcd_ui
+    if rj <= 0.0 and dcd <= 0.0:
         return None
     p = pulse_from_impulse(Waveform(h, cfg.dt), osr).y
     pk = int(np.argmax(np.abs(p))) + int(offset)
@@ -196,16 +217,112 @@ def tx_edge_jitter(cfg: LinkConfig, tx_pipe, h: np.ndarray, osr: int, offset: in
         var_all[combo] = floor + float(np.sum(lin))
         var_rest[combo] = floor + float(np.sum(lin[~exact]))
         step[combo] = [mean_step[ms == m][0] for m in _EXACT_EDGES]
+    shift = None
+    if dcd > 0.0:
+        # every other edge's DCD, linearised: edge m moves by +-dcd/2 UI with
+        # its step's sign, so it adds -|step_m| h_m dcd osr / 2 at the sample
+        # -- a mean (the eye's DC moves) and the spread of |step| over the
+        # data the bin leaves free (exact over the three largest free
+        # symbols, the rest Gaussian); edges taken independent
+        half = dcd * osr / 2.0
+        hbar = 0.5 * (h_at(idx) + h_at(idx + 1))
+        far = np.flatnonzero(~exact & (np.abs(hbar) > 0.0))
+        from scipy.special import erf
+
+        free_d = []                                      # per far edge: (free coefficients)
+        for i_e in far:
+            dj = d_at(ms[i_e] + np.arange(-span, span + 1))
+            js = np.arange(-span, span + 1)
+            free = np.array([dj[t] for t in range(js.size) if js[t] not in offs])
+            free = free[np.abs(free) > 1e-12]
+            free_d.append(free[np.argsort(-np.abs(free))])
+        shift = np.zeros(shape)
+        for combo in np.ndindex(*shape):
+            mean_step = coef @ (lv[list(combo)] - mu)
+            m_abs = 0.0
+            v_abs = 0.0
+            for i_e, free in zip(far, free_d):
+                big, small = free[:3], free[3:]
+                sg = float(np.sqrt(var_a * np.sum(small ** 2)))
+                xs = np.zeros(1) + mean_step[i_e]
+                wx = np.ones(1)
+                for c in big:                              # enumerate the largest free symbols
+                    xs = (xs[:, None] + c * (lv - mu)[None, :]).ravel()
+                    wx = (wx[:, None] * pw[None, :]).ravel()
+                if sg > 0.0:
+                    e1 = (sg * np.sqrt(2.0 / np.pi) * np.exp(-0.5 * (xs / sg) ** 2)
+                          + xs * erf(xs / (np.sqrt(2.0) * sg)))
+                    e2 = xs ** 2 + sg ** 2
+                else:
+                    e1, e2 = np.abs(xs), xs ** 2
+                ea, ea2 = float(np.sum(wx * e1)), float(np.sum(wx * e2))
+                m_abs += hbar[i_e] * ea
+                v_abs += hbar[i_e] ** 2 * max(ea2 - ea * ea, 0.0)
+            shift[combo] = -half * m_abs
+            var_all[combo] += half ** 2 * v_abs
+            var_rest[combo] += half ** 2 * v_abs
     # the two own edges, exactly: the step response at the sample, displaced
+    # (by RJ on a Gaussian grid, and by DCD with the edge's sign)
     s = np.cumsum(h)
-    sig = rj * osr                                        # displacement sigma [samples]
-    eps = np.linspace(-n_sigma, n_sigma, n_eps) * sig
-    w = np.exp(-0.5 * (eps / sig) ** 2)
-    w /= w.sum()
+    if rj > 0.0:
+        sig = rj * osr                                    # displacement sigma [samples]
+        eps = np.linspace(-n_sigma, n_sigma, n_eps) * sig
+        w = np.exp(-0.5 * (eps / sig) ** 2)
+        w /= w.sum()
+    else:
+        eps, w = np.zeros(1), np.ones(1)
     grid = np.arange(s.size)
-    phi = np.stack([np.interp(pk - m * osr - eps, grid, s, left=0.0, right=s[-1])
-                    - np.interp(pk - m * osr, grid, s, left=0.0, right=s[-1]) for m in _EXACT_EDGES])
-    return TxEdgeJitter(sigma=np.sqrt(var_all), rest=np.sqrt(var_rest), step=step, phi=phi, weight=w)
+
+    def own(delay: float) -> np.ndarray:
+        return np.stack([np.interp(pk - m * osr - eps - delay, grid, s, left=0.0, right=s[-1])
+                         - np.interp(pk - m * osr, grid, s, left=0.0, right=s[-1])
+                         for m in _EXACT_EDGES])
+
+    if dcd > 0.0:
+        phi, phi_fall = own(dcd * osr / 2.0), own(-dcd * osr / 2.0)
+    else:
+        phi, phi_fall = own(0.0), None
+    return TxEdgeJitter(sigma=np.sqrt(var_all), rest=np.sqrt(var_rest), step=step, phi=phi,
+                        weight=w, phi_fall=phi_fall, shift=shift)
+
+
+def dcd_absorbed(jit: TxEdgeJitter | None, levels: np.ndarray, probs: np.ndarray,
+                 per_level: bool, prev_axis: int | None) -> TxEdgeJitter | None:
+    """``jit`` with what an adapting receiver does about DCD's deterministic
+    offset (the other edges' mean, ``shift``, and the two own edges' over
+    the RJ grid): the part linear in the previous symbol is taken up by a
+    DFE's first tap (``prev_axis``: the bin axis that holds that symbol), and
+    with adapting levels (``per_level``) each level moves to its mean, which
+    ``level_mean`` carries -- the offset stays, the thresholds move between
+    the moved levels. Taking each level's mean out of the offset instead read
+    the PAM4 32G preset 0.23-0.47x the time engine (its inner levels move by
+    different amounts, so the eye's openings change). Unchanged without DCD."""
+    if jit is None or jit.shift is None or (not per_level and prev_axis is None):
+        return jit
+    shape = jit.shift.shape
+    own = np.zeros(shape)
+    for combo in np.ndindex(*shape):
+        for e in range(jit.phi.shape[0]):
+            st = float(jit.step[combo + (e,)])
+            ph = jit.phi[e] if jit.phi_fall is None or st >= 0.0 else jit.phi_fall[e]
+            own[combo] += st * float(np.sum(jit.weight * ph))
+    d = jit.shift + own
+    lv = np.asarray(levels, dtype=np.float64)
+    pw = np.asarray(probs, dtype=np.float64)
+    w = np.ones(shape)
+    for ax in range(len(shape)):
+        w = w * pw.reshape([-1 if i == ax else 1 for i in range(len(shape))])
+    adj = np.zeros(shape)
+    if prev_axis is not None:
+        x = lv - float(np.sum(pw * lv))
+        xb = x.reshape([-1 if i == prev_axis else 1 for i in range(len(shape))])
+        alpha = float(np.sum(w * d * xb) / np.sum(w * xb * xb))
+        adj -= alpha * np.broadcast_to(xb, shape)
+    level_mean = None
+    if per_level:
+        rest = tuple(range(1, len(shape)))
+        level_mean = np.sum(w * (d + adj), axis=rest) / np.sum(w, axis=rest)
+    return dataclasses.replace(jit, shift=jit.shift + adj, level_mean=level_mean)
 
 
 def _convolve_at(pdf: np.ndarray, ker: np.ndarray, lo: int) -> np.ndarray:

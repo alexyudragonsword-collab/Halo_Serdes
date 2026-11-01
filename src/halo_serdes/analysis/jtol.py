@@ -37,7 +37,8 @@ class JtolResult:
                 f"{hi:.3f} UI at {self.freqs[-1]/1e6:.1f} MHz (0-pk)")
 
 
-def _ber_at(cfg: LinkConfig, sj_freq: float, sj_ui: float, channel) -> float:
+def _ber_at(cfg: LinkConfig, sj_freq: float, sj_ui: float, channel,
+            engine: str = "time", ffe_taps=None) -> float:
     from ..engine import run_time_link
 
     clock = dataclasses.replace(cfg.tx.clock, sj_ui=float(sj_ui), sj_freq=float(sj_freq))
@@ -47,6 +48,11 @@ def _ber_at(cfg: LinkConfig, sj_freq: float, sj_ui: float, channel) -> float:
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
+        if engine == "statistical":
+            from ..engine.statistical import run_statistical
+
+            kw = {} if ffe_taps is None else dict(ffe_taps=ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+            return float(run_statistical(c, channel=channel, **kw).ber)
         res = run_time_link(c, channel=channel)
     return res.ber.ber
 
@@ -54,7 +60,7 @@ def _ber_at(cfg: LinkConfig, sj_freq: float, sj_ui: float, channel) -> float:
 def jitter_tolerance(cfg: LinkConfig, freqs, ber_threshold: float = 1e-3,
                      amp_lo: float = 0.02, amp_hi: float = 2.0,
                      iters: int = 6, n_symbols: int | None = None,
-                     channel=None) -> JtolResult:
+                     channel=None, engine: str = "time", ffe_taps=None) -> JtolResult:
     """Tolerated SJ amplitude (0-pk UI) at each frequency for BER < threshold.
 
     For each frequency a binary search brackets the amplitude where BER crosses
@@ -62,6 +68,14 @@ def jitter_tolerance(cfg: LinkConfig, freqs, ber_threshold: float = 1e-3,
     tested amplitude passes); ``amp_lo`` is the floor (report 0 when the link
     fails even at the smallest amplitude). Use a moderate ``ber_threshold``
     (e.g. 1e-3) so a manageable ``n_symbols`` resolves it.
+
+    ``engine="statistical"`` reads each point from ``run_statistical``, which
+    takes the tone through the loop's error response since 2026-11-01: a
+    threshold such as 1e-12 that no simulation reaches. Its loop model is
+    linear, and from about 0.4 of the bang-bang loop's slew or 0.1 UI RMS of
+    phase error the kernel slips cycles where it reads a BER (it warns there),
+    so that side of a curve is the time engine's to say; ``ffe_taps``: an ADC
+    receiver's adapted FFE, handed to every point.
     """
     freqs = np.asarray(freqs, dtype=float)
     if n_symbols is not None:
@@ -72,8 +86,11 @@ def jitter_tolerance(cfg: LinkConfig, freqs, ber_threshold: float = 1e-3,
 
         channel = ChannelModel.from_config(cfg)
 
+    if engine not in ("time", "statistical"):
+        raise ValueError(f"engine must be 'time' or 'statistical', got {engine!r}")
+
     def passes(f, amp):
-        return _ber_at(cfg, f, amp, channel) < ber_threshold
+        return _ber_at(cfg, f, amp, channel, engine, ffe_taps) < ber_threshold
 
     tol = np.zeros(freqs.size)
     for i, f in enumerate(freqs):
