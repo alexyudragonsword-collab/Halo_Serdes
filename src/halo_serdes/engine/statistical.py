@@ -572,8 +572,6 @@ def _stat_setup(cfg: LinkConfig, channel: ChannelModel | None = None,
             # part of it up: its levels each level's mean, its DFE's first tap
             # the part that follows the previous symbol (stat_noise.dcd_absorbed).
             # Left in, the NRZ 16G preset read 7x the time engine at 0.1 UI
-            from .stat_pdf import _BINNED_NEIGHBOURS
-
             lv_tx = np.asarray(tx_pipe.levels(np.arange(cfg.n_levels)), dtype=np.float64)
             prev_axis = (1 + _BINNED_NEIGHBOURS.index(1)
                          if n_dfe > 0 and cfg.rx.dfe.adapt != "none" and 1 in _BINNED_NEIGHBOURS
