@@ -48,7 +48,9 @@ Non-LTI approximations (each cross-checked against the time engine):
   mixed-signal time engine takes them at the pulse peak, two samples before
   its bang-bang loop locks on the PAM4 32G preset -- held at the lock that
   preset read 0.70-0.95x the time engine, at the peak 0.94-1.15x (ROADMAP
-  P2 #30; whether that receiver should adapt its levels is ROADMAP P2 #31).
+  P2 #30; whether that receiver should adapt its levels is ROADMAP P2 #31;
+  since 2026-10-21 they adapt to the lock, and since 2026-11-01 they are
+  seeded there too, ``DfeConfig.init``).
   A lane read at an offset (``phase_ui``) has them adapted there, as
   ``analysis.skew`` takes its equalisers. An ADC receiver's LMS FFE takes up part
   of a profile clock's slow wander (the coloured-clock entry): example 31's
