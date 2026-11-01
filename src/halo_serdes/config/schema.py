@@ -424,17 +424,18 @@ class DfeConfig:
     # that. The ADC receiver's LMS FFE pulls its output onto the levels and
     # is unaffected.
     level_adapt: Literal["none", "sign_sign"] = "sign_sign"
-    # mixed-signal: the taps' and levels' sign-sign step while training
-    # (data-aided), as a multiple of the tracking step. The taps start at the
-    # pulse peak's cursors and the levels at its main cursor, not the lock's,
-    # and a level offset the start does not know about (DCD moves PAM4 32G's
-    # 5-10 mV) is 1e5-1e6 symbols away at the tracking step, against a
-    # 6000-symbol warmup. 64 since 2026-11-01 (1 before): PAM4 32G, 8 seeds x
-    # 3e5 symbols, BER in the first 25k / after 200k -- 7 mV 2.8e-5 / 1.1e-5
-    # -> 1.5e-5 / 1.1e-5 (with init "lock"), 0.12 UI DCD at 6 mV 1.6e-4 /
-    # 2.7e-5 -> 3.5e-5 / 1.9e-5; 256 flattens DCD a little more (ROADMAP
-    # P2 #45). 1 keeps one step throughout.
-    train_gain: float = 64.0
+    # mixed-signal: the slicer levels' sign-sign step while training
+    # (data-aided), as a multiple of the tracking step. A level offset the
+    # start does not know about -- DCD moves PAM4 32G's by 5-10 mV -- is
+    # 1e5-1e6 symbols away at the tracking step, against a 6000-symbol warmup
+    # (ROADMAP P2 #45): 64 there, 8 seeds x 3e5 symbols, BER in the first 25k
+    # / after 200k 1.6e-4 / 2.7e-5 -> 3.0e-5 / 1.9e-5 (0.12 UI, 6 mV; init
+    # "lock" alone 1.3e-4 / 2.7e-5). Off
+    # (1) by default: on a closed eye (NRZ under -16 dB crosstalk, BER 0.2)
+    # 64 moved the slicer SNR by -8 dB and made two noise draws disagree by
+    # 1.5 dB; on the presets it costs up to 0.04 dB. The taps keep their step
+    # (a larger one ran tap 1 away on that eye).
+    train_gain: float = 1.0
     tap_limits: Optional[tuple[float, ...]] = None
     sum_bw: Optional[float] = None      # mixed-signal summing-node bandwidth [Hz]
     loop_delay_ui: float = 0.0          # mixed-signal decision feedback delay [UI]

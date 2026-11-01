@@ -160,11 +160,8 @@ def _ms_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                     corr[i] += se * sd
             n_acc += 1
             if n_acc >= n_ave:
-                # a larger step while the data is known (training): the taps
-                # start at the pulse peak's cursors, not the lock's
-                g = train_gain if k < train_len else 1.0
                 for i in range(nt):
-                    w[i] += g * mu_dfe * corr[i] / n_ave
+                    w[i] += mu_dfe * corr[i] / n_ave
                     corr[i] = 0.0
                 n_acc = 0
 
@@ -178,8 +175,10 @@ def _ms_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
             e_l = v - levels[dec[k]]
             lcorr[dec[k]] += 1.0 if e_l > 0 else -1.0
             if (k + 1) % n_ave == 0:
-                # the same larger step while training: a level the start does
-                # not know about (DCD's offset) is otherwise 1e5-1e6 symbols away
+                # a larger step while the data is known (training): a level
+                # offset the start does not know about (DCD's) is otherwise
+                # 1e5-1e6 symbols away. The taps keep theirs: on a closed eye
+                # a larger tap step ran tap 1 away (0.02 -> 1.16 at 64x)
                 step = mu_lev * (train_gain if k < train_len else 1.0)
                 for m in range(nl):
                     levels[m] += step * lcorr[m] / n_ave
