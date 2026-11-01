@@ -247,10 +247,10 @@ def test_mixed_signal_pam4_holds_its_thresholds_too(monkeypatch):
     lock = float(np.mean((ph - k * cfg.osr)[ph.size // 2:])) - ph[0]
     frozen = dataclasses.replace(cfg, rx=dataclasses.replace(
         cfg.rx, cdr=dataclasses.replace(cfg.rx.cdr, kp_shift=60, ki_shift=60),
-        dfe=dataclasses.replace(cfg.rx.dfe, adapt="none")))
-    # the time engine starts its DFE and levels at the pulse peak's cursors
-    # and its sign-sign LMS moves both to the lock's, two samples after;
-    # frozen, it is given the lock's cursors outright (taps and levels)
+        dfe=dataclasses.replace(cfg.rx.dfe, adapt="none", init="cursor")))
+    # frozen, the time engine is given the cursors of the lock it measured
+    # (taps and levels) through the monkeypatch below, so it takes them from
+    # the peak it is handed (``init="cursor"``: "lock" would shift twice)
     cursors = timedomain.channel_cursors
     shift = int(round(lock))
 

@@ -37,7 +37,7 @@ def _ms_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                    train_len: int, adapt_start: int, tap1_unrolled: int,
                    branch_offsets: np.ndarray,
                    rx_clock_offset_samples: np.ndarray,
-                   mu_lev: float, lcorr: np.ndarray,
+                   mu_lev: float, lcorr: np.ndarray, train_gain: float,
                    fs: np.ndarray, ist: np.ndarray,
                    dec: np.ndarray, y_sum: np.ndarray, phase: np.ndarray,
                    pd_hist: np.ndarray, w_hist: np.ndarray):
@@ -175,8 +175,13 @@ def _ms_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
             e_l = v - levels[dec[k]]
             lcorr[dec[k]] += 1.0 if e_l > 0 else -1.0
             if (k + 1) % n_ave == 0:
+                # a larger step while the data is known (training): a level
+                # offset the start does not know about (DCD's) is otherwise
+                # 1e5-1e6 symbols away. The taps keep theirs: on a closed eye
+                # a larger tap step ran tap 1 away (0.02 -> 1.16 at 64x)
+                step = mu_lev * (train_gain if k < train_len else 1.0)
                 for m in range(nl):
-                    levels[m] += mu_lev * lcorr[m] / n_ave
+                    levels[m] += step * lcorr[m] / n_ave
                 # a batch that would let two levels cross (a closed eye
                 # deciding at random) is undone: the levels stay ordered
                 crossed = False
@@ -185,7 +190,7 @@ def _ms_rx_core_py(y: np.ndarray, y_off: int, n_total: int, osr: int,
                         crossed = True
                 if crossed:
                     for m in range(nl):
-                        levels[m] -= mu_lev * lcorr[m] / n_ave
+                        levels[m] -= step * lcorr[m] / n_ave
                 for m in range(nl):
                     lcorr[m] = 0.0
 
@@ -241,7 +246,8 @@ class MsRxRun:
     def __init__(self, y, osr, phase0, n_symbols, levels, w_dfe, mu_dfe,
                  n_ave, kp, ki, clamp, sum_alpha, ref_idx, train_len,
                  adapt_start, tap1_unrolled, branch_offsets,
-                 rx_clock_offset_samples, core=None, mu_lev: float = 0.0):
+                 rx_clock_offset_samples, core=None, mu_lev: float = 0.0,
+                 train_gain: float = 1.0):
         nt = w_dfe.size
         self.core = core if core is not None else _ms_rx_core
         self.osr = osr
@@ -253,7 +259,8 @@ class MsRxRun:
                        mu_dfe, n_ave, kp, ki, clamp, sum_alpha, ref_idx,
                        train_len, adapt_start, tap1_unrolled, branch_offsets,
                        rx_clock_offset_samples, float(mu_lev),
-                       np.zeros(self.levels.size, dtype=np.float64))
+                       np.zeros(self.levels.size, dtype=np.float64),
+                       float(train_gain))
         self.fs = np.array([phase0, 0.0, 0.0, 1.0], dtype=np.float64)
         self.ist = np.zeros(2, dtype=np.int64)
         self.n_symbols = n_symbols
@@ -318,11 +325,12 @@ def _ms_rx_with(core):
               sum_alpha: float, ref_idx: np.ndarray, train_len: int,
               adapt_start: int, tap1_unrolled: int,
               branch_offsets: np.ndarray,
-              rx_clock_offset_samples: np.ndarray, mu_lev: float = 0.0):
+              rx_clock_offset_samples: np.ndarray, mu_lev: float = 0.0,
+              train_gain: float = 1.0):
         run = MsRxRun(y, osr, phase0, n_symbols, levels, w_dfe, mu_dfe, n_ave,
                       kp, ki, clamp, sum_alpha, ref_idx, train_len, adapt_start,
                       tap1_unrolled, branch_offsets, rx_clock_offset_samples,
-                      core=core, mu_lev=mu_lev)
+                      core=core, mu_lev=mu_lev, train_gain=train_gain)
         run.advance(n_symbols)
         return run.result()
     return ms_rx

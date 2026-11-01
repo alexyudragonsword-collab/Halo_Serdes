@@ -290,7 +290,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
            options=["direct", "unrolled"]),
         _f("rx.dfe.comparator_offset_sigma", "Comparator offset sigma [V]",
            "float"),
-        _f("rx.dfe.init", "Init", "enum", options=["cursor", "zero"]),
+        _f("rx.dfe.init", "Init", "enum", options=["lock", "cursor", "zero"]),
     ]),
     ("mlsd", "MLSD", [
         _f("rx.mlsd.kind", "Detector", "enum",

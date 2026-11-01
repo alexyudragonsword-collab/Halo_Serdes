@@ -113,6 +113,7 @@ FIELD_BOUNDS: dict[str, tuple[str, float | None, float | None, bool, bool, str]]
     "DfeConfig.n_taps": ("dfe.n_taps", 0, None, False, False, ""),
     "DfeConfig.mu": ("dfe.mu", 0, None, False, False, ""),
     "DfeConfig.loop_delay_ui": ("dfe.loop_delay_ui", 0, None, False, False, ""),
+    "DfeConfig.train_gain": ("dfe.train_gain", 0, None, False, False, ""),
     "DfeConfig.sum_bw": ("dfe.sum_bw", 0, None, True, False, ""),
     "MlsdConfig.memory": ("mlsd.memory", 1, None, False, False, ""),
     "MlsdConfig.state_memory": ("mlsd.state_memory", 1, None, False, False, ""),
@@ -423,6 +424,18 @@ class DfeConfig:
     # that. The ADC receiver's LMS FFE pulls its output onto the levels and
     # is unaffected.
     level_adapt: Literal["none", "sign_sign"] = "sign_sign"
+    # mixed-signal: the slicer levels' sign-sign step while training
+    # (data-aided), as a multiple of the tracking step. A level offset the
+    # start does not know about -- DCD moves PAM4 32G's by 5-10 mV -- is
+    # 1e5-1e6 symbols away at the tracking step, against a 6000-symbol warmup
+    # (ROADMAP P2 #45): 64 there, 8 seeds x 3e5 symbols, BER in the first 25k
+    # / after 200k 1.6e-4 / 2.7e-5 -> 3.0e-5 / 1.9e-5 (0.12 UI, 6 mV; init
+    # "lock" alone 1.3e-4 / 2.7e-5). Off
+    # (1) by default: on a closed eye (NRZ under -16 dB crosstalk, BER 0.2)
+    # 64 moved the slicer SNR by -8 dB and made two noise draws disagree by
+    # 1.5 dB; on the presets it costs up to 0.04 dB. The taps keep their step
+    # (a larger one ran tap 1 away on that eye).
+    train_gain: float = 1.0
     tap_limits: Optional[tuple[float, ...]] = None
     sum_bw: Optional[float] = None      # mixed-signal summing-node bandwidth [Hz]
     loop_delay_ui: float = 0.0          # mixed-signal decision feedback delay [UI]
@@ -433,15 +446,21 @@ class DfeConfig:
     # path is the mux; per-branch comparators carry independent offsets).
     tap1_mode: Literal["direct", "unrolled"] = "direct"
     comparator_offset_sigma: float = 0.0  # per-branch comparator offset [V] (unrolled)
-    init: Literal["cursor", "zero"] = "cursor"  # tap seed: pulse cursors, or
-    # cold start from zero (exercises the full adaptation transient)
+    # tap (and mixed-signal level) seed: "lock" the pulse's cursors where a
+    # bang-bang loop locks (cdr.linear.lock_offset_samples) -- the default
+    # since 2026-11-01; "cursor" at the pulse peak, as before, where PAM4
+    # 32G's tap 1 started at -0.017 against the -0.029 it converges to over
+    # 4e5 symbols (ROADMAP P2 #45); "zero" a cold start (exercises the full
+    # adaptation transient). The ADC receiver has no bang-bang loop: "lock"
+    # is "cursor" there.
+    init: Literal["lock", "cursor", "zero"] = "lock"
 
     def __post_init__(self):
-        _bounded(self, "n_taps", "mu", "loop_delay_ui", "sum_bw")
+        _bounded(self, "n_taps", "mu", "loop_delay_ui", "sum_bw", "train_gain")
         _require_in(self.adapt, {"none", "lms", "sign_sign"}, "dfe.adapt")
         _require_in(self.level_adapt, {"none", "sign_sign"}, "dfe.level_adapt")
         _require_in(self.tap1_mode, {"direct", "unrolled"}, "dfe.tap1_mode")
-        _require_in(self.init, {"cursor", "zero"}, "dfe.init")
+        _require_in(self.init, {"lock", "cursor", "zero"}, "dfe.init")
         _require(self.tap_limits is None
                  or len(self.tap_limits) == self.n_taps,
                  f"dfe.tap_limits must have n_taps={self.n_taps} entries, "

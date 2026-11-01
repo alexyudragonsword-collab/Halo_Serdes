@@ -540,8 +540,14 @@ def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, r
     # take enough postcursors for the DFE *and* the residual an MLSD works over
     n_post_c = max(n_dfe, 1) + (cfg.rx.mlsd.memory if cfg.rx.mlsd.kind != "none"
                                 else 0)
+    seed = float(start_shift)
+    if seed == 0.0 and cfg.rx.dfe.init == "lock" and cfg.rx.cdr.kind == "bang_bang":
+        # the taps and levels seeded where the loop will lock, not at the
+        # peak it starts from (DfeConfig.init)
+        from ..cdr.linear import lock_offset_samples
+        seed = lock_offset_samples(pulse.y, peak_rx, osr, osr // 2)
     cursors = channel_cursors(pulse, osr, 0, n_post_c,
-                              peak_idx=peak_rx + int(np.round(start_shift)))
+                              peak_idx=peak_rx + int(np.round(seed)))
     main = cursors[0]
     # DFE feedback multiplies slicer levels (which carry the main-cursor
     # scale), so tap weights are postcursors normalized to the main cursor.
@@ -604,7 +610,8 @@ def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, r
         levels.astype(np.float64), np.asarray(w_dfe0, dtype=np.float64),
         float(mu), LMS_BATCH_SYMBOLS, float(k_run), float(i_run), float(clamp),
         float(sum_alpha), sched.reference, int(train_end), int(settle),
-        int(tap1_unrolled), branch_off, rx_clk, mu_lev=float(mu_lev))
+        int(tap1_unrolled), branch_off, rx_clk, mu_lev=float(mu_lev),
+        train_gain=float(cfg.rx.dfe.train_gain))
     return _MsLane(cfg, run, rx_y, float(kp), float(ki), float(clamp), phase0, n_sym,
                    int(train_end), int(settle), cursors, n_dfe, main, levels, w_dfe0,
                    ref_idx, user_idx, osr, collect_eye, jitter_budget)

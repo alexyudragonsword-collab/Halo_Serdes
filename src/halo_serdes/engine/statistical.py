@@ -712,9 +712,12 @@ def _stat_setup(cfg: LinkConfig, channel: ChannelModel | None = None,
     # engine, at the peak 0.94-1.15x (ROADMAP P2 #30). Since 2026-10-21 the
     # time engine's levels follow the sampled amplitude when they adapt
     # (DfeConfig.level_adapt, P2 #31), so the thresholds sit at the lock
-    # point's main cursor again, as for the ADC receiver
-    adapts_levels = (cfg.rx.arch == "mixed_signal" and cfg.rx.dfe.adapt != "none"
-                     and cfg.rx.dfe.level_adapt == "sign_sign")
+    # point's main cursor again, as for the ADC receiver; and since
+    # 2026-11-01 it seeds them (and the taps) at the lock in any case
+    # (DfeConfig.init "lock", the default; ROADMAP P2 #45)
+    adapts_levels = (cfg.rx.arch == "mixed_signal"
+                     and ((cfg.rx.dfe.adapt != "none" and cfg.rx.dfe.level_adapt == "sign_sign")
+                          or (cfg.rx.dfe.init == "lock" and cfg.rx.cdr.kind == "bang_bang")))
     i_level = (int(np.argmin(np.abs(phi_offsets)))
                if cfg.rx.arch == "mixed_signal" and phase_ui is None and not adapts_levels
                else i_lock)
