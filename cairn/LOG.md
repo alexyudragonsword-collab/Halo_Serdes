@@ -14,6 +14,7 @@
 - #44:时域"每个跳变的相位误差 × 边沿电压"联合 / 独立增益 0.997–1.016,猜测排除,仍开着。
 - 示例 47 / 47 零漂移;指纹 986 中 12 个动(全是带 SJ / DCD 的合成配置,预设不动)。全量 1425 passed / 8 skipped(1 条 layout 测试缺 `_warn_if_tone_slips` 再导出,已补;
   上一轮 `_bb_edge_stats` 同一个坑);Cython 构建 engine 四个模块 + analysis/jtol 删 .py、`HALO_NO_JIT=1` 相关 58 passed / 2 skipped;ruff 通过。
+- CI(PR #128,头 cbd4e69,29 项全绿):test 运行 34 分钟(full 32)、Android 14.8;Windows PyInstaller 2.9、Nuitka 27.0、onefile 42.9(热)。
 
 ## 2026-10-31 · 重核 224G 从 lane、PAM4 bang-bang 在 SJ 下的 |H|(feat/p40-recheck-bb-sj)
 
