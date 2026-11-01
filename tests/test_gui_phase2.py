@@ -145,7 +145,7 @@ def test_workspaces_and_their_views(callbacks):
     opts, _, _ = callbacks["_subnav"]("diag", "adc_dsp", "single", "channel")
     assert "adc" in [o["value"] for o in opts]
     opts, pick, _ = callbacks["_subnav"]("study", "adc_dsp", "jitter", "link")
-    assert pick == "sweeps" and len(opts) == 7
+    assert pick == "sweeps" and len(opts) == 8           # 2026-11-01: + JTOL (deep BER)
     assert callbacks["_subnav"]("study", "adc_dsp", "fec", "link")[1] == "fec"
     assert callbacks["_subnav"]("verdict", "adc_dsp", "fec", "link")[2] == {"display": "none"}
     assert callbacks["_set_view"]("verdict", "fec") == "single"

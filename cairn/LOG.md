@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-01 · 统计 JTOL 进 GUI / 手机、带音统计运行提速、PAM4 DCD 读低结案(feat/stat-jtol-gui-dcd)
+
+- 用户选"统计 JTOL 接进 GUI / 手机 + PAM4 DCD 静态那份接着拆"。
+- 研究 `jtol_stat`(手机自动带出;桌面 "JTOL (deep BER)"):1e-6 / 1e-12,画 0.4 倍斜率线。先把过线的点判失败,两条曲线全成了这条线;
+  时域核过(NRZ 28G 到 0.96 没周跳,0.80 处读低 48×)后改成画线。`jitter_tolerance_levels` 共用运行,38–43 次。
+- 提速,数不变(指纹 6 / 986 在末位):鉴相噪声前缀和、描述函数分部积分 + 半点;NRZ 16G 无音 3.75 → 0.58 s、带音 8.6 → 1.8 s。
+- PAM4 DCD:不是模型,是时域 sign-sign 电平 1e5–1e6 码元才收敛(预热 6000);200 万码元只数收敛后 0.96–1.39×。ROADMAP #45 只剩 NRZ SJ。
+  `cairn/DSP发端与PR.md` §40 末 / §41,pitfalls 一条。
+- 验证:全量 1427 passed / 8 skipped(1 条研究页视图数断言 7 → 8 已改,重跑通过);Cython 构建(engine 两个、analysis 两个、app 两个)删 .py、
+  `HALO_NO_JIT=1` 相关 82 passed / 1 skipped;指纹 6 / 986 末位;ruff 通过。
+
 ## 2026-11-01 · P2 #45 两份余项再查,代码不变(feat/p45-sj-dcd-residuals)
 
 - 用户选 #45 的两份:NRZ SJ 猎振读低、PAM4 DCD 读低。都只缩小了范围,没有可改的。

@@ -305,6 +305,7 @@ _STUDIES = {
     "reach": studies.reach_study, "crosstalk": studies.crosstalk_study,
     "multilane": studies.multilane_study, "com": studies.com_study,
     "fixedpoint": studies.fixedpoint_study, "jtol": studies.jtol_study,
+    "jtol_stat": studies.jtol_stat_study,
     "optical": studies.optical_study, "tdecq": studies.tdecq_study,
 }
 

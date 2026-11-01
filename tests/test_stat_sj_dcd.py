@@ -153,3 +153,16 @@ def test_jtol_reads_the_statistical_engine_at_a_deep_threshold():
     assert jt.tol_ui[0] > jt.tol_ui[1] > 0.0
     with pytest.raises(ValueError, match="engine"):
         jitter_tolerance(cfg, [1e9], engine="kernel")
+
+
+def test_the_slew_line_is_where_the_warning_starts():
+    """``tone_slew_limit_ui`` is the amplitude at which ``tone_slew_fraction``
+    reaches ``TONE_SLIP_FRACTION``, at a fixed gain: the line the deep-BER
+    JTOL study draws."""
+    lp = LoopParams(f_update=1e9, kp_ui=0.01, ki_ui=1e-4)
+    freqs = np.array([1e6, 3e7, 4e8])
+    lim = stat_loop.tone_slew_limit_ui(lp, 1.0, freqs)
+    for a, f in zip(lim, freqs):
+        assert stat_loop.tone_slew_fraction(lp, 1.0, ((a, f),)) == pytest.approx(
+            stat_loop.TONE_SLIP_FRACTION, rel=1e-9)
+    assert lim[0] > lim[1] > lim[2]                    # the loop follows slow tones whole
