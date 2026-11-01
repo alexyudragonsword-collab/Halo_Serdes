@@ -73,7 +73,7 @@ def test_a_failed_run_shows_its_error_on_every_tab_that_needs_the_run(recs):
     rec = recs["bad"]
     assert not rec.ok and "symbol_rate must be > 0" in rec.error
     run_driven = {"single", "eyes", "dual", "jitter", "adapt", "cdr", "adc",
-                  "sweeps", "crosstalk", "fixed", "jtol"}
+                  "sweeps", "crosstalk", "fixed", "jtol", "jtolstat"}
     for p in PANELS:
         text = _text(p.render(rec))                 # no tab may raise
         if p.TAB_ID in run_driven:

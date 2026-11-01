@@ -9,6 +9,7 @@ from halo_serdes_app.studies import (  # noqa: F401
     crosstalk_study,
     fec_projection,
     fixedpoint_study,
+    jtol_stat_study,
     jtol_study,
     multilane_study,
     optical_study,
@@ -18,5 +19,5 @@ from halo_serdes_app.studies import (  # noqa: F401
 
 __all__ = [
     "com_study", "crosstalk_study", "fec_projection", "fixedpoint_study",
-    "jtol_study", "multilane_study", "optical_study", "reach_study", "tdecq_study",
+    "jtol_stat_study", "jtol_study", "multilane_study", "optical_study", "reach_study", "tdecq_study",
 ]

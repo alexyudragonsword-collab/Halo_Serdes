@@ -42,3 +42,35 @@ def test_jtol_mask_shape():
     assert m[0] == 5.0                    # flat max at low frequency
     assert np.isclose(m[-1], 0.1)         # floor at high frequency
     assert np.all(np.diff(m) <= 1e-9)     # monotone non-increasing
+
+
+def test_several_thresholds_share_their_runs(monkeypatch):
+    """``jitter_tolerance_levels`` on a BER known in closed form: a Gaussian
+    margin the tone eats, and a slip above an amplitude at low frequency
+    (read 0.5). Each threshold lands within its ``rtol``, the slip caps the
+    tolerance, and the runs one search made bracket the next."""
+    from scipy.special import erfc
+
+    from halo_serdes.analysis import jitter_tolerance_levels
+    from halo_serdes.analysis import jtol as jt
+
+    margin = {1e6: 3.0, 1e8: 0.40, 1e9: 0.25}       # UI the tone may take
+    slip = {1e6: 1.5}
+    runs = []
+
+    def ber(cfg, f, a, *rest):
+        runs.append((f, a))
+        if a > slip.get(f, np.inf):
+            return 0.5
+        return 0.5 * erfc(max(margin[f] - a, 0.0) / 0.02 / np.sqrt(2.0))
+
+    monkeypatch.setattr(jt, "_ber_at", ber)
+    thr = (1e-6, 1e-12)
+    res = jitter_tolerance_levels(None, list(margin), thr, channel=object(), rtol=0.05)
+    for r, t in zip(res, thr):
+        z = {1e-6: 4.753, 1e-12: 7.034}[t]           # Q^-1(t)
+        want = np.array([1.5, 0.40 - 0.02 * z, 0.25 - 0.02 * z])
+        assert r.ber_threshold == t
+        assert np.all(r.tol_ui <= want + 1e-9) and np.all(r.tol_ui >= want * 0.95), (t, r.tol_ui)
+    assert res[1].tol_ui[1] < res[0].tol_ui[1]
+    assert len(runs) == len(set(runs)) and len(runs) <= 30       # 28 on 2026-11-01

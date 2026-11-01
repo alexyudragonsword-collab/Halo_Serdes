@@ -72,10 +72,14 @@ def jitter_tolerance(cfg: LinkConfig, freqs, ber_threshold: float = 1e-3,
     ``engine="statistical"`` reads each point from ``run_statistical``, which
     takes the tone through the loop's error response since 2026-11-01: a
     threshold such as 1e-12 that no simulation reaches. Its loop model is
-    linear, and from about 0.4 of the bang-bang loop's slew or 0.1 UI RMS of
-    phase error the kernel slips cycles where it reads a BER (it warns there),
-    so that side of a curve is the time engine's to say; ``ffe_taps``: an ADC
-    receiver's adapted FFE, handed to every point.
+    linear: past about 0.4 of the bang-bang loop's slew
+    (``stat_loop.tone_slew_fraction``) it warns, and its read there can be
+    optimistic -- NRZ 16G slipped at 0.41, NRZ 28G held to 0.96 with no
+    errors in 60k symbols but read 1.4e-5 against the time engine's 6.7e-4
+    at 0.80 (0.3 UI at 400 MHz, 2026-11-01). Below the loop the tolerance
+    runs to ``amp_hi``; that side is the time engine's to say. From 0.1 UI
+    RMS of phase error it warns too. ``ffe_taps``: an ADC receiver's adapted
+    FFE, handed to every point.
     """
     freqs = np.asarray(freqs, dtype=float)
     if n_symbols is not None:
@@ -109,6 +113,81 @@ def jitter_tolerance(cfg: LinkConfig, freqs, ber_threshold: float = 1e-3,
                 hi = mid
         tol[i] = lo
     return JtolResult(freqs=freqs, tol_ui=tol, ber_threshold=ber_threshold)
+
+
+def jitter_tolerance_levels(cfg: LinkConfig, freqs, thresholds, amp_lo: float = 0.01,
+                            amp_hi: float = 4.0, rtol: float = 0.08, max_runs: int = 10,
+                            channel=None, engine: str = "statistical", ffe_taps=None,
+                            before_run=None) -> list[JtolResult]:
+    """The tolerance at each of several thresholds, from one set of runs per
+    frequency (2026-11-01, the GUI's statistical JTOL).
+
+    Every BER read at a frequency brackets every threshold, so the runs one
+    threshold's search made narrow the next. Each search halves its bracket
+    geometrically while it spans more than 3x or its failing end has
+    saturated (BER > 1e-2), then runs regula falsi (Illinois) on
+    ``sqrt(-log10 BER)``, nearly linear in amplitude where the tone eats a
+    Gaussian margin, to ``rtol`` of the amplitude; ``max_runs`` caps each
+    search. BER is taken to grow with the amplitude.
+    ``before_run()`` is called before every engine run (a cancel point).
+    """
+    freqs = np.asarray(freqs, dtype=float)
+    thr = sorted({float(t) for t in thresholds}, reverse=True)
+    if channel is None:
+        from ..channel import ChannelModel
+
+        channel = ChannelModel.from_config(cfg)
+
+    def score(ber: float) -> float:
+        return float(np.sqrt(-np.log10(min(max(ber, 1e-300), 0.999))))
+
+    tol = {t: np.zeros(freqs.size) for t in thr}
+    for i, f in enumerate(freqs):
+        seen: dict[float, float] = {}
+
+        def ber_at(a: float) -> float:
+            if a not in seen:
+                if before_run is not None:
+                    before_run()
+                seen[a] = _ber_at(cfg, f, a, channel, engine, ffe_taps)
+            return seen[a]
+
+        for t in thr:
+            if ber_at(amp_hi) < t:
+                tol[t][i] = amp_hi
+                continue
+            if ber_at(amp_lo) >= t:
+                tol[t][i] = 0.0
+                continue
+            lo = max(a for a, b in seen.items() if b < t)
+            hi = min(a for a, b in seen.items() if b >= t and a > lo)
+            target = score(t)
+            g_lo, g_hi = score(seen[lo]) - target, score(seen[hi]) - target   # > 0, <= 0
+            side = 0
+            for _ in range(max_runs):
+                if hi - lo <= rtol * lo:
+                    break
+                if hi > 3.0 * lo or seen[hi] > 1e-2 or g_hi == g_lo:
+                    # a wide bracket, or an end where the BER has saturated and
+                    # says nothing of the distance: halve it geometrically
+                    a = float(np.sqrt(lo * hi))
+                    side = 0
+                else:
+                    a = (lo * g_hi - hi * g_lo) / (g_hi - g_lo)
+                    a = float(min(max(a, lo + 0.05 * (hi - lo)), hi - 0.05 * (hi - lo)))
+                g = score(ber_at(a)) - target
+                if g > 0.0:
+                    lo, g_lo = a, g
+                    if side == 1:
+                        g_hi *= 0.5
+                    side = 1
+                else:
+                    hi, g_hi = a, g
+                    if side == -1:
+                        g_lo *= 0.5
+                    side = -1
+            tol[t][i] = lo
+    return [JtolResult(freqs=freqs, tol_ui=tol[t], ber_threshold=t) for t in thresholds]
 
 
 def jtol_mask(freqs, lf_max_ui: float = 5.0, f_corner: float = 4e6,

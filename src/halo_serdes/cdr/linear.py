@@ -658,18 +658,40 @@ class BbEdgeStats:
         meets (the describing function, its fundamental over the amplitude)
         and the slope the loop's own noise meets on average over its swing.
         Both are ``gain(sigma_e)`` as the tone goes to zero."""
-        if amp_ui <= 1e-9:
-            g = self.gain(sigma_e)
-            return g, g
-        from scipy.special import erf
+        return (self.describing_gain(amp_ui, sigma_e, n_theta),
+                self.swing_gain(amp_ui, sigma_e, n_theta))
 
+    def _over_swing(self, amp_ui: float, sigma_e: float, n_theta: int) -> tuple[np.ndarray, np.ndarray]:
+        """The local slope at each point of the tone's swing, and the swing's phases."""
         th = (np.arange(n_theta) + 0.5) * (2.0 * np.pi / n_theta)
-        x = amp_ui * np.sin(th)
-        s = self._s(sigma_e)
-        m = np.sum(erf((self.u[None, :] + self.du[None, :] * x[:, None]) / (np.sqrt(2.0) * s[None, :])),
-                   axis=1) / max(self.n_symbols, 1)
-        describing = float(-2.0 * np.mean(m * np.sin(th)) / amp_ui)
-        return describing, float(np.mean(self.gain_at(x, sigma_e)))
+        if n_theta % 4 == 0:
+            # the swing visits each offset twice a cycle (sin th = sin(pi - th)):
+            # half the evaluations, the same grid
+            q = n_theta // 4
+            sq = np.sin(th[:q])
+            gq = self.gain_at(amp_ui * np.concatenate([sq, -sq]), sigma_e)
+            g = np.concatenate([gq[:q], gq[q - 1::-1], gq[q:], gq[:q - 1:-1]])
+        else:
+            g = self.gain_at(amp_ui * np.sin(th), sigma_e)
+        return g, th
+
+    def describing_gain(self, amp_ui: float, sigma_e: float, n_theta: int = 48) -> float:
+        """The gain a tone the loop leaves ``amp_ui`` of meets: the mean
+        output's fundamental over the amplitude (``tone_gains`` [0]). By
+        parts that is twice the local slope averaged with weight cos^2 over
+        the swing -- the slope from exponentials, not the output from erf
+        (2026-11-01)."""
+        if amp_ui <= 1e-9:
+            return self.gain(sigma_e)
+        g, th = self._over_swing(amp_ui, sigma_e, n_theta)
+        return float(2.0 * np.mean(g * np.cos(th) ** 2))
+
+    def swing_gain(self, amp_ui: float, sigma_e: float, n_theta: int = 48) -> float:
+        """The local slope averaged over that tone's swing: the gain the
+        loop's own noise meets (``tone_gains`` [1])."""
+        if amp_ui <= 1e-9:
+            return self.gain(sigma_e)
+        return float(np.mean(self._over_swing(amp_ui, sigma_e, n_theta)[0]))
 
     def noise(self, sigma_e: float) -> PdNoise:
         """The output's noise per update as the loop sees it, at each phase
@@ -698,9 +720,15 @@ class BbEdgeStats:
                     p[-1] /= 2.0
                 power = power + w * p[1:]
             else:
-                f = np.fft.rfft(g, 2 * nn)
-                acov = np.fft.irfft(np.abs(f) ** 2)[: self.span + 2] / nn
-                power += w * float(acov[0] + 2.0 * np.sum(acov[1:]))
+                # the autocovariance summed over lags |k| <= span + 1: each
+                # sample against the sum of its neighbours that far either
+                # side, from a running sum (an FFT of twice the sequence was
+                # 60 % of a run, 2026-11-01)
+                lag = self.span + 1
+                c = np.concatenate([[0.0], np.cumsum(g)])
+                i = np.arange(nn)
+                near = c[np.minimum(i + lag + 1, nn)] - c[np.maximum(i - lag, 0)]
+                power += w * float(np.dot(g, near)) / nn
         if self.periodic:
             return PdNoise(white, np.arange(1, np.size(power) + 1) / nn, power)
         return PdNoise(white + max(power, 0.0))
@@ -786,7 +814,7 @@ def bb_loop_fixed_point(loop: LoopParams,
         """The linearised gain and the classes' timing share at input jitter sigma_e."""
         sigma_e, a0 = with_tones(sigma_e)
         if edge is not None:
-            return (edge.tone_gains(a0, sigma_e)[1] if a0 > 0.0 else edge.gain(sigma_e)), 0.0
+            return edge.swing_gain(a0, sigma_e), 0.0
         k = info = 0.0
         for p, offset, edge_ui in classes:
             s = float(np.hypot(sigma_e, edge_ui))
@@ -825,7 +853,7 @@ def bb_loop_fixed_point(loop: LoopParams,
             for _ in range(40):
                 if i == 0 and edge is not None:
                     sig, _ = with_tones(sigma_e)
-                    k_tone = edge.tone_gains(resid[0], sig)[0]
+                    k_tone = edge.describing_gain(resid[0], sig)
                 else:
                     k_tone = k_pd
                 new_a = amp * float(error_response(np.array([f]), loop, max(k_tone, 0.0))[0])

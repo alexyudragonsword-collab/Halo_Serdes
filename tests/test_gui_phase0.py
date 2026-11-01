@@ -202,7 +202,7 @@ def test_warnings_once_without_the_envelope_or_the_solver_noise():
 
 def test_study_tabs_wait_for_their_button_and_keep_the_result(callbacks, monkeypatch):
     studies = [p for p in PANELS if getattr(p, "STUDY", None)]
-    assert {p.TAB_ID for p in studies} == {"sweeps", "crosstalk", "jtol", "amicom",
+    assert {p.TAB_ID for p in studies} == {"sweeps", "crosstalk", "jtol", "jtolstat", "amicom",
                                            "fixed", "optical"}
     ids = _ids()
     vals = [20000 if i["path"] == "sim.n_symbols" else _values(NRZ).get(i["path"])

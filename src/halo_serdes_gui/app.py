@@ -44,7 +44,7 @@ from .config_form import (
 )
 from .panels import (
     adaptation, adc, ami_com, backchannel, cdr, channel, compare, crosstalk, ctle,
-    dual_engine, eyes, fec, fixed_point, jitter, jtol, optical, single_run, sweeps,
+    dual_engine, eyes, fec, fixed_point, jitter, jtol, jtol_stat, optical, single_run, sweeps,
 )
 from .panels import common
 from .runner import get as get_result
@@ -59,7 +59,7 @@ _DIAG_LABEL = {"eyes": "Eyes", "dual": "Dual-engine", "backchannel": "Tx trainin
                "channel": "Channel", "ctle": "CTLE", "adc": "ADC", "adapt": "Equaliser",
                "cdr": "CDR", "jitter": "Jitter"}
 #: Studies: sweeps and projections, each behind its own Run button.
-STUDIES = [sweeps, fec, crosstalk, jtol, ami_com, fixed_point, optical]
+STUDIES = [sweeps, fec, crosstalk, jtol, jtol_stat, ami_com, fixed_point, optical]
 #: The diagnose view a stage on the left opens.
 STAGE_TO_DIAG = {"link": "eyes", "tx": "backchannel", "channel": "channel", "fe": "ctle",
                  "adc": "adc", "eq": "adapt", "cdr": "cdr"}

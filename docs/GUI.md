@@ -103,6 +103,7 @@ bar's button) and closes it again (**▤ Results**; a run closes it too).
 | | FEC | pre→post-FEC projection (KP4/KR4/concatenated), this-run marker | formulas |
 | | Crosstalk | FEXT/NEXT coupling sweep (StatEye) + multi-lane ICN (~√N) & 802.3 COM vs aggressor count | synthetic aggressors / aggressor_bank |
 | | JTOL | tolerated sinusoidal jitter vs frequency + generic mask | short time-domain runs |
+| | JTOL (deep BER) | tolerated SJ at BER 1e-6 and 1e-12 from the statistical engine, the CDR slew-limit line, generic mask | ~40 statistical runs, 1–2 min |
 | | AMI / COM | IEEE 802.3 COM (93A/178A) vs loss overlaid on the RSS FoM + IBIS-AMI status | analytic channel |
 | | Fixed-Point | word-length BER wall (datapath replay) | needs an ADC run |
 | | Optical | cascade loss split at the photodiode, per-level PD-node noise, reach over fibre length as configured vs DSP-retimed, TDECQ | `topology.optical` set |
@@ -110,7 +111,7 @@ bar's button) and closes it again (**▤ Results**; a run closes it too).
 
 In Diagnose, clicking a stage on the left shows that stage's view (Channel →
 Channel, Receiver front end → CTLE, Equaliser → Equaliser, ...). Studies take
-from about a second to about 20 s, so each shows what it computes and a
+from about a second to one or two minutes (the deep-BER JTOL), so each shows what it computes and a
 **▶ Run** button. A study runs in the background like a run (one job at a
 time: Run waits for a study and a study for a run), with its progress and
 **■ Cancel** in the top bar; a cancel stops it between two of its engine

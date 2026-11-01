@@ -24,7 +24,7 @@ Cairn 初始化时 `migration_mode` 选的是 `inventory_only`:**不改写任何
 |---|---|---|
 | `README.md` | 门面:能力总览表、规模、路线图回顾、达标指标、架构包络约定、文档索引 | 面向使用者与评估者,是项目对外的第一入口 |
 | `docs/USAGE.md` | 使用指南,按**任务**组织(配置/三引擎选型/读结果/换信道/扫描/串扰/COM/抖动/MLSD/FEC/AMI/定点/性能/FAQ) | 使用者文档;每段代码都对真实 API 验证过 |
-| `docs/GUI.md`、`docs/GUI_tour.md` | GUI 安装启动、布局(顶栏、链路分段配置、结论 / 诊断 / 研究 / 对比四个工作区共 18 个视图)、后台运行与取消、Runs 历史条、实拍图文导览(2026-10-29 全部重拍) | 使用者文档 |
+| `docs/GUI.md`、`docs/GUI_tour.md` | GUI 安装启动、布局(顶栏、链路分段配置、结论 / 诊断 / 研究 / 对比四个工作区共 19 个视图;2026-11-01 加研究页 "JTOL (deep BER)")、后台运行与取消、Runs 历史条、实拍图文导览(2026-10-29 全部重拍) | 使用者文档 |
 | `docs/SUMMARY.md` | 工程总结叙事:三次架构探索与结论 | 已是成型的叙事产物,拆开反而损失 |
 | `docs/COMPARISON.md` | 与 serdespy / PyBERT / DragonPHY2 的逐项能力对比 | 对外定位文档 |
 | `docs/serdes_opensource_repos_analysis.md` | 三个参考库的深度调研(设计蓝本,642 行) | 项目的起点材料,历史价值 |

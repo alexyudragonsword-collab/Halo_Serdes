@@ -687,26 +687,61 @@ def _warn_if_underdamped(sol: LoopSolution) -> None:
         "kp_shift (a larger proportional step) or raise ki_shift", stacklevel=3)
 
 
+#: The fraction of a bang-bang loop's slew from which the statistical
+#: engine warns that a tone is past its linearised loop
+#: (``tone_slew_fraction``). NRZ 16G at 12 mV slipped at 0.41 and held at
+#: 0.38; NRZ 28G held to 0.96 (no errors in 60k symbols) but at 0.80 read
+#: 1.4e-5 against the time engine's 6.7e-4 (0.3 UI at 400 MHz, 2026-11-01):
+#: not a slip threshold everywhere, the edge of the model either way.
+TONE_SLIP_FRACTION = 0.4
+
+
+def tone_slew_fraction(loop: LoopParams, k_pd: float,
+                       tones: tuple[tuple[float, float], ...]) -> float:
+    """The fastest tone's following rate ``2 pi f A |H(f)|`` (peak, per
+    update) as a fraction of the ``kp / 2`` per update a bang-bang loop can
+    make (``_warn_if_slew_limited``). On the NRZ 16G preset at 12 mV: locked
+    at 0.19 / 0.35 / 0.38 (0.05 UI at 1 GHz, 0.1 UI at 300 MHz and 2 GHz),
+    slipping at 0.41 (0.3 UI at 50 MHz, the loop's residual model 0.10 UI,
+    the kernel's 2 UI) and 0.50."""
+    limit = loop.kp_ui * 0.5
+    worst = 0.0
+    for a_in, f in tones:
+        L = loop_gain(np.array([f]), loop, k_pd)[0]
+        rate = 2.0 * np.pi * f * a_in * float(abs(L / (1.0 + L))) / loop.f_update
+        worst = max(worst, rate / limit)
+    return worst
+
+
+def tone_slew_limit_ui(loop: LoopParams, k_pd: float, freqs,
+                       fraction: float = TONE_SLIP_FRACTION) -> np.ndarray:
+    """The tone amplitude [UI, 0-pk] at each frequency that has a bang-bang
+    loop at gain ``k_pd`` follow it at ``fraction`` of its slew
+    (``tone_slew_fraction`` is linear in the amplitude at a fixed gain)."""
+    f = np.asarray(freqs, dtype=np.float64)
+    L = loop_gain(f, loop, k_pd)
+    per_ui = 2.0 * np.pi * f * np.abs(L / (1.0 + L)) / loop.f_update / (loop.kp_ui * 0.5)
+    return fraction / np.maximum(per_ui, 1e-300)
+
+
 def _warn_if_tone_slips(loop: LoopParams, sol: LoopSolution,
                         tones: tuple[tuple[float, float], ...]) -> None:
-    """A bang-bang loop following a tone moves at ``2 pi f A |H(f)|`` (peak),
-    which must stay well inside the ``kp / 2`` per update it can make
-    (``_warn_if_slew_limited``). On the NRZ 16G preset at 12 mV: locked at
-    0.19 / 0.35 / 0.38 of it (0.05 UI at 1 GHz, 0.1 UI at 300 MHz and 2 GHz),
-    slipping at 0.41 (0.3 UI at 50 MHz, the loop's residual model 0.10 UI,
-    the kernel's 2 UI) and 0.50; the warning starts at 0.4."""
+    """Warn from ``TONE_SLIP_FRACTION`` of the loop's slew (``tone_slew_fraction``)."""
+    if not tones:
+        return
     import warnings
 
     limit = loop.kp_ui * 0.5
     for a_in, f in tones:
-        L = loop_gain(np.array([f]), loop, sol.k_pd)[0]
-        rate = 2.0 * np.pi * f * a_in * float(abs(L / (1.0 + L))) / loop.f_update
-        if rate > 0.4 * limit:
+        frac = tone_slew_fraction(loop, sol.k_pd, ((a_in, f),))
+        if frac > TONE_SLIP_FRACTION:
             warnings.warn(
                 f"an SJ tone at {f / 1e6:.1f} MHz has the bang-bang loop follow it at "
-                f"{rate:.2e} UI per update against the {limit:.2e} it can make: the kernel "
-                "slips cycles from about 0.4 of that (measured 0.41 slipping, 0.38 locked), "
-                "where the statistical engine's linearised loop does not apply", stacklevel=4)
+                f"{frac * limit:.2e} UI per update against the {limit:.2e} it can make: past "
+                "about 0.4 of that the kernel is slew-limited and the statistical engine's "
+                "linearised loop does not apply -- it slipped cycles there on one link "
+                "(measured 0.41 slipping, 0.38 locked) and on another held but erred more "
+                "than this read", stacklevel=4)
 
 
 def _warn_if_slew_limited(prof, loop: LoopParams, f_lo: float, sol: LoopSolution,

@@ -443,11 +443,17 @@ print(j.summary())              # 低于 CDR 环带宽平坦,高于则 ~20dB/dec
 mask = jtol_mask(freqs)         # 通用合规模板
 # 深门限走统计引擎(2026-11-01 起它建白 SJ:环路留下的 A|E(f)| 按反正弦抹在采样相位上)
 j6 = jitter_tolerance(cfg, freqs, ber_threshold=1e-6, engine="statistical")
+# 几个门限共用一组运行(每个频率的读数给所有门限夹区间;几何二分 + Illinois),GUI / 手机的 "JTOL (deep BER)" 用它
+from halo_serdes.analysis import jitter_tolerance_levels
+j6, j12 = jitter_tolerance_levels(cfg, freqs, (1e-6, 1e-12))
 ```
 
-统计引擎的 SJ / DCD 对时域(独立码元):224G ADC 0.85–1.01× / 0.79–0.87×,PAM4 32G 0.61–0.85× / 0.30–0.56×,
+统计引擎的 SJ / DCD 对时域(独立码元):224G ADC 0.85–1.01× / 0.79–0.87×,PAM4 32G 0.61–0.85× / 0.30–0.56×
+(DCD 那两个数是短运行:时域的 slicer 电平要 1e5–1e6 码元才落到 DCD 的偏移上,200 万码元只数收敛之后 0.96 / 1.15×,2026-11-01),
 NRZ 16G 在带宽以上 0.26–0.65× / 0.86–0.90×(读低在猎振尾部,ROADMAP P2 #45)。环路要跟的音快过约 0.4 倍斜率上限、
-或相位误差 RMS 过 0.1 UI 时内核会周跳,统计引擎告警、不给可信数 —— 那一段曲线以时域为准。
+或相位误差 RMS 过 0.1 UI 时统计引擎告警 —— 线性化的环路到此为止:NRZ 16G 在 0.41 处周跳;NRZ 28G 到 0.96 都没周跳,
+但 0.80 处统计读 1.4e-5、时域 6.7e-4(2026-11-01)。那一段曲线以时域为准;`stat_loop.tone_slew_limit_ui` 给出各频率的这条线
+(GUI 的深门限 JTOL 画成虚点线)。
 
 ---
 

@@ -3,7 +3,8 @@
 Each runs the statistical engine (tens of ms a point), pure FEC formulas,
 behavioral COM, fixed-point datapath *replay* on already-captured ADC codes
 (no engine re-run) or, for JTOL, short time-domain runs: 0.5-20 s for a
-study. Results are cached per run id so switching away and back is instant;
+study; the deep-BER JTOL's few dozen statistical runs with a tone take
+longer. Results are cached per run id so switching away and back is instant;
 between engine runs a study passes a ``checkpoint`` where a client that
 runs it in the background (``api.start_task``) can abandon it.
 """
@@ -300,6 +301,54 @@ def jtol_study(rec) -> dict:
         return {"freqs": freqs, "tol_ui": _np.array(tol), "mask": mask, "threshold": 1e-3}
     return _cached(("jtol", rec.id), compute)
 
+#: The statistical JTOL's thresholds: a deep pre-FEC figure and the
+#: classic 1e-12 no simulation here reaches.
+JTOL_STAT_THRESHOLDS = (1e-6, 1e-12)
+
+
+def jtol_stat_study(rec) -> dict:
+    """Jitter tolerance at deep thresholds from the statistical engine, which
+    takes the tone through the loop's error response (2026-11-01).
+
+    The time-domain study above stops at BER 1e-3 because a short run cannot
+    count further; this one reads 1e-6 and 1e-12 the same way at every
+    point (``jitter_tolerance_levels``). Its loop is linear: ``slew_ui`` is
+    the amplitude past which a bang-bang loop follows the tone at more than
+    0.4 of its slew (``stat_loop.tone_slew_limit_ui``, at the loop's gain
+    without a tone) -- above that line the read can be optimistic (NaN for
+    a Mueller-Muller loop, which is linear). Same frequencies and mask as
+    the time study, so the two lay over each other. An ADC receiver takes
+    the time run's FFE when the record has one, else the MMSE starting FFE
+    (``runner.stat_equaliser``).
+    """
+
+    def compute():
+        from halo_serdes.analysis import jitter_tolerance_levels, jtol_mask
+        from halo_serdes.cdr.linear import LoopParams
+        from halo_serdes.engine.stat_loop import tone_slew_limit_ui
+        from halo_serdes.engine.statistical import run_statistical
+
+        from .runner import stat_equaliser
+        cfg = rec.cfg
+        freqs = np.array([1e6, 5e6, 2e7, 5e7, 1e8, 2e8, 4e8])
+        channel = ChannelModel.from_config(cfg)
+        taps, pre = stat_equaliser(cfg, channel, getattr(rec, "sim", None))
+        slew = np.full(freqs.size, np.nan)
+        if cfg.rx.arch != "adc_dsp":
+            checkpoint()
+            base = run_statistical(cfg, channel=channel, ffe_taps=taps, ffe_pre=pre)
+            sol = base.extras.get("clock_loop")
+            if sol is not None:
+                slew = tone_slew_limit_ui(LoopParams.from_config(cfg), sol.k_pd, freqs)
+        res = jitter_tolerance_levels(cfg, freqs, JTOL_STAT_THRESHOLDS, amp_lo=0.01,
+                                      amp_hi=4.0, rtol=0.1, channel=channel, ffe_taps=taps,
+                                      before_run=checkpoint)
+        mask = jtol_mask(freqs, lf_max_ui=4.0, f_corner=3e6, hf_floor_ui=0.15)
+        return {"freqs": freqs, "tol_1e6": res[0].tol_ui, "tol_1e12": res[1].tol_ui,
+                "slew_ui": slew, "mask": mask}
+    return _cached(("jtol_stat", rec.id), compute)
+
+
 #: How each study's flat result should be plotted.
 #:
 #: The studies return ``{name: array}`` with no indication of which key is the
@@ -441,6 +490,9 @@ STUDY_PLOTS: dict[str, list[dict]] = {
     "jtol": [{"x": "freqs", "y": ["tol_ui", "mask"],
               "x_label": "SJ frequency [Hz]", "y_label": "tolerated SJ [UI]",
               "x_log": True, "y_log": True}],
+    "jtol_stat": [{"x": "freqs", "y": ["tol_1e6", "tol_1e12", "slew_ui", "mask"],
+                   "x_label": "SJ frequency [Hz]", "y_label": "tolerated SJ [UI]",
+                   "x_log": True, "y_log": True}],
     "fec": [{"x": "pre", "y": ["kp4", "kr4", "concat"],
              "x_label": "pre-FEC BER", "y_label": "post-FEC BER",
              "x_log": True, "y_log": True}],
@@ -483,6 +535,12 @@ STUDY_LABELS: dict[str, tuple[str, str]] = {
     "jtol": ("Jitter tolerance",
              "Tolerated sinusoidal jitter against frequency, with the mask. "
              "Binary search per point — the slowest sweep here."),
+    "jtol_stat": ("Jitter tolerance, deep BER",
+                  "Tolerated sinusoidal jitter at BER 1e-6 and 1e-12 from the "
+                  "statistical engine, with the mask and the line past which a "
+                  "bang-bang CDR is slew-limited (the read there can be "
+                  "optimistic). About 40 statistical runs: one to two minutes on a "
+                  "desktop, longer on a phone."),
     "fec": ("FEC projection",
             "KP4, KR4 and concatenated post-FEC BER over a pre-FEC range. "
             "Config-independent, so it needs no run."),
