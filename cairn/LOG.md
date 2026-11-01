@@ -10,7 +10,7 @@
   按误差分箱回归内核鉴相输出有偏,不能用。有音时内核猎振多涨约 7 % 的机理仍未明。
 - PAM4 DCD:冻结在锁定点 1.05 / 0.82 / 0.43×(0 / 0.08 / 0.12 UI)—— 静态那份、随 DCD 非线性;分箱均值(蒙特卡洛,对齐到锁定点后 0.4 mV 内)、电平、DFE tap1 都对得上。
   坑:蒙特卡洛按相关峰对齐会采早 3 个样本,一度以为模型错了。ROADMAP P2 #45 更新,`cairn/DSP发端与PR.md` §40 末。
-- 验证:只改文档;`test_docs_fresh` 与 `example_drift derived` 在提交前跑。
+- 验证:只改文档;`test_docs_fresh` 14 passed、`example_drift derived` 103 处成立。CI(PR #129,头 e407ba6,9 项全绿):test 运行 30.5 分钟;Android / Windows 不触发。
 
 ## 2026-11-01 · 统计引擎建白 SJ 与 DCD、JTOL 走统计引擎、P2 #44 猜测排除(feat/stat-sj-dcd)
 
