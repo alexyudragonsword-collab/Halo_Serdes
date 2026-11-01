@@ -59,9 +59,25 @@ Non-LTI approximations (each cross-checked against the time engine):
   its own -- and comes in as noise that follows the transitions
   (``tx_edge_jitter``): binned by the sampled symbol's neighbours, its own
   two edges exact, the rest linearised, per phase; it also randomises a
-  bang-bang detector's edges. White SJ and DCD are not modelled, nor an ADC
-  receiver's Mueller-Muller loop on white clocks (its own noise 0.0001-0.006
-  UI on the presets). A bang-bang loop's phase is not Gaussian about the
+  bang-bang detector's edges. A white clock's SJ tone (either side) goes
+  through the receiver's loop -- the ADC's Mueller-Muller loop too, which
+  white clocks otherwise leave out (its own noise 0.0001-0.006 UI on the
+  presets) -- and what is left of it, ``A |E(f)|``, is a swing of the
+  sampling instant read as its arcsine on top of the smear; a bang-bang
+  loop's gain and noise take the swing (it flattens the detector). DCD moves
+  the transmitter's own two edges of the sampled symbol by half of it with
+  their sign, exactly, and the rest linearised; a mixed-signal receiver's
+  adapting levels sit at the offset it leaves and its DFE's first tap takes
+  the part that follows the previous symbol (``stat_noise.dcd_absorbed``).
+  Against the time engine on independent symbols (2026-11-01): the 224G ADC
+  preset 0.85-1.01x under SJ, 0.79 / 0.87x under DCD (0.23-0.78x left out);
+  PAM4 32G 0.61 / 0.85x under SJ, 0.30 / 0.56x under 0.12 / 0.08 UI of DCD;
+  NRZ 16G 0.26-0.65x under 0.05-0.1 UI of SJ above its loop (0.04-0.27x left
+  out) -- its hunting under the tone grows 11 % in the kernel, 2-4 % here,
+  and the pattern-phase factor is left out where the tone swings the loop
+  more than its noise -- and 0.86-0.90x under DCD (ROADMAP P2 #45). A tone
+  the loop must follow faster than ~0.4 of its slew, or a phase error past
+  0.1 UI RMS, slips the kernel's cycles: warned, not modelled. A bang-bang loop's phase is not Gaussian about the
   lock: its detector saturates, so beyond ~2 sigma the density's tails are
   exponential and heavier on the side that saturates first (the late side
   on the NRZ 16G preset: 3-7x a Gaussian's mass 0.23 UI out). Since
@@ -1024,7 +1040,13 @@ def _stat_phase(ctx: SimpleNamespace, pi: int, fixed: bool, frac: float) -> None
             lv = levels_norm * main
             order = np.argsort(lv)
             lv_sorted = lv[order]
-            lt = (levels_norm * thr_main)[order]
+            lt_lv = levels_norm * thr_main
+            jit_lv = tx_jit_phi[i_level] if tx_jit_phi is not None else None
+            if jit_lv is not None and jit_lv.level_mean is not None:
+                # DCD: adapting levels sit at their mean offset, the
+                # thresholds between them (stat_noise.dcd_absorbed)
+                lt_lv = lt_lv + jit_lv.level_mean
+            lt = lt_lv[order]
             if pos_lv is not None:
                 # PAM6 pairs: the partner's level is a shift of the slicer
                 # tails, the bits its error costs the pair's own (P2 #33)
@@ -1234,7 +1256,7 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
         "noise_sigma", "osr", "own_clock", "pattern_phase", "peak", "phi_offsets", "pr_active",
         "pulse", "pulse_pre", "ser_phi", "ser_sym_phi", "sigma_ui", "smears", "swing", "tx_jit_phi",
         "v_centers", "voters", "x_drift", "x_slicer"))
-    sj_d, sj_w, sj_resid = ctx.sj_d, ctx.sj_w, ctx.sj_resid
+    sj_d, sj_w, sj_rms, sj_resid = ctx.sj_d, ctx.sj_w, ctx.sj_rms, ctx.sj_resid
     # the curves the smear is read from: the phases as computed, before it
     ber_raw, ser_raw = ber_phi.copy(), ser_phi.copy()
     if fine_span:
@@ -1324,7 +1346,12 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
                 # Nor where the loop is underdamped enough to slip (the warning
                 # below): no stationary joint to find (kp_shift 8 on the NRZ 16G
                 # preset, 600 steps unconverged, 49 s, factor 1)
+                # Nor where a tone the loop leaves swings it more than its own
+                # noise: the factor is the chain over the read without the tone,
+                # and on a read with it collapsed (NRZ 16G preset, 0.5 / 1 UI at
+                # 1 GHz: 6e-4 / 2e-6, the BER falling as the tone grew)
                 votes_hold = (loop_sol.sigma_untracked_ui <= loop_sol.sigma_self_ui
+                              and sj_rms <= loop_sol.sigma_self_ui
                               and (loop_sol.damping is None
                                    or loop_sol.damping >= _BB_DAMPING_WARN))
                 if (n_levels == 2 and n_dfe > 0 and not pr_active and mlsd_mem == 0 and kp_s > 0

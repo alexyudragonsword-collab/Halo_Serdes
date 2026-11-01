@@ -441,7 +441,13 @@ freqs = np.logspace(6, 8.5, 12)
 j = jitter_tolerance(cfg, freqs, ber_threshold=1e-3, channel=ch)
 print(j.summary())              # 低于 CDR 环带宽平坦,高于则 ~20dB/dec 滚降
 mask = jtol_mask(freqs)         # 通用合规模板
+# 深门限走统计引擎(2026-11-01 起它建白 SJ:环路留下的 A|E(f)| 按反正弦抹在采样相位上)
+j6 = jitter_tolerance(cfg, freqs, ber_threshold=1e-6, engine="statistical")
 ```
+
+统计引擎的 SJ / DCD 对时域(独立码元):224G ADC 0.85–1.01× / 0.79–0.87×,PAM4 32G 0.61–0.85× / 0.30–0.56×,
+NRZ 16G 在带宽以上 0.26–0.65× / 0.86–0.90×(读低在猎振尾部,ROADMAP P2 #45)。环路要跟的音快过约 0.4 倍斜率上限、
+或相位误差 RMS 过 0.1 UI 时内核会周跳,统计引擎告警、不给可信数 —— 那一段曲线以时域为准。
 
 ---
 
