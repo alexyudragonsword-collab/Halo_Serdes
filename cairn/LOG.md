@@ -13,6 +13,8 @@
   `cairn/DSP发端与PR.md` §40 末 / §41,pitfalls 一条。
 - 验证:全量 1427 passed / 8 skipped(1 条研究页视图数断言 7 → 8 已改,重跑通过);Cython 构建(engine 两个、analysis 两个、app 两个)删 .py、
   `HALO_NO_JIT=1` 相关 82 passed / 1 skipped;指纹 6 / 986 末位;ruff 通过。
+- CI(PR #130,头 c5bc998,28 项全绿):test 最长 26.5 分钟(full 32.3)、examples 20.7、Android 编译版 9.0 / 模拟器 3.6–5.3;Windows PyInstaller 2.5、
+  Nuitka 116.7、onefile 121.5(缓存冷:恢复步骤 <1 s,工具链键未命中)。
 
 ## 2026-11-01 · P2 #45 两份余项再查,代码不变(feat/p45-sj-dcd-residuals)
 
