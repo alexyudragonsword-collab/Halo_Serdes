@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-01 · 时域在锁定点取初值、训练段电平换挡;NRZ SJ 猎振与 #44 同源(feat/level-warmup-nrz-sj)
+
+- 用户选"时域电平自适应过渡 + P2 #45 NRZ SJ 猎振"。
+- 过渡两层:DFE / 电平取在脉冲峰值而环路锁在别处(PAM4 32G tap1 40 万码元才到位,无 DCD 也在);DCD 偏移按跟踪步长 1e5–1e6 码元。
+  `DfeConfig.init: lock`(默认)在锁定点取初值;`train_gain`(默认 1)放大训练段电平步长,DCD 下 64 有效,眼闭合时带偏 SNR 8 dB、抽头放大会跑飞 —— 所以只放电平、默认关。
+  统计引擎不自适应时门限跟到锁定点(不跟时 PAM6 / PAM8 对照读高 3.6–6.3×,在中途那一版上量的)。
+- NRZ SJ:猎振多涨随幅度近平方(0.15 UI +26 % 对模型 +8 %),调和平均排除;内核跟音 |H| 0.42 对 0.47 → 与 #44 同源,记 ROADMAP #45。
+- 坑:几组配置共用种子时窗口误码一起动;PAM4 `error_idx` 是码元下标(一组数作废重跑)。`cairn/DSP发端与PR.md` §42,pitfalls 补一条。
+- 验证:全量 1427 passed / 8 skipped(2 条测试改成显式 `init="cursor"` 场景后通过);示例 47 / 47,3 个输出变、引用核过;指纹 44 / 986;
+  Cython 构建(timedomain / statistical / schema / config_bridge)删 .py、`HALO_NO_JIT=1` 相关 146 passed;ruff 通过。
+
 ## 2026-11-01 · 统计 JTOL 进 GUI / 手机、带音统计运行提速、PAM4 DCD 读低结案(feat/stat-jtol-gui-dcd)
 
 - 用户选"统计 JTOL 接进 GUI / 手机 + PAM4 DCD 静态那份接着拆"。

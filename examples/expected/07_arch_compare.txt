@@ -2,7 +2,7 @@ loss@Nyq   -4.9 dB | MS : SNR  27.5 dB SER 0.00e+00 | ADC: SNR  34.6 dB SER 0.00
 loss@Nyq   -9.9 dB | MS : SNR  17.9 dB SER 3.40e-06 | ADC: SNR  31.0 dB SER 0.00e+00
 loss@Nyq  -14.8 dB | MS : SNR  12.4 dB SER 2.80e-02 | ADC: SNR  29.0 dB SER 0.00e+00
 loss@Nyq  -19.8 dB | MS : SNR   8.5 dB SER 2.08e-01 | ADC: SNR  25.7 dB SER 0.00e+00
-loss@Nyq  -24.7 dB | MS : SNR   6.1 dB SER 3.41e-01 | ADC: SNR  22.3 dB SER 0.00e+00
+loss@Nyq  -24.7 dB | MS : SNR   6.1 dB SER 3.42e-01 | ADC: SNR  22.3 dB SER 0.00e+00
 
 receiver power estimate (analysis/power.py, public-figure coefficients; read the ratio): MS 1.60 pJ/b, ADC 4.81 pJ/b (3.01x)
 post-FEC (KP4) projection at the deepest common operating point:
