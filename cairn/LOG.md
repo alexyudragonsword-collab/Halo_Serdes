@@ -12,6 +12,8 @@
 - README / COMPARISON 的规模与测试数(2026-10-03 的 1015 项)补上 2026-11-02 的数:1437 项、核心库 ~20.2k 行等。
 - 核过不动的:历史更正段里的旧数(都带 → 或日期)、示例输出引用(47 / 47 一致)、GUI 视图数、knowledge-inventory。
 - 验证:ruff;`test_docs_fresh` + `test_example_drift` 29 passed;statistical.py 编 .so 删 .py、`HALO_NO_JIT=1` 相关 90 passed。
+- CI(PR #135,头 0bf0975 全绿,代码提交 a976c8a 上 Android / Windows 也绿):test 工作流 33 分钟、examples-full 32;Android 16.1;Windows PyInstaller 3.5、
+  onefile 30.3、Nuitka standalone 122.9(新分支上 standalone 链是冷的,恢复 0 s —— 缓存按分支隔离,pitfalls 已有)。
 
 ## 2026-11-02 · P2 #44 离散环路理论(两个机理,记不改);P2 #39 是种子散布(feat/p44-discrete-loop-p39)
 
