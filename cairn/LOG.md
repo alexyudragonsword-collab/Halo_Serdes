@@ -15,6 +15,8 @@
 - 验证:全量 1429 passed / 8 skipped;示例 47 / 47,44 / 45 末位变(45 时域那行自身环路 / 他钟 1.32 → 1.41×),引用核过、历史更正条不改;
   指纹 12 / 986 变(NRZ 16G、NRZ 32G static、PAM4 末位);Cython(stat_loop / statistical / timedomain / stat_pattern_phase)删 .py、`HALO_NO_JIT=1` 相关 93 passed / 5 skipped(needs_jit);
   ruff 通过;NRZ 16G 统计单跑同负载下是 main 的 1.1×。
+- CI(PR #133,头 79298f2 全绿;代码最后一次改动 6513557 上 Android / Windows 也绿):test 最长 29.7 分钟、examples 20.0、examples-full 31.8;
+  Android 14.4;Windows PyInstaller 3.5、Nuitka 37.4(clcache 3678 / 3679 命中)、onefile 44.1(上一轮冷 121)。头一轮 test 红:重录的示例输出没过 `normalise`。
 
 ## 2026-11-01 · Nuitka 钉版本、P2 #44 量成两份、文档漂移(feat/nuitka-cache-p44-audit)
 
