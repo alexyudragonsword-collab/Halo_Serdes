@@ -47,4 +47,4 @@ NRZ 28G analytic (COM/xtalk)  (noise 10.0 mV, couplings around -27 dB)
   quasi-synchronous / mean over the skews (time): 0.96 0.97  [~s]
 
 stat / time: synchronous 0.71 ... 1.21 (24 runs), quasi-synchronous 0.78 ... 0.94 (6 runs)
-wrote /home/user/Halo_Serdes/examples/output/44_quasi_sync_xtalk.png
+wrote examples/output/44_quasi_sync_xtalk.png

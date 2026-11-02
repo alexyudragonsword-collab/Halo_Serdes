@@ -51,4 +51,4 @@ PAM4 224G ADC (106 GBd) (noise 2.5 mV), four lanes, skews +0.00 +0.06 -0.09 +0.1
   lanes                 3.9e-04  5.3e-04  4.1e-04  5.8e-04   errors 150 205 160 225
   statistical, clock where it starts   3.9e-04  4.8e-04  4.6e-04  7.6e-04   ratio 1.02 0.91 1.11 1.31
   statistical, clock at the mean skew (+0.026 UI)  4.3e-04  4.6e-04  5.6e-04  6.7e-04   ratio 1.10 0.87 1.36 1.16  [~s]
-wrote /home/user/Halo_Serdes/examples/output/45_shared_cdr_skew.png
+wrote examples/output/45_shared_cdr_skew.png
