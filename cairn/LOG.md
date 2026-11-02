@@ -3,6 +3,18 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-02 · 文档漂移审计(#130–#134 之后)(feat/doc-drift-1102)
+
+- 用户选"文档漂移审计"。只加日期更正,不改历史段落。
+- `docs/USAGE.md`:"白噪钟的 sj_ui / dcd_ui 统计引擎不建"(2026-11-01 起建了);码型-相位因子 1.35 / 1.18 / 1.05 → 1.21 / 1.06 / 0.97、10 / 8 / 6 mV 1.26 / 1.15 / 0.93。
+- `docs/clock_profile.md`:探测器表的 bang-bang 行还是首版高斯公式 —— 表下加更正(BbEdgeStats、原始数据样本符号、动态那份记而不改)。
+- `engine/statistical.py` 顶部清单的因子数同上(只改文档字符串);ROADMAP #45 指向 #44 的结论,"猎振多涨是否同源"标为未核。
+- README / COMPARISON 的规模与测试数(2026-10-03 的 1015 项)补上 2026-11-02 的数:1437 项、核心库 ~20.2k 行等。
+- 核过不动的:历史更正段里的旧数(都带 → 或日期)、示例输出引用(47 / 47 一致)、GUI 视图数、knowledge-inventory。
+- 验证:ruff;`test_docs_fresh` + `test_example_drift` 29 passed;statistical.py 编 .so 删 .py、`HALO_NO_JIT=1` 相关 90 passed。
+- CI(PR #135,头 0bf0975 全绿,代码提交 a976c8a 上 Android / Windows 也绿):test 工作流 33 分钟、examples-full 32;Android 16.1;Windows PyInstaller 3.5、
+  onefile 30.3、Nuitka standalone 122.9(新分支上 standalone 链是冷的,恢复 0 s —— 缓存按分支隔离,pitfalls 已有)。
+
 ## 2026-11-02 · P2 #44 离散环路理论(两个机理,记不改);P2 #39 是种子散布(feat/p44-discrete-loop-p39)
 
 - 用户选"P2 #44 离散环路理论 + P2 #39 MM 环路余 2–6 % σ"。代码不变。

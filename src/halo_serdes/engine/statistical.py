@@ -100,6 +100,11 @@ Non-LTI approximations (each cross-checked against the time engine):
   (P3 #15), pushed with second-order fluxes (P3 #16): 1.35 / 1.18 / 1.05x
   at 12 / 15 / 18 mV, 0.8-1.35x at 10-6 mV, the read 0.88-1.09x the
   kernel's on independent symbols from 18 to 6 mV.
+  (2026-11-02: with the detector's gain and noise read off its edge samples
+  and its transitions decided on the raw data samples' signs, ROADMAP P2
+  #38 / #44, the read before the factor rose and the factor fell -- 1.21 /
+  1.06 / 0.97x at 12 / 15 / 18 mV, 0.93-1.26x at 10-6 mV -- the read with
+  it 0.91-1.05x the kernel's.)
   This engine models random data: on PRBS31 the free-running kernel errs
   1.03-10x more over the same range (PRBS23 more still, PRBS13 less), the
   pattern's recurrence landing on the loop's memory;
