@@ -165,6 +165,18 @@ at the same part of the profile. The two detectors differ only in `k_pd` and
 | bang-bang (mixed-signal) | `rho sqrt(2/pi) / sigma_e`, `sigma_e` = jitter at its input | `rho - rho^2/3` per update | fixed point on `sigma_e^2 = untracked^2 + self^2 + edge^2`; `edge` is AWGN + ISI at the edge sample over the edge slope, read off the pre-DFE pulse at the lock point |
 | Mueller-Muller (ADC) | mean slope of `x (sign x+ - sign x-)` | its density at low frequency, over `n_lanes`; a short repeating pattern's data share as lines at multiples of its repetition rate | seeded Monte-Carlo over random symbols on the pulse's cursor set at the lock point; on equalised samples `x` is the slicer input -- the DFE's (and a PR target's) postcursors taken out at their lock-point values, the lock at the peak |
 
+(2026-11-02 update: the bang-bang row is the first cut. Since 2026-10-31
+(ROADMAP P2 #38) the gain and the noise are read off the detector's edge
+samples over the configured pattern (`cdr.linear.BbEdgeStats`): the gain is
+the edges' density at zero times their slope, the loop's own jitter folded
+in, and the noise is the white part plus the data's low-frequency density,
+each taken at the phases the loop's hunting reaches. Since 2026-11-02
+(ROADMAP P2 #44) a transition counts by how surely the raw, pre-DFE data
+samples read it, as the kernel decides it -- NRZ 16G at 25 mV, static slope
+1.724 -> 1.539 against the kernel's 1.517. A coarse loop step still makes the
+kernel answer a moving phase 3-10 % less than this static gain; that is
+recorded, not modelled.)
+
 Both read the pulse *at the lock point*, not at its peak: an NRZ pulse through
 a short channel is a 1-UI plateau whose argmax is its leading corner, and the
 Alexander edge locks half a UI into it. Reading at the peak was a factor of
