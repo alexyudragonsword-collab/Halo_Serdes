@@ -12,6 +12,7 @@
 - #39:24 种子把每个种子的实际边沿偏移过模型线性环路 —— 内核 / 线性 1.004–1.013(成对),线性 / 解析 0.997–1.028,内核 / 解析的 90 % 区间都含 1;
   单种子 σ 散 11–27 %,原 1.021 / 1.033 / 1.058 在散布里。ROADMAP #39 清空,§38 末更正。探针 `p39`、`drift`、`ctheory2`、`toyloop`(scratchpad)。
 - 验证:只改 ROADMAP / cairn / CHANGELOG;`test_docs_fresh` + `test_example_drift` 29 passed,`example_drift compare` 47 / 47 一致。
+- CI(PR #134,头 3e35b40 全绿;只改文档,只跑了 test 工作流):test 最长 30.0 分钟(3.10 jit,3.11 jit 16.5)、examples 21.8。
 
 ## 2026-11-02 · P2 #44:鉴相按原始数据样本符号判跳变;动态那份是粗步长(feat/p44-bb-data-sign)
 
