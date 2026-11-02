@@ -325,7 +325,10 @@ before its bang-bang loop locks on the PAM4 32G preset -- so the smear now
 holds the thresholds there rather than at the lock: PAM4 32G 0.94-1.15x deep
 and 1.04-1.12x from 100 errors; the cross-check links 1.00-1.04x. NRZ 16G's
 0.45-0.89x is neither: its phase is correlated with the data pattern while
-the loop runs free, ROADMAP P2 #32.)
+the loop runs free, ROADMAP P2 #32. Since 2026-10-21 the levels adapt to the
+lock (`dfe.level_adapt`), and since 2026-11-01 they and the DFE taps are also
+seeded there (`dfe.init: lock`), so both engines put the thresholds at the
+lock.)
 
 The bang-bang figure on a quiet clock is limited by the limit cycle not being
 white noise. On the cross-check link the two engines' BER agree to 1.3–1.5×

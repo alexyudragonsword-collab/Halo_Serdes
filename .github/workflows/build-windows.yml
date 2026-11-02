@@ -30,6 +30,11 @@ on:
       - "pyproject.toml"
       - ".github/workflows/build-windows.yml"
 
+env:
+  # the Nuitka both Nuitka jobs install: part of their compile cache's key, so
+  # pinned and bumped on purpose (see the nuitka job's cache notes)
+  NUITKA_VERSION: "4.3.4"
+
 jobs:
   pyinstaller:
     runs-on: windows-latest
@@ -72,7 +77,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[gui,desktop]"
-          pip install "nuitka>=2.0" ordered-set zstandard
+          pip install "nuitka==${{ env.NUITKA_VERSION }}" ordered-set zstandard
       # Most of a Nuitka build is MSVC compiling ~3650 generated C files
       # (98 of 117 min on 2026-10-24), almost all of them scipy / pandas /
       # matplotlib / dash, identical from run to run while their versions
@@ -89,6 +94,15 @@ jobs:
       # 1 GB cache in and out of every build; a dependency upgrade inside a
       # chain recompiles only its own files (pandas 3.0.6 -> 3.1.0: 222 of
       # 3651).
+      #
+      # Nuitka is pinned (NUITKA_VERSION, top of the file): unpinned, its
+      # 4.3.3 -> 4.3.4 release landed the same day as the 20261030 runner
+      # image, and each started a new chain -- four builds in a row of
+      # "0 cache hits and 3679 cache misses", 2 h each (2026-11-01). Bump it
+      # on purpose, expecting one cold build. And a cache is scoped to its
+      # branch: a branch reads its own and main's, so the first run on a new
+      # chain is cold on main and on every branch that starts before main's
+      # run has saved (two hours later).
       - name: Name the toolchain the cache is good for
         id: tc
         run: |
@@ -143,7 +157,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[gui,desktop]"
-          pip install "nuitka>=2.0" ordered-set zstandard
+          pip install "nuitka==${{ env.NUITKA_VERSION }}" ordered-set zstandard
       # as in the nuitka job (its own key: the build directory differs)
       - name: Name the toolchain the cache is good for
         id: tc
