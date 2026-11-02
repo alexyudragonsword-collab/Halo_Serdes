@@ -13,6 +13,7 @@
 - 缺口盘点(ROADMAP #12 记):AMI + 光拓扑、802.3 / OIF 条文数值(要用户给)、COM 的 Rx FFE 抽头上限、定点路径不接 PR、统计引擎不建的 ADC 削顶 / TI 失配 /
   驱动非线性、小项若干;建议先做 COM 抽头上限。
 - 验证:只改 ROADMAP / cairn / CHANGELOG;`test_docs_fresh` + `test_example_drift` 29 passed。
+- CI(PR #137,头 bef3ff8 全绿;只改文档,只跑了 test 工作流):34 分钟。
 
 ## 2026-11-02 · 文档漂移审计(#130–#134 之后)(feat/doc-drift-1102)
 
