@@ -577,6 +577,15 @@ class BbEdgeStats:
     edge_ui: float
     periodic: bool
     span: int
+    # the raw (pre-DFE) data samples either side of each edge [V] and their
+    # slopes [V/UI], unnormalised, and the sign u / du were normalised by: the
+    # detector decides a transition on those samples' signs, which ISI and
+    # noise flip (``_w``). None: every stored edge a sure transition
+    vp: np.ndarray | None = None
+    dvp: np.ndarray | None = None
+    vc: np.ndarray | None = None
+    dvc: np.ndarray | None = None
+    sg: np.ndarray | None = None
 
     @staticmethod
     def build(pulse_y: np.ndarray, osr: int, lock_pos: float, half_span: int,
@@ -611,19 +620,86 @@ class BbEdgeStats:
             keep = (k >= n_post) & (k < n - n_pre)                  # whole ISI in view
             first = n_post
         trans = keep & (np.sign(a) != np.sign(prev)) & (prev != 0.0)
-        sg = np.sign(prev[trans])
+        # The detector decides a transition on the raw data samples' signs,
+        # ISI and noise in (the kernel's s_cur / s_prev): E[pd] is
+        # (2 P(edge +) - 1) (P(prev +) - P(cur +)), the data samples moving
+        # with the phase as the edge does. So a transition counts by how
+        # surely both raw signs read the data, and a run the noise may split
+        # counts too. Counting every transition whole, NRZ 16G at 25 mV read
+        # the detector's slope 1.72 against the kernel's 1.52; the data
+        # samples held still, 1.63 (ROADMAP P2 #44, 2026-11-02)
+        pos_d = lock_pos + np.arange(-n_pre, n_post + 1) * osr
+        c_d = np.interp(pos_d, grid, y, left=0.0, right=0.0)
+        dc_d = np.interp(pos_d, grid, dy, left=0.0, right=0.0) * osr
+        if periodic:
+            v_d = np.convolve(ext, c_d)[n_pre + n_post: n_pre + n_post + n]
+            dv_d = np.convolve(ext, dc_d)[n_pre + n_post: n_pre + n_post + n]
+            v_dp, dv_dp = np.roll(v_d, 1), np.roll(dv_d, 1)
+        else:
+            v_d = np.convolve(a, c_d)[n_pre: n_pre + n]
+            dv_d = np.convolve(a, dc_d)[n_pre: n_pre + n]
+            v_dp = np.concatenate([[0.0], v_d[:-1]])
+            dv_dp = np.concatenate([[0.0], dv_d[:-1]])
+        from scipy.special import ndtr
+
+        s_d = np.sqrt(noise_sigma ** 2 + (dv_d * edge_ui) ** 2) + 1e-300
+        s_dp = np.sqrt(noise_sigma ** 2 + (dv_dp * edge_ui) ** 2) + 1e-300
+        split = np.abs(ndtr(v_dp / s_dp) - ndtr(v_d / s_d)) > 1e-9
+        store = keep & (trans | split)
+        sg = np.where(trans, np.sign(prev), 1.0)[store]
         if dcd_ui > 0.0:
             # an edge later by tau reads like sampling earlier by tau
             v = v.copy()
             v[trans] -= dv[trans] * (dcd_ui / 2.0) * np.sign(a[trans] - prev[trans])
-        return BbEdgeStats(u=v[trans] * sg, du=dv[trans] * sg,
-                           at=np.flatnonzero(trans) - first, n_symbols=int(keep.sum()),
+        return BbEdgeStats(u=v[store] * sg, du=dv[store] * sg,
+                           at=np.flatnonzero(store) - first, n_symbols=int(keep.sum()),
                            noise_sigma=float(noise_sigma), edge_ui=float(edge_ui),
-                           periodic=bool(periodic), span=int(n_pre + n_post + 1))
+                           periodic=bool(periodic), span=int(n_pre + n_post + 1),
+                           vp=v_dp[store], dvp=dv_dp[store], vc=v_d[store], dvc=dv_d[store], sg=sg)
+
+    def _side(self, v, dv, x, sigma_e: float, slope: bool):
+        """P(a raw data sample reads +) at offsets ``x`` [UI] and, with
+        ``slope``, its slope per UI; the normal integral only where it is
+        not 0 or 1 to double precision (|z| < 9): most edges' signs are sure."""
+        from scipy.special import ndtr
+
+        sd = np.sqrt(self.noise_sigma ** 2 + dv ** 2 * (sigma_e ** 2 + self.edge_ui ** 2)) + 1e-300
+        z = (v + dv * x) / sd
+        p = (z > 0.0).astype(np.float64)
+        near = np.abs(z) < 9.0
+        p[near] = ndtr(z[near])
+        if not slope:
+            return p, None
+        d = np.zeros(z.shape)
+        zn = z[near]
+        d[near] = (np.exp(-0.5 * zn * zn) / np.sqrt(2.0 * np.pi)
+                   * np.broadcast_to(dv / sd, z.shape)[near])
+        return p, d
+
+    def _w(self, x, sigma_e: float):
+        """(the share each stored edge counts, its slope per UI) at offsets
+        ``x`` [UI]: ``(P(prev +) - P(cur +)) sg`` over the raw data samples,
+        the loop's jitter ``sigma_e`` folded into their noise; (1, 0) without
+        them. ``x`` scalar or (n_x, 1)."""
+        if self.vp is None:
+            return 1.0, 0.0
+        pp, dpp = self._side(self.vp, self.dvp, x, sigma_e, True)
+        pc, dpc = self._side(self.vc, self.dvc, x, sigma_e, True)
+        return (pp - pc) * self.sg, (dpp - dpc) * self.sg
+
+    def _share_fires(self, x: float) -> tuple[np.ndarray, np.ndarray]:
+        """(share, P(the raw signs differ)) per stored edge at offset ``x``."""
+        pp, _ = self._side(self.vp, self.dvp, x, 0.0, False)
+        pc, _ = self._side(self.vc, self.dvc, x, 0.0, False)
+        return (pp - pc) * self.sg, pp * (1.0 - pc) + (1.0 - pp) * pc
 
     @property
     def rho(self) -> float:
-        return self.u.size / max(self.n_symbols, 1)
+        """The detector's firing rate per symbol: the transitions, or with the
+        raw data samples, the chance their signs differ."""
+        if self.vp is None:
+            return self.u.size / max(self.n_symbols, 1)
+        return float(np.sum(self._share_fires(0.0)[1]) / max(self.n_symbols, 1))
 
     def mean_output(self, sigma_e: float = 0.0) -> float:
         """The detector's mean output per symbol: zero where the loop locks
@@ -631,7 +707,8 @@ class BbEdgeStats:
         from scipy.special import erf
 
         m = erf(self.u / (np.sqrt(2.0) * self._s(sigma_e)))
-        return float(np.sum(m) / max(self.n_symbols, 1))
+        w, _ = self._w(0.0, sigma_e)
+        return float(np.sum(m * w) / max(self.n_symbols, 1))
 
     def _s(self, sigma_e: float) -> np.ndarray:
         return np.sqrt(self.noise_sigma ** 2 + self.du ** 2 * (sigma_e ** 2 + self.edge_ui ** 2)) + 1e-300
@@ -640,18 +717,22 @@ class BbEdgeStats:
         """Mean output per symbol per UI of delay at loop jitter ``sigma_e``
         [UI]: the edges' density at zero times their slope, exactly over
         the sequence (``bb_pd_gain`` for a Gaussian edge)."""
-        s = self._s(sigma_e)
-        dens = np.exp(-0.5 * (self.u / s) ** 2) / (np.sqrt(2.0 * np.pi) * s)
-        return float(np.sum(-2.0 * self.du * dens) / max(self.n_symbols, 1))
+        return float(self.gain_at(np.zeros(1), sigma_e)[0])
 
     def gain_at(self, x: np.ndarray, sigma_e: float) -> np.ndarray:
         """The local slope of the mean output per symbol per UI at offsets
         ``x`` [UI] from the lock, the loop's jitter ``sigma_e`` folded in."""
+        from scipy.special import erf
+
         x = np.atleast_1d(np.asarray(x, dtype=np.float64))
         s = self._s(sigma_e)
         z = (self.u[None, :] + self.du[None, :] * x[:, None]) / s[None, :]
         dens = np.exp(-0.5 * z * z) / (np.sqrt(2.0 * np.pi) * s[None, :])
-        return np.sum(-2.0 * self.du[None, :] * dens, axis=1) / max(self.n_symbols, 1)
+        w, dw = self._w(x[:, None], sigma_e)
+        slope = -2.0 * self.du[None, :] * dens * w
+        if self.vp is not None:
+            slope = slope - erf(z / np.sqrt(2.0)) * dw
+        return np.sum(slope, axis=1) / max(self.n_symbols, 1)
 
     def tone_gains(self, amp_ui: float, sigma_e: float, n_theta: int = 48) -> tuple[float, float]:
         """Under a tone the loop leaves ``amp_ui`` of: the gain the tone itself
@@ -709,7 +790,14 @@ class BbEdgeStats:
         power = 0.0
         for t, w in nodes:
             m = erf((self.u + self.du * t) / (np.sqrt(2.0) * s0))
-            white += w * float(np.sum(1.0 - m ** 2)) / nn
+            if self.vp is not None:
+                # P(the detector fires) is P(the raw signs differ); its mean
+                # output is the edge's times the share
+                share, fire = self._share_fires(t)
+                m = m * share
+                white += w * float(np.sum(fire - m ** 2)) / nn
+            else:
+                white += w * float(np.sum(1.0 - m ** 2)) / nn
             g = np.zeros(nn)
             g[self.at] = m
             g -= g.mean()
