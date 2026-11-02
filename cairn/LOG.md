@@ -11,7 +11,7 @@
 - `engine/statistical.py` 顶部清单的因子数同上(只改文档字符串);ROADMAP #45 指向 #44 的结论,"猎振多涨是否同源"标为未核。
 - README / COMPARISON 的规模与测试数(2026-10-03 的 1015 项)补上 2026-11-02 的数:1437 项、核心库 ~20.2k 行等。
 - 核过不动的:历史更正段里的旧数(都带 → 或日期)、示例输出引用(47 / 47 一致)、GUI 视图数、knowledge-inventory。
-- 验证:ruff;`test_docs_fresh` + `test_example_drift` 29 passed;statistical.py 编 .so 删 .py、`HALO_NO_JIT=1` 相关 __CY__。
+- 验证:ruff;`test_docs_fresh` + `test_example_drift` 29 passed;statistical.py 编 .so 删 .py、`HALO_NO_JIT=1` 相关 90 passed。
 
 ## 2026-11-02 · P2 #44 离散环路理论(两个机理,记不改);P2 #39 是种子散布(feat/p44-discrete-loop-p39)
 
