@@ -86,6 +86,38 @@ def test_the_gain_is_the_kernels_frozen_slope(name, kernel_slope, monkeypatch):
     assert sol.k_pd == pytest.approx(edge.gain(sol.sigma_ui), rel=1e-5)
 
 
+def test_the_detector_reads_transitions_on_the_raw_data_signs(monkeypatch):
+    """The kernel decides a transition on the raw (pre-DFE) data samples'
+    signs, which noise flips and which move with the phase (ROADMAP P2 #44,
+    2026-11-02): NRZ 16G at 25 mV, loop frozen at fixed offsets +-0.04 UI
+    (probe ``kstatic``, 200k symbols), its slope is 1.517 per UI; counting
+    every transition whole read 1.724, the data samples held still 1.629."""
+    from halo_serdes_app.config_bridge import load_preset
+
+    cfg = load_preset("NRZ 16G mixed-signal")
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=0.025))
+    edge, _ = _edge_of(cfg, monkeypatch)
+    assert edge.vp is not None
+    assert 0.97 < edge.gain(0.0) / 1.517 < 1.05, edge.gain(0.0)
+    # a run the noise may split is kept: more stored than the transitions
+    assert np.count_nonzero(edge.sg == 1.0) > 0 and edge.rho < 0.5
+
+
+def test_far_offsets_do_not_flip_the_slope(monkeypatch):
+    """The data samples are linear in the offset only near the lock: taken
+    linear 2 UI out they read as the other symbol and the slope went
+    negative, which collapsed a 4 UI JTOL tone's loop solution (the
+    ``jtol_stat`` study on the NRZ 28G preset, 2026-11-02). Held at half a
+    UI, the gain a large swing meets falls towards zero from above."""
+    from halo_serdes_app.config_bridge import load_preset
+
+    edge, sol = _edge_of(load_preset("NRZ 28G analytic (COM/xtalk)"), monkeypatch)
+    g = edge.gain_at(np.array([-4.0, -2.0, -1.0, 1.0, 2.0, 4.0]), sol.sigma_ui)
+    assert np.all(g > -1e-3), g
+    sw = [edge.swing_gain(a, sol.sigma_ui) for a in (0.5, 1.0, 2.0, 4.0)]
+    assert all(x >= 0.0 for x in sw) and sw == sorted(sw, reverse=True), sw
+
+
 def test_a_chain_error_after_a_chain_error_follows_more_often():
     """The 224G preset frozen at its lock, 2.5 mV (probe ``p71``, two seeds
     of 500k, 833 errors): after a first error the next fails 0.72 of the

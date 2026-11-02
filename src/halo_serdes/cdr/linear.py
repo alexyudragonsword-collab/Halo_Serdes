@@ -545,6 +545,10 @@ _GH_X, _GH_W = np.polynomial.hermite_e.hermegauss(16)   # E over a standard norm
 _GH_W = _GH_W / _GH_W.sum()
 
 
+# how far from the lock a data sample is taken linear in the offset [UI]
+_DATA_REACH_UI = 0.5
+
+
 @dataclass(frozen=True)
 class BbEdgeStats:
     """An Alexander detector's edge samples over a symbol sequence: what its
@@ -660,11 +664,17 @@ class BbEdgeStats:
     def _side(self, v, dv, x, sigma_e: float, slope: bool):
         """P(a raw data sample reads +) at offsets ``x`` [UI] and, with
         ``slope``, its slope per UI; the normal integral only where it is
-        not 0 or 1 to double precision (|z| < 9): most edges' signs are sure."""
+        not 0 or 1 to double precision (|z| < 9): most edges' signs are sure.
+        The sample is linear in the offset only within half a UI of the lock
+        (``_DATA_REACH_UI``): further out it would read the neighbouring
+        symbol, and extrapolated it flips the detector's slope negative (a
+        4 UI JTOL tone did, the loop's solution collapsed) -- held there, no
+        slope beyond."""
         from scipy.special import ndtr
 
         sd = np.sqrt(self.noise_sigma ** 2 + dv ** 2 * (sigma_e ** 2 + self.edge_ui ** 2)) + 1e-300
-        z = (v + dv * x) / sd
+        xr = np.clip(x, -_DATA_REACH_UI, _DATA_REACH_UI)
+        z = (v + dv * xr) / sd
         p = (z > 0.0).astype(np.float64)
         near = np.abs(z) < 9.0
         p[near] = ndtr(z[near])
@@ -674,6 +684,7 @@ class BbEdgeStats:
         zn = z[near]
         d[near] = (np.exp(-0.5 * zn * zn) / np.sqrt(2.0 * np.pi)
                    * np.broadcast_to(dv / sd, z.shape)[near])
+        d[np.broadcast_to(np.abs(x) > _DATA_REACH_UI, z.shape)] = 0.0
         return p, d
 
     def _w(self, x, sigma_e: float):
