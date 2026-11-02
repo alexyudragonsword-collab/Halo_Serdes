@@ -24,7 +24,7 @@ PAM4 32G mixed-signal  (noise 6.0 mV, couplings around -34 dB)
   sync, skew 0.375 UI    9.24e-04 (   543)    9.02e-04    0.98
   sync, skew 0.500 UI    1.12e-03 (   657)    1.13e-03    1.01
   sync, skew 0.625 UI    1.65e-03 (   970)    1.73e-03    1.05
-  sync, skew 0.750 UI    2.97e-03 (  1746)    3.07e-03    1.04
+  sync, skew 0.750 UI    2.97e-03 (  1746)    3.08e-03    1.04
   sync, skew 0.875 UI    5.48e-03 (  3224)    5.66e-03    1.03
   quasi-sync  +100 ppm   2.58e-03 (  1515)    2.38e-03    0.92
   quasi-sync  -100 ppm   2.53e-03 (  1490)    2.38e-03    0.94

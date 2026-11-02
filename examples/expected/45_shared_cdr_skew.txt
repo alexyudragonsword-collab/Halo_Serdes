@@ -3,13 +3,13 @@ A lane sampled off its own lock point, its equalisers adapted there; 32 phases p
 PAM4 32G mixed-signal  (noise 7.0 mV, target 2.19e-04 = KP4 threshold)
   offset from lock [UI]   -0.375   -0.250   -0.125   +0.000   +0.125   +0.250   +0.375
   BER                    2.9e-03  1.4e-04  1.5e-06  1.1e-05  6.7e-04  2.9e-02  1.7e-01
-  own loop: 1.10e-05 at its lock point (on another lane's clock 1.10e-05); lowest 9.98e-07 at -0.094 UI
+  own loop: 1.10e-05 at its lock point (on another lane's clock 1.10e-05); lowest 9.99e-07 at -0.094 UI
   window: at the target -0.267 ... +0.091 UI -> 0.358 UI; at 10x the lock BER -0.243 ... +0.071 UI -> 0.313 UI
   on one loop over the four lanes' detectors: 7.32e-06 at the lock point
   four lanes, skews +0.00 +0.06 -0.09 +0.13 UI:
     master   clock at +0.000 UI   lanes  1.1e-05  1.8e-06  2.1e-04  1.8e-06   worst 2.1e-04 (lane 2), mean 5.6e-05
     average  clock at +0.026 UI   lanes  1.7e-05  2.4e-06  3.2e-04  3.9e-07   worst 3.2e-04 (lane 2), mean 8.6e-05
-    minmax   clock at -0.066 UI   lanes  1.6e-06  1.6e-06  2.4e-05  2.3e-05   worst 2.4e-05 (lane 2), mean 1.2e-05
+    minmax   clock at -0.066 UI   lanes  1.6e-06  1.6e-06  2.4e-05  2.3e-05   worst 2.4e-05 (lane 2), mean 1.3e-05
   minmax worst lane / one lane on its own loop: 2.14
   [~s]
 
@@ -44,7 +44,7 @@ PAM4 224G ADC (106 GBd)  (noise 1.5 mV, target 2.19e-04 = KP4 threshold)
 
 NRZ 16G mixed-signal (noise 15.0 mV), four lanes at skew 0 on lane 0's loop, time domain:
   lanes  1.4e-05  1.1e-05  8.7e-06  8.0e-06   errors 21 16 13 12
-  master lane 1.41e-05 (statistical, own loop 1.86e-05: 1.32x); the others 9.15e-06 (statistical, on its clock 1.21e-05: 1.32x)
+  master lane 1.41e-05 (statistical, own loop 1.99e-05: 1.41x); the others 9.15e-06 (statistical, on its clock 1.30e-05: 1.42x)
   master / others: time 1.54, statistical 1.54  [~s]
 
 PAM4 224G ADC (106 GBd) (noise 2.5 mV), four lanes, skews +0.00 +0.06 -0.09 +0.13 UI, one loop over all of them, time domain:

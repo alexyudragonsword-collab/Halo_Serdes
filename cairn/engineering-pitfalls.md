@@ -841,6 +841,12 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
   判断"环路会去哪"先问鉴相器读的是什么、它前面有没有会跟着相位一起适应的均衡器。
 - **平均环路按单 lane 的曲线读悲观一个量级**(2026-10-26,P3 #9c):一个环路平均 N 条 lane 的鉴相输出,噪声功率 1/N、猎振 1/√N
   (NRZ 16G 15 mV,1 / 2 / 4 / 8 条 1.92 / 1.33 / 0.92 / 0.65 个样本)。`shared_cdr("average")` 要用 `lane_curve(voters=N)` 的曲线。
+- **对相位线性的鉴相模型要在锁定点附近截住**(2026-11-02,P2 #44):`BbEdgeStats` 的数据样本按偏移线性外推,2 UI 外读成别的码元、
+  斜率变负;统计 JTOL 的 4 UI 音把描述函数增益推成 −0.09,环路解塌成零、抹平跨度为零(`jtol_stat` 在 NRZ 28G 预设上 ZeroDivisionError)。
+  边沿那一项远处密度自己趋零,不会出事;**会出事的是不随距离衰减的那一项**(这里是 erf · dw)。截在 ±0.5 UI、外面斜率取零;小摆幅读数逐位不变。
+  加新的相位相关项时,用 4 UI 的音跑一遍 `jtol_stat`(`tests/test_api_json.py` 会跑到)。
+- **重录 `examples/expected/` 要过 `tools/example_drift.normalise`**(2026-11-02,PR #133):只把 `[92s]` 换成 `[~s]` 不够,`wrote /home/user/...` 的绝对路径
+  也要掩;`test_expected_outputs_are_stored_normalised` 会挡。重录之后再跑一次 `tests/test_example_drift.py`(本地全量在重录之前跑的,没抓到)。
 
 ## 已知限制(不是 bug,别去"修")
 

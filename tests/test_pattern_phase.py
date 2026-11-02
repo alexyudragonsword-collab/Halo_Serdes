@@ -47,13 +47,18 @@ def test_the_factor_is_what_the_kernel_measured_and_fades_with_noise():
     2026-10-31, the bang-bang gain and detector noise read off the edge
     samples (ROADMAP P2 #38): the read before the factor fell, so the
     kernel's ratio to it is 1.74 / 1.36 / 1.04x; the factor 1.58 / 1.28 /
-    1.09, the engine with it 0.91 / 0.94 / 1.05x the kernel as before."""
+    1.09, the engine with it 0.91 / 0.94 / 1.05x the kernel as before.
+
+    2026-11-02, the detector's transitions read on the raw data samples'
+    signs, which move with the phase (ROADMAP P2 #44): the read before the
+    factor rose, the factor 1.21 / 1.06 / 0.97, the engine with it 0.91 /
+    1.00 / 1.05x the kernel."""
     f = []
     for noise, rj in ((0.012, 0.03), (0.015, 0.04), (0.018, 0.06)):
         cfg = _preset(noise, rj)
         s = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg))
         f.append(s.extras["pattern_phase"].factor)
-    assert 1.35 < f[0] < 1.75 and 1.12 < f[1] < 1.4 and 1.0 < f[2] < 1.15, f
+    assert 1.1 < f[0] < 1.35 and 1.0 < f[1] < 1.15 and 0.9 < f[2] < 1.05, f
     assert f[0] > f[1] > f[2], f
 
 
@@ -66,10 +71,11 @@ def test_deep_the_factor_follows_the_long_run_classes_tails():
     next): P(phase > 8.5 samples) 4.2e-5 against the kernel's 6.4e-5.
     2026-10-31 (ROADMAP P2 #38): the read before the factor fell, the kernel
     1.66x it; the factor 1.59, the engine with it 0.97x the kernel (0.96x
-    with the Gaussian gain)."""
+    with the Gaussian gain). 2026-11-02 (ROADMAP P2 #44, the data samples'
+    signs): the factor 1.15, the engine with it 0.96x the kernel."""
     cfg = _preset(0.008, 0.019)
     pp = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"]
-    assert 1.2 < pp.factor < 1.8, pp.factor
+    assert 1.05 < pp.factor < 1.35, pp.factor
     assert pp.converged and pp.steps < 600
     lbla = _run_lengths(pp.history)
     worst = ~pp.next_same & np.isin(lbla[:, 0], (1, 2)) & (lbla[:, 1] >= 6)
@@ -126,7 +132,7 @@ def test_the_read_is_the_independent_one_times_the_factor(monkeypatch):
                         lambda *a, **k: dataclasses.replace(orig(*a, **k), factor=1.0))
     without = st.run_statistical(cfg, channel=cm)
     factor = with_f.extras["pattern_phase"].factor
-    assert factor > 1.08
+    assert factor > 1.03
     assert with_f.ber / without.ber == pytest.approx(factor, rel=1e-9)
     assert with_f.ser / without.ser == pytest.approx(factor, rel=1e-9)
 
@@ -204,7 +210,9 @@ def test_two_engines_agree_where_the_loop_errs_on_its_own_data():
     15 mV + 0.04 UI, on independent random data -- what this engine models
     (on PRBS31 the free-running kernel errs 1.16x more here and up to 4x more
     at 8 mV, ROADMAP P3 #15). Two seeds of 1M symbols (about 90 errors); five
-    seeds of 1.6M read the engine 0.95x with the factor (0.81x without)."""
+    seeds of 1.6M read the engine 0.95x with the factor (0.81x without).
+    2026-11-02 (ROADMAP P2 #44): the factor 1.06, the read before it higher;
+    the five seeds read 1.00x."""
     cfg = _preset(0.015, 0.04, n_symbols=1_000_000)
     cm = ChannelModel.from_config(cfg)
     n_err = n_chk = 0
@@ -218,7 +226,7 @@ def test_two_engines_agree_where_the_loop_errs_on_its_own_data():
     s = st.run_statistical(cfg, channel=cm)
     ratio = s.ber / (n_err / n_chk)
     assert 0.7 < ratio < 1.5, (ratio, s.ber, n_err)
-    assert 1.08 < s.extras["pattern_phase"].factor < 1.3
+    assert 1.0 < s.extras["pattern_phase"].factor < 1.15
 
 
 def test_crosstalk_is_noise_to_the_factor_too(monkeypatch):
@@ -228,11 +236,15 @@ def test_crosstalk_is_noise_to_the_factor_too(monkeypatch):
     + 2 NEXT, on independent data: the factor 1.35 quiet, 1.25 / 1.32 at -27 /
     -33 dB (skew 0.5 UI), and the engine 1.05 / 1.07x the time engine with
     it, 0.84 / 0.81x without (two seeds of 400k symbols, 13257 / 260
-    errors)."""
+    errors). 2026-11-02, the detector reading the data samples' signs
+    (ROADMAP P2 #44): the factor 1.21 quiet, 1.24 / 1.29 with the aggressors
+    -- their variance now raises it -- and the engine 1.05 / 1.09x the time
+    engine with it, 0.85 / 0.85x without (13633 / 304 errors, the lock-seeded
+    DFE)."""
     from halo_serdes.config.schema import CrosstalkConfig
     cfg = _preset(0.012, 0.03)
     quiet = st.run_statistical(cfg, channel=ChannelModel.from_config(cfg)).extras["pattern_phase"].factor
-    assert quiet > 1.2, quiet
+    assert quiet > 1.1, quiet
     cap = {}
     orig = st._pattern_phase_factor
 
@@ -244,7 +256,7 @@ def test_crosstalk_is_noise_to_the_factor_too(monkeypatch):
     loud = dataclasses.replace(cfg, crosstalk=CrosstalkConfig(n_fext=2, n_next=2, coupling_db=-27.0, seed=1, skew_ui=0.5))
     with_x = st.run_statistical(loud, channel=ChannelModel.from_config(loud)).extras["pattern_phase"].factor
     assert cap["xtalk_var"] is not None
-    assert 1.1 < with_x < 1.45 and with_x < quiet, (with_x, quiet)
+    assert 1.1 < with_x < 1.45 and abs(with_x / quiet - 1.0) > 0.01, (with_x, quiet)
     # the variance the closure reports is of the couplings' size, not zero
     v = np.asarray(cap["xtalk_var"](np.arange(4.0)))
     assert np.all(v > (0.005) ** 2), v

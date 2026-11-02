@@ -69,13 +69,14 @@ def test_another_lanes_clock_has_no_pattern_phase_correlation():
     the loop's own phase density (the chain's marginal) without the
     correlation between its data and that phase: its own-loop BER over the
     other-clock one is ``factor / factor_marginal`` (1.62 on the 16G preset
-    at 15 mV). PAM4 has no factor."""
+    at 15 mV; 1.54 since 2026-11-02, the factor 1.14, the detector reading the
+    data samples' signs, ROADMAP P2 #44). PAM4 has no factor."""
     cfg = _preset("NRZ 16G mixed-signal", 0.015, 60_000)
     own = run_statistical(cfg)
     other = run_statistical(cfg, phase_ui=0.0, own_clock=False)
     pp = other.extras["pattern_phase"]
     assert pp is own.extras["pattern_phase"]                  # one chain, cached
-    assert 1.15 < pp.factor < 1.45 and 0.7 < pp.factor_marginal < 0.95
+    assert 1.0 < pp.factor < 1.3 and 0.6 < pp.factor_marginal < 0.9
     assert own.ber / other.ber == pytest.approx(pp.factor / pp.factor_marginal, rel=1e-9)
     ms = _preset("PAM4 32G mixed-signal", 0.0085, 60_000)
     assert run_statistical(ms, phase_ui=0.0, own_clock=False).ber == run_statistical(ms).ber
