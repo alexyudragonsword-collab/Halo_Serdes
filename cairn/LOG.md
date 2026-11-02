@@ -12,7 +12,9 @@
 - 动态:接收钟上加音直接量 K_dyn —— 内核 0.97–0.99 / 0.92–0.93 / 0.90–0.92×(4 / 12 / 25 mV);不是相位与数据相关(1.446 对 1.463);
   无波形玩具环路复现大半(0.99 / 0.94 / 0.94×),kp 缩 1/4 回到 0.98–1.0× → 粗步长 + 噪声的闭环效应。模型猎振 σ 已对,只降增益会带偏,记不改。
   `cairn/DSP发端与PR.md` §43,ROADMAP #44 改写。
-- 验证:__VERIFY__
+- 验证:全量 1429 passed / 8 skipped;示例 47 / 47,44 / 45 末位变(45 时域那行自身环路 / 他钟 1.32 → 1.41×),引用核过、历史更正条不改;
+  指纹 12 / 986 变(NRZ 16G、NRZ 32G static、PAM4 末位);Cython(stat_loop / statistical / timedomain / stat_pattern_phase)删 .py、`HALO_NO_JIT=1` 相关 __CY__;
+  ruff 通过;NRZ 16G 统计单跑同负载下是 main 的 1.1×。
 
 ## 2026-11-01 · Nuitka 钉版本、P2 #44 量成两份、文档漂移(feat/nuitka-cache-p44-audit)
 
