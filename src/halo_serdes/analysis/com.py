@@ -20,7 +20,10 @@ The recipe (93A/178A, behavioral-level):
    with ``n_dfe`` taps is then set directly from the (equalized) cursors,
    ``b_n = clamp(h_post_n / h_main, ±b_max)`` (the 802.3 rule — taps are
    *derived*, not adapted), cancelling the covered postcursors. Rx FFE tap
-   limits (178A bounds the precursor taps) are not applied.
+   limits are optional (``ComParams.ffe_pre_tap1_max`` / ``ffe_post_tap1_max``
+   / ``ffe_tapn_max``, the COM tool's names, each a bound on ``|w_k| /
+   w_main``): off by default, since the 802.3dj tables are not settled
+   here -- see the field comments.
 2. **Figure of merit.** ``FOM = A_s / sqrt(σ_ISI² + σ_XT² + σ_N² + σ_J²)``
    (Gaussian approximation) selects the best (CTLE, Tx, phase).
 3. **A_ni via PDF.** For the winner the full noise PDF is built by convolving the
@@ -72,6 +75,16 @@ class ComParams:
     # baud-spaced Rx FFE (n_pre, n_post): "auto" -> rx.ffe for adc_dsp, none for
     # mixed_signal; None -> no Rx FFE (the 93A CTLE + DFE receiver)
     rx_ffe: tuple[int, int] | None | str = "auto"
+    # Rx FFE tap bounds relative to the main tap, |w_k| <= bound * w_main (the
+    # COM tool's ffe_pre_tap1_max / ffe_post_tap1_max / ffe_tapn_max; tapn is
+    # every other tap). None: unbounded (default). The 802.3dj Clause 178A
+    # values could not be read here (the IEEE site is behind the proxy); the
+    # public working slides moved them between drafts (placeholder 1 / 1 / 1,
+    # D1.1 precursor 1 within +-0.7), so pass the ones of the draft you are
+    # checking against (2026-11-03, ROADMAP #12).
+    ffe_pre_tap1_max: float | None = None
+    ffe_post_tap1_max: float | None = None
+    ffe_tapn_max: float | None = None
     v_bins: int = 8192
     n_pre_cursor: int = 20
     n_post_cursor: int = 80
@@ -144,8 +157,25 @@ def _dfe_residual(cursors: np.ndarray, main_i: int, n_dfe: int,
     return resid
 
 
+def _rx_ffe_bounds(n_pre: int, n_post: int, pre1: float | None, post1: float | None,
+                   tapn: float | None) -> np.ndarray | None:
+    """Per-tap |w_k| / w_main bounds (inf where unbounded, the main tap NaN),
+    None when nothing is bounded."""
+    if pre1 is None and post1 is None and tapn is None:
+        return None
+    inf = float("inf")
+    b = np.full(n_pre + n_post + 1, inf if tapn is None else float(tapn))
+    b[n_pre] = np.nan
+    if n_pre > 0:
+        b[n_pre - 1] = inf if pre1 is None else float(pre1)
+    if n_post > 0:
+        b[n_pre + 1] = inf if post1 is None else float(post1)
+    return b
+
+
 def _rx_ffe_taps(c: np.ndarray, mi: int, n_pre: int, n_post: int, n_dfe: int,
-                 sym_var: float, sig_n: float, agg: list) -> np.ndarray:
+                 sym_var: float, sig_n: float, agg: list,
+                 bounds: np.ndarray | None = None) -> np.ndarray | None:
     """MMSE Rx FFE taps on baud cursors ``c`` (main at ``mi``).
 
     Minimises sym_var ||M w - d||^2 over the output cursors the DFE does not
@@ -167,6 +197,30 @@ def _rx_ffe_taps(c: np.ndarray, mi: int, n_pre: int, n_post: int, n_dfe: int,
         ma = _conv_matrix(ac, n_taps)
         a += sym_var * (ma.T @ ma)
     w = np.linalg.solve(a, sym_var * (mk.T @ d[keep]))
+    if bounds is not None and w[n_pre] <= 0.0:
+        # bounds relative to a main tap that is not positive say nothing: at
+        # this phase the FFE re-centres on another tap -- not a bounded
+        # receiver, so the phase is not a candidate
+        return None
+    if bounds is not None and np.any(np.abs(w) > bounds * w[n_pre]):
+        # the same cost as a least-squares stack, the main tap held where the
+        # unbounded solution put it and the others boxed relative to it; with
+        # no bound active this is the unbounded solution
+        from scipy.optimize import lsq_linear
+
+        rows = [np.sqrt(sym_var) * mk, sig_n * np.eye(n_taps)]
+        rhs = [np.sqrt(sym_var) * d[keep], np.zeros(n_taps)]
+        for ac in agg:
+            rows.append(np.sqrt(sym_var) * _conv_matrix(ac, n_taps))
+            rhs.append(np.zeros(rows[-1].shape[0]))
+        big, y = np.vstack(rows), np.concatenate(rhs)
+        s0 = float(w[n_pre])
+        free = np.arange(n_taps) != n_pre
+        lim = bounds[free] * s0
+        sol = lsq_linear(big[:, free], y - big[:, n_pre] * s0, bounds=(-lim, lim))
+        w = np.empty(n_taps)
+        w[n_pre] = s0
+        w[free] = sol.x
     out = float(m[me] @ w)
     return w * (c[mi] / out) if out != 0.0 else w
 
@@ -211,6 +265,9 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
         rx_ffe = ((cfg.rx.ffe.n_pre, cfg.rx.ffe.n_post)
                   if cfg.rx.arch == "adc_dsp" and cfg.rx.ffe.n_pre + cfg.rx.ffe.n_post > 0
                   else None)
+    ffe_bounds = (None if rx_ffe is None else
+                  _rx_ffe_bounds(rx_ffe[0], rx_ffe[1], p.ffe_pre_tap1_max,
+                                 p.ffe_post_tap1_max, p.ffe_tapn_max))
 
     h_ch = _channel_impulse(channel, cfg)
     swing = cfg.tx.swing / 2.0
@@ -248,7 +305,9 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
                 w = None
                 if rx_ffe is not None:
                     w = _rx_ffe_taps(c, mi, rx_ffe[0], rx_ffe[1], n_dfe, sym_var,
-                                     sig_n, agg_cursors)
+                                     sig_n, agg_cursors, ffe_bounds)
+                    if w is None:
+                        continue
                     # the pulse's slope at every cursor, for the jitter term below
                     si_all = pk + phase + (np.arange(c.size) - mi) * osr
                     ok = (si_all > 0) & (si_all < pulse.y.size - 1)
@@ -338,4 +397,5 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
                 "n_dfe": n_dfe, "b_max": p.b_max, "target_der": der,
                 "n_aggressors": len(agg_cursors),
                 "rx_ffe": rx_ffe,
+                "rx_ffe_bounded": ffe_bounds is not None,
                 "rx_ffe_taps": None if b["w"] is None else np.asarray(b["w"])})

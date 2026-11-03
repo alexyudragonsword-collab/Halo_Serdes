@@ -173,7 +173,7 @@ res.extras         # 诊断字典,见下
 channel:
   kind: touchstone
   file: data/channels/whisper42p8in_thru.s4p
-  lane: 0            # 8/12 端口文件里选 lane
+  lane: 0            # 8/12/16… 端口文件里选 lane
   renumber: true     # 自动检测 1<->3 端口错序
   zs_diff: 100.0     # 差分端接
   zl_diff: 100.0
@@ -317,7 +317,10 @@ compute_com(ch, cfg, params=ComParams(rx_ffe=(4, 10)))   # 指定 Rx FFE;rx_ffe=
 - **参考接收机按架构**:mixed-signal 是 93A 的 CTLE + DFE;ADC 是 178A 式 CTLE + 波特间隔 Rx FFE + DFE,
   FFE 大小默认取 `rx.ffe`(`ComParams.rx_ffe="auto"`)。每个相位上 FFE 抽头按 MMSE 解:DFE 覆盖的后光标不算误差,
   接收噪声与串扰经抽头放大一并计入(否则无噪声时 FFE 会迫零)。`r.detail["rx_ffe_taps"]` 给出所选抽头。
-  Rx FFE 的抽头上限(178A 限前光标)不建。
+  Rx FFE 的抽头上限(178A 限前光标)不建(2026-11-03 更正:可选了 —— `ComParams(ffe_pre_tap1_max=, ffe_post_tap1_max=, ffe_tapn_max=)`,
+  COM 工具的名字,各是 `|w_k| / w_main` 的上界;默认不加,因为 802.3dj 178A 的表值在这里取不到(IEEE 站点被代理拦截),
+  公开的工作幻灯片里各稿不同 —— 按你核对的那一稿传。约束不起作用时读数不变;起作用时按主抽头固定、其余抽头框住重解 MMSE。
+  示例:0.35 m 的 53 GBd PAM4 测试链路无约束时第一前光标 −0.56,限到 0.3 COM 降 1.9 dB)。
 - **噪声 σ_N**:`rx.noise_rms`,ADC 架构再按功率加上量化噪声(与统计引擎同一式,`adc_noise_sigma`)。
 - 2026-10-05 前 ADC 架构的 COM 也按 93A 接收机算、且不含量化噪声:各 ADC 预设读 −6…−9 dB(链路实际能跑);
   现在 4.6–19.8 dB。mixed-signal 不变。
@@ -726,7 +729,7 @@ DCD 这类起点不知道的电平偏移,按跟踪步长要 1e5–1e6 码元才�
 `engine/statistical.py` 顶部逐条列出。
 
 **Touchstone 读不进来** —— `channel.kind` 要设 `touchstone` 且 `channel.file` 非空;
-8/12 端口文件用 `channel.lane` 选 lane,端口错序交给 `renumber: true`。
+8/12 端口文件用 `channel.lane` 选 lane,端口错序交给 `renumber: true`(2026-11-03 起 16 端口及更多的 4 的倍数同样按每 lane 四个端口取)。
 
 **`galois` / `skrf` / `pyibisami` 缺失** —— 都是可选依赖,缺了只影响对应功能
 (真实 FEC 编解码 / Touchstone / 厂商 AMI 模型),核心链路不受影响。

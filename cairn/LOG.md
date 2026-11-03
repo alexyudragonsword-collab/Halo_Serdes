@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-03 · COM 的 Rx FFE 抽头上限(机制,默认不加);Touchstone 收 16 端口(feat/com-rxffe-limits-ts16)
+
+- 用户选"COM 的 Rx FFE 抽头上限 + Touchstone 16 端口等小项"。
+- COM:`ComParams.ffe_pre_tap1_max / ffe_post_tap1_max / ffe_tapn_max`(COM 工具的名字,相对主抽头);约束起作用时主抽头固定、其余 `lsq_linear` 框住,
+  不起作用时解不变(测试:0.7 的松约束 COM 逐位同);主抽头不为正的相位有约束时跳过(否则那个相位的 FFE 换了主抽头,约束形同虚设 —— 第一版就这样漏过了上界)。
+  默认不加:178A 表值取不到(ieee802.org 403;检索只到工作幻灯片,各稿不同),ROADMAP #12 记了。0.35 m 测试链路前光标 1 限到 0.3:7.76 → 5.86 dB。
+- Touchstone:4 的倍数端口都按每 lane 四个端口取(原只 8 / 12);16 端口四 lane 读回 4 端口的差分网络(测试)。GUI 字段标签跟着改。
+- 验证:全量 1433 passed / 8 skipped;ruff;com / touchstone / config_bridge 编 .so 删 .py、`HALO_NO_JIT=1` 相关 158 passed;默认读数不变(约束默认关、示例不跑)。
+- CI(PR #138,头 1623347 全绿,代码提交 bd927f9 上 Android / Windows 也绿):test 33 分钟、examples-full 32;Android 13.7;Windows PyInstaller 3.1、
+  onefile 32.7、Nuitka standalone 117.6(新分支,standalone 链冷)。
+
 ## 2026-11-02 · P2 #45 猎振多涨拆一半(记不改);功能缺口盘点(feat/p45-hunt-gaps)
 
 - 用户选"P2 #45 NRZ SJ 猎振余项 + 功能缺口盘点"。代码不变。
