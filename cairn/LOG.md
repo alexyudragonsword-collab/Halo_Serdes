@@ -15,6 +15,8 @@
 - 坑:探针的 f-string 里嵌引号用 sed 改了两次都错、白等一次 3 分钟 —— 改完先 `ast.parse` 再起后台。
 - 验证:全量 1443 passed / 8 skipped;ruff;`test_docs_fresh` + `test_example_drift` 29 passed;statistical / form_meta 编 .so 删 .py、
   `HALO_NO_JIT=1` 相关 187 passed / 37 skipped(`needs_jit` 的慢测跳过);README / COMPARISON 测试数更新到 1451 项。
+- CI(PR #140,头 de03ce3 测试工作流全绿;代码提交所在的 2b52ab3 上 Android / Windows 也绿):test 29 分钟、examples 21、full 27;
+  Android 14.6;Windows PyInstaller 3.2、Nuitka standalone 29.3、onefile 39.3(缓存命中没查日志)。
 
 ## 2026-11-03 · COM 约束进表单;AMI + 光拓扑;统计引擎非线性项摸底、建 TI 失配(feat/com-gui-ami-optics)
 
