@@ -215,19 +215,66 @@ def _optical_stages(cfg: LinkConfig, channel: ChannelModel, tx_ami, rx_ami):
     """(stage-1, stage-2) impulses for an optical topology, else None.
 
     The cut is made in ``optical_stage`` so the statistical engine cuts in
-    the same place. AMI models fold into one response or one waveform and
-    have no notion of a node in the middle, so stage 1 declines them.
+    the same place. AMI models are the host SerDes at the two ends
+    (``_ami_into_stages``): an Init-flow Tx model folds into the first stage
+    (before segment A and the E/O), an Init-flow Rx model into the last
+    (after segment B), so the photodiode's noise reaches the slicer through
+    the Rx model as the signal does; GetWave models filter the transmit and
+    the received waveform as on an electrical link. Until 2026-11-03 the
+    combination was refused.
     """
     if getattr(channel, "optical", None) is None:
         return None
-    if tx_ami is not None or rx_ami is not None:
-        raise ValueError("AMI models are not supported together with an optical "
-                         "topology (stage 1 has no AMI node between the segments)")
     from .optical_stage import split_impulses, split_impulses_nonlinear
 
     if channel.optical.curve is not None:
-        return split_impulses_nonlinear(cfg, channel)
-    return split_impulses(cfg, channel)
+        stages = split_impulses_nonlinear(cfg, channel)
+    else:
+        stages = split_impulses(cfg, channel)
+    return _ami_into_stages(cfg, stages, tx_ami, rx_ami)
+
+
+def _ami_into_stages(cfg: LinkConfig, stages, tx_ami, rx_ami):
+    """Fold Init-flow AMI models into the optical stages.
+
+    The Tx model's Init sees the first stage and transforms it (a Tx model
+    filters what it sends). The Rx model's Init sees the whole small-signal
+    chain -- what an IBIS-AMI Rx Init is handed, so an adaptive model adapts
+    to the link it is on, not to half of it -- and the filter it applied,
+    ``G = H_eq / H`` (regularised where the chain has no energy), goes into
+    the last stage. For an LTI model that is its Init on the last stage."""
+    st = [np.asarray(x, dtype=np.float64) for x in stages]
+    if tx_ami is not None and not tx_ami.has_getwave:
+        st[0] = np.asarray(tx_ami.init(st[0], cfg.dt, cfg.ui), dtype=np.float64)
+    if rx_ami is not None and not rx_ami.has_getwave:
+        h = _chain(st)
+        h_eq = np.asarray(rx_ami.init(h, cfg.dt, cfg.ui), dtype=np.float64)
+        st[-1] = _filter_like(st[-1], h, h_eq)
+    return tuple(st)
+
+
+def _filter_like(x: np.ndarray, h: np.ndarray, h_eq: np.ndarray) -> np.ndarray:
+    """``x`` through the filter that took ``h`` to ``h_eq``, same length as
+    ``x``; circular on a grid long enough that what a non-causal filter
+    moves before t = 0 (an Init that advances the response, as a Tx/Rx FIR
+    with precursor taps does) wraps past the kept span and is dropped, as
+    the Init itself drops it."""
+    n = 1 << int(np.ceil(np.log2(2 * (x.size + h.size + h_eq.size))))
+    hf = np.fft.rfft(h, n)
+    he = np.fft.rfft(h_eq, n)
+    # the ratio only where the chain carries energy; beyond that (above the
+    # first stage's band, where the photodiode's noise still passes the last
+    # stage) the filter is held at its value at the band's edge -- driving it
+    # to zero there would strip that noise (an identity model read 7e-5 dB
+    # high that way)
+    ok = np.abs(hf) > 1e-7 * float(np.max(np.abs(hf)))
+    g = np.ones(hf.size, dtype=complex)
+    if np.any(ok):
+        idx = np.flatnonzero(ok)
+        ratio = he[ok] / hf[ok]
+        k = np.arange(hf.size)
+        g = np.interp(k, idx, ratio.real) + 1j * np.interp(k, idx, ratio.imag)
+    return np.fft.irfft(np.fft.rfft(x, n) * g, n)[: x.size]
 
 
 def _chain(stages) -> np.ndarray:
@@ -303,8 +350,13 @@ def _front_end(cfg: LinkConfig, channel: ChannelModel | None, tx_pipe: TxPipelin
     if stages is not None:
         h = _chain(stages)
 
-    # --- optional AMI Tx/Rx models (Init folds into h, GetWave into the wave) ---
-    h, tx_y = _apply_ami(cfg, h, None if cfg.sim.stream else tx_wave, tx_ami, rx_ami)
+    # --- optional AMI Tx/Rx models (Init folds into h, GetWave into the wave);
+    # on an optical link the Init models are already in the stages ---
+    if stages is None:
+        h, tx_y = _apply_ami(cfg, h, None if cfg.sim.stream else tx_wave, tx_ami, rx_ami)
+    else:
+        tx_get = tx_ami if tx_ami is not None and tx_ami.has_getwave else None
+        h, tx_y = _apply_ami(cfg, h, None if cfg.sim.stream else tx_wave, tx_get, None)
 
     if cfg.sim.stream:
         from .stream import OpticalPath, build_stream, skip_normals

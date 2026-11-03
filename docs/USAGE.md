@@ -857,7 +857,9 @@ DR1 上限:基线 3.4 dB;"降到 3.0 dB"是 2025 年 9 月的提案(加 1T DFE �
 OMA 裕度 5.46 → 7.87 dB(6 dB 峰化);TIA 的在噪声之后,把噪声和信号一起抬,一律小亏(5.46 → 5.21 dB)。host 的 `tx.fir_taps` 同样在
 噪声之前,作用相同。预加重会让 TP2 波形越过稳态外电平,示例 32 给出有 / 无激光器余量两个口径(`cairn/光互联建模.md` §6)。
 
-**不做的**:功耗、重定时器内的 FEC 终结;AMI 模型与 `topology` 互斥。
+**不做的**:功耗、重定时器内的 FEC 终结;AMI 模型与 `topology` 互斥(2026-11-03 更正:可以一起用了 —— AMI 模型是两端的主机 SerDes:
+Tx 模型在段 A 之前(Init 并进第一段、GetWave 作用在发端波形),Rx 模型在段 B 之后(Init 看整条链路 —— 自适应模型按真实链路适应 ——
+它施加的滤波器并进最后一段,光电二极管的噪声也经过它;GetWave 作用在接收波形)。统计引擎本来就不接 AMI)。
 示例 `examples/32_lpo_vs_cpo.py`(同一光路,电段 4/8/12/16 dB,光纤长度扫到 reach,100 m 上比
 CPO 与 LPO 的 OMA 裕度)、`examples/33_three_topologies.py`(LPO / retimed / CPO 同台 + 三杠杆表);
 `examples/34_tdecq.py`(VCSEL 100G/λ 与 EML 200G/λ 的 TDECQ 对 ER / 激光带宽 / L-I 压缩,对着 802.3 上限);
