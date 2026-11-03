@@ -407,6 +407,9 @@ LPO 预设 53 GBd 2.95 / 5.92 / 17.35 dB。GUI TDECQ 研究对 PAM6 / PAM8 放�
      (2026-11-03 量了、做了一项:TI lane 失配不建时 0.03–0.67×,建成白噪声(对抽取求系综,只 `cal.mode: off`)后 1.06–1.45×;
      ADC 削顶 0.001× 起、只加警告(最坏峰值过半满量程);驱动 tanh / curve 0.69 → 0.01×、原有警告不变。剩 PR 对 LMS / CDR 的反作用没量。
      数据与取舍:`cairn/统计引擎非线性项.md`。)
+     (2026-11-03 更正:"PR 对 LMS / CDR 的反作用没量"不对 —— §15(2026-10-10)量过 PAM4 + MM 读 FFE、按环路负载警告。这次补了 §15 没覆盖的:
+     NRZ 漏报(duobinary 负载 0.028 已周跳)→ 阈值按格式的电平功率缩放(NRZ 0.016);PAM4 + PR + MM 读原始样本 0.01–0.57× → 警告。
+     `cdr.kind` 并不选环路(ADC 始终 MM、mixed-signal 始终 bang-bang),表单说明已改。`cairn/DSP发端与PR.md` §44。⑤ 至此量完。)
   ⑥ 小项:Touchstone 只收 1 / 2 / 4 / 8 / 12 端口(16 端口的四对差分 + 串扰要拆)、静态引擎拒绝 PR / 串扰(走时域即可)、共享时钟只跑浮点接收机。
   建议先做 ③(小、影响合规读数),① 视有无实际 LPO + AMI 需求;② 等用户给条文。)
   (2026-11-03 做了 ③ 的机制与 ⑥ 的 Touchstone:`ComParams(ffe_pre_tap1_max=, ffe_post_tap1_max=, ffe_tapn_max=)`(COM 工具的名字,`|w_k| / w_main` 的上界,

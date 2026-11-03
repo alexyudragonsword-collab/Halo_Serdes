@@ -143,7 +143,11 @@ Non-LTI approximations (each cross-checked against the time engine):
   optimistic, now 0.8-1.6x. Its effect on the LMS and the CDR is not modelled:
   the MM CDR reads the residual those decisions leave, and once
   ``extras['pr_loop_load']`` (their SER x the controlled cursors' energy)
-  passes 0.09-0.14 the time engine's loop cycle-slips -- warned from 0.08;
+  passes 0.09-0.14 the time engine's loop cycle-slips -- warned from 0.08
+  on PAM4, scaled by the format's level power (NRZ 0.016: duobinary slipped
+  from 0.028, ``pr_loop_load_warn``). MM on the raw ADC samples behind a PR
+  target on PAM4 (a non-default ``pd_input``) locks off the peak where those
+  decisions err more: 0.01-0.57x, warned (cairn/DSP发端与PR.md §44);
 - sampling phase: each receiver is read where its loop locks, not at the
   bathtub minimum (``extras['ber_min_phase']`` keeps the minimum). The
   mixed-signal bang-bang loop settles where its edge samples balance
@@ -346,8 +350,22 @@ class StatResult:
 
 
 #: PR loop load (per-symbol decision SER x sum c_k^2) from which run_statistical
-#: warns that the time engine's MM CDR may slip (measured 0.09-0.14, never below)
+#: warns that the time engine's MM CDR may slip (PAM4: measured 0.09-0.14, never
+#: below). Scaled by the format's mean square level in level steps against
+#: PAM4's 1.25 (``pr_loop_load_warn``): NRZ, whose errors are one step of a
+#: two-step alphabet, slipped from 0.028-0.031 (2026-11-03)
 _PR_LOOP_LOAD_WARN = 0.08
+
+
+def pr_loop_load_warn(levels_norm: np.ndarray, level_probs: np.ndarray) -> float:
+    """The loop load at which a format warns: ``_PR_LOOP_LOAD_WARN`` times its
+    E[(a / step)^2] over PAM4's 1.25 -- the decision errors' power against the
+    data's, which is what the Mueller-Muller detector's gain scales with.
+    NRZ 0.016; PAM4 0.08."""
+    lv = np.sort(np.asarray(levels_norm, dtype=np.float64))
+    step = float(np.min(np.diff(lv)))
+    e_steps = float(np.asarray(level_probs) @ ((np.asarray(levels_norm) / step) ** 2))
+    return _PR_LOOP_LOAD_WARN * e_steps / 1.25
 
 
 def _take(ctx: SimpleNamespace, names: tuple[str, ...]) -> list:
@@ -1418,6 +1436,21 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
         best = int(np.argmin(np.abs(phi_offsets - lock)))
         lock_ui = lock / osr
     loop_load = None
+    if pr_active and cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "adc" and n_levels > 2:
+        # MM on the raw samples of a multi-level format locks off the peak
+        # (why "auto" picks the FFE's output there): the time engine settled
+        # 0.09-0.10 UI early where this engine's lock model reads +0.01, and
+        # behind a PR target the per-symbol decisions it then reads err 3-8x
+        # more -- 0.22-0.57x of the time engine at (1, 0.5), 0.01-0.18x at
+        # (1, 1.4, 1.0, 0.4), 1.8-3 mV (2026-11-03); without PR 0.53-0.74x
+        import warnings
+
+        warnings.warn(
+            "rx.cdr.pd_input='adc' with a partial-response target on a multi-level "
+            "format: Mueller-Muller on the raw samples locks off the peak, where the "
+            "per-symbol PR decisions it reads err several times more than this engine "
+            "models -- its BER is optimistic (0.01-0.57x measured); use pd_input 'ffe' "
+            "or 'auto', or the time engine", stacklevel=3)
     if pr_active and cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "ffe":
         # The Mueller-Muller CDR reads the sample less the controlled cursors
         # times the per-symbol decisions, so each wrong one leaves c_k times
@@ -1427,16 +1460,19 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
         # targets (two to four cursors, precoded 1 + D, c < 0; 0.26 m,
         # 2.2-5.4 mV) the time engine slipped or read more than 2x this
         # engine's BER from 0.09-0.14 of this load, never below 0.09
-        # (cairn/DSP发端与PR.md §15)
+        # (cairn/DSP发端与PR.md §15); NRZ from 0.028-0.031 (three targets,
+        # 7-14 mV), the same against the data's power (pr_loop_load_warn)
         loop_load = float(ser_sym_phi[best] * head_energy_phi[best])
-        if loop_load >= _PR_LOOP_LOAD_WARN:
+        load_warn = pr_loop_load_warn(levels_norm, level_probs)
+        if loop_load >= load_warn:
             import warnings
 
             warnings.warn(
                 f"partial-response loop load {loop_load:.3f} (per-symbol decision SER "
                 f"{ser_sym_phi[best]:.2g} x controlled-cursor energy {head_energy_phi[best]:.2g}) "
-                f">= {_PR_LOOP_LOAD_WARN}: the Mueller-Muller CDR reads those decisions, and "
-                "from 0.09-0.14 it cycle-slipped in the time engine on the PR targets measured, "
+                f">= {load_warn:.3g}: the Mueller-Muller CDR reads those decisions, and "
+                "past this (scaled to the format's level power) it cycle-slipped in the time "
+                "engine on the PR targets measured, "
                 "which this engine does not model -- its BER is optimistic here; use the time "
                 "engine", stacklevel=3)
     return StatResult(
