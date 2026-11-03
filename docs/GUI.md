@@ -108,6 +108,7 @@ bar's button) and closes it again (**▤ Results**; a run closes it too).
 | | AMI / COM | IEEE 802.3 COM (93A/178A) vs loss overlaid on the RSS FoM + IBIS-AMI status | analytic channel |
 | | Fixed-Point | word-length BER wall (datapath replay) | needs an ADC run |
 | | Optical | cascade loss split at the photodiode, per-level PD-node noise, reach over fibre length as configured vs DSP-retimed, TDECQ | `topology.optical` set |
+| | Draw spread | time-domain BER at eight seeds, their pooled count and the statistical engine's read (2026-11-03): with ADC lane mismatch each seed is another chip, and the seeds can spread over decades | eight short time-domain runs |
 | **Compare** | — | pick two or more runs: StatEye bathtubs on one axis, a results table, the configuration fields that differ; **⇄ Run the shown run on the other architecture** runs it with `rx.arch` flipped and puts the two side by side | runs of this session |
 
 In Diagnose, clicking a stage on the left shows that stage's view (Channel →

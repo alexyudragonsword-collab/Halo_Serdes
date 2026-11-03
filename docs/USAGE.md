@@ -1071,7 +1071,9 @@ rx:
   反而不如后台(数据本身在量化器上是"抖动"的)。前台测量要越过 q/√12,需要抖动(噪声或注入)。
 - 统计引擎本来就不建 lane 失配,校准对它无影响。
   (2026-11-03:失配每条链路只抽一次,一次时域运行不代表这条"设计":`PAM4 224G ADC (TI mismatch)` 预设 8 个种子的 BER 从 0 错到 1e-2,
-  合起来 2.0e-3;统计引擎给的是对抽取的平均(1.25e-3)。对照时用多个种子合起来数。)
+  合起来 2.0e-3;统计引擎给的是对抽取的平均(1.25e-3)。对照时用多个种子合起来数:
+  `halo_serdes.analysis.seed_spread(cfg, range(1, 9), n_symbols=...)` 返回每个种子的 BER、合起来的 `pooled_ber`、`median_ber` 与统计读数;
+  GUI / 手机研究页 "Draw spread" 就是它(8 个种子 × 至多 4 万码元)。)
   (更正 2026-11-03:统计引擎现在把 `cal.mode: off` 下的 lane offset / gain / skew 失配当作对抽取求系综的白噪声加进 ADC 噪声(`stat_noise.ti_mismatch_sigma`);`calibrated: true` 归零 offset / gain,后台环路 `mu_skew` > 0 时 skew 也去掉;后台 / 前台校准的残差不建 —— 对它们统计引擎按"校准干净"算。)
 
 ## 20. 功耗估计(pJ/bit)

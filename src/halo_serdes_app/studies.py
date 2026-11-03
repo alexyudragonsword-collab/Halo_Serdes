@@ -473,6 +473,38 @@ def tdecq_study(rec) -> dict:
     return _cached(("tdecq", rec.id), compute)
 
 
+# --- one link, several draws ------------------------------------------------
+
+#: Seeds the draw-spread study runs, and its symbols per seed: eight short
+#: time-domain runs, so a phone gets through them in a minute or two.
+SEEDS_N = 8
+SEEDS_SYMBOLS = 40_000
+
+
+def seeds_study(rec) -> dict:
+    """The time engine at ``SEEDS_N`` seeds against the statistical engine.
+
+    The seed sets the noise and every per-link draw (ADC lane mismatch,
+    comparator offsets), so with mismatch each seed is a different chip;
+    the statistical engine is the average over draws. ``ber`` is per seed,
+    ``pooled`` and ``stat`` are drawn as flat lines across them."""
+
+    def compute():
+        from halo_serdes.analysis import seed_spread
+
+        cfg = rec.cfg
+        n = min(int(cfg.sim.n_symbols), SEEDS_SYMBOLS)
+        sp = seed_spread(cfg, range(1, SEEDS_N + 1), n_symbols=n,
+                         channel=ChannelModel.from_config(cfg), checkpoint=checkpoint)
+        k = sp.seeds.size
+        return {"seed": sp.seeds.astype(float), "ber": sp.ber,
+                "errors": sp.n_errors.astype(float),
+                "pooled": np.full(k, sp.pooled_ber),
+                "stat": np.full(k, sp.stat_ber if sp.stat_ber is not None else np.nan),
+                "symbols": np.full(k, float(n))}
+    return _cached(("seeds", rec.id), compute)
+
+
 STUDY_PLOTS: dict[str, list[dict]] = {
     "reach": [{"x": "loss", "y": ["pre", "kp4", "kr4"],
                "x_label": "Nyquist loss [dB]", "y_label": "BER", "y_log": True}],
@@ -506,6 +538,8 @@ STUDY_PLOTS: dict[str, list[dict]] = {
                     "y_label": "decision mismatch vs float", "y_log": True}],
     "optical": [{"x": "length_m", "y": ["kp4", "kp4_retimed"],
                  "x_label": "fibre length [m]", "y_label": "post-KP4 BER", "y_log": True}],
+    "seeds": [{"x": "seed", "y": ["ber", "pooled", "stat"],
+               "x_label": "seed", "y_label": "BER", "y_log": True}],
     "tdecq": [{"x": "er_db", "y": ["tdecq_er"],
                "x_label": "extinction ratio [dB]", "y_label": "TDECQ [dB]", "y_log": False},
               {"x": "bw_ghz", "y": ["tdecq_bw"],
@@ -548,6 +582,12 @@ STUDY_LABELS: dict[str, tuple[str, str]] = {
                    "The BER wall against datapath word length, replayed "
                    "bit-true against the float reference. Needs a time-domain "
                    "run, so it is the slowest to start."),
+    "seeds": ("Draw spread",
+              "The time engine at eight seeds against the statistical engine. The "
+              "seed sets the noise and every per-link draw (ADC lane mismatch, "
+              "comparator offsets), so with mismatch each seed is another chip: "
+              "compare the pooled line, not one seed, with the statistical one. "
+              "Eight short time-domain runs."),
     "tdecq": ("TDECQ",
               "The optical transmitter's TDECQ (after its fibre, laser RIN in) "
               "against extinction ratio and laser bandwidth. Needs "
