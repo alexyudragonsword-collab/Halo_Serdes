@@ -15,7 +15,7 @@
 - 验证:全量 1441 passed / 8 skipped;ruff;schema / config_bridge / form_meta / timedomain / com / stat_noise / statistical 编 .so 删 .py、
   `HALO_NO_JIT=1` 相关 235 passed / 12 skipped;示例不受影响(用到失配的示例只跑时域,警告走 stderr)。
 - CI(PR #139,头 f713b2e 全绿):test 33 分钟、examples 15、examples-full 20.5;Android 13.2;Windows PyInstaller 2.1、
-  onefile 43.9、Nuitka standalone 38.4(本分支前两次推送已暖缓存)。
+  onefile 43.9、Nuitka standalone 38.4(上轮新分支冷链 117.6;缓存命中没查日志,只看时长)。
 
 ## 2026-11-03 · COM 的 Rx FFE 抽头上限(机制,默认不加);Touchstone 收 16 端口(feat/com-rxffe-limits-ts16)
 
