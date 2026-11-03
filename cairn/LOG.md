@@ -14,6 +14,8 @@
 - 坑:控制变量 MC 第一版把"符号 k"的列号多算一列,翻转项大到 1e-2 —— 先在 NRZ 无误判时核"翻转项 ≈ 0"再看 PAM4。
 - 验证:全量 1443 passed / 8 skipped;ruff;statistical 编 .so 删 .py、`HALO_NO_JIT=1` PR / 失配相关 46 passed / 37 skipped(`needs_jit`);
   行为没变(只改注释、警告文案与文档)。
+- CI(PR #141,头 78107fe 测试工作流全绿;带代码的 04b057a 上 Android / Windows 也绿):test 33 分钟、examples 17、full 35;
+  Android 15.4;Windows PyInstaller 3.2、Nuitka standalone 33.9、onefile 44.4(缓存命中没查日志)。
 
 ## 2026-11-03 · PR 判决对 CDR:阈值按格式缩放、PAM4 原始样本 MM 警告;#44 / #45 逐点核;文档漂移(feat/pr-survey-p44-drift)
 
