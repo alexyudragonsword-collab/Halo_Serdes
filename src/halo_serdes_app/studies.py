@@ -250,18 +250,31 @@ def fixedpoint_study(rec) -> dict:
         if adc is None or q is None or rec.sim.ffe_taps is None:
             return {"error": "fixed-point replay needs an ADC run (rx.arch = "
                     "adc_dsp) — load the PAM4 224G ADC preset and Run."}
-        if cfg.pr.active:
-            return {"error": "fixed-point replay models the delta target only; "
-                    "set pr.target back to (1.0,) to replay this link."}
         from halo_serdes.config.schema import NumericConfig, QFormat
         from halo_serdes.dsp.fixed_datapath import run_fixed_datapath
 
         codes = np.round(np.asarray(q) / adc.q_step - 0.5).astype(np.int64)
         levels = e["levels"]; n_pre = cfg.rx.ffe.n_pre
         wide = NumericConfig(ffe_weight=QFormat(20, 16), dfe_weight=QFormat(20, 16))
+        # a partial-response link replays its own slicer, on the target it
+        # ended on (2026-11-03; the replay took the delta target only before)
+        pr_kw = dict(pr=cfg.pr, pr_target=e.get("pr_target"), precode=cfg.precode)
+
+        def user(dec):
+            # a precoded link's slicer decides line symbols, and on the
+            # composite slicer one that differs from the reference's leaves
+            # every later estimate off by +-e, alternating -- which the user
+            # symbols (x[k] + x[k-1]) mod N cancel. Compared raw, a 12-bit
+            # replay of precoded duobinary read 0.6-0.8 mismatch (2026-11-03)
+            if not cfg.precode:
+                return dec
+            from halo_serdes.core.mapping import unprecode_1plusd
+            return unprecode_1plusd(dec, levels.size)
+
         dec_ref, *_ = run_fixed_datapath(codes, rec.sim.ffe_taps, rec.sim.dfe_taps,
                                          levels, n_pre, wide, adc.cfg.fullscale,
-                                         adc.cfg.n_bits, pr=cfg.pr)
+                                         adc.cfg.n_bits, **pr_kw)
+        dec_ref = user(dec_ref)
         wls = [4, 5, 6, 7, 8, 10, 12]
         mism = []
         for wl in wls:
@@ -270,8 +283,8 @@ def fixedpoint_study(rec) -> dict:
                                 dfe_weight=QFormat(wl, wl - 2))
             dec, *_ = run_fixed_datapath(codes, rec.sim.ffe_taps, rec.sim.dfe_taps,
                                          levels, n_pre, num, adc.cfg.fullscale,
-                                         adc.cfg.n_bits)
-            mism.append(max(float(np.mean(dec != dec_ref)), 1e-6))
+                                         adc.cfg.n_bits, **pr_kw)
+            mism.append(max(float(np.mean(user(dec) != dec_ref)), 1e-6))
         return {"wl": np.array(wls), "mismatch": np.array(mism)}
     return _cached(("fixed", rec.id), compute)
 

@@ -63,9 +63,9 @@ def test_engines_without_a_detector_refuse_rather_than_mislead():
     cfg = _link(0.15, 0.5, n_sym=20_000)
     with pytest.raises(NotImplementedError, match="static engine"):
         run_static_link(cfg)
-    with pytest.raises(NotImplementedError, match="delta target"):
-        run_fixed_datapath(np.zeros(16, dtype=np.int64), np.array([1.0]), np.zeros(0),
-                           np.array([-1.0, 1.0]), 0, NumericConfig(), 1.0, 8, pr=cfg.pr)
+    # the bit-true replay takes PR targets since 2026-11-03 (test_fixed.py)
+    run_fixed_datapath(np.zeros(16, dtype=np.int64), np.array([1.0]), np.zeros(0),
+                       np.array([-1.0, 1.0]), 0, NumericConfig(), 1.0, 8, pr=cfg.pr)
     with pytest.warns(UserWarning, match="sequence detector"):
         run_time_link(dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig())))
 

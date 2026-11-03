@@ -8,7 +8,13 @@ SystemVerilog reimplementation** of the FFE + DFE + slicer datapath, verified
 This is the DragonPHY2 lockstep methodology in reverse — the Python model is the
 golden reference, and the RTL must match it exactly. It catches the fixed-point
 spec ambiguities that bite real silicon: rounding direction, arithmetic vs
-logical shift, saturation bounds, and slicer tie-breaking.
+logical shift, saturation bounds, and slicer tie-breaking. It runs four
+times (2026-11-03): the delta target, and under the partial-response targets
+of the loop check below -- 1 + aD + bD^2 (`vectors/pr`), + cD^3
+(`vectors/pr4`), precoded 1 + D on the composite slicer (`vectors/pre`) --
+with the loop's rules: the controlled cursors subtracted from the line-symbol
+estimates before the slicer, the DFE starting after them; on the composite
+slicer the line symbol taken as (q - x[s-1]) mod N.
 
 The second check covers the **whole back end with its clock recovery**: FFE +
 DFE + slicer + data-aided training + integer LMS + Mueller-Muller phase

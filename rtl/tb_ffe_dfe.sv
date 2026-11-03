@@ -37,6 +37,16 @@ module tb_ffe_dfe;
         fd = $fopen({dir, "/levels_out.txt"}, "r");
         for (i = 0; i < NL;    i++) begin r = $fscanf(fd, "%d", val); dut.levels[i] = val; end
         $fclose(fd);
+        fd = $fopen({dir, "/pr_abc.txt"}, "r");
+        if (fd != 0) begin
+            for (i = 0; i < 3;   i++) begin r = $fscanf(fd, "%d", val); dut.pr_abc[i] = val; end
+            $fclose(fd);
+        end else for (i = 0; i < 3; i++) dut.pr_abc[i] = 0;
+        fd = $fopen({dir, "/pr_lv.txt"}, "r");
+        if (fd != 0) begin
+            for (i = 0; i < NPL; i++) begin r = $fscanf(fd, "%d", val); dut.pr_lv[i]  = val; end
+            $fclose(fd);
+        end else for (i = 0; i < NPL; i++) dut.pr_lv[i] = 0;
         fd = $fopen({dir, "/dec.txt"}, "r");
         for (i = 0; i < N_OUT; i++) begin r = $fscanf(fd, "%d", val); dec_gold[i]   = val; end
         $fclose(fd);
@@ -55,8 +65,8 @@ module tb_ffe_dfe;
                 errors++;
             end
         end
-        $display("LOCKSTEP %s  n=%0d  errors=%0d",
-                 (errors == 0) ? "PASS" : "FAIL", N_OUT, errors);
+        $display("LOCKSTEP %s  n=%0d  pr_mode=%0d  errors=%0d",
+                 (errors == 0) ? "PASS" : "FAIL", N_OUT, PR_MODE, errors);
         if (errors != 0) $fatal(1, "bit-exact mismatch");
         $finish;
     end

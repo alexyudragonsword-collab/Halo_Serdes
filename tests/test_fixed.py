@@ -160,3 +160,63 @@ def test_dump_vectors_roundtrip(tmp_path):
     assert np.array_equal(loaded["dec"], dec)
     assert (out / "codes.txt").exists()
     assert (out / "params.txt").read_text().startswith("ffe_shift")
+
+
+# ------------------------------------------------ partial response (2026-11-03)
+
+def _pr_codes(target, line, levels_f, noise, seed):
+    """ADC codes (12 bits over 1.0) of ``line`` symbols through exactly
+    ``target``, the symbols before the first taken as index 0 (the
+    precoder's start, and what the slicer's history starts from)."""
+    rng = np.random.default_rng(seed)
+    pad = len(target) - 1
+    v = levels_f[np.concatenate([np.zeros(pad, dtype=np.int64), line])]
+    y = v.copy()
+    for k, c in enumerate(target[1:], start=1):
+        y[k:] += c * v[:-k]
+    y = y[pad:] + rng.normal(scale=noise, size=line.size)
+    return np.clip(np.round(y * (1 << 12)), -(1 << 11), (1 << 11) - 1)
+
+
+def test_the_replay_slices_a_pr_target_as_the_loop_does():
+    """Through exactly 1 + 0.6D + 0.2D^2 the replay with that target cancels
+    the controlled cursors from its own decisions and recovers the symbols;
+    the delta target's slicer does not (it refused PR before 2026-11-03)."""
+    from halo_serdes.config.schema import PrConfig
+
+    rng = np.random.default_rng(40)
+    levels_f = np.array([-0.3, -0.1, 0.1, 0.3])
+    sym = rng.integers(0, 4, size=4000)
+    target = (1.0, 0.6, 0.2)
+    codes = _pr_codes(target, sym, levels_f, 0.01, 41)
+    num = NumericConfig(ffe_weight=QFormat(18, 14), dfe_weight=QFormat(18, 14))
+    dec, _, art = run_fixed_datapath(codes, np.array([1.0]), np.zeros(0), levels_f, 0, num,
+                                     1.0, 12, pr=PrConfig(target=target))
+    assert int(art["pr_mode"]) == 1 and int(art["pr_nt"]) == 3
+    assert art["pr_abc"].tolist() == [round(0.6 * 2 ** 14), round(0.2 * 2 ** 14), 0]
+    assert np.mean(dec != sym[: dec.size]) < 1e-3
+    delta, _, _ = run_fixed_datapath(codes, np.array([1.0]), np.zeros(0), levels_f, 0, num,
+                                     1.0, 12)
+    assert np.mean(delta != sym[: delta.size]) > 0.3
+    # the adapted target, not the configured one, is what the replay takes
+    _, _, art2 = run_fixed_datapath(codes, np.array([1.0]), np.zeros(0), levels_f, 0, num,
+                                    1.0, 12, pr=PrConfig(target=target),
+                                    pr_target=(1.0, 0.5, 0.25))
+    assert art2["pr_abc"].tolist() == [round(0.5 * 2 ** 14), round(0.25 * 2 ** 14), 0]
+
+
+def test_the_replay_slices_precoded_duobinary_on_the_composite_levels():
+    """Precoded 1 + D at a = 1: the composite slicer (mode 2) takes the line
+    symbol as (q - x[s-1]) mod N, as the loop does, and recovers them."""
+    from halo_serdes.config.schema import PrConfig
+    from halo_serdes.core.mapping import precode_1plusd
+
+    rng = np.random.default_rng(42)
+    levels_f = np.array([-0.2, -0.2 / 3, 0.2 / 3, 0.2])    # composite +-0.4 inside the codes' +-0.5
+    line = precode_1plusd(rng.integers(0, 4, size=4000), 4)
+    codes = _pr_codes((1.0, 1.0), line, levels_f, 0.01, 43)
+    num = NumericConfig(ffe_weight=QFormat(18, 14), dfe_weight=QFormat(18, 14))
+    dec, _, art = run_fixed_datapath(codes, np.array([1.0]), np.zeros(0), levels_f, 0, num,
+                                     1.0, 12, pr=PrConfig(target=(1.0, 1.0)), precode=True)
+    assert int(art["pr_mode"]) == 2 and art["pr_lv"].size == 7
+    assert np.mean(dec != line[: dec.size]) < 1e-3

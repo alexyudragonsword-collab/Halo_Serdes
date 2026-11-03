@@ -405,6 +405,9 @@ LPO 预设 53 GBd 2.95 / 5.92 / 17.35 dB。GUI TDECQ 研究对 PAM6 / PAM8 放�
      代理拦截标准站点 —— 要用户提供 PDF 或数值;拿到后小(半轮)。
   ③ **COM 的 Rx FFE 抽头上限**(178A 限前光标,`docs/USAGE.md` 记"不建"):合规读数会偏乐观;小(半轮,按条文加约束、核一个参考信道)。
   ④ **定点 / RTL 路径不接 PR 目标、mixed-signal、流式、非 2 的幂 lane 数**:做 PR 链路的 RTL 签核时会撞上;PR 那一项大(定点 + SV + lockstep),其余是边界。
+     (2026-11-03 更正 + 做了:闭环定点(`numeric.mode: fixed`、`fixed_loop`、`rtl/adc_dsp_loop.sv`)早已接 PR,lockstep 跑两 / 三光标与预编码 1 + D —— 上面"不接"只对开环回放成立。
+     开环回放 `run_fixed_datapath` 与 `rtl/ffe_dfe_datapath.sv` 这次接上,规则照 `fixed_loop`(减受控光标、DFE 从受控光标之后起、预编码在合成电平上判),
+     lockstep 四组(delta / 两 / 三光标 / 预编码)逐位;GUI / 手机 Fixed point 研究页放开 PR,预编码按用户符号比较。④ 余下 mixed-signal、流式、非 2 的幂 lane 数,都是边界。)
   ⑤ **统计引擎不建**:ADC 削顶与 TI lane 失配、发端驱动非线性、PR 对 LMS / CDR 的反作用 —— 都只在时域、带警告;各自中等,
      要先量偏离 2× 的场景再定(ADC 校准研究最常用到前一项)。
      (2026-11-03 量了、做了一项:TI lane 失配不建时 0.03–0.67×,建成白噪声(对抽取求系综,只 `cal.mode: off`)后 1.06–1.45×;

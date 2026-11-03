@@ -226,7 +226,7 @@ NRZ 26.5625 GBd / PAM4 53.125 GBd × 0.1 / 0.25 / 0.4 m × FFE lms/none × DFE 0
 > 2026-10-30 起冲激按 ISI 尾巴截断(ROADMAP P1 #42),本节引用示例 18 / 19 / 36 的数字为之前的读数,重跑见 `examples/expected/`(结论级改动已在本节或 docs 里另注)。
 
 **接口**:`PrConfig(target=(1.0,) | (1.0, a), at="rx")`,a ∈ [0, 1];`at="tx"` 抛 NotImplementedError 指向 ROADMAP P3 #8 阶段 3;
-mixed-signal + PR 在 `LinkConfig` 构造时拒绝(没有数字 FFE 可整形);静态引擎、`fixed_datapath` 拒绝 PR。`target=(1.0,)`
+mixed-signal + PR 在 `LinkConfig` 构造时拒绝(没有数字 FFE 可整形);静态引擎、`fixed_datapath` 拒绝 PR(更正 2026-11-03:`fixed_datapath` 接了,见 ROADMAP #12 ④)。`target=(1.0,)`
 与不设逐位相同(指纹 488 + 44 个值)。
 
 **接线**(`engine/timedomain.py`、`cdr/adc_kernel.py`、`dsp/ffe.py`):
