@@ -11,6 +11,8 @@
   默认不加:178A 表值取不到(ieee802.org 403;检索只到工作幻灯片,各稿不同),ROADMAP #12 记了。0.35 m 测试链路前光标 1 限到 0.3:7.76 → 5.86 dB。
 - Touchstone:4 的倍数端口都按每 lane 四个端口取(原只 8 / 12);16 端口四 lane 读回 4 端口的差分网络(测试)。GUI 字段标签跟着改。
 - 验证:全量 1433 passed / 8 skipped;ruff;com / touchstone / config_bridge 编 .so 删 .py、`HALO_NO_JIT=1` 相关 158 passed;默认读数不变(约束默认关、示例不跑)。
+- CI(PR #138,头 1623347 全绿,代码提交 bd927f9 上 Android / Windows 也绿):test 33 分钟、examples-full 32;Android 13.7;Windows PyInstaller 3.1、
+  onefile 32.7、Nuitka standalone 117.6(新分支,standalone 链冷)。
 
 ## 2026-11-02 · P2 #45 猎振多涨拆一半(记不改);功能缺口盘点(feat/p45-hunt-gaps)
 
