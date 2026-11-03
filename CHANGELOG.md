@@ -6,6 +6,16 @@
 
 ---
 
+## [未发布] — COM 约束进表单;AMI + 光拓扑;统计引擎建 TI 失配
+
+### 新增
+- `LinkConfig.com`(`ComConfig`):COM 的 Rx FFE 抽头上界进链路配置,GUI / 手机 Equaliser 一栏 "COM reference receiver" 组(adc_dsp);`ComParams` 设了的优先。
+- AMI 模型 + 光拓扑(时域,流式同):Tx Init 并进段 A、Rx Init 看整条小信号链并进最后一段,GetWave 走波形。原来直接报错。
+- 统计引擎:TI-ADC lane offset / gain / skew 失配作为白噪声(对抽取求系综,`cal.mode: off`)进 ADC 噪声;224G 上 0.03–0.67× → 1.06–1.45×。
+  ADC 输入最坏峰值超过半满量程时警告(削顶不建)。
+
+---
+
 ## [未发布] — COM 的 Rx FFE 抽头上限(可选);Touchstone 收 16 端口
 
 ### 新增

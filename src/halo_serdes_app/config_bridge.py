@@ -333,6 +333,11 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
     # The victim lane's crosstalk environment: a bank of synthetic lanes
     # (crosstalk.aggressors, one by one, is YAML-only). ppm 0 is a lane on
     # the victim's clock, skew_ui later; otherwise its phase drifts.
+    ("com", "COM reference receiver (adc_dsp)", [
+        _f("com.ffe_pre_tap1_max", "Rx FFE |pre tap 1| / main (empty = unbounded)", "opt_float"),
+        _f("com.ffe_post_tap1_max", "Rx FFE |post tap 1| / main (empty = unbounded)", "opt_float"),
+        _f("com.ffe_tapn_max", "Rx FFE |other taps| / main (empty = unbounded)", "opt_float"),
+    ]),
     ("crosstalk", "Crosstalk", [
         _f("crosstalk.n_fext", "FEXT aggressors", "int"),
         _f("crosstalk.n_next", "NEXT aggressors", "int"),

@@ -107,6 +107,9 @@ FIELD_BOUNDS: dict[str, tuple[str, float | None, float | None, bool, bool, str]]
     "AdcConfig.n_lanes": ("adc.n_lanes", 1, None, False, False, ""),
     "AdcConfig.fullscale": ("adc.fullscale", 0, None, True, False, ""),
     "AdcConfig.enob": ("adc.enob", 0, None, True, False, ""),
+    "ComConfig.ffe_pre_tap1_max": ("com.ffe_pre_tap1_max", 0, None, False, False, ""),
+    "ComConfig.ffe_post_tap1_max": ("com.ffe_post_tap1_max", 0, None, False, False, ""),
+    "ComConfig.ffe_tapn_max": ("com.ffe_tapn_max", 0, None, False, False, ""),
     "FfeConfig.n_pre": ("ffe.n_pre", 0, None, False, False, ""),
     "FfeConfig.n_post": ("ffe.n_post", 0, None, False, False, ""),
     "FfeConfig.mu": ("ffe.mu", 0, None, False, False, ""),
@@ -904,6 +907,25 @@ class CrosstalkConfig:
 
 
 @dataclass(frozen=True)
+class ComConfig:
+    """Settings of the 802.3 COM reference receiver that are not the link's
+    own (``analysis.com.compute_com``; the engines do not read them).
+
+    ``ffe_pre_tap1_max`` / ``ffe_post_tap1_max`` / ``ffe_tapn_max``: the
+    178A-style Rx FFE's tap bounds, ``|w_k| <= bound * w_main`` (the COM
+    tool's names; tapn is every other tap). None: unbounded, the default --
+    the 802.3dj values could not be read here and moved between drafts, so
+    give the ones of the draft you are checking against (2026-11-03)."""
+
+    ffe_pre_tap1_max: Optional[float] = None
+    ffe_post_tap1_max: Optional[float] = None
+    ffe_tapn_max: Optional[float] = None
+
+    def __post_init__(self):
+        _bounded(self, "ffe_pre_tap1_max", "ffe_post_tap1_max", "ffe_tapn_max")
+
+
+@dataclass(frozen=True)
 class LinkConfig:
     # defaults define the product mixed-signal anchor point: 16 GBd NRZ
     # (the canonical validated configuration, well inside the comfort zone)
@@ -927,6 +949,8 @@ class LinkConfig:
     pr: PrConfig = field(default_factory=PrConfig)
     # The victim lane's crosstalk environment (none by default)
     crosstalk: CrosstalkConfig = field(default_factory=CrosstalkConfig)
+    # The COM reference receiver's own settings (analysis only)
+    com: ComConfig = field(default_factory=ComConfig)
 
     def __post_init__(self):
         _require_in(self.modulation, {"nrz", "pam4", "pam6", "pam8"}, "modulation")

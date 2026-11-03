@@ -64,7 +64,8 @@ lane 的偏移、时钟停在起点(`LaneCurve.pd_sees_offset`,`cairn/多lane建
 
 加了非 LTI 环节(TI-ADC 失配、MLSD、CDR 残余抖动)后偏差会变大 —— 这些在统计引擎里
 是**近似**,`engine/statistical.py` 顶部逐条列了假设清单。**新增近似必须往那儿补一条**,
-否则下一个人无法判断偏差是 bug 还是已知近似。(2026-10-30 起统计引擎分成 `statistical.py`(`run_statistical`、清单)
+否则下一个人无法判断偏差是 bug 还是已知近似。(2026-11-03:TI-ADC 失配已按白噪声建、削顶 / 驱动非线性只警告,
+离 2× 多远见 `cairn/统计引擎非线性项.md`。)(2026-10-30 起统计引擎分成 `statistical.py`(`run_statistical`、清单)
 与 `stat_pdf` / `stat_noise` / `stat_pr` / `stat_loop` / `stat_pattern_phase` 五个模块;清单仍在 `statistical.py` 顶部,
 旧名照旧可从 `statistical` 导入。)
 

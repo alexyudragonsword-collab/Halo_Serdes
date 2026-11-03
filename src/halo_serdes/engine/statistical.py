@@ -312,7 +312,8 @@ from .stat_pr import (  # noqa: F401
     pr_error_events, pr_event_differences, _pr_patterns, pr_symbol_decisions,
 )
 from .stat_noise import (  # noqa: F401
-    adc_noise_sigma, _convolve_at, _dac_cursors, dac_noise_at_slicer, _EXACT_EDGES,
+    adc_input_moments, adc_noise_sigma, ti_mismatch_sigma, _convolve_at, _dac_cursors,
+    dac_noise_at_slicer, _EXACT_EDGES,
     dcd_absorbed, gaussian_kernel, tx_edge_jitter, tx_noise_covariance, TxEdgeJitter,
 )
 from .stat_loop import (  # noqa: F401
@@ -491,6 +492,17 @@ def _stat_setup(cfg: LinkConfig, channel: ChannelModel | None = None,
         # same node (the FFE input): quantisation, plus the excess that
         # brings it to the configured ENOB -- fs^2/12 * 2^(-2 ENOB) in all
         noise_sigma = float(np.hypot(noise_sigma, adc_noise_sigma(cfg)))
+        # the lanes' offset / gain / skew mismatch, white over the draws
+        x2, xd2, x_peak = adc_input_moments(cfg, h, osr, _levels(cfg))
+        noise_sigma = float(np.hypot(noise_sigma, ti_mismatch_sigma(cfg, x2, xd2)))
+        if x_peak > cfg.rx.adc.fullscale / 2.0:
+            import warnings
+
+            warnings.warn(
+                f"rx.adc.fullscale={cfg.rx.adc.fullscale:g} V: the ADC input's worst-case "
+                f"peak is {x_peak:.3g} V, past half full scale, and clipping is not in the "
+                "statistical engine -- the result is outside the 2x cross-check "
+                "(invariant #3); use the time engine", stacklevel=3)
     h_pre_ffe = h
     if ffe_taps is not None and len(ffe_taps) > 1:
         h = np.convolve(h, upsampled_taps(ffe_taps, osr))

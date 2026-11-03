@@ -321,6 +321,7 @@ compute_com(ch, cfg, params=ComParams(rx_ffe=(4, 10)))   # 指定 Rx FFE;rx_ffe=
   COM 工具的名字,各是 `|w_k| / w_main` 的上界;默认不加,因为 802.3dj 178A 的表值在这里取不到(IEEE 站点被代理拦截),
   公开的工作幻灯片里各稿不同 —— 按你核对的那一稿传。约束不起作用时读数不变;起作用时按主抽头固定、其余抽头框住重解 MMSE。
   示例:0.35 m 的 53 GBd PAM4 测试链路无约束时第一前光标 −0.56,限到 0.3 COM 降 1.9 dB)。
+  同样的三个值也可以写在配置里(`com: {ffe_pre_tap1_max: 0.7, ...}`,2026-11-03 起),GUI / 手机表单 Equaliser 一栏的 "COM reference receiver" 组(只在 adc_dsp 下显示)就是它;`ComParams` 里给了的以 `ComParams` 为准。
 - **噪声 σ_N**:`rx.noise_rms`,ADC 架构再按功率加上量化噪声(与统计引擎同一式,`adc_noise_sigma`)。
 - 2026-10-05 前 ADC 架构的 COM 也按 93A 接收机算、且不含量化噪声:各 ADC 预设读 −6…−9 dB(链路实际能跑);
   现在 4.6–19.8 dB。mixed-signal 不变。
@@ -727,6 +728,8 @@ DCD 这类起点不知道的电平偏移,按跟踪步长要 1e5–1e6 码元才�
 **统计引擎与时域差得远(>2×)** —— 检查是否引入了统计引擎不建模的非 LTI 环节
 (TI 失配、MLSD、CDR 残余抖动)。这些在统计引擎里是**近似**,文档在
 `engine/statistical.py` 顶部逐条列出。
+(2026-11-03:TI lane 失配已建成白噪声,224G 6 个抽取 1.06–1.45×;ADC 削顶仍不建 —— ADC 输入最坏峰值超过半满量程时统计引擎发警告;
+发端驱动非线性 `tx.drv_nl` 同样只警告,tanh P1dB 1 → 0.3 V 时 0.69 → 0.01×。数据见 `cairn/统计引擎非线性项.md`。)
 
 **Touchstone 读不进来** —— `channel.kind` 要设 `touchstone` 且 `channel.file` 非空;
 8/12 端口文件用 `channel.lane` 选 lane,端口错序交给 `renumber: true`(2026-11-03 起 16 端口及更多的 4 的倍数同样按每 lane 四个端口取)。
@@ -856,7 +859,9 @@ DR1 上限:基线 3.4 dB;"降到 3.0 dB"是 2025 年 9 月的提案(加 1T DFE �
 OMA 裕度 5.46 → 7.87 dB(6 dB 峰化);TIA 的在噪声之后,把噪声和信号一起抬,一律小亏(5.46 → 5.21 dB)。host 的 `tx.fir_taps` 同样在
 噪声之前,作用相同。预加重会让 TP2 波形越过稳态外电平,示例 32 给出有 / 无激光器余量两个口径(`cairn/光互联建模.md` §6)。
 
-**不做的**:功耗、重定时器内的 FEC 终结;AMI 模型与 `topology` 互斥。
+**不做的**:功耗、重定时器内的 FEC 终结;AMI 模型与 `topology` 互斥(2026-11-03 更正:可以一起用了 —— AMI 模型是两端的主机 SerDes:
+Tx 模型在段 A 之前(Init 并进第一段、GetWave 作用在发端波形),Rx 模型在段 B 之后(Init 看整条链路 —— 自适应模型按真实链路适应 ——
+它施加的滤波器并进最后一段,光电二极管的噪声也经过它;GetWave 作用在接收波形)。统计引擎本来就不接 AMI)。
 示例 `examples/32_lpo_vs_cpo.py`(同一光路,电段 4/8/12/16 dB,光纤长度扫到 reach,100 m 上比
 CPO 与 LPO 的 OMA 裕度)、`examples/33_three_topologies.py`(LPO / retimed / CPO 同台 + 三杠杆表);
 `examples/34_tdecq.py`(VCSEL 100G/λ 与 EML 200G/λ 的 TDECQ 对 ER / 激光带宽 / L-I 压缩,对着 802.3 上限);
@@ -1063,6 +1068,7 @@ rx:
   没有噪声时常数输入每次转换都得同一个码,再多次也只是同一个数 —— 残差停在量化误差 q/√12(这里 0.68 mV),
   反而不如后台(数据本身在量化器上是"抖动"的)。前台测量要越过 q/√12,需要抖动(噪声或注入)。
 - 统计引擎本来就不建 lane 失配,校准对它无影响。
+  (更正 2026-11-03:统计引擎现在把 `cal.mode: off` 下的 lane offset / gain / skew 失配当作对抽取求系综的白噪声加进 ADC 噪声(`stat_noise.ti_mismatch_sigma`);`calibrated: true` 归零 offset / gain,后台环路 `mu_skew` > 0 时 skew 也去掉;后台 / 前台校准的残差不建 —— 对它们统计引擎按"校准干净"算。)
 
 ## 20. 功耗估计(pJ/bit)
 

@@ -43,6 +43,12 @@ HELP: dict[str, str] = {
     "channel.kind": "touchstone reads an S-parameter file; analytic builds an RLGC line.",
     "channel.file": "S-parameter file (.s4p, .s8p, ...). Relative paths resolve against the bundle.",
     "channel.lane": "Which differential pair of a multi-lane file is the victim.",
+    "com.ffe_pre_tap1_max": ("COM only: bound on the Rx FFE's first precursor tap relative to the main tap. "
+                             "Empty leaves it unbounded; take the value from the 802.3 draft you check against."),
+    "com.ffe_post_tap1_max": ("COM only: bound on the Rx FFE's first postcursor tap relative to the main tap. "
+                              "Empty leaves it unbounded."),
+    "com.ffe_tapn_max": ("COM only: bound on every other Rx FFE tap relative to the main tap. "
+                         "Empty leaves it unbounded."),
     "channel.f_max": "Upper edge of the analysis frequency grid; empty is 2/UI.",
     "channel.length_m": "Length of the analytic line. Loss grows roughly linearly with it.",
     "channel.rdc": "DC resistance per metre.",
@@ -155,13 +161,15 @@ STAGES: list[tuple[str, str, list[str]]] = [
     ("channel", "Channel", ["channel", "crosstalk", "topology"]),
     ("fe", "Receiver front end", ["rx", "ctle"]),
     ("adc", "ADC", ["adc"]),
-    ("eq", "Equaliser", ["ffe", "dfe", "mlsd", "pr"]),
+    ("eq", "Equaliser", ["ffe", "dfe", "mlsd", "pr", "com"]),
     ("cdr", "CDR", ["cdr"]),
 ]
 STAGE_SHOW_IF: dict[str, Rule] = {"adc": ADC}
 
 SECTION_SHOW_IF: dict[str, Rule] = {
     "adc": ADC,
+    # the 178A reference receiver's Rx FFE exists only for the ADC receiver
+    "com": ADC,
     # a partial-response target other than the plain (1.0,) keeps the group
     # on a mixed-signal receiver, so the config error it causes there can be
     # fixed where it is reported

@@ -300,12 +300,52 @@ def test_noise_free_optics_are_pure_lti():
     assert two_stage.slicer_snr_db > 25.0
 
 
-def test_ami_is_refused_with_a_topology():
+def test_ami_models_are_the_host_serdes_at_the_two_ends():
+    """An AMI model on an optical link (2026-11-03; refused before): the Tx
+    model before segment A, the Rx model after segment B. An identity model
+    changes nothing in either flow; an Init-flow Rx FIR lands in the last
+    stage as its own Init on that stage would put it, to 0.1 % (it sees the
+    whole chain, so an adaptive model adapts to the link). The two flows of
+    one FIR differ here as on an electrical link (USAGE §12)."""
+    from halo_serdes.engine.timedomain import _ami_into_stages
     from halo_serdes.io.ami import NativeFirAmi
 
-    cfg = _adc_cfg(4.5, -6.0, n_sym=2_000)
-    with pytest.raises(ValueError, match="AMI"):
-        run_time_link(cfg, tx_ami=NativeFirAmi([1.0]))
+    cfg = _adc_cfg(4.5, -6.0, n_sym=20_000)
+    base = run_time_link(cfg)
+    for flow in (True, False):
+        same = run_time_link(cfg, tx_ami=NativeFirAmi([1.0], has_getwave=flow),
+                             rx_ami=NativeFirAmi([1.0], has_getwave=flow))
+        assert same.ber.n_errors == base.ber.n_errors
+        assert same.slicer_snr_db == pytest.approx(base.slicer_snr_db, abs=1e-6)
+    cm = ChannelModel.from_config(cfg)
+    h1, h2 = split_impulses(cfg, cm)
+    fir = NativeFirAmi([-0.1, 1.0, -0.2], n_pre=1, sample_spaced=False, has_getwave=False)
+    _, h2_rx = _ami_into_stages(cfg, (h1, h2), None, fir)
+    want = fir.init(h2, cfg.dt, cfg.ui)
+    # to 0.1 % of the peak: the FIR's Init cuts its output to the input's
+    # length, so the filter read back off the chain is not quite the FIR
+    assert np.max(np.abs(h2_rx - want)) < 3e-3 * np.max(np.abs(want))
+    # and it runs end to end (the ADC receiver's FFE takes the FIR back out:
+    # the Init flow's FIR is in the impulse the receiver starts from)
+    r_init = run_time_link(cfg, rx_ami=fir)
+    assert r_init.slicer_snr_db == pytest.approx(base.slicer_snr_db, abs=0.5)
+
+
+def test_an_init_ami_model_on_an_optical_link_streams_bit_for_bit():
+    """The stream path reads the same stages, AMI folded in (2026-11-03):
+    with the receiver noise off (its filter is the stream's one other
+    operator, tests/test_stream.py) the same decisions and slicer samples."""
+    from halo_serdes.io.ami import NativeFirAmi
+
+    cfg = _adc_cfg(4.5, -8.0, n_sym=12_000)
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, noise_rms=0.0))
+    fir = NativeFirAmi([-0.1, 1.0, -0.2], n_pre=1, sample_spaced=False, has_getwave=False)
+    whole = run_time_link(cfg, tx_ami=fir, rx_ami=fir)
+    st = dataclasses.replace(cfg, sim=dataclasses.replace(cfg.sim, stream=True, chunk_symbols=3_000))
+    streamed = run_time_link(st, tx_ami=fir, rx_ami=fir)
+    assert whole.ber.n_errors > 0
+    assert np.array_equal(whole.extras["decisions"], streamed.extras["decisions"])
+    assert np.allclose(whole.y_slicer, streamed.y_slicer, atol=1e-9)
 
 
 # ------------------------------------------- stage 3: large-signal curve ---
