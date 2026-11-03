@@ -81,7 +81,8 @@ class ComParams:
     # values could not be read here (the IEEE site is behind the proxy); the
     # public working slides moved them between drafts (placeholder 1 / 1 / 1,
     # D1.1 precursor 1 within +-0.7), so pass the ones of the draft you are
-    # checking against (2026-11-03, ROADMAP #12).
+    # checking against (2026-11-03, ROADMAP #12). None here takes the link's
+    # ``cfg.com`` value (itself None unless set), so a form can carry them.
     ffe_pre_tap1_max: float | None = None
     ffe_post_tap1_max: float | None = None
     ffe_tapn_max: float | None = None
@@ -155,6 +156,11 @@ def _dfe_residual(cursors: np.ndarray, main_i: int, n_dfe: int,
                 b = np.clip(resid[j] / main, -b_max, b_max)
                 resid[j] -= b * main          # cancelled portion removed
     return resid
+
+
+def _first(*vals):
+    """The first of ``vals`` that is set."""
+    return next((v for v in vals if v is not None), None)
 
 
 def _rx_ffe_bounds(n_pre: int, n_post: int, pre1: float | None, post1: float | None,
@@ -266,8 +272,10 @@ def compute_com(channel: ChannelModel, cfg: LinkConfig,
                   if cfg.rx.arch == "adc_dsp" and cfg.rx.ffe.n_pre + cfg.rx.ffe.n_post > 0
                   else None)
     ffe_bounds = (None if rx_ffe is None else
-                  _rx_ffe_bounds(rx_ffe[0], rx_ffe[1], p.ffe_pre_tap1_max,
-                                 p.ffe_post_tap1_max, p.ffe_tapn_max))
+                  _rx_ffe_bounds(rx_ffe[0], rx_ffe[1],
+                                 _first(p.ffe_pre_tap1_max, cfg.com.ffe_pre_tap1_max),
+                                 _first(p.ffe_post_tap1_max, cfg.com.ffe_post_tap1_max),
+                                 _first(p.ffe_tapn_max, cfg.com.ffe_tapn_max)))
 
     h_ch = _channel_impulse(channel, cfg)
     swing = cfg.tx.swing / 2.0

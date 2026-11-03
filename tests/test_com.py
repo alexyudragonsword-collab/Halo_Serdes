@@ -137,6 +137,30 @@ def test_rx_ffe_tap_bounds_hold_and_cost_margin_only_when_they_bind():
     assert r.com_db < one.com_db < free.com_db - 1.0, (r.com_db, one.com_db, free.com_db)
 
 
+def test_the_link_config_carries_the_tap_bounds_to_forms():
+    """``cfg.com`` holds the same bounds (2026-11-03) so the GUI and the
+    phone's form can set them: a bound there reads as the same bound in
+    ``ComParams``, which still wins where it is set; a form's empty field
+    is unbounded; a negative bound is a config error."""
+    from halo_serdes.config.schema import ComConfig
+    from halo_serdes_app import config_bridge as cb
+
+    cfg = _cfg(length=0.35)
+    ch = ChannelModel.from_config(cfg)
+    via_cfg = dataclasses.replace(cfg, com=ComConfig(ffe_pre_tap1_max=0.3))
+    a = compute_com(ch, via_cfg)
+    b = compute_com(ch, cfg, params=ComParams(ffe_pre_tap1_max=0.3))
+    assert a.detail["rx_ffe_bounded"] and a.com_db == pytest.approx(b.com_db, abs=1e-12)
+    loose = compute_com(ch, via_cfg, params=ComParams(ffe_pre_tap1_max=0.7))
+    assert loose.com_db == pytest.approx(compute_com(ch, cfg).com_db, abs=1e-9)
+    with pytest.raises(ValueError, match="com.ffe_tapn_max"):
+        ComConfig(ffe_tapn_max=-0.1)
+    vals = cb.config_to_values(via_cfg)
+    assert vals["com.ffe_pre_tap1_max"] == 0.3 and vals["com.ffe_tapn_max"] in (None, "")
+    back = cb.build_config(vals)
+    assert back.com == via_cfg.com
+
+
 def test_rx_ffe_pays_for_the_noise_it_enhances():
     """More receiver noise -> the MMSE taps back off (smaller norm) and the
     COM falls; noise-free the FFE would zero-force."""

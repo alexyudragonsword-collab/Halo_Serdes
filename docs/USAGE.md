@@ -321,6 +321,7 @@ compute_com(ch, cfg, params=ComParams(rx_ffe=(4, 10)))   # 指定 Rx FFE;rx_ffe=
   COM 工具的名字,各是 `|w_k| / w_main` 的上界;默认不加,因为 802.3dj 178A 的表值在这里取不到(IEEE 站点被代理拦截),
   公开的工作幻灯片里各稿不同 —— 按你核对的那一稿传。约束不起作用时读数不变;起作用时按主抽头固定、其余抽头框住重解 MMSE。
   示例:0.35 m 的 53 GBd PAM4 测试链路无约束时第一前光标 −0.56,限到 0.3 COM 降 1.9 dB)。
+  同样的三个值也可以写在配置里(`com: {ffe_pre_tap1_max: 0.7, ...}`,2026-11-03 起),GUI / 手机表单 Equaliser 一栏的 "COM reference receiver" 组(只在 adc_dsp 下显示)就是它;`ComParams` 里给了的以 `ComParams` 为准。
 - **噪声 σ_N**:`rx.noise_rms`,ADC 架构再按功率加上量化噪声(与统计引擎同一式,`adc_noise_sigma`)。
 - 2026-10-05 前 ADC 架构的 COM 也按 93A 接收机算、且不含量化噪声:各 ADC 预设读 −6…−9 dB(链路实际能跑);
   现在 4.6–19.8 dB。mixed-signal 不变。
