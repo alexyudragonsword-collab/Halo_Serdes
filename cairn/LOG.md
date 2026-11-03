@@ -3,6 +3,17 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-03 · COM 约束进表单;AMI + 光拓扑;统计引擎非线性项摸底、建 TI 失配(feat/com-gui-ami-optics)
+
+- 用户选"COM 约束接进 GUI / 手机 + AMI + 光拓扑 + 统计引擎非线性项摸底"。
+- COM:`LinkConfig.com`(`ComConfig`,三个上界,负值报错)→ COM 取 `ComParams` 设了的、否则 `cfg.com`(`_first`);表单 "com" 组在 eq 阶段,只 adc_dsp 显示。
+- AMI + 光拓扑(只时域;ROADMAP #12 ① 原说"两个引擎都接",统计引擎本来不接 AMI,已更正):Tx Init 并进段 A,Rx Init 看整条链,
+  滤波器 `H_eq / H` 只在链有能量处取、外面插值 / 保持(正则化到零时恒等模型读高 7e-5 dB),并进最后一段;GetWave 走波形;流式逐位同(无噪声时)。
+- 摸底(`cairn/统计引擎非线性项.md`):TI offset / gain / skew 不建时 0.03–0.67×,建成白噪声(对抽取求系综,只 `cal.mode: off`)后 1.06–1.45×;
+  削顶 0.001× 起 → 只警告(最坏峰值过半满量程);驱动 tanh / curve 0.69 → 0.01×(原有警告)。PR 对 LMS / CDR 的反作用没量。
+- 坑:ADC 接收机的统计运行不传时域 FFE 抽头读 ~0.2(探针第一版全错);`drv_nl` 要与 `drv_p1db_v` 一次 replace,分两次过不了校验。
+- 验证:待填。
+
 ## 2026-11-03 · COM 的 Rx FFE 抽头上限(机制,默认不加);Touchstone 收 16 端口(feat/com-rxffe-limits-ts16)
 
 - 用户选"COM 的 Rx FFE 抽头上限 + Touchstone 16 端口等小项"。

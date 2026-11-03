@@ -857,6 +857,7 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
 - **定点只覆盖数据通路**:时域引擎不读 `numeric.mode`,定点走 `fixed_datapath` 独立重放;
   CDR 与 MLSD 没有定点路径,RTL lockstep 因此只覆盖 FFE+DFE+slicer。
 - **片上校准未实现**:只建模 ADC 失配,`calibrated=True` 是行为级归零而非真实算法。
+  (更正,日期不详的旧条:后台 / 前台校准已实现(`adc.cal.mode`,示例 39);2026-11-03 起统计引擎也建失配,但校准环路的残差不建。)
 - **Duobinary / PR 整形未建模**:1+D 预编码 ≠ PR 整形(前者是映射,后者要在发端有意
   引入受控 ISI)。
 - 真实 RTL 三视图、FPGA AMS、物理实现流 —— 超出行为级框架的设计边界,见

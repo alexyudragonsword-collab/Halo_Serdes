@@ -36,10 +36,48 @@ def adc_noise_sigma(cfg: LinkConfig) -> float:
     """RMS noise of the ADC at its input [V]: the n-bit quantiser's
     step^2 / 12, plus the excess that ``afe.adc.TiAdc`` adds to realise the
     configured ENOB, which together are fullscale^2 / 12 * 2^(-2 ENOB). Clipping
-    and lane mismatch are not in it."""
+    and lane mismatch are not in it (``ti_mismatch_sigma`` is the latter)."""
     acfg = cfg.rx.adc
     bits = acfg.enob if acfg.enob is not None and acfg.enob < acfg.n_bits else acfg.n_bits
     return float(acfg.fullscale / np.sqrt(12.0) * 2.0 ** (-bits))
+
+
+def adc_input_moments(cfg: LinkConfig, h: np.ndarray, osr: int,
+                      levels: np.ndarray) -> tuple[float, float, float]:
+    """The ADC input at the main cursor's phase, over random data: E[x^2],
+    E[x'^2] (per UI^2) and the worst-case peak sum_k |p_k| max|a| [V], with
+    ``h`` the impulse up to the ADC and ``levels`` in volts."""
+    from ..core.sampler import baud_samples
+
+    p = pulse_from_impulse(Waveform(h, cfg.dt), osr).y
+    phase = int(np.argmax(np.abs(p))) % osr
+    lv = np.asarray(levels, dtype=np.float64)
+    ea2 = float(level_probabilities(cfg.modulation) @ (lv ** 2))
+    cur = baud_samples(p, osr, phase)
+    slope = baud_samples(np.gradient(p) * osr, osr, phase)
+    peak = float(np.max(np.abs(lv)) * np.sum(np.abs(cur)))
+    return ea2 * float(cur @ cur), ea2 * float(slope @ slope), peak
+
+
+def ti_mismatch_sigma(cfg: LinkConfig, x2: float, xd2: float) -> float:
+    """RMS error the time-interleaved ADC's lane mismatch adds at its input
+    [V], taken as white per sample like the quantiser's: offset sigma_o^2 +
+    gain sigma_g^2 E[x^2] + skew (sigma_s T)^2 E[x'^2] (``adc_input_moments``).
+
+    Each lane's error is really fixed -- the same offset and gain on every
+    n_lanes-th sample, drawn once per link -- so this is the ensemble over
+    the draws, not one link's: one draw's slicer error is a mixture of
+    n_lanes shifts, and the time engine scatters around this from seed to
+    seed. Mode "off" only: ``calibrated`` zeroes offset and gain, a background
+    loop with ``mu_skew`` > 0 trims skew, and the calibration loops'
+    residuals are left out (cairn/统计引擎非线性项.md)."""
+    acfg = cfg.rx.adc
+    var = 0.0
+    if not acfg.calibrated and acfg.cal.mode == "off":
+        var = acfg.offset_sigma ** 2 + acfg.gain_sigma ** 2 * x2
+    if not (acfg.cal.mode == "background" and acfg.cal.mu_skew > 0):
+        var += acfg.skew_sigma_ui ** 2 * xd2
+    return float(np.sqrt(var))
 
 
 def _dac_cursors(h: np.ndarray, dt: float, osr: int) -> np.ndarray:
