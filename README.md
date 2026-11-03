@@ -74,7 +74,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 硬件 | `rtl/` | FFE+DFE+slicer、带 CDR 的数字后端、sliding / Viterbi / 降状态(DFSE)MLSD 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**(2026-11-02):核心库 ~20.2k 行 / 应用层与 GUI ~6.2k 行 / 测试 ~18.5k 行 / 示例 ~7.1k 行;
-**1437 项测试**(1429 通过、8 项跳过,本地全量;闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**1451 项测试**(1443 通过、8 项跳过,本地全量 2026-11-03;闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
 **47 个编号示例**(`examples/00`–`46`)。(2026-10-03 时为 9.8k / 4.2k / 7.3k / 4.4k 行、1015 项测试。)
 
 ## 路线图
