@@ -146,8 +146,9 @@ Non-LTI approximations (each cross-checked against the time engine):
   passes 0.09-0.14 the time engine's loop cycle-slips -- warned from 0.08
   on PAM4, scaled by the format's level power (NRZ 0.016: duobinary slipped
   from 0.028, ``pr_loop_load_warn``). MM on the raw ADC samples behind a PR
-  target on PAM4 (a non-default ``pd_input``) locks off the peak where those
-  decisions err more: 0.01-0.57x, warned (cairn/DSP发端与PR.md §44);
+  target on PAM4 (a non-default ``pd_input``) keeps 1/16 of its linear gain
+  and its loop wanders 0.03-0.075 UI, left out here on white clocks, where
+  those decisions err more: 0.01-0.57x, warned (cairn/DSP发端与PR.md §44);
 - sampling phase: each receiver is read where its loop locks, not at the
   bathtub minimum (``extras['ber_min_phase']`` keeps the minimum). The
   mixed-signal bang-bang loop settles where its edge samples balance
@@ -1437,19 +1438,24 @@ def _stat_read(ctx: SimpleNamespace) -> StatResult:
         lock_ui = lock / osr
     loop_load = None
     if pr_active and cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "adc" and n_levels > 2:
-        # MM on the raw samples of a multi-level format locks off the peak
-        # (why "auto" picks the FFE's output there): the time engine settled
-        # 0.09-0.10 UI early where this engine's lock model reads +0.01, and
-        # behind a PR target the per-symbol decisions it then reads err 3-8x
-        # more -- 0.22-0.57x of the time engine at (1, 0.5), 0.01-0.18x at
-        # (1, 1.4, 1.0, 0.4), 1.8-3 mV (2026-11-03); without PR 0.53-0.74x
+        # MM on the raw samples of a multi-level format has little gain left
+        # (the neighbours' signs, flipped by the raw samples' ISI, cancel all
+        # but 1/16 of the linear slope; why "auto" picks the FFE's output
+        # there): the lock this engine reads is the detector's (0.006 UI from
+        # a 1e6-draw sign-MM zero), but the time engine's loop wanders around
+        # it, 0.03-0.075 UI rms and not stationary over 3e5 symbols, which
+        # this engine leaves out for an ADC on white clocks. Behind a PR
+        # target the per-symbol decisions then err 3-8x more -- 0.22-0.57x of
+        # the time engine at (1, 0.5), 0.01-0.18x at (1, 1.4, 1.0, 0.4),
+        # 1.8-3 mV (2026-11-03); without PR 0.53-0.74x. cairn/DSP发端与PR.md §44
         import warnings
 
         warnings.warn(
             "rx.cdr.pd_input='adc' with a partial-response target on a multi-level "
-            "format: Mueller-Muller on the raw samples locks off the peak, where the "
-            "per-symbol PR decisions it reads err several times more than this engine "
-            "models -- its BER is optimistic (0.01-0.57x measured); use pd_input 'ffe' "
+            "format: Mueller-Muller on the raw samples has little gain and its loop "
+            "wanders (0.03-0.075 UI measured), which this engine leaves out, and the "
+            "per-symbol PR decisions err several times more there -- its BER is "
+            "optimistic (0.01-0.57x measured); use pd_input 'ffe' "
             "or 'auto', or the time engine", stacklevel=3)
     if pr_active and cfg.rx.arch == "adc_dsp" and cfg.mm_pd_input == "ffe":
         # The Mueller-Muller CDR reads the sample less the controlled cursors
