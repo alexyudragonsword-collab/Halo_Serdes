@@ -50,7 +50,8 @@ The page is laid out as the link it simulates.
 now (`FIR 3 taps · 1 V`, `RLGC 0.28 m`, `CTLE 7 dB · noise 0.004 V`, `FFE 4+12 ·
 DFE 2`, ...): Link & run, Transmitter, Channel (with crosstalk and the optical
 topology), Receiver front end, ADC (on an `adc_dsp` receiver only),
-Equaliser (FFE, DFE, MLSD, partial response), CDR. Click a stage to open its
+Equaliser (FFE, DFE, MLSD, partial response; COM reference receiver bounds on
+an `adc_dsp` receiver, 2026-11-03), CDR. Click a stage to open its
 parameters below the chain: the common ones first, the rest behind
 **Advanced (n)**. Only what the configuration uses is shown (the rules, help
 texts, common fields and stages are `halo_serdes_app.form_meta`, which the

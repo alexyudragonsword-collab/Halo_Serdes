@@ -6,6 +6,17 @@
 
 ---
 
+## [未发布] — PR 判决对 CDR 的警告按格式缩放;PAM4 原始样本 MM 警告
+
+### 修正
+- 统计引擎的 PR 环路负载警告按格式的电平功率缩放(`pr_loop_load_warn`):PAM4 仍 0.08,NRZ 0.016 —— NRZ duobinary 在 0.028 已周跳、原来不报。
+- PAM4 + PR 目标 + `rx.cdr.pd_input: adc` 时统计引擎警告(读数 0.01–0.57× 时域)。
+
+### 文档
+- 表单 `rx.cdr.kind` 说明:环路由接收机架构决定。README Touchstone 端口、USAGE 的 PR 阈值、GUI.md 的 COM 组。
+
+---
+
 ## [未发布] — COM 约束进表单;AMI + 光拓扑;统计引擎建 TI 失配
 
 ### 新增

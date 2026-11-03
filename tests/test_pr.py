@@ -948,6 +948,59 @@ def test_statistical_engine_warns_where_the_pr_decisions_load_the_cdr():
     assert st.ber / mc.ber.ber < 0.1
 
 
+def _nrz_duobinary(noise, n_sym, pd_input="ffe"):
+    cfg = dataclasses.replace(_link(0.26, 0.5, n_sym=n_sym, noise=noise, enob=None),
+                              modulation="nrz", pr=PrConfig(target=(1.0, 1.0)))
+    return dataclasses.replace(
+        cfg, sim=dataclasses.replace(cfg.sim, pattern="prbs15"),
+        rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig(kind="viterbi", memory=1),
+                               cdr=dataclasses.replace(cfg.rx.cdr, pd_input=pd_input)))
+
+
+@needs_jit
+def test_the_loop_load_warning_scales_with_the_format():
+    """NRZ errs by one step of a two-step alphabet: its decision errors weigh
+    five times PAM4's against the data, and duobinary (1, 1) behind the MM on
+    the FFE's output slipped from a load of 0.028 (2026-11-03; PAM4 0.09).
+    The threshold is 0.08 scaled by E[(a / step)^2] / 1.25: NRZ 0.016."""
+    import warnings
+
+    from halo_serdes.engine.statistical import pr_loop_load_warn
+
+    assert pr_loop_load_warn(np.array([-1.0, 1.0]), np.full(2, 0.5)) == pytest.approx(0.016)
+    assert pr_loop_load_warn(np.array([-1.0, -1 / 3, 1 / 3, 1.0]), np.full(4, 0.25)) == \
+        pytest.approx(0.08)
+    for noise, slips in ((0.007, False), (0.009, True)):
+        cfg = _nrz_duobinary(noise, 300_000)
+        cm = ChannelModel.from_config(cfg)
+        mc = run_time_link(cfg, channel=cm)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            run_statistical(cfg, channel=cm, ffe_taps=mc.ffe_taps, ffe_pre=cfg.rx.ffe.n_pre)
+        warned = any("loop load" in str(w.message) for w in caught)
+        assert (mc.extras["cycle_slips"] > 0) == slips == warned, (noise, mc.extras["cycle_slips"])
+
+
+def test_raw_sample_mm_behind_a_pr_target_warns_on_pam4_only():
+    """PAM4 PR with the MM on the raw ADC samples read 0.01-0.57x of the time
+    engine (the lock sits off the peak and the PR decisions err more there);
+    NRZ, where "auto" is the raw samples, read 0.75-0.93x and stays quiet."""
+    import warnings
+
+    def warned(cfg):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            run_statistical(cfg)
+        return any("pd_input='adc'" in str(w.message) for w in caught)
+
+    pam4 = dataclasses.replace(_link(0.26, 0.5, n_sym=1000, enob=None), pr=PrConfig(target=(1.0, 0.5)))
+    raw = dataclasses.replace(pam4, rx=dataclasses.replace(
+        pam4.rx, cdr=dataclasses.replace(pam4.rx.cdr, pd_input="adc")))
+    assert warned(raw) and not warned(pam4)
+    assert _nrz_duobinary(0.006, 1000, pd_input="auto").mm_pd_input == "adc"
+    assert not warned(_nrz_duobinary(0.006, 1000, pd_input="auto"))
+
+
 def test_sliding_detector_is_refused_under_a_three_cursor_target():
     """It models one postcursor; the second controlled cursor would read as
     error and flip correct decisions."""

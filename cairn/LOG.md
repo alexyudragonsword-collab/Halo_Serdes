@@ -3,6 +3,21 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-03 · PR 判决对 CDR:阈值按格式缩放、PAM4 原始样本 MM 警告;#44 / #45 逐点核;文档漂移(feat/pr-survey-p44-drift)
+
+- 用户选"PR 对 LMS / CDR 反作用摸底 + 文档漂移审计 + P2 #44 / #45 余项"。
+- PR:#12 ⑤ 写"没量"不对(§15 早量过 PAM4 + MM 读 FFE,已更正)。补了没覆盖的:NRZ duobinary 负载 0.028 已周跳、按 0.08 不报 →
+  阈值 × E[(a/步长)²] / 1.25(`pr_loop_load_warn`,NRZ 0.016、PAM4 不变);PAM4 + PR + `pd_input: adc` 0.01–0.57×(锁偏峰值、判决错得多)→ 警告;
+  NRZ 读原始样本(默认)0.75–0.93× 不动。`cdr.kind` 不选环路(ADC 始终 MM、mixed-signal 始终 bang-bang),表单说明改了。`cairn/DSP发端与PR.md` §44。
+- #44 / #45:音的 |H| 逐点核 —— 乘 K_dyn 0.925 后 0.463 / 0.455 / 0.442 → 0.434 / 0.426 / 0.413(内核 0.42 / 0.41 / 0.38),差解释掉约 2/3;
+  K_dyn 只动带内的音,#45 带宽以上的读低不随它动,两条不合并排期。代码不变。
+- 文档漂移:README Touchstone 端口、USAGE 的 PR 阈值、GUI.md 的 COM 组;其余(AMI、COM、TI 失配)上轮已带日期更正。
+- 坑:探针的 f-string 里嵌引号用 sed 改了两次都错、白等一次 3 分钟 —— 改完先 `ast.parse` 再起后台。
+- 验证:全量 1443 passed / 8 skipped;ruff;`test_docs_fresh` + `test_example_drift` 29 passed;statistical / form_meta 编 .so 删 .py、
+  `HALO_NO_JIT=1` 相关 187 passed / 37 skipped(`needs_jit` 的慢测跳过);README / COMPARISON 测试数更新到 1451 项。
+- CI(PR #140,头 de03ce3 测试工作流全绿;代码提交所在的 2b52ab3 上 Android / Windows 也绿):test 29 分钟、examples 21、full 27;
+  Android 14.6;Windows PyInstaller 3.2、Nuitka standalone 29.3、onefile 39.3(缓存命中没查日志)。
+
 ## 2026-11-03 · COM 约束进表单;AMI + 光拓扑;统计引擎非线性项摸底、建 TI 失配(feat/com-gui-ami-optics)
 
 - 用户选"COM 约束接进 GUI / 手机 + AMI + 光拓扑 + 统计引擎非线性项摸底"。

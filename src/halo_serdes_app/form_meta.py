@@ -92,7 +92,9 @@ HELP: dict[str, str] = {
     "rx.mlsd.kind": "Sequence detector after the equaliser; none is symbol-by-symbol.",
     "rx.mlsd.memory": "Postcursors the trellis models.",
     # cdr
-    "rx.cdr.kind": "bang_bang: early/late votes, the usual mixed-signal choice. mueller_muller: baud-rate, from the ADC samples.",
+    "rx.cdr.kind": ("The receiver architecture sets the loop: mixed_signal runs bang-bang (early/late votes), "
+                    "adc_dsp runs Mueller-Muller (baud-rate). Set it to match -- it only steers the "
+                    "mixed-signal DFE's lock-point start and the power estimate's edge slicer."),
     "rx.cdr.kp_shift": "Proportional gain 2^-k: smaller k tracks faster and dithers more.",
     "rx.cdr.ki_shift": "Integral gain 2^-k: follows frequency offset.",
     "rx.cdr.loop_latency_symbols": "Delay from phase decision to the clock moving.",
