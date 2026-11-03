@@ -12,7 +12,8 @@
 - 摸底(`cairn/统计引擎非线性项.md`):TI offset / gain / skew 不建时 0.03–0.67×,建成白噪声(对抽取求系综,只 `cal.mode: off`)后 1.06–1.45×;
   削顶 0.001× 起 → 只警告(最坏峰值过半满量程);驱动 tanh / curve 0.69 → 0.01×(原有警告)。PR 对 LMS / CDR 的反作用没量。
 - 坑:ADC 接收机的统计运行不传时域 FFE 抽头读 ~0.2(探针第一版全错);`drv_nl` 要与 `drv_p1db_v` 一次 replace,分两次过不了校验。
-- 验证:待填。
+- 验证:全量 1441 passed / 8 skipped;ruff;schema / config_bridge / form_meta / timedomain / com / stat_noise / statistical 编 .so 删 .py、
+  `HALO_NO_JIT=1` 相关 235 passed / 12 skipped;示例不受影响(用到失配的示例只跑时域,警告走 stderr)。
 
 ## 2026-11-03 · COM 的 Rx FFE 抽头上限(机制,默认不加);Touchstone 收 16 端口(feat/com-rxffe-limits-ts16)
 
