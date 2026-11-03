@@ -123,7 +123,7 @@ def bundled_channels() -> list[dict]:
         if not d.is_dir():
             continue
         for f in sorted(d.iterdir()):
-            # .s2p/.s4p/.s8p/.s12p — the port count is part of the suffix.
+            # .s2p/.s4p/.s8p/.s12p/.s16p — the port count is part of the suffix.
             if re.fullmatch(r"\.s\d+p", f.suffix, re.IGNORECASE) and f.is_file():
                 seen.setdefault(f.name, f)
     return [{"name": n, "path": str(p), "bytes": p.stat().st_size}
@@ -197,7 +197,7 @@ SECTIONS: list[tuple[str, str, list[dict]]] = [
     ("channel", "Channel", [
         _f("channel.kind", "Kind", "enum", options=["touchstone", "analytic"]),
         _f("channel.file", "Touchstone file", "opt_str"),
-        _f("channel.lane", "Lane (8/12-port)", "int"),
+        _f("channel.lane", "Lane (8/12/16-port)", "int"),
         _f("channel.renumber", "Auto port renumber", "bool"),
         _f("channel.zs_diff", "Source term [ohm]", "float"),
         _f("channel.zl_diff", "Load term [ohm]", "float"),

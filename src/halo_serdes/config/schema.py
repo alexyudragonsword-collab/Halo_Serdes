@@ -211,7 +211,7 @@ class QFormat:
 class ChannelConfig:
     kind: Literal["touchstone", "analytic"] = "touchstone"
     file: Optional[str] = None          # Touchstone path (s2p/s4p/s8p/s12p)
-    lane: int = 0                       # lane index for 8/12-port files
+    lane: int = 0                       # lane index for 8/12/16/...-port files
     renumber: bool = True               # auto-detect 1<->3 port ordering
     zs_diff: float = 100.0              # differential source termination [ohm]
     zl_diff: float = 100.0              # differential load termination [ohm]

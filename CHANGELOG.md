@@ -6,6 +6,15 @@
 
 ---
 
+## [未发布] — COM 的 Rx FFE 抽头上限(可选);Touchstone 收 16 端口
+
+### 新增
+- `ComParams(ffe_pre_tap1_max=, ffe_post_tap1_max=, ffe_tapn_max=)`:178A 式 Rx FFE 的抽头上界(相对主抽头,COM 工具的参数名),约束起作用时重解 MMSE。
+  默认不加 —— 802.3dj 的表值在这里取不到,按核对的那一稿传;默认读数不变。
+- Touchstone:16 端口及更多(4 的倍数)按每 lane (+A, +B, −A, −B) 取 `channel.lane`,原只收 8 / 12 端口。
+
+---
+
 ## [未发布] — P2 #45 有音时猎振多涨拆开一半;功能缺口盘点
 
 ### 核查

@@ -125,3 +125,28 @@ def test_vs_serdespy_golden(golden_name, s4p_name):
     # a true permutation is s'[i,j] = s[p(i),p(j)]). Agreement to <0.5% with
     # two independent quirks emulated validates our mixed-mode conversion.
     assert err < 5e-3
+
+
+def test_a_16_port_file_is_four_lanes(tmp_path):
+    """A 4N-port file holds N lanes with ports (+A, +B, -A, -B) each; since
+    2026-11-03 any N >= 2, not only 8 and 12 ports. Four copies of the T20
+    backplane laid out that way: every lane reads back the 4-port file's
+    differential network."""
+    import skrf as rf
+
+    ref = rf.Network(str(S4P), f_unit="Hz")
+    perm = [0, 2, 1, 3]
+    block = ref.s[:, perm][:, :, perm]
+    n = ref.s.shape[0]
+    s16 = np.zeros((n, 16, 16), dtype=complex)
+    for k in range(4):
+        s16[:, 4 * k:4 * k + 4, 4 * k:4 * k + 4] = block
+    path = tmp_path / "four_lanes.s16p"
+    rf.Network(frequency=ref.frequency, s=s16, z0=50.0).write_touchstone(str(path.with_suffix("")))
+    want = import_diff_network(str(S4P), renumber=True).s
+    for lane in (0, 3):
+        got = import_diff_network(str(path), renumber=True, lane=lane).s
+        assert np.allclose(got, want, atol=1e-9)
+    with pytest.raises(ValueError, match="lane=4 out of range"):
+        import_diff_network(str(path), lane=4)
+

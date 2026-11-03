@@ -3,6 +3,7 @@
 import dataclasses
 
 import numpy as np
+import pytest
 
 from halo_serdes.analysis.com import ComParams, compute_com
 from halo_serdes.channel import ChannelModel, synthetic_aggressor
@@ -107,6 +108,33 @@ def test_rx_ffe_is_the_adc_receivers_reference():
     assert with_ffe.com_db > without.com_db + 10.0
     ms = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, arch="mixed_signal"))
     assert compute_com(ch, ms).detail["rx_ffe"] is None
+
+
+def test_rx_ffe_tap_bounds_hold_and_cost_margin_only_when_they_bind():
+    """The COM tool's ffe_pre_tap1_max / ffe_post_tap1_max / ffe_tapn_max,
+    each a bound on |w_k| / w_main (2026-11-03): off by default; bounds the
+    unbounded solution already meets change nothing; binding ones hold to
+    the bound and cost margin (here the first precursor tap sits at -0.56 of
+    the main tap unbounded, and holding it to 0.3 costs about 1.9 dB)."""
+    cfg = _cfg(length=0.35)
+    ch = ChannelModel.from_config(cfg)
+    n = cfg.rx.ffe.n_pre
+    free = compute_com(ch, cfg)
+    assert free.detail["rx_ffe_bounded"] is False
+    loose = compute_com(ch, cfg, params=ComParams(ffe_pre_tap1_max=0.7, ffe_post_tap1_max=0.7,
+                                                  ffe_tapn_max=0.7))
+    assert loose.detail["rx_ffe_bounded"] is True
+    assert loose.com_db == pytest.approx(free.com_db, abs=1e-9)
+    w0 = free.detail["rx_ffe_taps"] / free.detail["rx_ffe_taps"][n]
+    assert abs(w0[n - 1]) > 0.5
+    tight = ComParams(ffe_pre_tap1_max=0.2, ffe_post_tap1_max=0.3, ffe_tapn_max=0.05)
+    r = compute_com(ch, cfg, params=tight)
+    w = r.detail["rx_ffe_taps"] / r.detail["rx_ffe_taps"][n]
+    others = np.delete(np.arange(w.size), [n - 1, n, n + 1])
+    assert abs(w[n - 1]) <= 0.2 + 1e-9 and abs(w[n + 1]) <= 0.3 + 1e-9
+    assert np.all(np.abs(w[others]) <= 0.05 + 1e-9), w
+    one = compute_com(ch, cfg, params=ComParams(ffe_pre_tap1_max=0.3))
+    assert r.com_db < one.com_db < free.com_db - 1.0, (r.com_db, one.com_db, free.com_db)
 
 
 def test_rx_ffe_pays_for_the_noise_it_enhances():
