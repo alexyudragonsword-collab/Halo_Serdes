@@ -19,29 +19,41 @@ module tb_ffe_dfe;
     logic [31:0]          dec_gold [N_OUT];
     logic signed [CW-1:0] v_gold   [N_OUT];
 
-    string dir;
+    string dir, fn;   // fn: the file being read, for error messages
     int fd, i, val, r, errors;
 
     initial begin
         if (!$value$plusargs("vecdir=%s", dir)) dir = ".";
 
-        fd = $fopen({dir, "/codes.txt"}, "r");
-        for (i = 0; i < N;     i++) begin r = $fscanf(fd, "%d", val); dut.codes[i]  = val; end
+        fn = {dir, "/codes.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (i = 0; i < N;     i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.codes[i]  = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/w_ffe_int.txt"}, "r");
-        for (i = 0; i < NF;    i++) begin r = $fscanf(fd, "%d", val); dut.w_ffe[i]  = val; end
+        fn = {dir, "/w_ffe_int.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (i = 0; i < NF;    i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.w_ffe[i]  = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/w_dfe_int.txt"}, "r");
-        for (i = 0; i < ND;    i++) begin r = $fscanf(fd, "%d", val); dut.w_dfe[i]  = val; end
+        fn = {dir, "/w_dfe_int.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (i = 0; i < ND;    i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.w_dfe[i]  = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/levels_out.txt"}, "r");
-        for (i = 0; i < NL;    i++) begin r = $fscanf(fd, "%d", val); dut.levels[i] = val; end
+        fn = {dir, "/levels_out.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (i = 0; i < NL;    i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.levels[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/dec.txt"}, "r");
-        for (i = 0; i < N_OUT; i++) begin r = $fscanf(fd, "%d", val); dec_gold[i]   = val; end
+        fn = {dir, "/dec.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (i = 0; i < N_OUT; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dec_gold[i]   = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/v_out.txt"}, "r");
-        for (i = 0; i < N_OUT; i++) begin r = $fscanf(fd, "%d", val); v_gold[i]     = val; end
+        fn = {dir, "/v_out.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (i = 0; i < N_OUT; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); v_gold[i]     = val; end
         $fclose(fd);
 
         #1;   // let the combinational datapath settle

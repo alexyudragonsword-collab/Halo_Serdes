@@ -21,55 +21,83 @@ module tb_adc_dsp_loop;
     longint ab_gold  [3];
     longint cal_gold [3 * LANES + 1];   // final lane offsets, gains, mean power, delay trims
 
-    string dir;
+    string dir, fn;   // fn: the file being read, for error messages
     int fd, r, errors;
     longint val;
 
     initial begin
         if (!$value$plusargs("vecdir=%s", dir)) dir = ".";
 
-        fd = $fopen({dir, "/loop_xin.txt"}, "r");
-        for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); dut.xraw[i] = val; end
+        fn = {dir, "/loop_xin.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.xraw[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_ref.txt"}, "r");
-        for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); dut.ref_sym[i] = val; end
+        fn = {dir, "/loop_ref.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.ref_sym[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_w_ffe_end.txt"}, "r");
-        for (int i = 0; i < NF; i++) begin r = $fscanf(fd, "%d", val); wf_gold[i] = val; end
+        fn = {dir, "/loop_w_ffe_end.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < NF; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); wf_gold[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_w_dfe_end.txt"}, "r");
-        for (int i = 0; i < ND; i++) begin r = $fscanf(fd, "%d", val); wd_gold[i] = val; end
+        fn = {dir, "/loop_w_dfe_end.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < ND; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); wd_gold[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_pr_lv.txt"}, "r");
-        for (int i = 0; i < NPL; i++) begin r = $fscanf(fd, "%d", val); dut.pr_lv[i] = val; end
+        fn = {dir, "/loop_pr_lv.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < NPL; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.pr_lv[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_ab.txt"}, "r");
-        for (int i = 0; i < 3; i++) begin r = $fscanf(fd, "%d", val); dut.ab[i] = val; end
+        fn = {dir, "/loop_ab.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < 3; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.ab[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_ab_end.txt"}, "r");
-        for (int i = 0; i < 3; i++) begin r = $fscanf(fd, "%d", val); ab_gold[i] = val; end
+        fn = {dir, "/loop_ab_end.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < 3; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); ab_gold[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_w_ffe_int.txt"}, "r");
-        for (int i = 0; i < NF; i++) begin r = $fscanf(fd, "%d", val); dut.w_ffe[i] = val; end
+        fn = {dir, "/loop_w_ffe_int.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < NF; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.w_ffe[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_w_dfe_int.txt"}, "r");
-        for (int i = 0; i < ND; i++) begin r = $fscanf(fd, "%d", val); dut.w_dfe[i] = val; end
+        fn = {dir, "/loop_w_dfe_int.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < ND; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.w_dfe[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_levels_out.txt"}, "r");
-        for (int i = 0; i < NL; i++) begin r = $fscanf(fd, "%d", val); dut.levels[i] = val; end
+        fn = {dir, "/loop_levels_out.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < NL; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.levels[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_cal_end.txt"}, "r");
-        for (int i = 0; i < 3 * LANES + 1; i++) begin r = $fscanf(fd, "%d", val); cal_gold[i] = val; end
+        fn = {dir, "/loop_cal_end.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < 3 * LANES + 1; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); cal_gold[i] = val; end
         $fclose(fd);
 
-        fd = $fopen({dir, "/loop_pi.txt"}, "r");
-        for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); pi_gold[i] = val; end
+        fn = {dir, "/loop_pi.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < N; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); pi_gold[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_dec.txt"}, "r");
-        for (int i = 0; i < N_DEC; i++) begin r = $fscanf(fd, "%d", val); dec_gold[i] = val; end
+        fn = {dir, "/loop_dec.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < N_DEC; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dec_gold[i] = val; end
         $fclose(fd);
-        fd = $fopen({dir, "/loop_v_out.txt"}, "r");
-        for (int i = 0; i < N_DEC; i++) begin r = $fscanf(fd, "%d", val); v_gold[i] = val; end
+        fn = {dir, "/loop_v_out.txt"};
+        fd = $fopen(fn, "r");
+        if (fd == 0) $fatal(1, "cannot open %s", fn);
+        for (int i = 0; i < N_DEC; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); v_gold[i] = val; end
         $fclose(fd);
 
         dut.run();

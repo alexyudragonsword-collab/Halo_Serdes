@@ -60,7 +60,7 @@ two cursors fed back.
 | `sliding_mlsd.sv` / `tb_sliding_mlsd.sv` | the sliding-detector MLSD and its testbench (`fixed_mlsd._sliding_fixed_py`). |
 | `viterbi_mlsd.sv` / `tb_viterbi_mlsd.sv` | the Viterbi MLSD and its testbench (`fixed_viterbi._viterbi_fixed_py`). |
 | `dfse_mlsd.sv` / `tb_dfse_mlsd.sv` | the reduced-state Viterbi (DFSE) and its testbench (`fixed_viterbi._dfse_fixed_py`). |
-| `run_lockstep.sh` | generate → `iverilog` compile → `vvp` run, all checks. |
+| `run_lockstep.sh` | generate → `iverilog` compile → `vvp` run, all checks, in a fresh temp dir (pass a directory to keep the vectors). |
 
 ## Run
 
@@ -77,6 +77,18 @@ bash rtl/run_lockstep.sh
 `tests/test_rtl_lockstep.py` runs the same flow (skipped if `iverilog` is
 absent) and additionally corrupts one golden decision to prove the check is
 non-vacuous. CI runs it in the `rtl-lockstep` job.
+
+Every testbench stops with `$fatal` on a missing vector file or a short read
+(`$fscanf` returning anything but 1), so a truncated file can no longer pass or
+fail for the wrong reason.
+
+`rtl/vectors/` is a committed snapshot of `python rtl/gen_vectors.py` (its
+default output) for readers and for consumers that pin it (dsp_ip vendors these
+models with their vectors); `run_lockstep.sh` no longer writes into it. Shift
+amounts in the `*_dims.svh` files are `localparam int`, everything else
+`longint` (`SV_SHIFT_PARAMS` in `dsp/fixed_datapath.py`): Verilator 5.020
+constant-folds `longint >>> <longint localparam>` to 0, which made
+`tb_adc_dsp_loop.sv` fail on equal values under Verilator (issue #136).
 
 ## Single source
 
