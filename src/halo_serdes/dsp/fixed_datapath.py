@@ -161,6 +161,26 @@ def dump_vectors(path: str | Path, artifacts: dict) -> Path:
     return path
 
 
+# Localparams the RTL only ever uses as a shift amount (or passes as one to a helper).
+# They are emitted as 32-bit ``int``: a 64-bit shift amount buys nothing, and Verilator
+# 5.020 constant-folds ``longint >>> <longint localparam>`` to 0, which made
+# tb_adc_dsp_loop's final-calibration check fail on equal values whenever the summed
+# register was a propagated constant (issue #136). Everything else stays ``longint``:
+# bounds and values such as CAL_PM0 or CLAMP need the width.
+SV_SHIFT_PARAMS = frozenset({
+    "FFE_SHIFT", "DFE_SHIFT", "OUT_BITS", "KP_SH", "KI_SH", "LANE_SHIFT", "PI_SH",
+    "SH_F", "SH_D", "SH_A", "G", "PFL", "CAL_F", "CAL_B", "CAL_SH_O", "CAL_SH_G",
+    "CAL_SH_P", "CAL_SH_S", "SQ_SHIFT", "C_FL",
+})
+
+
+def sv_localparam(name: str, value: int) -> str:
+    """One ``localparam`` line of a ``*_dims.svh``: ``int`` for shift amounts,
+    ``longint`` for the rest (see ``SV_SHIFT_PARAMS``)."""
+    kind = "int" if name in SV_SHIFT_PARAMS else "longint"
+    return f"localparam {kind} {name} = {int(value)};\n"
+
+
 def dump_sv_package(path: str | Path, artifacts: dict, cw: int = 32) -> Path:
     """Emit a SystemVerilog include (``dims.svh``) of localparams for the RTL
     datapath — the single-source YAML/config -> SV package hook. Dimensions and
