@@ -239,8 +239,13 @@ def dump_vectors(path: str | Path, artifacts: dict) -> Path:
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(path / "vectors.npz", **artifacts)
+    # the PR words and composite levels only under a PR target: the delta
+    # target's files stay what they were (the testbench reads absent ones as 0)
+    pr_on = int(artifacts.get("pr_mode", 0)) > 0
     for name in ("codes", "dec", "v_out", "w_ffe_int", "w_dfe_int", "levels_out",
                  "pr_abc", "pr_lv"):
+        if name in ("pr_abc", "pr_lv") and not pr_on:
+            continue
         if name in artifacts:
             np.savetxt(path / f"{name}.txt", np.atleast_1d(artifacts[name]),
                        fmt="%d")
