@@ -13,8 +13,10 @@
 - 定点 / RTL + PR:闭环定点早就接了 PR(ROADMAP ④ 更正);开环回放 `run_fixed_datapath` 与 `ffe_dfe_datapath.sv` 这次照 `fixed_loop` 的规则接上,
   lockstep 四组逐位(delta / 两 / 三光标 / 预编码);Fixed point 研究页放开 PR,预编码按用户符号比较(按线路符号比,12 位也读 0.6–0.8 失配)。
   入库的 `rtl/vectors` 本已落后于代码(CI 每次重新生成),一并更新。
-- 坑:本机原无 iverilog —— `apt-get update` 后 `apt-get install iverilog`(12.0)可装,lockstep 就能本地跑,不必等 CI。
-- 验证:待填。
+- 坑:本机原无 iverilog —— `apt-get update` 后 `apt-get install iverilog`(12.0)可装,lockstep 就能本地跑,不必等 CI。全量跑在 worker 重启时被带走过一次,
+  改用 `setsid nohup` 脱离会话跑。
+- 验证:全量 1453 passed / 3 skipped(装了 iverilog,RTL 测试不再跳过);lockstep 12 项逐位;fixed_datapath / draws / studies / api 编 .so 删 .py、
+  `HALO_NO_JIT=1` 相关 108 passed / 37 skipped(`needs_jit`);README / COMPARISON 测试数 1456 项。
 
 ## 2026-11-03 · PAM4 原始样本 MM:锁定点不差、是环路在漂(更正);失配不进启动 MMSE;一次抽取不代表链路(feat/raw-mm-lock-mismatch-loop)
 
