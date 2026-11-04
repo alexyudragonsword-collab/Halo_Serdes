@@ -616,7 +616,7 @@ art = run_fixed_datapath(codes_int, w_ffe_float, w_dfe_float, levels_float,
                          n_pre=cfg.rx.ffe.n_pre, numeric=cfg.numeric,
                          code_fullscale=cfg.rx.adc.fullscale,
                          code_bits=cfg.rx.adc.n_bits)
-# PR 链路(2026-11-03 起):pr=cfg.pr, pr_target=res.extras["pr_target"](自适应后的目标),
+# PR 链路(2026-11-03 起):pr=cfg.pr, pr_target=res.extras["pr_target"] —— 自适应后的目标,
 # precode=cfg.precode —— 回放该接收机自己的判决器(减受控光标 / 预编码 1 + D 的合成电平),
 # 与闭环 fixed_loop 同一套规则;之前直接拒绝
 dump_vectors("vectors/", art)                # codes/权重/判决/输出 的 txt
