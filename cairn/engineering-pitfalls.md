@@ -736,6 +736,12 @@ BER 5.5e-4 → 1.0e-4。**规则:新的噪声源要进起始求解,不能指望�
 
 ### 其他
 
+**`*_dims.svh` 的移位量要用 `localparam int`,不能用 `longint`。** Verilator 5.020 在常量折叠时把
+`longint >>> <longint localparam>` 算成 0(`int` 移位量、逻辑 `>>`、非常量左操作数都对;Icarus 12 全对;Verilator 5.053 已修)。
+`tb_adc_dsp_loop.sv` 的终值校准比对 `dut.cgsum >>> LANE_SHIFT` 在 `CAL_ON=0` 的四个集上 `cgsum` 是传播常量 → 打印值相等却报错
+(dsp_ip 2026-11-03 发现,#136)。现在写出器统一走 `fixed_datapath.sv_localparam`(`SV_SHIFT_PARAMS` 里的是 `int`),
+`tests/test_fixed.py` 守着 RTL 里每个移位右操作数在提交的 dims 里都是 `int`;新加移位参数要加进这个集合。
+
 **mixed-signal 包络告警是有意的。** 超过标定边界会 warn(见 `README.md` 的
 「架构包络约定」),探索性跑法允许,但**不要为了消除告警去改阈值**。
 
