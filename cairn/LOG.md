@@ -3,6 +3,19 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-04 · 多种子对照工具;原始样本 MM 游走拆完不建;定点开环回放与 RTL 接 PR(feat/seeds-rawmm-fixed-pr)
+
+- 用户选"失配多种子对照做成工具 + PAM4 原始样本 MM 环路游走建模 + 定点 / RTL 路径接 PR 目标"。
+- 多种子:`analysis.seed_spread`(每种子 BER、合并、中位数、统计读数)+ 研究页 "Draw spread"(API / 桌面;手机按 API 的绘图规格,Kotlin 不改)。
+  TI 失配预设 8 种子跨两个数量级、中位数比合并低 10×,理想校准下同 8 种子 0 错。
+- 原始样本 MM:冻结 LMS 不变、冻结 CDR 回到 1.3–1.4× —— 全在 CDR;环路阻尼 0.03、起步偏差 0.05 UI 在 30 万符号里振铃(时域 σ 0.07)。
+  按时域自己的相位轨迹平均统计 BER 也只到 0.80 / 0.64 / 0.06×(无 PR / (1, 0.5) / 强目标),线性模型只给一半 σ,强目标剩下的不在相位 —— 不建。§44 末。
+- 定点 / RTL + PR:闭环定点早就接了 PR(ROADMAP ④ 更正);开环回放 `run_fixed_datapath` 与 `ffe_dfe_datapath.sv` 这次照 `fixed_loop` 的规则接上,
+  lockstep 四组逐位(delta / 两 / 三光标 / 预编码);Fixed point 研究页放开 PR,预编码按用户符号比较(按线路符号比,12 位也读 0.6–0.8 失配)。
+  入库的 `rtl/vectors` 本已落后于代码(CI 每次重新生成),一并更新。
+- 坑:本机原无 iverilog —— `apt-get update` 后 `apt-get install iverilog`(12.0)可装,lockstep 就能本地跑,不必等 CI。
+- 验证:待填。
+
 ## 2026-11-03 · PAM4 原始样本 MM:锁定点不差、是环路在漂(更正);失配不进启动 MMSE;一次抽取不代表链路(feat/raw-mm-lock-mismatch-loop)
 
 - 用户选"PAM4 原始样本 MM 的锁定点 + 失配接进环路噪声与 DFE 起点"。两项都量完不改模型,只改注释 / 警告文案 / 文档。
