@@ -206,6 +206,13 @@ h(−1) = h(+1),`DSP发端与PR.md` §5)。
 实测差 20 %)。**规则:拼脉冲用 `optical_stage._symbol_pulse_at_pd` 这类共用入口;双引擎测试的矩阵里要有开发端 FFE 的一格;
 怀疑模型近似之前,先在没有近似的配置(c = 0)上把每一项和精确值对一遍。**
 
+**每条链路只抽一次的量(ADC lane 失配、比较器失调)不能排在按运行长度抽的噪声后面、共用一条随机流。** 直到 2026-11-05,
+TI 失配的 lane offset / gain / skew 在主流上、接在发端抖动与接收噪声之后抽,噪声的个数随 `n_symbols` 变,所以"种子 5"在 4 万码元是
+1.6e-3 的芯片、在 20 万码元是 0 错的芯片 —— Draw spread 研究页(至多 4 万码元)与主运行同一个种子对不上才发现。
+`cairn/统计引擎非线性项.md` §5 的 8 种子数字(合起来 2.0e-3、统计 0.61×)就是这种抽法下的一次抽签。
+**规则:每条链路的抽取用 `[sim.seed, tag]` 的独立流(`engine.timedomain.per_link_rng`;前台校准 `0xCA1`、光 RIN `0x7E5` 早就这样);
+加新的每链路抽取时照做,并用"同一种子、两种码元数"核一遍。** 多种子对照至少几十个种子:8 个种子的池子是 128 个合起来的 0.19–2.0×(10–90 %)。
+
 ### API 类
 
 **收了参数却不用,比不收更糟。** `_mlsd_post_detect(cfg, y, dec, ...)` 把接收机的判决 `dec` 传进来,`post_detect` 却丢掉它、
@@ -863,11 +870,18 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
 
 - **内存**:波形全量驻留,10⁶ 符号 @OSR32 峰值约 0.9 GB。`fft_filter` 内部已分块
   (overlap-save),但波形数组本身没做窗口化。要跑更长就降 OSR 或分批。
+  (更正 2026-11-05:已过时。`sim.stream=True` 波形按块生成、接收机读滑动窗口,10⁶ 符号 OSR32 峰值 0.33 GB(`docs/USAGE.md` 性能一节);
+  默认引擎仍全量驻留。)
 - **定点只覆盖数据通路**:时域引擎不读 `numeric.mode`,定点走 `fixed_datapath` 独立重放;
   CDR 与 MLSD 没有定点路径,RTL lockstep 因此只覆盖 FFE+DFE+slicer。
+  (更正 2026-11-05:已过时。`numeric.mode: fixed` 在 ADC 接收机上跑 bit-true 闭环(`dsp/fixed_loop.py`:相位寄存器 / PI、
+  LMS、校准、PR、sliding / Viterbi / DFSE 整数版,可流式),`rtl/` 逐位对照数据通路、闭环与三种 MLSD;
+  余下的边界:mixed-signal 不建定点,lane 数要是 2 的幂,流式定点不接后台校准。)
 - **片上校准未实现**:只建模 ADC 失配,`calibrated=True` 是行为级归零而非真实算法。
   (更正,日期不详的旧条:后台 / 前台校准已实现(`adc.cal.mode`,示例 39);2026-11-03 起统计引擎也建失配,但校准环路的残差不建。)
 - **Duobinary / PR 整形未建模**:1+D 预编码 ≠ PR 整形(前者是映射,后者要在发端有意
   引入受控 ISI)。
+  (更正 2026-11-05:已过时。PR 目标 `pr.target`(两到四光标、LMS 适配、预编码 1 + D)在两个引擎、定点与 RTL 上都接了,
+  见 `cairn/DSP发端与PR.md`。)
 - 真实 RTL 三视图、FPGA AMS、物理实现流 —— 超出行为级框架的设计边界,见
   `docs/COMPARISON.md`。

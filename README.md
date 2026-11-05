@@ -74,7 +74,7 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 硬件 | `rtl/` | FFE+DFE+slicer、带 CDR 的数字后端、sliding / Viterbi / 降状态(DFSE)MLSD 的 SystemVerilog 独立实现,与 Python 黄金模型 bit-exact lockstep |
 
 **规模**(2026-11-02):核心库 ~20.2k 行 / 应用层与 GUI ~6.2k 行 / 测试 ~18.5k 行 / 示例 ~7.1k 行;
-**1458 项测试**(1455 通过、3 项跳过,本地全量 2026-11-05,合并 #142 之后,装了 iverilog;闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
+**1459 项测试**(1456 通过、3 项跳过,本地全量 2026-11-05,feat/fixed-stream-p45-drift,装了 iverilog;闭式解、黄金数据、数值等价、双引擎交叉校验、RTL lockstep)、
 **47 个编号示例**(`examples/00`–`46`)。(2026-10-03 时为 9.8k / 4.2k / 7.3k / 4.4k 行、1015 项测试。)
 
 ## 路线图
@@ -88,11 +88,11 @@ halo-serdes-gui                                     # 或 python -m halo_serdes_
 | 4 | ADC-based 架构(TI-ADC + 数字 DSP + MM-CDR) | ✅ |
 | 5 | MLSD(Viterbi/滑动检测器)+ RS-FEC(KP4/KR4)+ 抖动分解 + 双架构对比 | ✅ |
 | 6 | 定点双模式(bit-true)+ RTL 黄金模型出口(lockstep 向量) | ✅ |
-| G | 17 标签页 Plotly Dash GUI + Windows 桌面打包(PyInstaller / Nuitka) | ✅ |
+| G | Plotly Dash GUI(四个工作区、20 个视图)+ Windows 桌面打包(PyInstaller / Nuitka) | ✅ |
 | + | 抖动预算、IBIS-AMI/COM 接缝、时域 FEXT/NEXT 串扰 | ✅ |
 | ++ | 忠实 IEEE 802.3 COM(93A/178A)、多 lane 串扰 + ICN、MLSD/1+D 预编码接入引擎、<br>IBIS-AMI 真实 C ABI 执行、JTOL、RTL bit-exact lockstep、CI(测试/lint/lockstep) | ✅ |
 
-六个阶段之后又完成三项增量(抖动预算、IBIS-AMI/COM、时域串扰)、17 标签页 GUI,
+六个阶段之后又完成三项增量(抖动预算、IBIS-AMI/COM、时域串扰)、Plotly Dash GUI(当时 17 个标签页,现为四个工作区 20 个视图),
 以及第二梯队:忠实 802.3 COM、多 lane 串扰 + MLSD/预编码接线、IBIS-AMI 真执行、
 JTOL、RTL lockstep、Windows 打包。
 
