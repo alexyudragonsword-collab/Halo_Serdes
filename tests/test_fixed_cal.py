@@ -206,9 +206,12 @@ def test_skew_trims_converge_as_the_float_ones_do():
 def test_gain_word_width_does_not_drift_the_common_gain():
     """The gain LMS sees each lane's power only against the lanes' mean, so the
     gains' common part is unobservable; unpinned it random-walked on the update
-    rounding to 0.7 (a 10-bit word) and the link lost 15 dB. Pinned, every
-    width from 8 bits up lands where the default 14 does, and the applied
-    gains average one."""
+    rounding to 0.7 (a 10-bit word) and the link lost 15 dB. Pinned, the
+    applied gains average one at every width, and from 9 bits up the link
+    lands within 1 dB of the default 14. An 8-bit word lands within 2: its
+    update rounds to zero once a lane is a few LSB off, so on some chips it
+    leaves part of the gain mismatch (2.4 % of 3.2 % rms on seed 3, where 14
+    bits leave 1.0 %; 2026-11-05, the draws on their own stream)."""
     n = 60_000
     cm = ChannelModel.from_config(_cfg())
     base = _cfg(n, 3 * n // 4, cal=_bg(2.0 ** -10), **MISMATCH)
@@ -219,4 +222,5 @@ def test_gain_word_width_does_not_drift_the_common_gain():
         g = np.asarray(r.extras["fixed"]["record"]["cal"][1]) / 2.0 ** gb
         assert abs(g.mean() - 1.0) < 2.0 ** -gb + 1e-12, (gb, g.mean())
         snr[gb] = r.slicer_snr_db
-    assert all(abs(v - snr[14]) < 1.0 for v in snr.values()), snr
+    assert all(abs(snr[gb] - snr[14]) < 1.0 for gb in (9, 10, 11)), snr
+    assert abs(snr[8] - snr[14]) < 2.0, snr                 # not the 15 dB drift

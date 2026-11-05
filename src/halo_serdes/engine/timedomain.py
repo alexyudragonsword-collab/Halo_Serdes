@@ -46,6 +46,18 @@ from .static_link import _levels, check_symbols, fold_eye, make_pattern
 LMS_BATCH_SYMBOLS = 100
 
 
+#: substream tags of the per-link draws (``per_link_rng``)
+_ADC_DRAW, _CMP_DRAW = 0x7A1, 0xC0F
+
+
+def per_link_rng(cfg: LinkConfig, tag: int) -> np.random.Generator:
+    """The stream a per-link draw (ADC lane mismatch, comparator offsets)
+    takes: from ``sim.seed`` and the tag alone, so a seed is one chip at any
+    ``sim.n_symbols`` and with or without the other draws (2026-11-05;
+    before, they followed the run-sized noise on the main stream)."""
+    return np.random.default_rng([int(cfg.sim.seed), int(tag)])
+
+
 def _stage_jitter(cfg: LinkConfig, stages: dict[str, np.ndarray]) -> dict | None:
     """Per-stage jitter decomposition over captured waveforms.
 
@@ -644,8 +656,10 @@ def _ms_prepare(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_ami, r
 
     # per-branch comparator offsets for the unrolled tap-1 slicer bank
     if tap1_unrolled and cfg.rx.dfe.comparator_offset_sigma > 0:
-        branch_off = rng.normal(scale=cfg.rx.dfe.comparator_offset_sigma,
-                                size=levels.size)
+        # a per-link draw: its own stream, so the seed is one chip at any
+        # symbol count (the noise before it is sized by the run)
+        branch_off = per_link_rng(cfg, _CMP_DRAW).normal(
+            scale=cfg.rx.dfe.comparator_offset_sigma, size=levels.size)
     else:
         branch_off = np.zeros(levels.size)
 
@@ -997,7 +1011,9 @@ def _adc_link_steps(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_am
                                   for q in range(2 * n_lv - 1)])
 
     # --- TI-ADC ---
-    adc = TiAdc(cfg.rx.adc, osr, rng, fg_seed=cfg.sim.seed)
+    # lane offset / gain / skew: a per-link draw from its own stream (as
+    # the comparator offsets), not after the run-sized noise
+    adc = TiAdc(cfg.rx.adc, osr, per_link_rng(cfg, _ADC_DRAW), fg_seed=cfg.sim.seed)
     delay = peak // osr
     n_sym_max = (n_wave - peak - (fcfg.n_pre + 6) * osr) // osr - 2
     n_sym = min(symbols.size - delay - fcfg.n_pre - 2, n_sym_max)

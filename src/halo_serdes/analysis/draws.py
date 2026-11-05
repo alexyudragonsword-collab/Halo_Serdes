@@ -2,12 +2,15 @@
 statistical engine's average over draws.
 
 ``sim.seed`` sets more than the noise: every per-link draw comes from it too
--- the time-interleaved ADC's lane offset, gain and skew, the comparator
-offsets, the receiver clock's start. A link with mismatch is then one chip
-per seed, and on the ``PAM4 224G ADC (TI mismatch)`` preset eight seeds read
-from no errors to 1e-2 (2026-11-03). The statistical engine takes the
-mismatch as white noise over the draws (``engine.stat_noise.ti_mismatch_sigma``),
-so it is the pooled count, not any one seed, that it is checked against.
+-- the time-interleaved ADC's lane offset, gain and skew and the comparator
+offsets, each from a stream of its own (``engine.timedomain.per_link_rng``,
+2026-11-05), so a seed is the same chip at any symbol count. A link with
+mismatch is then one chip per seed: on the ``PAM4 224G ADC (TI mismatch)``
+preset 128 seeds read from no errors (34 of them) to 1.3e-2. The statistical
+engine takes the mismatch as white noise over the draws
+(``engine.stat_noise.ti_mismatch_sigma``), so it is the pooled count, not any
+one seed, that it is checked against -- and eight seeds pool to anywhere
+from 0.19x to 2x of what 128 do (10-90 %).
 """
 
 from __future__ import annotations

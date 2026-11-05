@@ -45,6 +45,8 @@ def render(rec: RunRecord):
                  "the noise and every per-link draw — ADC lane offset, gain and skew, "
                  "comparator offsets — so with mismatch each point is one chip and they can "
                  "spread over decades. The statistical engine takes those draws as white noise "
-                 "and reads their average: compare it with the pooled line, not with one seed.",
+                 "and reads their average: compare it with the pooled line, not with one seed. "
+                 "Eight chips are still a small sample — on the TI-mismatch preset an eight-seed "
+                 "pool lands anywhere from a fifth of to twice what 128 seeds pool to.",
                  style={"fontSize": "0.75rem", "color": "#5b6472"}),
     ])

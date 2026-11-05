@@ -599,8 +599,9 @@ STUDY_LABELS: dict[str, tuple[str, str]] = {
               "The time engine at eight seeds against the statistical engine. The "
               "seed sets the noise and every per-link draw (ADC lane mismatch, "
               "comparator offsets), so with mismatch each seed is another chip: "
-              "compare the pooled line, not one seed, with the statistical one. "
-              "Eight short time-domain runs."),
+              "compare the pooled line, not one seed, with the statistical one; "
+              "eight chips are a small sample, so the pooled line itself can sit a "
+              "factor of a few off. Eight short time-domain runs."),
     "tdecq": ("TDECQ",
               "The optical transmitter's TDECQ (after its fibre, laser RIN in) "
               "against extinction ratio and laser bandwidth. Needs "
