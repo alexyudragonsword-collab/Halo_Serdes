@@ -15,7 +15,7 @@
 - 重量:单项失配每档 32 种子 0.87–1.12×(旧表 1.26–1.45× 是少种子抽签),TI 失配预设 128 种子 1.34×;8 种子的池子落在 128 个的 0.19–2.0×。
   `cairn/统计引擎非线性项.md` §1 / §5 更正;坑一条(每链路抽取要独立流)。
 - 漂移:README GUI 是四工作区 20 视图;"已知限制"三条过时(内存 / 定点只覆盖数据通路 / PR 未建)加更正;Draw spread 截图入导览。
-- 验证:VERIFY_PLACEHOLDER
+- 验证:全量 1456 passed / 3 skipped;ruff;lockstep 全过;timedomain / fixed_loop / adc / draws 编 .so 删 .py、`HALO_NO_JIT=1` 相关 66 passed / 12 skipped(`needs_jit`)。
 
 ## 2026-11-04 · 多种子对照工具;原始样本 MM 游走拆完不建;定点开环回放与 RTL 接 PR(feat/seeds-rawmm-fixed-pr)
 
