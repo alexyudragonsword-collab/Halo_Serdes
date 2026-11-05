@@ -56,3 +56,34 @@ def test_the_seeds_study_draws_pooled_and_statistical_lines_across_the_seeds(mis
 def test_seed_spread_needs_a_seed(mismatch):
     with pytest.raises(ValueError, match="at least one seed"):
         seed_spread(mismatch, [], n_symbols=1000)
+
+
+def test_per_link_draws_follow_the_seed_not_the_run(mismatch, monkeypatch):
+    """The lane mismatch and the comparator offsets are one chip per seed:
+    the same at any symbol count and whatever the noise draws before them
+    (until 2026-11-05 they followed the run-sized noise on the main stream,
+    and seed 5 of this preset was a 1.6e-3 chip at 40k symbols, an
+    error-free one at 200k)."""
+    from halo_serdes.engine import run_time_link
+    from halo_serdes.engine import timedomain as td
+
+    def drawn(n, noise):
+        c = dataclasses.replace(mismatch, sim=dataclasses.replace(mismatch.sim, n_symbols=n, seed=5),
+                                rx=dataclasses.replace(mismatch.rx, noise_rms=noise))
+        a = run_time_link(c).extras["adc"]
+        return np.concatenate([a.true_offsets, a.true_gains, a.skews])
+
+    ref = drawn(4000, mismatch.rx.noise_rms)
+    np.testing.assert_array_equal(drawn(12_000, mismatch.rx.noise_rms), ref)
+    np.testing.assert_array_equal(drawn(4000, 2 * mismatch.rx.noise_rms + 1e-3), ref)
+
+    # the unrolled DFE's comparator offsets come from the same kind of stream
+    tags = []
+    real = td.per_link_rng
+    monkeypatch.setattr(td, "per_link_rng", lambda cfg, tag: (tags.append(tag), real(cfg, tag))[1])
+    from tests.test_dfe_unrolled import _cfg
+    from halo_serdes.config.schema import DfeConfig
+
+    run_time_link(_cfg(DfeConfig(n_taps=2, tap1_mode="unrolled", comparator_offset_sigma=0.01),
+                       n_symbols=3000))
+    assert td._CMP_DRAW in tags

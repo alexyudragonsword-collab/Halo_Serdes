@@ -247,6 +247,8 @@ s = run_statistical(cfg)        # 统计:同一组 aggressor
 ```
 
 YAML 里同名(`crosstalk:` 下一组键,`aggressors:` 是映射的列表);表单有 bank 那几项(`aggressors` 只在 YAML)。
+`crosstalk.seed` 是串扰自己的种子:耦合的 lane 间散布(`spread_db`)与各 aggressor 的数据都由它定,**不随 `sim.seed` 变** ——
+多种子扫(`seed_spread` / Draw spread)换的是受扰链路的噪声与芯片,串扰那一份每个种子相同;要连串扰一起抽,同时换 `crosstalk.seed`(2026-11-05 审计)。
 `ppm` 0 是同步 lane:受扰在每个耦合脉冲的同一个相位上采样,代价随 skew 变得很厉害(示例 44 的三条链路在 8 个 skew 上差 9.0–32.5×)。
 `ppm` ≠ 0 是准同步 lane(各自参考时钟):时域按 aggressor 自己的速率保持它的符号,受扰轮流看到每个相位;统计引擎对相位求平均
 (要求一次运行扫过整 UI:`sim.n_symbols × |ppm| × 1e-6` < 1 时会警告)。准同步时统计 / 时域 0.78–0.93×(2026-10-31 bang-bang 增益与鉴相噪声按边沿样本建、DFE 误码链加 p3 之前 0.76–0.94×;2026-10-30 冲激按 ISI 尾巴截断前 0.73–0.94×;2026-10-27 DFE 误码传播计入 FFE 着色之前 0.70–0.94×;2026-10-24 码型-相位因子计入串扰方差;之前当日一度 0.70–1.00×),时域 BER 是同步各 skew 平均的 0.86–0.97(示例 44)。
@@ -795,6 +797,8 @@ s.extras["level_sigma"]                 # 统计引擎实际用的每电平判�
 (host TX → 段 A → 重定时 RX;重定时 TX → 光路 → 重定时 RX;重定时 TX → 段 B → host RX),
 每段各自判决、下一段把上一段的判决当符号源重发(`symbols=` 入参,经 `tx/builder.py` 回到波形域),
 端到端 BER 用 host 的判决对 host 自己的符号流打分;FEC 仍是端到端,模块里不终结。
+光路段跑在 `sim.seed + 1`、段 B 在 `sim.seed + 2`(`cascade.segment_configs`):扫连续种子时,种子 s 的段 B 与种子 s + 1 的光路段共用
+一串噪声与每链路抽取,多种子扫重定时链路时种子间隔取 ≥ 3(2026-11-05 审计)。
 
 ```yaml
 topology:
@@ -1168,7 +1172,10 @@ c_adc = lane_curve(cfg_adc, ch, ffe_taps=lambda at: initial_ffe_taps(cfg_adc, ch
   run_shared_clock(cfg, [0.0] * 4, shared_tx_clock=True)          # 发端也共用一个时钟(DCD 仍各自的)
   ```
 
-  每条 lane 默认独立码元(PRBS 不随种子变,多条 lane 用它就完全相关)。NRZ 16G 15 mV 八条 lane:主 lane 1.53e-5、从 lane 7.44e-6
+  每条 lane 默认独立码元(PRBS 不随种子变,多条 lane 用它就完全相关)。lane i 跑在 `sim.seed + i` 上 —— 一次运行里各 lane 的噪声与
+  每链路抽取(ADC 失配等)互相独立,但**扫连续种子时会撞**:种子 s 的 lane 1 与种子 s + 1 的 lane 0 是同一颗芯片、同一串噪声(码元不同)。
+  多种子扫共享时钟时,种子间隔取 ≥ lane 数(2026-11-05 审计)。
+  NRZ 16G 15 mV 八条 lane:主 lane 1.53e-5、从 lane 7.44e-6
   (统计 0.90 / 1.13×),平均环路 9.6e-7(统计 1.33×)。ADC(224G,2.5 mV):从 lane 在偏移处对统计(FFE 在那里重解)0.83–1.09×(2026-10-31 冲激截断与误码链加 p3 之后重跑;此前 0.74–0.95×,2026-10-27 DFE 误码传播计入 FFE 着色之前 0.90–1.02×);
   PAM4 ADC 的 MM 读均衡后的样本,平均环路看不见 lane 的偏移、时钟停在起点而不是 skew 均值 —— `lane_curve` 给的曲线带着
   `pd_sees_offset`,`shared_cdr("average")` 按它放时钟(都看不见时放在 lane `master` 的锁定点)。一个时钟上的 lane 会一起出错
