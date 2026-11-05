@@ -18,7 +18,9 @@
 - 验证:全量 1453 passed / 3 skipped(装了 iverilog,RTL 测试不再跳过);lockstep 12 项逐位;fixed_datapath / draws / studies / api 编 .so 删 .py、
   `HALO_NO_JIT=1` 相关 108 passed / 37 skipped(`needs_jit`)。
 - 合并 main(#142 的 RTL 交接修正)时冲突:tb 读文件改为缺失 / 短读即 `$fatal`,PR 文件按 `PR_MODE` 必读(delta 不读、置零);
-  `run_lockstep.sh` 用 #142 的临时目录,回放四组照旧;`rtl/vectors` 按合并后的代码重新生成。合并后验证:待填。
+  `run_lockstep.sh` 用 #142 的临时目录,回放四组照旧;`rtl/vectors` 按合并后的代码重新生成。合并后:全量 1455 passed / 3 skipped、lockstep 12 项逐位。
+- CI(头 c636381 全绿,examples-full 也过):test 33 分钟、examples 17、full 32;Android 15.0;Windows PyInstaller 3.4、Nuitka standalone 39.0、
+  onefile 30.8(缓存命中没查日志)。冲突是 #142 先合进 main 造成的(PR 显示 dirty 时 pull_request 工作流不跑,只有 push 的跑)。
 
 ## 2026-11-04 · RTL 交接三处修正:移位量 int、tb 读文件检查、run_lockstep 不写提交集;向量快照刷新(fix/rtl-dsp-ip-findings,#136)
 
