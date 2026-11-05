@@ -127,9 +127,9 @@ The post-56G architecture: light CTLE + TI-ADC + digital FFE/DFE/MLSD + MM-CDR. 
 | 链路 / Link | Nyquist | 插损 / Loss | pre-FEC BER | SNR | post-KP4 |
 |---|---|---|---|---|---|
 | 112 Gb/s PAM4 | 28 GHz | −10.1 dB | 0(2.0M bit) | 30.6 dB | — |
-| 224 Gb/s PAM4 | 56 GHz | −18.2 dB | 0(2.0M bit) | 26.8 dB | — |
+| 224 Gb/s PAM4 | 56 GHz | −18.2 dB | 0(2.0M bit) | 27.0 dB | — |
 
-(2026-10-30 冲激按 ISI 尾巴截断后 224G 26.9 → 26.8 dB;2026-10-13 ADC 收端的 DFE 起作用后重跑,此前 31.2 / 26.1 dB;2026-10-03 重跑,此前 22.9 / 18.9 dB、224G BER 7.6e-5;第一次重跑的 1.5e-6 / 3.5e-6 是尾部 3–7 个未判决符号,修后 0 错。/ 224G 26.9 → 26.8 dB after the 2026-10-30 ISI-tail trim. Rerun 2026-10-13 with the DFE engaged, previously 31.2 / 26.1 dB; rerun 2026-10-03, previously 22.9 / 18.9 dB and 7.6e-5 at 224G; the 1.5e-6 / 3.5e-6 of the first rerun were the run's undecided tail symbols, 0 errors since.)
+(2026-11-05 lane 失配改从独立流抽、换了一颗芯片,224G 26.8 → 27.0 dB;2026-10-30 冲激按 ISI 尾巴截断后 224G 26.9 → 26.8 dB;2026-10-13 ADC 收端的 DFE 起作用后重跑,此前 31.2 / 26.1 dB;2026-10-03 重跑,此前 22.9 / 18.9 dB、224G BER 7.6e-5;第一次重跑的 1.5e-6 / 3.5e-6 是尾部 3–7 个未判决符号,修后 0 错。/ 224G 26.9 → 26.8 dB after the 2026-10-30 ISI-tail trim. Rerun 2026-10-13 with the DFE engaged, previously 31.2 / 26.1 dB; rerun 2026-10-03, previously 22.9 / 18.9 dB and 7.6e-5 at 224G; the 1.5e-6 / 3.5e-6 of the first rerun were the run's undecided tail symbols, 0 errors since.)
 
 **眼图在哪里?闭在模拟,开在数字 / Where is the eye? Closed in analog, open in digital**
 
