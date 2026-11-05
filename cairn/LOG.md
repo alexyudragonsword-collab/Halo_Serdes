@@ -16,6 +16,8 @@
   `cairn/统计引擎非线性项.md` §1 / §5 更正;坑一条(每链路抽取要独立流)。
 - 漂移:README GUI 是四工作区 20 视图;"已知限制"三条过时(内存 / 定点只覆盖数据通路 / PR 未建)加更正;Draw spread 截图入导览。
 - 验证:全量 1456 passed / 3 skipped;ruff;lockstep 全过;timedomain / fixed_loop / adc / draws 编 .so 删 .py、`HALO_NO_JIT=1` 相关 66 passed / 12 skipped(`needs_jit`)。
+- CI(PR #144,c0e6561):test 3.10 / 3.11 × jit / nojit 27–34 min、examples 21 min、examples-full 33 min、rtl-lockstep 1 min,全绿;
+  android 13 min、Windows 桌面 2 h 05 min(9919c36 的 push,上一次 7fd75d8 1 h 47 min;Nuitka 缓存是否命中没核)。
 
 ## 2026-11-04 · 多种子对照工具;原始样本 MM 游走拆完不建;定点开环回放与 RTL 接 PR(feat/seeds-rawmm-fixed-pr)
 
