@@ -408,6 +408,9 @@ LPO 预设 53 GBd 2.95 / 5.92 / 17.35 dB。GUI TDECQ 研究对 PAM6 / PAM8 放�
      (2026-11-03 更正 + 做了:闭环定点(`numeric.mode: fixed`、`fixed_loop`、`rtl/adc_dsp_loop.sv`)早已接 PR,lockstep 跑两 / 三光标与预编码 1 + D —— 上面"不接"只对开环回放成立。
      开环回放 `run_fixed_datapath` 与 `rtl/ffe_dfe_datapath.sv` 这次接上,规则照 `fixed_loop`(减受控光标、DFE 从受控光标之后起、预编码在合成电平上判),
      lockstep 四组(delta / 两 / 三光标 / 预编码)逐位;GUI / 手机 Fixed point 研究页放开 PR,预编码按用户符号比较。④ 余下 mixed-signal、流式、非 2 的幂 lane 数,都是边界。)
+     (2026-11-05 做了流式:定点闭环与浮点环路在同一个流式窗口上并排推进(`FixedLoopRun` + `_Lockstep`),无噪声时与不流式逐位同,PR 目标也是;
+     后台校准 + 流式仍拒绝(增益步长要浮点运行的 ADC 功率,流式到结尾才有)。非 2 的幂 lane 数记作边界、不改:环路按移位除 lane 数正是 RTL 的做法,
+     常见交织数都是 2 的幂;mixed-signal 的 DFE / CDR 是模拟的,没有定点可言。④ 至此结。)
   ⑤ **统计引擎不建**:ADC 削顶与 TI lane 失配、发端驱动非线性、PR 对 LMS / CDR 的反作用 —— 都只在时域、带警告;各自中等,
      要先量偏离 2× 的场景再定(ADC 校准研究最常用到前一项)。
      (2026-11-03 量了、做了一项:TI lane 失配不建时 0.03–0.67×,建成白噪声(对抽取求系综,只 `cal.mode: off`)后 1.06–1.45×;

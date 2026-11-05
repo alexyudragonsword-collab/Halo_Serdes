@@ -21,7 +21,8 @@ import halo_serdes.engine.timedomain as td
 from halo_serdes.cdr.adc_kernel import adc_rx
 from halo_serdes.config import LinkConfig, PrConfig
 from halo_serdes.config.schema import (
-    AdcConfig, CdrConfig, ChannelConfig, ClockConfig, CtleConfig, DfeConfig, FfeConfig,
+    AdcCalConfig, AdcConfig, CdrConfig, ChannelConfig, ClockConfig, CtleConfig, DfeConfig,
+    FfeConfig,
     MlsdConfig, NumericConfig, QFormat, RxConfig, SimConfig, TxConfig,
 )
 from halo_serdes.dsp.fixed_loop import (
@@ -240,6 +241,7 @@ def test_jit_and_python_loops_agree(monkeypatch):
     args = (fl, cap["y"], cfg.osr, cap["pos0"], run.n_symbols, adc, run.params[7], run.params[22])
     jit = run_fixed_loop(*args)
     monkeypatch.setattr(fxl, "_fixed_loop_closed", fxl._fixed_loop_closed_py)
+    monkeypatch.setattr(fxl, "_fixed_loop_window", fxl._fixed_loop_window_py)
     monkeypatch.setattr(fxl, "_digital_step", fxl._digital_step_py)
     monkeypatch.setattr(fxl, "_farrow_fx", fxl._farrow_py)
     monkeypatch.setattr(fxl, "_ashift", fxl._ashift_py)
@@ -383,14 +385,14 @@ def test_default_words_track_the_float_link():
     assert abs(x.slicer_snr_db - f.slicer_snr_db) < 0.5
 
 
-@pytest.mark.parametrize("what", ["mixed_signal", "stream", "lanes"])
+@pytest.mark.parametrize("what", ["mixed_signal", "lanes"])
 def test_what_the_loop_does_not_model_is_refused(what):
+    """The mixed-signal receiver's DFE and CDR are analog; a lane count that is
+    not a power of two has no shift to divide the loop correction by. (A
+    streamed run was refused here too until 2026-11-05: it runs now, below.)"""
     cfg = _cfg(4_000, mode="fixed")
     if what == "mixed_signal":
         cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, arch="mixed_signal"))
-        exc = ValueError
-    elif what == "stream":
-        cfg = dataclasses.replace(cfg, sim=dataclasses.replace(cfg.sim, stream=True))
         exc = ValueError
     else:
         cfg = dataclasses.replace(cfg, rx=dataclasses.replace(
@@ -398,3 +400,35 @@ def test_what_the_loop_does_not_model_is_refused(what):
         exc = ValueError
     with pytest.raises(exc):
         run_time_link(cfg)
+
+
+# ------------------------------------------- streamed (2026-11-05)
+
+def _streamed(cfg, chunk):
+    return dataclasses.replace(cfg, sim=dataclasses.replace(cfg.sim, stream=True,
+                                                            chunk_symbols=chunk))
+
+
+def test_the_bit_true_loop_streams_bit_for_bit():
+    """A streamed waveform passes once, so the bit-true loop runs beside the
+    float one over the same window; on a noiseless receiver (whose streamed
+    noise filter is not the whole run's) every ADC word, PI code, decision and
+    final weight is the unstreamed run's, PR target included."""
+    base = _cfg(8_000, mode="fixed")
+    base = dataclasses.replace(base, rx=dataclasses.replace(base.rx, noise_rms=0.0))
+    for cfg in (base, dataclasses.replace(base, pr=PrConfig(target=(1.0, 0.6, 0.2)),
+                                          rx=dataclasses.replace(base.rx, mlsd=MlsdConfig(
+                                              kind="viterbi", memory=1)))):
+        whole = run_time_link(cfg).extras["fixed"]["record"]
+        streamed = run_time_link(_streamed(cfg, 1500)).extras["fixed"]["record"]
+        for k in ("xin", "pi", "dec", "v_out", "wf", "wd", "ab"):
+            assert np.array_equal(whole[k], streamed[k]), k
+
+
+def test_streamed_fixed_point_refuses_the_background_calibration():
+    cfg = _cfg(4_000, mode="fixed")
+    cal = dataclasses.replace(cfg.rx.adc, cal=AdcCalConfig("background", 2.0 ** -6,
+                                                           2.0 ** -6, 0.0))
+    cfg = dataclasses.replace(cfg, rx=dataclasses.replace(cfg.rx, adc=cal))
+    with pytest.raises(ValueError, match="background"):
+        run_time_link(_streamed(cfg, 1000))

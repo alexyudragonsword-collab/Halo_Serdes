@@ -638,7 +638,8 @@ bash rtl/run_lockstep.sh          # -> LOCKSTEP PASS  n=1985  errors=0
 
 ### 带 CDR 的定点闭环(`numeric.mode: fixed`)
 
-`numeric.mode: fixed` 只对 `rx.arch: adc_dsp` 生效。引擎先照常跑浮点,然后从同一个起点、同样的初始(量化)权重和
+`numeric.mode: fixed` 只对 `rx.arch: adc_dsp` 生效,lane 数要是 2 的幂(环路修正按移位除以 lane 数,RTL 里也是;24 / 48 lane 要的常数乘法不建)。
+可以流式(`sim.stream`,2026-11-05 起;后台校准除外,见"长运行与流式")。引擎先照常跑浮点,然后从同一个起点、同样的初始(量化)权重和
 训练日程,把整个数字后端用 int64 再跑一遍闭环:FFE、DFE、slicer、数据辅助训练、**整数 LMS**、MM 鉴相、环路滤波、
 相位寄存器,相位插值码决定采样点(`dsp/fixed_loop.py`)。返回的 BER / SNR / 判决都是定点环路的,
 `extras["fixed"]` 里有环路参数(`loop`)和逐符号记录(`record`:ADC 字、PI 码、slicer 值、判决)。
@@ -705,6 +706,9 @@ RTL 对照的是"ADC 字之后"的部分:`replay_digital()` 从记录的 ADC 字
   自己的功率;每个攻击者用自己的种子抽同样的符号、过耦合 FIR;`collect_jitter` 在波形流过时按块收集过零点
   (`analysis.jitter.CrossingCollector`,与整段计算逐位同),Tx 与纯信道两级各自再流一遍,接收端节点在加噪前抽头。
   不加 Tx 极点时 Tx 级的 TIE 与默认引擎逐位同,其余两级差在 FIR 舍入(1e-6 UI 量级)。
+  定点闭环(`numeric.mode: fixed`,2026-11-05 起)也能流式:波形只流过一次,定点环路与浮点环路在同一个窗口上并排走
+  (`timedomain._Lockstep`、`dsp/fixed_loop.FixedLoopRun`),接收机无噪声时与不流式的定点记录逐位同(ADC 字、PI 码、判决、终值权重)。
+  只有 `adc.cal.mode: background` 例外:定点校准的增益步长按浮点运行的 ADC 输出功率定,流式要到结尾才知道 —— 直接报错。
   不支持(直接报错,不静默退回):AMI 的 GetWave 流程 —— `AmiModel.get_wave` 一次吃整段波形,没有分块协议,
   真实模型跨调用的状态也由模型自己管;Init 流程的模型并进冲激响应,照常流式。
 - 扫描优先用 `run_statistical`,它不生成波形。

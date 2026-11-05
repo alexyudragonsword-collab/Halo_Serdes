@@ -348,24 +348,34 @@ def _skew_step_py(k, xh, n_lanes, cp, cts):
     cts[cts.size - 1] += step
 
 
-def _fixed_loop_closed_py(y, osr, pos0, n_sym, pi_scale, pi_sh, offsets,
+def _fixed_loop_window_py(y, y_off, n_total, osr, pos0, k0, k1, pi_scale, pi_sh, offsets,
                           gains, skews, q_step, code_max, noise, rx_clk,
                           n_pre, wf, ffe_shift, wd, dfe_shift, levels_out, out_bits,
                           do_round, pd_ffe, kp_sh, ki_sh, clamp_int, pd_off, n_lanes,
                           lane_shift, lat, lp, ref, wacc_f, wacc_d, pr_lv, prs, xl,
                           r_out, xh, pi_out, phase_out, dec, v_out, queue, st,
                           cp, co, cg, cpm, cts, xraw):
-    """The closed loop on waveform ``y``. Returns the symbols run (fewer than
-    ``n_sym`` when the sampler leaves the waveform, as the float kernel).
-    ``xraw`` records the ADC words before calibration (the replay's input)."""
-    for k in range(n_sym):
+    """The closed loop for symbols ``k0`` to ``k1`` on samples ``[y_off,
+    y_off + y.size)`` of an ``n_total``-sample waveform (the streamed
+    window, as the float kernel's). Returns (the next symbol, status): 0 at
+    ``k1``, 1 the waveform ends there, 2 the window does (feed the next
+    block and call again from that symbol), 3 the sample is already dropped.
+    The state lives in the arrays, and a symbol's sampling position is a
+    function of its index and the phase register, so any split of the run
+    gives the same arrays bit for bit."""
+    w_end = y_off + y.size
+    for k in range(k0, k1):
         lane = k % n_lanes
         code_pi = (st[0] - _trim(lane, cts, lane_shift)) >> pi_sh
         p_clk = pos0 + k * osr + code_pi * pi_scale + rx_clk[k]
         p = p_clk + skews[lane]
-        if p + osr + 2 >= y.size or p < 1:
-            return k
-        x = _farrow_fx(y, p) * gains[lane] + offsets[lane] + noise[k]
+        if p + osr + 2 >= n_total or p < 1:
+            return k, 1
+        if w_end < n_total and int(np.floor(p)) + osr + 2 >= w_end:
+            return k, 2
+        if y_off > 0 and int(np.floor(p)) - 1 < y_off:
+            return k, 3
+        x = _farrow_fx(y, p - y_off) * gains[lane] + offsets[lane] + noise[k]
         code = np.floor(x / q_step)
         if code > code_max:
             code = code_max
@@ -380,7 +390,28 @@ def _fixed_loop_closed_py(y, osr, pos0, n_sym, pi_scale, pi_sh, offsets,
                       clamp_int, pd_off, n_lanes, lane_shift, lat, lp, ref, wacc_f,
                       wacc_d, pr_lv, prs, xl, r_out, xh, dec, v_out, queue, st)
         _skew_step(k, xh, n_lanes, cp, cts)
-    return n_sym
+    return k1, 0
+
+
+def _fixed_loop_closed_py(y, osr, pos0, n_sym, pi_scale, pi_sh, offsets,
+                          gains, skews, q_step, code_max, noise, rx_clk,
+                          n_pre, wf, ffe_shift, wd, dfe_shift, levels_out, out_bits,
+                          do_round, pd_ffe, kp_sh, ki_sh, clamp_int, pd_off, n_lanes,
+                          lane_shift, lat, lp, ref, wacc_f, wacc_d, pr_lv, prs, xl,
+                          r_out, xh, pi_out, phase_out, dec, v_out, queue, st,
+                          cp, co, cg, cpm, cts, xraw):
+    """The closed loop on the whole waveform ``y``. Returns the symbols run
+    (fewer than ``n_sym`` when the sampler leaves the waveform, as the float
+    kernel). ``xraw`` records the ADC words before calibration (the replay's
+    input)."""
+    k, _ = _fixed_loop_window(y, 0, y.size, osr, pos0, 0, n_sym, pi_scale, pi_sh, offsets,
+                              gains, skews, q_step, code_max, noise, rx_clk,
+                              n_pre, wf, ffe_shift, wd, dfe_shift, levels_out, out_bits,
+                              do_round, pd_ffe, kp_sh, ki_sh, clamp_int, pd_off, n_lanes,
+                              lane_shift, lat, lp, ref, wacc_f, wacc_d, pr_lv, prs, xl,
+                              r_out, xh, pi_out, phase_out, dec, v_out, queue, st,
+                              cp, co, cg, cpm, cts, xraw)
+    return k
 
 
 def _fixed_loop_digital_py(xin, pi_sh, n_pre, wf, ffe_shift, wd, dfe_shift,
@@ -410,6 +441,7 @@ _rnd = _rnd_py
 _trim = _trim_py
 _skew_step = _skew_step_py
 _farrow_fx = _farrow_py
+_fixed_loop_window = _fixed_loop_window_py
 _fixed_loop_closed = _fixed_loop_closed_py
 _fixed_loop_digital = _fixed_loop_digital_py
 if os.environ.get("HALO_NO_JIT") != "1":
@@ -424,6 +456,7 @@ if os.environ.get("HALO_NO_JIT") != "1":
         _cal_word = numba.njit(cache=True, inline="always")(_cal_word_py)
         _trim = numba.njit(cache=True, inline="always")(_trim_py)
         _skew_step = numba.njit(cache=True, inline="always")(_skew_step_py)
+        _fixed_loop_window = numba.njit(cache=True)(_fixed_loop_window_py)
         _fixed_loop_closed = numba.njit(cache=True)(_fixed_loop_closed_py)
         _fixed_loop_digital = numba.njit(cache=True)(_fixed_loop_digital_py)
     except ImportError:
@@ -646,6 +679,89 @@ def _state(fl: FixedLoop, n: int):
             np.zeros(fl.lat + 1, dtype=np.int64), np.zeros(6, dtype=np.int64))
 
 
+class FixedLoopRun:
+    """The closed integer loop, advanced in as many calls as wanted over a
+    whole waveform or a streamed window -- the float ``cdr.adc_kernel.AdcRxRun``'s
+    interface (``set_window`` / ``advance`` / ``need_more`` /
+    ``next_position``), so ``engine.stream.drive_stream`` drives it too. Any
+    split gives the same record bit for bit (``_fixed_loop_window``)."""
+
+    def __init__(self, fl: FixedLoop, osr: int, pos0: float, n_sym: int, adc,
+                 noise: np.ndarray, rx_clk: np.ndarray, ref: np.ndarray | None = None):
+        self.fl, self.osr, self.pos0, self.n_symbols = fl, int(osr), float(pos0), int(n_sym)
+        self.adc = adc
+        self.noise = np.asarray(noise, dtype=np.float64)
+        self.rx_clk = np.asarray(rx_clk, dtype=np.float64)
+        self.xh, self.pi, self.dec, self.v_out, self.queue, self.st = _state(fl, n_sym)
+        self.xraw = np.zeros(n_sym, dtype=np.int64)
+        self.co, self.cg, self.cpm, self.cts = _cal_state(fl)
+        self.phase = np.zeros(n_sym)
+        self.wf, self.wd, self.wacc_f, self.wacc_d, self.prs = _weights(fl)
+        self.xl = np.zeros(n_sym, dtype=np.int64)
+        self.r_out = np.zeros(n_sym, dtype=np.int64)
+        self.ref = (np.full(n_sym, -1, dtype=np.int64) if ref is None
+                    else np.asarray(ref, dtype=np.int64))
+        self.digital = _with_weights(fl, self.wf, self.wd)
+        self.done = 0
+        self.stopped = False
+        self.need_more = False
+        self.set_window(np.zeros(0))
+
+    def set_window(self, y, y_off: int = 0, n_total: int | None = None) -> None:
+        """Read samples ``[y_off, y_off + y.size)`` of an ``n_total``-sample
+        waveform from now on (default: ``y`` is the whole waveform)."""
+        self.y = np.asarray(y, dtype=np.float64)
+        self.y_off = int(y_off)
+        self.n_total = int(self.y.size + self.y_off if n_total is None else n_total)
+
+    def advance(self, k1: int) -> int:
+        k1 = min(int(k1), self.n_symbols)
+        self.need_more = False
+        if self.stopped or k1 <= self.done:
+            return self.done
+        fl, adc = self.fl, self.adc
+        k, status = _fixed_loop_window(
+            self.y, self.y_off, self.n_total, self.osr, self.pos0, self.done, k1,
+            float(self.osr) / (1 << fl.pi_bits), fl.pi_sh,
+            np.asarray(adc.offsets, dtype=np.float64), np.asarray(adc.gains, dtype=np.float64),
+            np.asarray(adc.skews, dtype=np.float64), float(adc.q_step), int(adc.code_max),
+            self.noise, self.rx_clk, *self.digital, self.ref, self.wacc_f, self.wacc_d,
+            fl.pr_lv, self.prs, self.xl, self.r_out, self.xh, self.pi, self.phase, self.dec,
+            self.v_out, self.queue, self.st, fl.cal, self.co, self.cg, self.cpm, self.cts,
+            self.xraw)
+        self.done = int(k)
+        if status == 3:
+            raise RuntimeError("the fixed-point loop needs waveform samples the streaming "
+                               "window already dropped (its sampling position moved back "
+                               "too far)")
+        self.stopped = status == 1
+        self.need_more = status == 2
+        return self.done
+
+    def next_position(self) -> float:
+        """Roughly where the next sample is read (the window keeps samples behind it)."""
+        k = min(self.done, self.n_symbols - 1)
+        code_pi = int(self.st[0]) >> self.fl.pi_sh
+        return self.pos0 + k * self.osr + code_pi * float(self.osr) / (1 << self.fl.pi_bits) \
+            + float(self.rx_clk[k])
+
+    @property
+    def finished(self) -> bool:
+        return self.stopped or self.done >= self.n_symbols
+
+    def record(self) -> dict:
+        """What :func:`run_fixed_loop` returns, for the symbols run so far."""
+        done, fl = self.done, self.fl
+        n_dec = max(done - fl.n_pre, 0)
+        return {"xin": self.xraw[:done], "x_cal": self.xh[:done], "pi": self.pi[:done],
+                "phase": self.phase[:done],
+                "cal": (self.co.copy(), _applied_gains(fl, self.cg, self.cpm), int(self.cpm[0]),
+                        self.cts[:-1].copy()),
+                "dec": self.dec[:n_dec], "v_out": self.v_out[:n_dec], "n_dec": n_dec,
+                "ref": self.ref[:done], "wf": self.wf, "wd": self.wd,
+                "ab": self.prs >> int(fl.lp[6])}
+
+
 def run_fixed_loop(fl: FixedLoop, y: np.ndarray, osr: int, pos0: float, n_sym: int,
                    adc, noise: np.ndarray, rx_clk: np.ndarray,
                    ref: np.ndarray | None = None) -> dict:
@@ -657,27 +773,10 @@ def run_fixed_loop(fl: FixedLoop, y: np.ndarray, osr: int, pos0: float, n_sym: i
     ``dec`` / ``v_out`` (indexed by symbol s = k - n_pre; ``n_dec`` valid),
     and the scalars ``replay_digital`` and the SV testbench need.
     """
-    xh, pi, dec, v_out, queue, st = _state(fl, n_sym)
-    xraw = np.zeros(n_sym, dtype=np.int64)
-    co, cg, cpm, cts = _cal_state(fl)
-    phase = np.zeros(n_sym)
-    wf, wd, wacc_f, wacc_d, prs = _weights(fl)
-    xl, r_out = np.zeros(n_sym, dtype=np.int64), np.zeros(n_sym, dtype=np.int64)
-    ref = np.full(n_sym, -1, dtype=np.int64) if ref is None else np.asarray(ref, dtype=np.int64)
-    done = _fixed_loop_closed(
-        np.asarray(y, dtype=np.float64), osr, float(pos0), int(n_sym),
-        float(osr) / (1 << fl.pi_bits), fl.pi_sh,
-        np.asarray(adc.offsets, dtype=np.float64), np.asarray(adc.gains, dtype=np.float64),
-        np.asarray(adc.skews, dtype=np.float64), float(adc.q_step), int(adc.code_max),
-        np.asarray(noise, dtype=np.float64), np.asarray(rx_clk, dtype=np.float64),
-        *_with_weights(fl, wf, wd), ref, wacc_f, wacc_d, fl.pr_lv, prs, xl, r_out,
-        xh, pi, phase, dec, v_out, queue, st, fl.cal, co, cg, cpm, cts, xraw)
-    done = int(done)
-    n_dec = max(done - fl.n_pre, 0)
-    return {"xin": xraw[:done], "x_cal": xh[:done], "pi": pi[:done], "phase": phase[:done],
-            "cal": (co.copy(), _applied_gains(fl, cg, cpm), int(cpm[0]), cts[:-1].copy()),
-            "dec": dec[:n_dec], "v_out": v_out[:n_dec], "n_dec": n_dec,
-            "ref": ref[:done], "wf": wf, "wd": wd, "ab": prs >> int(fl.lp[6])}
+    run = FixedLoopRun(fl, osr, pos0, n_sym, adc, noise, rx_clk, ref)
+    run.set_window(y)
+    run.advance(n_sym)
+    return run.record()
 
 
 def _with_weights(fl: FixedLoop, wf, wd):

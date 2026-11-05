@@ -717,27 +717,27 @@ def _ms_finish(lane: _MsLane, out) -> SimResult:
                 "decisions": sc.decisions, "reference": sc.reference})
 
 
-def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, w_dfe0,
-                    sched, pr_args, adc_power=None):
+def _fixed_run(cfg, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, w_dfe0, sched,
+               pr_args, adc_power=None):
     """``numeric.mode == 'fixed'``: the ADC receiver's digital back end --
-    FFE, DFE, slicer, LMS and the CDR loop -- in int64 (``dsp/fixed_loop.py``).
+    FFE, DFE, slicer, LMS and the CDR loop -- in int64 (``dsp/fixed_loop.py``),
+    set up and not yet driven: from the float run's starting weights, training
+    and adapting itself (integer LMS) on the float run's schedule.
+    ``adc_power``: the float run's mean-square ADC output, which scales the
+    background calibration's gain step."""
+    from ..dsp.fixed_loop import FixedLoopRun, build_fixed_loop
 
-    Returns what the float kernel's result unpacks to (decisions, slicer
-    values in volts, sample positions, lanes, sampled values) plus the run's
-    record for the RTL lockstep. ``adc_power``: the float run's mean-square
-    ADC output, which scales the background calibration's gain step."""
-    if not isinstance(rx_y, np.ndarray):
-        raise ValueError("numeric.mode='fixed' runs the loop a second time over the "
-                         "waveform; it cannot with sim.stream")
-    from ..dsp.fixed_loop import build_fixed_loop, run_fixed_loop
-
-    # from the float run's starting weights, training and adapting itself
-    # (integer LMS) on the float run's schedule
     fl = build_fixed_loop(cfg, w_ffe0, w_dfe0, levels, adc.q_step,
                           train_len=int(sched.train_end), adapt_start=int(sched.settle),
                           adc_power=adc_power, **pr_args)
-    rec = run_fixed_loop(fl, rx_y, cfg.osr, pos0, n_sym, adc, noise, rx_clk,
-                         ref=sched.reference)
+    return FixedLoopRun(fl, cfg.osr, pos0, n_sym, adc, noise, rx_clk, ref=sched.reference)
+
+
+def _fixed_out(run, adc):
+    """What the float kernel's result unpacks to (decisions, slicer values in
+    volts, sample positions, lanes, sampled values) from a driven
+    :func:`_fixed_run`, plus the run's record for the RTL lockstep."""
+    fl, rec = run.fl, run.record()
     n = rec["xin"].size
     # the score below trims the last n_pre symbols (the FFE never decided
     # them), so hand it the decisions padded to the symbols run
@@ -749,6 +749,59 @@ def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, 
     # the sampled values after calibration, as the float kernel's q_hist
     return (dec, y_sl, rec["phase"], lane_of, rec["x_cal"] * fl.in_lsb,
             {"loop": fl, "record": rec})
+
+
+def _fixed_back_end(cfg, rx_y, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, w_dfe0,
+                    sched, pr_args, adc_power=None):
+    """The bit-true back end run a second time over the whole waveform, after
+    the float run (``_fixed_run`` driven over ``rx_y``, ``_fixed_out``)."""
+    run = _fixed_run(cfg, pos0, n_sym, levels, adc, noise, rx_clk, w_ffe0, w_dfe0, sched,
+                     pr_args, adc_power)
+    run.set_window(rx_y)
+    run.advance(n_sym)
+    return _fixed_out(run, adc)
+
+
+class _Lockstep:
+    """Two receiver runs driven over one waveform window, the float one first
+    (``engine.stream.drive_stream`` sees one run): ``sim.stream`` with
+    ``numeric.mode: fixed``, where the bit-true loop cannot run a second
+    time over a waveform that streamed past. ``result()`` is the float
+    run's; the bit-true one is read from ``second``."""
+
+    def __init__(self, first, second):
+        self.first, self.second = first, second
+        self.osr, self.n_symbols = first.osr, first.n_symbols
+        self.need_more = False
+
+    def set_window(self, y, y_off: int = 0, n_total: int | None = None) -> None:
+        self.first.set_window(y, y_off, n_total)
+        self.second.set_window(y, y_off, n_total)
+
+    @property
+    def done(self) -> int:
+        return min(self.first.done, self.second.done)
+
+    @property
+    def finished(self) -> bool:
+        return self.first.finished and self.second.finished
+
+    def advance(self, k1: int) -> int:
+        self.need_more = False
+        for run in (self.first, self.second):
+            if not run.finished:
+                run.advance(k1)
+                if run.need_more:
+                    self.need_more = True
+                    break
+        return self.done
+
+    def next_position(self) -> float:
+        runs = [r for r in (self.first, self.second) if not r.finished] or [self.first]
+        return min(r.next_position() for r in runs)
+
+    def result(self):
+        return self.first.result()
 
 
 @dataclass(frozen=True)
@@ -988,7 +1041,22 @@ def _adc_link_steps(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_am
         float(mu_a), alpha_out, float(beta), int(n_t if pr.active else 1),
         1 if cal.mode == "background" else 0, cal.mu_offset, cal.mu_gain, cal.mu_skew,
         pr_gamma=float(gamma))
-    out = yield _AdcLoop(adc_run, rx_y, float(kp), float(ki), float(clamp), int(lat_blocks),
+    fixed_args = {"pr_mode": int(pr_mode), "pr_nt": int(n_t if pr.active else 1),
+                  "alpha": float(alpha), "beta": float(beta), "gamma": float(gamma),
+                  "pr_levels": pr_levels, "mu_alpha": float(mu_a)}
+    drive, fixed_stream = adc_run, None
+    if cfg.numeric.mode == "fixed" and not isinstance(rx_y, np.ndarray):
+        # a streamed waveform passes once: the bit-true loop runs beside the
+        # float one over the same window (2026-11-05; it refused before)
+        if cal.mode == "background":
+            raise ValueError(
+                "numeric.mode='fixed' with sim.stream and adc.cal.mode='background': the "
+                "fixed calibration's gain step is scaled by the float run's ADC output "
+                "power, which a streamed run knows only at its end -- run it unstreamed")
+        fixed_stream = _fixed_run(cfg, float(peak), n_sym, levels, adc, enob_noise, rx_clk,
+                                  w_ffe0, w_dfe0, sched, fixed_args)
+        drive = _Lockstep(adc_run, fixed_stream)
+    out = yield _AdcLoop(drive, rx_y, float(kp), float(ki), float(clamp), int(lat_blocks),
                          float(pd_offset), (1 if pr_mode > 0 else 0) if pd_use_ffe else 2,
                          int(adc.n_lanes), int(fcfg.n_pre))
     dec, y_sl, phase, w_ffe, w_dfe, lane_of, q_hist = out
@@ -998,12 +1066,13 @@ def _adc_link_steps(cfg: LinkConfig, channel, collect_eye, collect_jitter, tx_am
     if cfg.numeric.mode == "fixed":
         # the float run trained the equaliser; the bit-true back end takes its
         # weights, frozen, and runs the whole loop again from the same start
-        dec, y_sl, phase, lane_of, q_hist, fixed = _fixed_back_end(
-            cfg, rx_y, float(peak), n_sym, levels, adc, enob_noise, rx_clk, w_ffe0, w_dfe0,
-            sched, {"pr_mode": int(pr_mode), "pr_nt": int(n_t if pr.active else 1),
-                    "alpha": float(alpha), "beta": float(beta), "gamma": float(gamma),
-                    "pr_levels": pr_levels, "mu_alpha": float(mu_a)},
-            adc_power=float(np.mean(q_hist ** 2)) if q_hist.size else None)
+        if fixed_stream is not None:
+            dec, y_sl, phase, lane_of, q_hist, fixed = _fixed_out(fixed_stream, adc)
+        else:
+            dec, y_sl, phase, lane_of, q_hist, fixed = _fixed_back_end(
+                cfg, rx_y, float(peak), n_sym, levels, adc, enob_noise, rx_clk, w_ffe0,
+                w_dfe0, sched, fixed_args,
+                adc_power=float(np.mean(q_hist ** 2)) if q_hist.size else None)
         if pr.active:
             # the controlled cursor the bit-true loop ended on
             ab = fixed["record"]["ab"] * 2.0 ** -cfg.numeric.dfe_weight.fl
