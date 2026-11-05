@@ -220,3 +220,37 @@ def test_the_replay_slices_precoded_duobinary_on_the_composite_levels():
                                      1.0, 12, pr=PrConfig(target=(1.0, 1.0)), precode=True)
     assert int(art["pr_mode"]) == 2 and art["pr_lv"].size == 7
     assert np.mean(dec != line[: dec.size]) < 1e-3
+
+
+def test_dims_shift_amounts_are_int_and_values_longint():
+    """``*_dims.svh`` declares shift amounts ``int`` and everything else ``longint``.
+    Verilator 5.020 constant-folds ``longint >>> <longint localparam>`` to 0 (issue #136);
+    a value such as CAL_PM0 or CLAMP must keep 64 bits."""
+    from halo_serdes.dsp.fixed_datapath import SV_SHIFT_PARAMS, sv_localparam
+
+    assert sv_localparam("LANE_SHIFT", 4) == "localparam int LANE_SHIFT = 4;\n"
+    assert sv_localparam("SH_D", -2) == "localparam int SH_D = -2;\n"
+    assert sv_localparam("CAL_PM0", 289416265) == "localparam longint CAL_PM0 = 289416265;\n"
+    assert sv_localparam("N", 3000).startswith("localparam longint ")
+    assert {"LANE_SHIFT", "CAL_B", "PI_SH", "G", "SQ_SHIFT", "C_FL"} <= SV_SHIFT_PARAMS
+
+
+def test_committed_rtl_dims_declare_every_rtl_shift_amount_int():
+    """Every localparam the RTL uses as a right-hand shift operand is ``int`` in the
+    committed ``rtl/vectors/*_dims.svh`` — so a new shift parameter cannot silently come
+    back as ``longint`` (it would have to be added to ``SV_SHIFT_PARAMS``)."""
+    import re
+    from pathlib import Path
+
+    rtl = Path(__file__).resolve().parent.parent / "rtl"
+    decl = {}
+    for f in rtl.glob("vectors/**/*_dims.svh"):
+        for kind, name in re.findall(r"localparam (int|longint) (\w+) =", f.read_text()):
+            decl.setdefault(name, set()).add(kind)
+    used = set()
+    for f in rtl.glob("*.sv"):
+        used |= set(re.findall(r"(?:<<<|>>>|<<|>>)\s*\(?-?\s*(\w+)", f.read_text()))
+    shifts = {n for n in used if n in decl}
+    assert {"LANE_SHIFT", "CAL_B", "SQ_SHIFT"} <= shifts      # non-vacuous
+    bad = {n: decl[n] for n in shifts if decl[n] != {"int"}}
+    assert not bad, bad

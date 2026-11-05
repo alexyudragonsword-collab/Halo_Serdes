@@ -2,6 +2,6 @@
 localparam longint N = 3000;
 localparam longint NL = 4;
 localparam longint NS = 16;
-localparam longint SQ_SHIFT = 3;
+localparam int SQ_SHIFT = 3;
 localparam longint METRIC_MAX = 1048575;
 localparam longint CW = 64;

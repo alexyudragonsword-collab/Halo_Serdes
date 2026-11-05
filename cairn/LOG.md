@@ -16,7 +16,22 @@
 - 坑:本机原无 iverilog —— `apt-get update` 后 `apt-get install iverilog`(12.0)可装,lockstep 就能本地跑,不必等 CI。全量跑在 worker 重启时被带走过一次,
   改用 `setsid nohup` 脱离会话跑。
 - 验证:全量 1453 passed / 3 skipped(装了 iverilog,RTL 测试不再跳过);lockstep 12 项逐位;fixed_datapath / draws / studies / api 编 .so 删 .py、
-  `HALO_NO_JIT=1` 相关 108 passed / 37 skipped(`needs_jit`);README / COMPARISON 测试数 1456 项。
+  `HALO_NO_JIT=1` 相关 108 passed / 37 skipped(`needs_jit`)。
+- 合并 main(#142 的 RTL 交接修正)时冲突:tb 读文件改为缺失 / 短读即 `$fatal`,PR 文件按 `PR_MODE` 必读(delta 不读、置零);
+  `run_lockstep.sh` 用 #142 的临时目录,回放四组照旧;`rtl/vectors` 按合并后的代码重新生成。合并后验证:待填。
+
+## 2026-11-04 · RTL 交接三处修正:移位量 int、tb 读文件检查、run_lockstep 不写提交集;向量快照刷新(fix/rtl-dsp-ip-findings,#136)
+
+- 来自 dsp_ip 把五个模块原样 vendor 进 lockstep 脚手架时的发现(#136 正文 + 评论)。行为不变,只改交接面。
+- 移位量:`*_dims.svh` 原来全是 `localparam longint`;Verilator 5.020 常量折叠 `longint >>> <longint localparam>` 得 0,
+  `tb_adc_dsp_loop` 终值校准比对在 `CAL_ON=0` 的四个集打印值相等却报错。现在写出器统一走 `fixed_datapath.sv_localparam`,
+  `SV_SHIFT_PARAMS` 里 20 个移位参数为 `int`,其余(CAL_PM0、CLAMP 等)仍 `longint`。Verilator 5.020 下 loop 五个集全 PASS(修前 1/5)。
+- tb:五个 tb 共 32 处 `$fscanf` 不查返回值、`$fopen` 不查 0 → 都 `$fatal`;截断 `vit_y.txt` 到 100 行报 `short read ... entry 100`、rc=1。
+- `run_lockstep.sh` 默认改在 `mktemp -d` 里生成与编译(原来写进被跟踪的 `rtl/vectors`、vvp 固定在 /tmp 会互相覆盖);传目录仍可保留向量。
+- 向量快照:提交集缺 `dfse_*`(5 个文件,DFSE N=3000 / 4 态 / 回授 2)已补;**更正**:#136 评论说"提交集与 `gen_vectors.py` 逐字节一致"
+  只在 6e79c4a 成立 —— 在本分支的基 82ee2c4 上重新生成已有 54 个文件不同(与本改动无关:基提交 worktree 上同样 54 个),这次一并刷新。
+- 指纹(`HALO_NO_JIT=1`,基 vs 分支):986 值逐位相同。全量 JIT 1450 passed / 3 skipped、`HALO_NO_JIT=1` 1341 passed / 112 skipped(`needs_jit`);`run_lockstep.sh` 九段全 PASS;
+  新测试 2 条(`sv_localparam` 语义;RTL 每个移位右操作数在提交的 dims 里是 `int`,改回 `longint` 必红)。
 
 ## 2026-11-03 · PAM4 原始样本 MM:锁定点不差、是环路在漂(更正);失配不进启动 MMSE;一次抽取不代表链路(feat/raw-mm-lock-mismatch-loop)
 

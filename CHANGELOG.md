@@ -18,6 +18,18 @@
 
 ---
 
+## [未发布] — RTL 交接修正:移位量 `int`、tb 读文件检查、`run_lockstep.sh` 不写提交集(#136)
+
+### 修正
+- `*_dims.svh` 的移位量改为 `localparam int`(`fixed_datapath.sv_localparam` / `SV_SHIFT_PARAMS`),值参数仍 `longint`:绕开 Verilator 5.020 对 `longint >>> <longint localparam>` 的常量折叠错误(`tb_adc_dsp_loop` 在 Verilator 下 4/5 个集误报)。
+- 五个 testbench 的 `$fopen` / `$fscanf` 失败都 `$fatal`,截断或缺失的向量文件不再"照样过 / 照样错"。
+- `rtl/run_lockstep.sh` 默认在临时目录里生成与编译,不再改写被跟踪的 `rtl/vectors`。
+
+### 数据
+- `rtl/vectors/` 补上 `dfse_*`,并按当前 `gen_vectors.py` 刷新(基提交上已与生成结果不一致)。
+
+---
+
 ## [未发布] — PAM4 原始样本 MM 与 TI 失配的两处核查(更正)
 
 ### 文档
