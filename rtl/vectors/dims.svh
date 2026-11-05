@@ -10,3 +10,7 @@ localparam int DFE_SHIFT = 8;
 localparam int OUT_BITS = 12;
 localparam int DO_ROUND = 1;
 localparam int CW = 32;
+localparam int PR_MODE = 0;
+localparam int PR_NT = 1;
+localparam int PR_FL = 0;
+localparam int NPL = 1;

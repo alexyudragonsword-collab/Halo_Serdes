@@ -250,18 +250,31 @@ def fixedpoint_study(rec) -> dict:
         if adc is None or q is None or rec.sim.ffe_taps is None:
             return {"error": "fixed-point replay needs an ADC run (rx.arch = "
                     "adc_dsp) — load the PAM4 224G ADC preset and Run."}
-        if cfg.pr.active:
-            return {"error": "fixed-point replay models the delta target only; "
-                    "set pr.target back to (1.0,) to replay this link."}
         from halo_serdes.config.schema import NumericConfig, QFormat
         from halo_serdes.dsp.fixed_datapath import run_fixed_datapath
 
         codes = np.round(np.asarray(q) / adc.q_step - 0.5).astype(np.int64)
         levels = e["levels"]; n_pre = cfg.rx.ffe.n_pre
         wide = NumericConfig(ffe_weight=QFormat(20, 16), dfe_weight=QFormat(20, 16))
+        # a partial-response link replays its own slicer, on the target it
+        # ended on (2026-11-03; the replay took the delta target only before)
+        pr_kw = dict(pr=cfg.pr, pr_target=e.get("pr_target"), precode=cfg.precode)
+
+        def user(dec):
+            # a precoded link's slicer decides line symbols, and on the
+            # composite slicer one that differs from the reference's leaves
+            # every later estimate off by +-e, alternating -- which the user
+            # symbols (x[k] + x[k-1]) mod N cancel. Compared raw, a 12-bit
+            # replay of precoded duobinary read 0.6-0.8 mismatch (2026-11-03)
+            if not cfg.precode:
+                return dec
+            from halo_serdes.core.mapping import unprecode_1plusd
+            return unprecode_1plusd(dec, levels.size)
+
         dec_ref, *_ = run_fixed_datapath(codes, rec.sim.ffe_taps, rec.sim.dfe_taps,
                                          levels, n_pre, wide, adc.cfg.fullscale,
-                                         adc.cfg.n_bits, pr=cfg.pr)
+                                         adc.cfg.n_bits, **pr_kw)
+        dec_ref = user(dec_ref)
         wls = [4, 5, 6, 7, 8, 10, 12]
         mism = []
         for wl in wls:
@@ -270,8 +283,8 @@ def fixedpoint_study(rec) -> dict:
                                 dfe_weight=QFormat(wl, wl - 2))
             dec, *_ = run_fixed_datapath(codes, rec.sim.ffe_taps, rec.sim.dfe_taps,
                                          levels, n_pre, num, adc.cfg.fullscale,
-                                         adc.cfg.n_bits)
-            mism.append(max(float(np.mean(dec != dec_ref)), 1e-6))
+                                         adc.cfg.n_bits, **pr_kw)
+            mism.append(max(float(np.mean(user(dec) != dec_ref)), 1e-6))
         return {"wl": np.array(wls), "mismatch": np.array(mism)}
     return _cached(("fixed", rec.id), compute)
 
@@ -473,6 +486,38 @@ def tdecq_study(rec) -> dict:
     return _cached(("tdecq", rec.id), compute)
 
 
+# --- one link, several draws ------------------------------------------------
+
+#: Seeds the draw-spread study runs, and its symbols per seed: eight short
+#: time-domain runs, so a phone gets through them in a minute or two.
+SEEDS_N = 8
+SEEDS_SYMBOLS = 40_000
+
+
+def seeds_study(rec) -> dict:
+    """The time engine at ``SEEDS_N`` seeds against the statistical engine.
+
+    The seed sets the noise and every per-link draw (ADC lane mismatch,
+    comparator offsets), so with mismatch each seed is a different chip;
+    the statistical engine is the average over draws. ``ber`` is per seed,
+    ``pooled`` and ``stat`` are drawn as flat lines across them."""
+
+    def compute():
+        from halo_serdes.analysis import seed_spread
+
+        cfg = rec.cfg
+        n = min(int(cfg.sim.n_symbols), SEEDS_SYMBOLS)
+        sp = seed_spread(cfg, range(1, SEEDS_N + 1), n_symbols=n,
+                         channel=ChannelModel.from_config(cfg), checkpoint=checkpoint)
+        k = sp.seeds.size
+        return {"seed": sp.seeds.astype(float), "ber": sp.ber,
+                "errors": sp.n_errors.astype(float),
+                "pooled": np.full(k, sp.pooled_ber),
+                "stat": np.full(k, sp.stat_ber if sp.stat_ber is not None else np.nan),
+                "symbols": np.full(k, float(n))}
+    return _cached(("seeds", rec.id), compute)
+
+
 STUDY_PLOTS: dict[str, list[dict]] = {
     "reach": [{"x": "loss", "y": ["pre", "kp4", "kr4"],
                "x_label": "Nyquist loss [dB]", "y_label": "BER", "y_log": True}],
@@ -506,6 +551,8 @@ STUDY_PLOTS: dict[str, list[dict]] = {
                     "y_label": "decision mismatch vs float", "y_log": True}],
     "optical": [{"x": "length_m", "y": ["kp4", "kp4_retimed"],
                  "x_label": "fibre length [m]", "y_label": "post-KP4 BER", "y_log": True}],
+    "seeds": [{"x": "seed", "y": ["ber", "pooled", "stat"],
+               "x_label": "seed", "y_label": "BER", "y_log": True}],
     "tdecq": [{"x": "er_db", "y": ["tdecq_er"],
                "x_label": "extinction ratio [dB]", "y_label": "TDECQ [dB]", "y_log": False},
               {"x": "bw_ghz", "y": ["tdecq_bw"],
@@ -548,6 +595,12 @@ STUDY_LABELS: dict[str, tuple[str, str]] = {
                    "The BER wall against datapath word length, replayed "
                    "bit-true against the float reference. Needs a time-domain "
                    "run, so it is the slowest to start."),
+    "seeds": ("Draw spread",
+              "The time engine at eight seeds against the statistical engine. The "
+              "seed sets the noise and every per-link draw (ADC lane mismatch, "
+              "comparator offsets), so with mismatch each seed is another chip: "
+              "compare the pooled line, not one seed, with the statistical one. "
+              "Eight short time-domain runs."),
     "tdecq": ("TDECQ",
               "The optical transmitter's TDECQ (after its fibre, laser RIN in) "
               "against extinction ratio and laser bandwidth. Needs "

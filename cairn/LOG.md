@@ -3,6 +3,25 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-04 · 多种子对照工具;原始样本 MM 游走拆完不建;定点开环回放与 RTL 接 PR(feat/seeds-rawmm-fixed-pr)
+
+- 用户选"失配多种子对照做成工具 + PAM4 原始样本 MM 环路游走建模 + 定点 / RTL 路径接 PR 目标"。
+- 多种子:`analysis.seed_spread`(每种子 BER、合并、中位数、统计读数)+ 研究页 "Draw spread"(API / 桌面;手机按 API 的绘图规格,Kotlin 不改)。
+  TI 失配预设 8 种子跨两个数量级、中位数比合并低 10×,理想校准下同 8 种子 0 错。
+- 原始样本 MM:冻结 LMS 不变、冻结 CDR 回到 1.3–1.4× —— 全在 CDR;环路阻尼 0.03、起步偏差 0.05 UI 在 30 万符号里振铃(时域 σ 0.07)。
+  按时域自己的相位轨迹平均统计 BER 也只到 0.80 / 0.64 / 0.06×(无 PR / (1, 0.5) / 强目标),线性模型只给一半 σ,强目标剩下的不在相位 —— 不建。§44 末。
+- 定点 / RTL + PR:闭环定点早就接了 PR(ROADMAP ④ 更正);开环回放 `run_fixed_datapath` 与 `ffe_dfe_datapath.sv` 这次照 `fixed_loop` 的规则接上,
+  lockstep 四组逐位(delta / 两 / 三光标 / 预编码);Fixed point 研究页放开 PR,预编码按用户符号比较(按线路符号比,12 位也读 0.6–0.8 失配)。
+  入库的 `rtl/vectors` 本已落后于代码(CI 每次重新生成),一并更新。
+- 坑:本机原无 iverilog —— `apt-get update` 后 `apt-get install iverilog`(12.0)可装,lockstep 就能本地跑,不必等 CI。全量跑在 worker 重启时被带走过一次,
+  改用 `setsid nohup` 脱离会话跑。
+- 验证:全量 1453 passed / 3 skipped(装了 iverilog,RTL 测试不再跳过);lockstep 12 项逐位;fixed_datapath / draws / studies / api 编 .so 删 .py、
+  `HALO_NO_JIT=1` 相关 108 passed / 37 skipped(`needs_jit`)。
+- 合并 main(#142 的 RTL 交接修正)时冲突:tb 读文件改为缺失 / 短读即 `$fatal`,PR 文件按 `PR_MODE` 必读(delta 不读、置零);
+  `run_lockstep.sh` 用 #142 的临时目录,回放四组照旧;`rtl/vectors` 按合并后的代码重新生成。合并后:全量 1455 passed / 3 skipped、lockstep 12 项逐位。
+- CI(头 c636381 全绿,examples-full 也过):test 33 分钟、examples 17、full 32;Android 15.0;Windows PyInstaller 3.4、Nuitka standalone 39.0、
+  onefile 30.8(缓存命中没查日志)。冲突是 #142 先合进 main 造成的(PR 显示 dirty 时 pull_request 工作流不跑,只有 push 的跑)。
+
 ## 2026-11-04 · RTL 交接三处修正:移位量 int、tb 读文件检查、run_lockstep 不写提交集;向量快照刷新(fix/rtl-dsp-ip-findings,#136)
 
 - 来自 dsp_ip 把五个模块原样 vendor 进 lockstep 脚手架时的发现(#136 正文 + 评论)。行为不变,只改交接面。

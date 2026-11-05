@@ -853,6 +853,9 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
   加新的相位相关项时,用 4 UI 的音跑一遍 `jtol_stat`(`tests/test_api_json.py` 会跑到)。
 - **重录 `examples/expected/` 要过 `tools/example_drift.normalise`**(2026-11-02,PR #133):只把 `[92s]` 换成 `[~s]` 不够,`wrote /home/user/...` 的绝对路径
   也要掩;`test_expected_outputs_are_stored_normalised` 会挡。重录之后再跑一次 `tests/test_example_drift.py`(本地全量在重录之前跑的,没抓到)。
+- **改了会被示例打印的产物,本地全量看不见**(2026-11-04,PR #143):`dump_vectors` 多写两个文件,示例 08 打印的文件列表就多两行,
+  只有 CI 的 examples-full(`tools/example_drift.py compare`)会挡 —— 全尺寸示例本地 10–20 分钟,`pytest` 不跑它们。动了示例会调用、会打印的
+  函数(写出的文件、返回的键、打印的格式),先单独跑那几个示例对 `examples/expected/`(过 `normalise`)。这次的修法是 delta 目标不写 PR 文件,产物与原先逐位同。
 
 ## 已知限制(不是 bug,别去"修")
 

@@ -10,7 +10,9 @@
    loop_dims.svh (dsp/fixed_loop.dump_loop_vectors); then the same loop with
    a partial-response target -- 1 + aD + bD^2 with a and b adapted, into
    <out>/pr, 1 + aD + bD^2 + cD^3 with a, b and c adapted, into <out>/pr4,
-   and precoded 1 + D on the composite slicer, into <out>/pre.
+   and precoded 1 + D on the composite slicer, into <out>/pre. Each of those
+   three directories also gets the open-loop datapath's vectors (part 1)
+   under the same target, from a float run of the part-1 link with it.
 3. The sliding-detector MLSD (dsp/fixed_mlsd): slicer words of a channel
    with a strong residual postcursor, so the detector has errors to correct
    (an MMSE FFE leaves the loop above none), with a non-zero metric shift,
@@ -136,6 +138,21 @@ for sub, extra in (("pr", dict(pr=PrConfig(target=(1.0, 0.6, 0.2), adapt="lms", 
     dump_loop_vectors(out / sub, pr_art)
     print(f"wrote PR loop vectors to {out / sub}  (mode {int(pr_fx['loop'].lp[11])}, "
           f"a/b/c {pr_art['ab'].tolist()} -> {pr_art['ab_end'].tolist()}, SER {pr_res.ser:.2e})")
+    # the open-loop datapath under the same target: a float run of the
+    # section-1 link with it, replayed bit-true on its captured ADC codes
+    dp_cfg = dataclasses.replace(
+        cfg, rx=dataclasses.replace(cfg.rx, mlsd=MlsdConfig(kind="viterbi", memory=1)), **extra)
+    dp_res = run_time_link(dp_cfg)
+    dp_adc = dp_res.extras["adc"]
+    dp_codes = np.round(dp_res.extras["q_hist_head"] / dp_adc.q_step - 0.5).astype(np.int64)[:2000]
+    _, _, dp_art = run_fixed_datapath(
+        dp_codes, dp_res.ffe_taps, dp_res.dfe_taps, dp_res.extras["levels"], cfg.rx.ffe.n_pre,
+        cfg.numeric, dp_adc.cfg.fullscale, dp_adc.cfg.n_bits, pr=dp_cfg.pr,
+        pr_target=dp_res.extras["pr_target"], precode=dp_cfg.precode)
+    dump_vectors(out / sub, dp_art)
+    dump_sv_package(out / sub, dp_art)
+    print(f"wrote PR datapath vectors to {out / sub}  (mode {int(dp_art['pr_mode'])}, "
+          f"a/b/c words {dp_art['pr_abc'].tolist()}, ND={dp_art['w_dfe_int'].size})")
 
 # --- 3. the sliding-detector MLSD on a strong residual postcursor ---
 rng = np.random.default_rng(11)

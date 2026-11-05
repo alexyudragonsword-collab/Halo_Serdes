@@ -14,10 +14,11 @@ from halo_serdes_app.studies import (  # noqa: F401
     multilane_study,
     optical_study,
     reach_study,
+    seeds_study,
     tdecq_study,
 )
 
 __all__ = [
     "com_study", "crosstalk_study", "fec_projection", "fixedpoint_study",
-    "jtol_stat_study", "jtol_study", "multilane_study", "optical_study", "reach_study", "tdecq_study",
+    "jtol_stat_study", "jtol_study", "multilane_study", "optical_study", "reach_study", "seeds_study", "tdecq_study",
 ]

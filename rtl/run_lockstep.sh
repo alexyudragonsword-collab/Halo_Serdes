@@ -18,8 +18,10 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 VEC="${1:-$WORK/vectors}"
 python gen_vectors.py "$VEC"
-iverilog -g2012 -o "$WORK/ffe.vvp" -I "$VEC" ffe_dfe_datapath.sv tb_ffe_dfe.sv
-vvp "$WORK/ffe.vvp" +vecdir="$VEC"
+for d in "$VEC" "$VEC/pr" "$VEC/pr4" "$VEC/pre"; do   # delta, 1 + aD + bD^2, + cD^3, precoded 1 + D
+    iverilog -g2012 -o "$WORK/ffe.vvp" -I "$d" ffe_dfe_datapath.sv tb_ffe_dfe.sv
+    vvp "$WORK/ffe.vvp" +vecdir="$d"
+done
 for d in "$VEC" "$VEC/pr" "$VEC/pr4" "$VEC/pre" "$VEC/cal"; do   # delta, 1 + aD + bD^2, + cD^3, precoded 1 + D, ADC calibration
     iverilog -g2012 -o "$WORK/loop.vvp" -I "$d" adc_dsp_loop.sv tb_adc_dsp_loop.sv
     vvp "$WORK/loop.vvp" +vecdir="$d"

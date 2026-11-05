@@ -6,6 +6,18 @@
 
 ---
 
+## [未发布] — 多种子对照;定点开环回放与 RTL 接 PR
+
+### 新增
+- `halo_serdes.analysis.seed_spread` 与研究页 "Draw spread":时域多种子各跑一次,对照统计引擎(对抽取的平均);GUI 与手机都有。
+- `run_fixed_datapath(..., pr=, pr_target=, precode=)` 与 `rtl/ffe_dfe_datapath.sv`:PR 目标(两到四光标、预编码 1 + D)的位精确回放,lockstep 四组;
+  Fixed point 研究页接受 PR 链路。delta 目标逐位不变。
+
+### 文档
+- ROADMAP #12 ④ 更正:闭环定点早已接 PR。PAM4 原始样本 MM 的游走拆清(CDR 起步瞬态振铃),不建模。
+
+---
+
 ## [未发布] — RTL 交接修正:移位量 `int`、tb 读文件检查、`run_lockstep.sh` 不写提交集(#136)
 
 ### 修正

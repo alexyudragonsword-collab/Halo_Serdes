@@ -13,6 +13,7 @@ from .jtol import JtolResult, jitter_tolerance, jitter_tolerance_levels, jtol_ma
 from .metrics import ber_confidence, nrz_ber_awgn, pam4_ser_awgn, qfunc, qfunc_inv, slicer_snr_db
 from .power import PowerCoefficients, PowerReport, power_report, trellis_states
 from .skew import LaneCurve, SharedCdr, lane_curve, shared_cdr
+from .draws import SeedSpread, seed_spread
 
 __all__ = [
     "eye_density", "plot_eye",
@@ -23,4 +24,5 @@ __all__ = [
     "ComParams", "ComResult93a", "compute_com",
     "PowerCoefficients", "PowerReport", "power_report", "trellis_states",
     "LaneCurve", "SharedCdr", "lane_curve", "shared_cdr",
+    "SeedSpread", "seed_spread",
 ]

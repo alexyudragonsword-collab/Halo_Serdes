@@ -307,6 +307,7 @@ _STUDIES = {
     "fixedpoint": studies.fixedpoint_study, "jtol": studies.jtol_study,
     "jtol_stat": studies.jtol_stat_study,
     "optical": studies.optical_study, "tdecq": studies.tdecq_study,
+    "seeds": studies.seeds_study,
 }
 
 

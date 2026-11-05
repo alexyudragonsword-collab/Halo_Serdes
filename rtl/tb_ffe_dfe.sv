@@ -45,6 +45,24 @@ module tb_ffe_dfe;
         if (fd == 0) $fatal(1, "cannot open %s", fn);
         for (i = 0; i < NL;    i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.levels[i] = val; end
         $fclose(fd);
+        // the PR words and composite levels: required under a PR target,
+        // absent (and zero) for the delta target, which writes neither
+        for (i = 0; i < 3;   i++) dut.pr_abc[i] = 0;
+        for (i = 0; i < NPL; i++) dut.pr_lv[i]  = 0;
+        if (PR_MODE > 0) begin
+            fn = {dir, "/pr_abc.txt"};
+            fd = $fopen(fn, "r");
+            if (fd == 0) $fatal(1, "cannot open %s", fn);
+            for (i = 0; i < 3;   i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.pr_abc[i] = val; end
+            $fclose(fd);
+        end
+        if (PR_MODE == 2) begin
+            fn = {dir, "/pr_lv.txt"};
+            fd = $fopen(fn, "r");
+            if (fd == 0) $fatal(1, "cannot open %s", fn);
+            for (i = 0; i < NPL; i++) begin r = $fscanf(fd, "%d", val); if (r != 1) $fatal(1, "short read: %s entry %0d", fn, i); dut.pr_lv[i]  = val; end
+            $fclose(fd);
+        end
         fn = {dir, "/dec.txt"};
         fd = $fopen(fn, "r");
         if (fd == 0) $fatal(1, "cannot open %s", fn);
@@ -67,8 +85,8 @@ module tb_ffe_dfe;
                 errors++;
             end
         end
-        $display("LOCKSTEP %s  n=%0d  errors=%0d",
-                 (errors == 0) ? "PASS" : "FAIL", N_OUT, errors);
+        $display("LOCKSTEP %s  n=%0d  pr_mode=%0d  errors=%0d",
+                 (errors == 0) ? "PASS" : "FAIL", N_OUT, PR_MODE, errors);
         if (errors != 0) $fatal(1, "bit-exact mismatch");
         $finish;
     end

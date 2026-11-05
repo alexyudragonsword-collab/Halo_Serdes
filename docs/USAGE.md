@@ -616,6 +616,9 @@ art = run_fixed_datapath(codes_int, w_ffe_float, w_dfe_float, levels_float,
                          n_pre=cfg.rx.ffe.n_pre, numeric=cfg.numeric,
                          code_fullscale=cfg.rx.adc.fullscale,
                          code_bits=cfg.rx.adc.n_bits)
+# PR 链路(2026-11-03 起):pr=cfg.pr, pr_target=res.extras["pr_target"] —— 自适应后的目标,
+# precode=cfg.precode —— 回放该接收机自己的判决器(减受控光标 / 预编码 1 + D 的合成电平),
+# 与闭环 fixed_loop 同一套规则;之前直接拒绝
 dump_vectors("vectors/", art)                # codes/权重/判决/输出 的 txt
 dump_sv_package("vectors/dims.svh", art)     # 维度与移位量,RTL 与 Python 单源
 ```
@@ -935,6 +938,8 @@ precode: false             # a = 1 时可配 1/(1+D):逐符号判决切 2N−1 �
   省下的噪声又还回去了;引擎发 warning。
 - **接线**:LMS 期望值 = levels[x_s] + a·levels[x_{s−1}];DFE 从受控光标之后起;MM-CDR 读"样本 − a × 上一判决",
   锁定点与 delta 目标同(示例 18 信道上差 ≤ 0.0011 UI)。静态引擎与定点数据通路不支持 PR,直接拒绝。
+  (更正 2026-11-03:定点开环回放 `run_fixed_datapath` 与 `rtl/ffe_dfe_datapath.sv` 接了 PR(两到四光标、预编码 1 + D),GUI / 手机的 Fixed point 研究页也放开;
+  闭环定点 `numeric.mode: fixed` 与 `rtl/adc_dsp_loop.sv` 早就接了。静态引擎仍拒绝。预编码链路的字长墙按用户符号比较。)
 - **统计引擎**:受控光标移出 ISI PDF;有序列检测器时 BER 是对交替误差事件的 union bound,噪声相关性取自 FFE 抽头
   (只看最小距离会乐观 2.5–20 倍)。一个检测器错误只算一次:各长度、两族、所有重叠起点的事件取并集,误码按检测器实际
   选中的那条分摊(简单求和会重复计,只扣相邻长度仍多算)。网格外的残余 ISI 按每个事件投影(d · ISI / |d|²,与噪声同样缩小),
@@ -1071,7 +1076,9 @@ rx:
   反而不如后台(数据本身在量化器上是"抖动"的)。前台测量要越过 q/√12,需要抖动(噪声或注入)。
 - 统计引擎本来就不建 lane 失配,校准对它无影响。
   (2026-11-03:失配每条链路只抽一次,一次时域运行不代表这条"设计":`PAM4 224G ADC (TI mismatch)` 预设 8 个种子的 BER 从 0 错到 1e-2,
-  合起来 2.0e-3;统计引擎给的是对抽取的平均(1.25e-3)。对照时用多个种子合起来数。)
+  合起来 2.0e-3;统计引擎给的是对抽取的平均(1.25e-3)。对照时用多个种子合起来数:
+  `halo_serdes.analysis.seed_spread(cfg, range(1, 9), n_symbols=...)` 返回每个种子的 BER、合起来的 `pooled_ber`、`median_ber` 与统计读数;
+  GUI / 手机研究页 "Draw spread" 就是它(8 个种子 × 至多 4 万码元)。)
   (更正 2026-11-03:统计引擎现在把 `cal.mode: off` 下的 lane offset / gain / skew 失配当作对抽取求系综的白噪声加进 ADC 噪声(`stat_noise.ti_mismatch_sigma`);`calibrated: true` 归零 offset / gain,后台环路 `mu_skew` > 0 时 skew 也去掉;后台 / 前台校准的残差不建 —— 对它们统计引擎按"校准干净"算。)
 
 ## 20. 功耗估计(pJ/bit)
