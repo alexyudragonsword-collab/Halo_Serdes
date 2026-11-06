@@ -66,8 +66,11 @@ two cursors fed back.
 | `adc_dsp_loop.sv` | the back end with its CDR loop — mirrors `fixed_loop._digital_step_py`; a task, not `always_comb` (the loop carries state per symbol, and Icarus 12 asserts on a combinational block this size). |
 | `tb_adc_dsp_loop.sv` | loads the closed-loop record, runs the loop, asserts every PI code / slicer value / decision. |
 | `sliding_mlsd.sv` / `tb_sliding_mlsd.sv` | the sliding-detector MLSD and its testbench (`fixed_mlsd._sliding_fixed_py`). |
+| `sliding_stream.sv` / `tb_sliding_stream.sv` | the sliding-detector MLSD in **streaming, synthesizable** form: one `(v, dec)` per clock, each pass a stream stage holding `SEQ_LEN + 2` symbols (step k runs when symbol k + SEQ_LEN + 1 arrives), the passes in cascade. Same vectors plus `vectors/mlsd_tie/`; `GAPS=1` streams with idle clocks. |
 | `viterbi_mlsd.sv` / `tb_viterbi_mlsd.sv` | the Viterbi MLSD and its testbench (`fixed_viterbi._viterbi_fixed_py`). |
+| `viterbi_stream.sv` / `tb_viterbi_stream.sv` | the Viterbi MLSD in **streaming, synthesizable** form: branch metrics registered (y only), add-compare-select one symbol per clock, back-pointers through a write port to a survivor memory outside the module (the testbench's array), traceback over the whole block through a read port, as the golden. Same vectors plus `vectors/vit_tie/`. |
 | `dfse_mlsd.sv` / `tb_dfse_mlsd.sv` | the reduced-state Viterbi (DFSE) and its testbench (`fixed_viterbi._dfse_fixed_py`). |
+| `dfse_stream.sv` / `tb_dfse_stream.sv` | the DFSE in **streaming, synthesizable** form: as `viterbi_stream.sv`, with each state's survivor tail as loop state, so the branch metrics stay inside the one-cycle add-compare-select. Same vectors plus `vectors/dfse_k2/` (16 states). |
 | `run_lockstep.sh` | generate → `iverilog` compile → `vvp` run, all checks, in a fresh temp dir (pass a directory to keep the vectors). |
 
 ## Run

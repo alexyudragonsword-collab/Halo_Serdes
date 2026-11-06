@@ -232,3 +232,118 @@ def test_rtl_stream_lookahead_and_bubbles_bit_exact(tmp_path):
     assert "STREAM LOCKSTEP PASS" in run(mut, vec / "pr", 1, 0).stdout
     r = run(mut, vec / "pr", 1, 1)
     assert "STREAM LOCKSTEP FAIL" in r.stdout and r.returncode != 0
+
+
+def test_rtl_viterbi_stream_lockstep_bit_exact(tmp_path):
+    """The streaming, synthesizable Viterbi (rtl/viterbi_stream.sv): one slicer word per
+    clock, survivors through a memory port, traceback over the block. Bit-exact on the
+    16-state set and on vit_tie (4 states whose metrics tie), at the storage width and at
+    12-bit words, with and without idle clocks. Non-vacuous: on vit_tie, a last-minimum
+    add-compare-select and a last-minimum best state must each FAIL (the 16-state set has
+    no ties, so it cannot tell them apart)."""
+    vec = tmp_path / "vectors"
+    subprocess.run(["python", "rtl/gen_vectors.py", str(vec)],
+                   cwd=REPO, check=True, capture_output=True, text=True)
+
+    def run(src, d, extra=()):
+        sim = tmp_path / f"vs_{d.name}_{len(extra)}.vvp"
+        subprocess.run(["iverilog", "-g2012", *extra, "-o", str(sim), "-I", str(d),
+                        str(src), "rtl/tb_viterbi_stream.sv"],
+                       cwd=REPO, check=True, capture_output=True, text=True)
+        return subprocess.run(["vvp", str(sim), f"+vecdir={d}"], cwd=REPO,
+                              capture_output=True, text=True)
+
+    src = REPO / "rtl" / "viterbi_stream.sv"
+    narrow = ["-Ptb_viterbi_stream.Y_W=12", "-Ptb_viterbi_stream.EX_W=12"]
+    for d in (vec, vec / "vit_tie"):
+        for extra in ((), (*narrow, "-Ptb_viterbi_stream.GAPS=1")):
+            r = run(src, d, extra)
+            assert "VITERBI STREAM LOCKSTEP PASS" in r.stdout and r.returncode == 0, \
+                (d.name, extra, r.stdout + r.stderr)
+
+    text = src.read_text()
+    for good, bad in (("|| cand < nmetric[(p*NL+m) % NS]", "|| cand <= nmetric[(p*NL+m) % NS]"),
+                      ("metric[i] < metric[best]", "metric[i] <= metric[best]")):
+        assert good in text
+        mut = tmp_path / "viterbi_stream_mut.sv"
+        mut.write_text(text.replace(good, bad))
+        assert "VITERBI STREAM LOCKSTEP PASS" in run(mut, vec).stdout      # no ties there
+        r = run(mut, vec / "vit_tie")
+        assert "VITERBI STREAM LOCKSTEP FAIL" in r.stdout and r.returncode != 0, bad
+
+
+def test_rtl_sliding_stream_lockstep_bit_exact(tmp_path):
+    """The streaming, synthesizable sliding-detector MLSD (rtl/sliding_stream.sv): one pass
+    per stream stage, a window of SEQ_LEN + 2 symbols each. Bit-exact on Halo's set and on
+    mlsd_tie, at the storage width and at 12-bit words, with and without idle clocks.
+    Non-vacuous on mlsd_tie: a non-strict comparison and a step that keeps running while the
+    window drains must each FAIL (Halo's set never tells either apart)."""
+    vec = tmp_path / "vectors"
+    subprocess.run(["python", "rtl/gen_vectors.py", str(vec)],
+                   cwd=REPO, check=True, capture_output=True, text=True)
+
+    def run(src, d, extra=()):
+        sim = tmp_path / f"ss_{d.name}_{len(extra)}.vvp"
+        subprocess.run(["iverilog", "-g2012", *extra, "-o", str(sim), "-I", str(d),
+                        str(src), "rtl/tb_sliding_stream.sv"],
+                       cwd=REPO, check=True, capture_output=True, text=True)
+        return subprocess.run(["vvp", str(sim), f"+vecdir={d}"], cwd=REPO,
+                              capture_output=True, text=True)
+
+    src = REPO / "rtl" / "sliding_stream.sv"
+    narrow = ["-Ptb_sliding_stream.V_W=12", "-Ptb_sliding_stream.LV_W=12"]
+    for d in (vec, vec / "mlsd_tie"):
+        for extra in ((), (*narrow, "-Ptb_sliding_stream.GAPS=1")):
+            r = run(src, d, extra)
+            assert "MLSD STREAM LOCKSTEP PASS" in r.stdout and r.returncode == 0, \
+                (d.name, extra, r.stdout + r.stderr)
+
+    text = src.read_text()
+    for good, bad in (("if (sse < best) begin", "if (sse <= best) begin"),
+                      ("step = in_valid && wq[K+1];",
+                       "step = (in_valid || drain) && wq[K+1] && wq[K-1];")):
+        assert good in text
+        mut = tmp_path / "sliding_stream_mut.sv"
+        mut.write_text(text.replace(good, bad))
+        assert "MLSD STREAM LOCKSTEP PASS" in run(mut, vec).stdout          # never hit there
+        r = run(mut, vec / "mlsd_tie")
+        assert "MLSD STREAM LOCKSTEP FAIL" in r.stdout and r.returncode != 0, bad
+
+
+def test_rtl_dfse_stream_lockstep_bit_exact(tmp_path):
+    """The streaming, synthesizable DFSE (rtl/dfse_stream.sv): per-survivor tails as loop
+    state, survivors through a memory port, traceback over the block. Bit-exact on Halo's set
+    (4 states, two cursors fed back) and dfse_k2 (16 states, one fed back), at 32-bit and at
+    narrow words, with and without idle clocks. Non-vacuous: a tail that takes the state's
+    newest digit instead of its oldest must FAIL on dfse_k2 (on the 4-state set the two are
+    the same digit); a last-minimum add-compare-select must FAIL on Halo's set."""
+    vec = tmp_path / "vectors"
+    subprocess.run(["python", "rtl/gen_vectors.py", str(vec)],
+                   cwd=REPO, check=True, capture_output=True, text=True)
+
+    def run(src, d, extra=()):
+        sim = tmp_path / f"ds_{d.name}_{len(extra)}.vvp"
+        subprocess.run(["iverilog", "-g2012", *extra, "-o", str(sim), "-I", str(d),
+                        str(src), "rtl/tb_dfse_stream.sv"],
+                       cwd=REPO, check=True, capture_output=True, text=True)
+        return subprocess.run(["vvp", str(sim), f"+vecdir={d}"], cwd=REPO,
+                              capture_output=True, text=True)
+
+    src = REPO / "rtl" / "dfse_stream.sv"
+    narrow = ["-Ptb_dfse_stream.Y_W=12", "-Ptb_dfse_stream.ACC_W=20", "-Ptb_dfse_stream.FB_W=17"]
+    for d in (vec, vec / "dfse_k2"):
+        for extra in ((), (*narrow, "-Ptb_dfse_stream.GAPS=1")):
+            r = run(src, d, extra)
+            assert "DFSE STREAM LOCKSTEP PASS" in r.stdout and r.returncode == 0, \
+                (d.name, extra, r.stdout + r.stderr)
+
+    text = src.read_text()
+    for good, bad, where in (
+            ("ntail[(p*NL+m) % NS][0] = DB'(p / TOP);", "ntail[(p*NL+m) % NS][0] = DB'(p % NL);",
+             vec / "dfse_k2"),
+            ("|| cand < nmetric[(p*NL+m) % NS]", "|| cand <= nmetric[(p*NL+m) % NS]", vec)):
+        assert good in text
+        mut = tmp_path / "dfse_stream_mut.sv"
+        mut.write_text(text.replace(good, bad))
+        r = run(mut, where)
+        assert "DFSE STREAM LOCKSTEP FAIL" in r.stdout and r.returncode != 0, bad
