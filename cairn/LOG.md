@@ -26,6 +26,7 @@
 - 验证:全量 1457 passed / 3 skipped;ruff;stat_noise / timedomain 编 .so 删 .py、`HALO_NO_JIT=1` test_draws + test_stat_adc_nonlinear 7 passed。
 - CI(PR #146):19b1b37 四个测试 job 全挂在 `from tests.test_dfe_unrolled import`(已记的坑,又踩;50f18e2 改为从预设构造);
   50f18e2 全绿:test 3.10 / 3.11 × jit / nojit 16–27 min、examples 12 min、examples-full 20 min、rtl-lockstep 2 min。
+  合并 main(#145 的流式 RTL)后 LOG / CHANGELOG 冲突、两边都留;本地全量 1458 passed / 3 skipped。
 
 
 ## 2026-11-05 · 定点闭环流式;#45 重量;每链路抽取改独立流;文档漂移 + Draw spread 截图(feat/fixed-stream-p45-drift)
