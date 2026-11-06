@@ -15,6 +15,8 @@
   2.5× = 边缘分布 1.40 × 码型-相位相关 1.41 × 误码表 1.27。静态推锁定点、链上加恒定漂移都不出这份相关;要建是音周期驱动的链,未做。§43 末。
 - 坑:有音时"按时域相位轨迹"要减发端边沿的移动(先前 0.48× 是没减的读数,更正 0.56×);`y_slicer` 默认只留 2 万码元,探针要调大 `SLICER_CAPTURE_SYMBOLS`。
 - 验证:全量 1457 passed / 3 skipped;ruff;stat_noise / timedomain 编 .so 删 .py、`HALO_NO_JIT=1` test_draws + test_stat_adc_nonlinear 7 passed。
+- CI(PR #146):19b1b37 四个测试 job 全挂在 `from tests.test_dfe_unrolled import`(已记的坑,又踩;50f18e2 改为从预设构造);
+  50f18e2 全绿:test 3.10 / 3.11 × jit / nojit 16–27 min、examples 12 min、examples-full 20 min、rtl-lockstep 2 min。
 
 ## 2026-11-05 · 定点闭环流式;#45 重量;每链路抽取改独立流;文档漂移 + Draw spread 截图(feat/fixed-stream-p45-drift)
 
