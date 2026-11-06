@@ -16,14 +16,22 @@
 3. The sliding-detector MLSD (dsp/fixed_mlsd): slicer words of a channel
    with a strong residual postcursor, so the detector has errors to correct
    (an MMSE FFE leaves the loop above none), with a non-zero metric shift,
-   saturation and margin, dumped with mlsd_dims.svh.
+   saturation and margin, dumped with mlsd_dims.svh; and into <out>/mlsd_tie a
+   small detector (zero margin, a coarse metric shift, words of a few LSBs)
+   where candidate metrics equal the base all the time and the last windows of
+   the block would still flip, so the strict comparison and the end of the scan
+   are exercised (the set above never hits either).
 4. The Viterbi MLSD (dsp/fixed_viterbi): PAM4 through 1 + 0.6D + 0.2D^2
    (16 states), with a metric shift and a narrow saturating metric, dumped
-   with vit_dims.svh.
+   with vit_dims.svh; and into <out>/vit_tie a small trellis (4 states, a
+   coarse metric shift, a 6-bit metric) whose path metrics tie all the time, so
+   the add-compare-select order and the first-minimum rule are exercised (the
+   set above has no ties at all).
 5. The reduced-state Viterbi (DFSE, dsp/fixed_viterbi): PAM4 through
    1 + 0.6D + 0.3D^2 + 0.1D^3 with the state holding one symbol (4 states,
    two cursors fed back per survivor), same metric shift and saturation,
-   dumped with dfse_dims.svh.
+   dumped with dfse_dims.svh; and into <out>/dfse_k2 the same channel with two
+   symbols per state (16 states, one cursor fed back).
 
     python rtl/gen_vectors.py [out_dir]   (default: rtl/vectors)
 """
@@ -169,6 +177,13 @@ fsd = FixedSliding(rp=int(round(0.45 * 256)), rp_fl=8, fbt=fbt, seq_len=4, margi
                    sq_shift=4, metric_max=(1 << 18) - 1)
 dec_m = run_fixed_sliding(fsd, v, dec0, levels)
 dump_mlsd_vectors(out, fsd, v, dec0, levels, dec_m)
+lv_tie = np.array([-3, -1, 1, 3])
+fs_tie = FixedSliding(rp=1, rp_fl=1, fbt=np.array([-1, 0, 0, 1]), seq_len=3, margin=0,
+                      sq_shift=2, metric_max=31)
+rng_tie = np.random.default_rng(5)
+v_tie, d0_tie = rng_tie.integers(-4, 5, 800), rng_tie.integers(0, 4, 800)
+dump_mlsd_vectors(out / "mlsd_tie", fs_tie, v_tie, d0_tie, lv_tie,
+                  run_fixed_sliding(fs_tie, v_tie, d0_tie, lv_tie))
 print(f"wrote MLSD vectors to {out}  (N={v.size}, flips {int(np.sum(dec_m != dec0))}, "
       f"slicer errors {int(np.sum(dec0 != sym))} -> {int(np.sum(dec_m != sym))})")
 
@@ -186,6 +201,11 @@ dec_v = run_fixed_viterbi(fvd, y, 4)
 dump_viterbi_vectors(out, fvd, y, 4, dec_v)
 print(f"wrote Viterbi vectors to {out}  (N={y.size}, {fvd.expected.shape[0]} states, "
       f"errors {int(np.sum(dec_v != sym))})")
+c_tie = np.array([2, 1], dtype=np.int64)
+fvt = FixedViterbi(cursors=c_tie, c_fl=1, expected=expected_table(c_tie, np.array([-3, -1, 1, 3]), 1),
+                   sq_shift=4, metric_max=63)
+y_tie = np.random.default_rng(7).integers(-5, 6, 600)
+dump_viterbi_vectors(out / "vit_tie", fvt, y_tie, 4, run_fixed_viterbi(fvt, y_tie, 4))
 
 # --- 5. the reduced-state Viterbi (DFSE): one symbol per state, two fed back ---
 rng = np.random.default_rng(13)
@@ -202,3 +222,10 @@ dec_d = run_fixed_dfse(fds, y, 4)
 dump_dfse_vectors(out, fds, y, 4, dec_d)
 print(f"wrote DFSE vectors to {out}  (N={y.size}, {acc.shape[0]} states, "
       f"{fbt.shape[0]} fed back, errors {int(np.sum(dec_d != sym))})")
+# the same channel with two symbols per state (16 states, one cursor fed back), into
+# <out>/dfse_k2: the survivor's tail then takes the state's oldest digit, not its only one
+acc2, fbt2 = dfse_tables(c_int, levels, 2)
+fds2 = FixedDfse(cursors=c_int, c_fl=8, state_memory=2, acc=acc2, fbt=fbt2,
+                 sq_shift=3, metric_max=(1 << 20) - 1)
+y2 = y[:1000]
+dump_dfse_vectors(out / "dfse_k2", fds2, y2, 4, run_fixed_dfse(fds2, y2, 4))

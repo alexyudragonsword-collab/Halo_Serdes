@@ -406,9 +406,11 @@ LPO 预设 53 GBd 2.95 / 5.92 / 17.35 dB。GUI TDECQ 研究对 PAM6 / PAM8 放�
 **ABC 数偏悲观**:ABC 不插缓冲,环上一个扇出 63 的 NOR4 独占约 1.6 ns;dsp_ip `tools/pnr.py`(OpenROAD,`repair_design` 插缓冲,全局布线后)量得 delta 454 MHz、两 / 三个受控光标 389 / 355 MHz、预编码 326 MHz。
 判决环已可对上一个判决展开(`LOOKAHEAD=1`,默认 0;位精确同,含空拍流 `GAPS=1`):布线后 delta 520 MHz(+15 %)、预编码 348 MHz(+7 %),
 两 / 三个受控光标反而 318 / 335 MHz(−18 / −6 %)——它们的受控光标与 DFE 抽头还用 x[j−2]、x[j−3],第 2 级仍是一拍的环,又多了 NL+1 份算术。
+三种 MLSD 的流式形式已加(`viterbi_stream.sv`、`sliding_stream.sv`、`dfse_stream.sv`,各带补上的平局 / 边界向量集);布线后滑窗 285 MHz、DFSE 160 MHz、Viterbi 综合中。
 
 - [ ] 受控光标目标:对 x[j−1]、x[j−2] 两级推测(NL² 份)或把 x[j−2] 项挪出第 2 级;delta / 预编码:第 2 级已是纯前馈,可再切一拍。
-- [ ] 其余四个模型(`adc_dsp_loop`、三种 MLSD)的流式形式;CDR 环与 LMS 更新同样是逐码元的反馈环。
+- [ ] `adc_dsp_loop` 的流式形式:15 个 FFE 权重与 PR 系数每码元 LMS 更新、MM 鉴相 + 环路滤波 + LAT 块队列、后台 ADC 校准与延时微调都在逐码元的反馈环里;逐位精确需单独设计(先定各环的寄存位置与金值的对应)。
+- [ ] DFSE 的环里有平方(尾巴是环内状态):可对尾巴的最旧位推测,或把度量改成差的绝对值(要上游算法同意)。
 - 复现:`bash rtl/run_lockstep.sh`(含流式两套位宽);综合口径见 dsp_ip `docs/synthesis.md`。
 
 ### 12. 方向候选(2026-10-28 记,未调研,下次询问时重新评估)

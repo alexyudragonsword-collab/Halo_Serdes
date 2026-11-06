@@ -41,9 +41,27 @@ for d in "$VEC" "$VEC/pr" "$VEC/pr4" "$VEC/pre" "$VEC/cal"; do   # delta, 1 + aD
     iverilog -g2012 -o "$WORK/loop.vvp" -I "$d" adc_dsp_loop.sv tb_adc_dsp_loop.sv
     vvp "$WORK/loop.vvp" +vecdir="$d"
 done
-iverilog -g2012 -o "$WORK/mlsd.vvp" -I "$VEC" sliding_mlsd.sv tb_sliding_mlsd.sv
-vvp "$WORK/mlsd.vvp" +vecdir="$VEC"
-iverilog -g2012 -o "$WORK/vit.vvp" -I "$VEC" viterbi_mlsd.sv tb_viterbi_mlsd.sv
-vvp "$WORK/vit.vvp" +vecdir="$VEC"
-iverilog -g2012 -o "$WORK/dfse.vvp" -I "$VEC" dfse_mlsd.sv tb_dfse_mlsd.sv
-vvp "$WORK/dfse.vvp" +vecdir="$VEC"
+for d in "$VEC" "$VEC/mlsd_tie"; do   # Halo's set; a small one with metric ties and late flips
+    iverilog -g2012 -o "$WORK/mlsd.vvp" -I "$d" sliding_mlsd.sv tb_sliding_mlsd.sv
+    vvp "$WORK/mlsd.vvp" +vecdir="$d"
+    # the streaming (synthesizable) form, at 12-bit words, with idle clocks between symbols
+    iverilog -g2012 -Ptb_sliding_stream.V_W=12 -Ptb_sliding_stream.LV_W=12 \
+        -Ptb_sliding_stream.GAPS=1 -o "$WORK/mlsd_s.vvp" -I "$d" sliding_stream.sv tb_sliding_stream.sv
+    vvp "$WORK/mlsd_s.vvp" +vecdir="$d"
+done
+for d in "$VEC" "$VEC/vit_tie"; do   # the 16-state set; a small one whose metrics tie
+    iverilog -g2012 -o "$WORK/vit.vvp" -I "$d" viterbi_mlsd.sv tb_viterbi_mlsd.sv
+    vvp "$WORK/vit.vvp" +vecdir="$d"
+    # the streaming (synthesizable) form, at 12-bit words, with idle clocks between symbols
+    iverilog -g2012 -Ptb_viterbi_stream.Y_W=12 -Ptb_viterbi_stream.EX_W=12 \
+        -Ptb_viterbi_stream.GAPS=1 -o "$WORK/vit_s.vvp" -I "$d" viterbi_stream.sv tb_viterbi_stream.sv
+    vvp "$WORK/vit_s.vvp" +vecdir="$d"
+done
+for d in "$VEC" "$VEC/dfse_k2"; do   # one symbol per state, two fed back; two per state
+    iverilog -g2012 -o "$WORK/dfse.vvp" -I "$d" dfse_mlsd.sv tb_dfse_mlsd.sv
+    vvp "$WORK/dfse.vvp" +vecdir="$d"
+    # the streaming (synthesizable) form, at narrow words, with idle clocks between symbols
+    iverilog -g2012 -Ptb_dfse_stream.Y_W=12 -Ptb_dfse_stream.ACC_W=20 -Ptb_dfse_stream.FB_W=17 \
+        -Ptb_dfse_stream.GAPS=1 -o "$WORK/dfse_s.vvp" -I "$d" dfse_stream.sv tb_dfse_stream.sv
+    vvp "$WORK/dfse_s.vvp" +vecdir="$d"
+done
