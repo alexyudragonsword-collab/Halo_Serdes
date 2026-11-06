@@ -212,6 +212,10 @@ TI 失配的 lane offset / gain / skew 在主流上、接在发端抖动与接�
 `cairn/统计引擎非线性项.md` §5 的 8 种子数字(合起来 2.0e-3、统计 0.61×)就是这种抽法下的一次抽签。
 **规则:每条链路的抽取用 `[sim.seed, tag]` 的独立流(`engine.timedomain.per_link_rng`;前台校准 `0xCA1`、光 RIN `0x7E5` 早就这样);
 加新的每链路抽取时照做,并用"同一种子、两种码元数"核一遍。** 多种子对照至少几十个种子:8 个种子的池子是 128 个合起来的 0.19–2.0×(10–90 %)。
+2026-11-05 全仓审计(每处 `default_rng` 与抽样调用):每链路的抽取 —— ADC 失配、比较器失调、DAC 单元失配(`0x7DAC`)、串扰耦合散布 —— 都已各有自己的流;
+其余(发端 / 收端抖动、时钟剖面与杂散相位、AWGN、ENOB、光噪声)是按运行的噪声,跟码元数走是对的。剩两处只记不改:共享时钟 lane i 与重定时的段 k
+跑在 `sim.seed + i / k` 上,扫连续种子时相邻种子的 lane / 段共用噪声与芯片(USAGE 已写,间隔取 ≥ lane 数 / 3);`crosstalk.seed` 不随 `sim.seed` 变(按设计,USAGE 已写)。
+回归:`tests/test_draws.py::test_per_link_draws_follow_the_seed_not_the_run`。
 
 ### API 类
 
@@ -778,6 +782,8 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
 
 **测试文件之间不要 `from tests.xxx import`。** `tests/` 不是包,CI 用裸 `pytest -q`(cwd 不在 `sys.path`),
 本地 `python -m pytest` 却能过 —— 2026-10-15 PR #91 四个测试 job 在收集阶段就退出码 2。要共用夹具就复制一份或放进 `conftest.py`。
+  (2026-11-06 PR #146 又踩一次:函数体里的 `from tests.test_dfe_unrolled import _cfg`,收集阶段不报、跑到才 ModuleNotFoundError,本地全量 1457 passed 没拦住。
+  本地核法:`cd /tmp && python -m pytest --rootdir=<repo> <repo>/tests/<file>`,或 `grep -rn "from tests\." tests/`。)
 - **冻结环路不是"同一相位"的公平参照**(2026-10-24,P3 #13):把 bang-bang 环路冻在偏移相位上跑时域,DFE 抽头与电平在那个相位重新自适应
   (NRZ 16G +6 处 w1 0.344 对锁定点 0.386),读数比自由运行在同一相位上乐观 3.8×,其中 1.9× 是参照本身。要比"同一相位",把抽头与电平也冻在
   锁定点光标上 —— 这才等于统计引擎的持有曲线(10 % 内)。
