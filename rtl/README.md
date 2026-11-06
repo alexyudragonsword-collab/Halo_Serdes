@@ -60,6 +60,8 @@ two cursors fed back.
 |---|---|
 | `ffe_dfe_datapath.sv` | the DUT — integer MAC, rounding add + arithmetic right shift (`>>>`), saturation to `OUT_BITS`, nearest-level slicer. Mirrors `_ffe_dfe_fixed_py`. |
 | `tb_ffe_dfe.sv` | loads the golden vectors, runs the DUT, asserts every decision and slicer value matches; exits non-zero on any mismatch. |
+| `ffe_dfe_stream.sv` | the same datapath in **streaming, synthesizable** form: one ADC word per clock through ports, every word sized by a parameter (no `longint`), FFE products and their sum in two registers, DFE / controlled-cursor terms precomputed per level so the one-cycle decision loop holds no multiplier. Same four vector sets, bit-exact at the storage width and at the numeric widths (ADC Q8.0, weights Q10.8, 12-bit levels). |
+| `tb_ffe_dfe_stream.sv` | streams the codes in, checks every `(v, dec)` that comes out with `out_valid` in order, and that exactly `N_OUT` come out; width parameters overridable (`-P`). |
 | `gen_vectors.py` | runs a small ADC link, replays the bit-true datapath (the golden), and dumps `*.txt` vectors + `dims.svh`. |
 | `adc_dsp_loop.sv` | the back end with its CDR loop — mirrors `fixed_loop._digital_step_py`; a task, not `always_comb` (the loop carries state per symbol, and Icarus 12 asserts on a combinational block this size). |
 | `tb_adc_dsp_loop.sv` | loads the closed-loop record, runs the loop, asserts every PI code / slicer value / decision. |

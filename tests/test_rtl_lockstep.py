@@ -158,3 +158,39 @@ def test_rtl_dfse_lockstep_bit_exact(tmp_path):
                         capture_output=True, text=True)
     assert "DFSE LOCKSTEP FAIL" in r2.stdout
     assert r2.returncode != 0
+
+
+NUMERIC_WIDTHS = {"CODE_W": 8, "WF_W": 10, "WD_W": 10, "LV_W": 12, "PR_W": 10}
+
+
+def test_rtl_stream_lockstep_bit_exact(tmp_path):
+    """The streaming, synthesizable FFE + DFE + slicer (rtl/ffe_dfe_stream.sv): one ADC word
+    per clock through ports, words sized by parameters. Same vectors as the whole-block
+    model, all four targets, at the storage width and at the numeric config's widths."""
+    vec = tmp_path / "vectors"
+    subprocess.run(["python", "rtl/gen_vectors.py", str(vec)],
+                   cwd=REPO, check=True, capture_output=True, text=True)
+    for widths in ({}, NUMERIC_WIDTHS):
+        params = [f"-Ptb_ffe_dfe_stream.{k}={v}" for k, v in widths.items()]
+        for d in (vec, vec / "pr", vec / "pr4", vec / "pre"):
+            sim = tmp_path / f"stream_{d.name}_{len(widths)}.vvp"
+            subprocess.run(["iverilog", "-g2012", *params, "-o", str(sim), "-I", str(d),
+                            "rtl/ffe_dfe_stream.sv", "rtl/tb_ffe_dfe_stream.sv"],
+                           cwd=REPO, check=True, capture_output=True, text=True)
+            r = subprocess.run(["vvp", str(sim), f"+vecdir={d}"], cwd=REPO,
+                               capture_output=True, text=True)
+            assert "STREAM LOCKSTEP PASS" in r.stdout, d.name + r.stdout + r.stderr
+            assert r.returncode == 0
+
+    # non-vacuous: one slicer value off -> the check must FAIL
+    v_file = vec / "v_out.txt"
+    lines = v_file.read_text().splitlines()
+    lines[100] = str(int(lines[100]) + 1)
+    v_file.write_text("\n".join(lines) + "\n")
+    sim = tmp_path / "stream_mut.vvp"
+    subprocess.run(["iverilog", "-g2012", "-o", str(sim), "-I", str(vec),
+                    "rtl/ffe_dfe_stream.sv", "rtl/tb_ffe_dfe_stream.sv"],
+                   cwd=REPO, check=True, capture_output=True, text=True)
+    r2 = subprocess.run(["vvp", str(sim), f"+vecdir={vec}"], cwd=REPO, capture_output=True,
+                        text=True)
+    assert "STREAM LOCKSTEP FAIL" in r2.stdout and r2.returncode != 0
