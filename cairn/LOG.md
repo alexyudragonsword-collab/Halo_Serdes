@@ -3,6 +3,13 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-06 · 三种 MLSD 的流式形式(feat/rtl-mlsd-stream)
+
+- Viterbi / 滑窗 / DFSE 各一个流式、可综合形式;三者第一次(Viterbi 修一次读口时序)就逐位同,四个仿真器。
+- **被推翻的判断**:"原向量足够检验" —— 三个原集合都抓不到平局 / 边界变体(Viterbi 16 状态零平局;滑窗从不出现等于基准、从不在块尾翻转;DFSE K=1 时最旧位即最新位)。补 `vit_tie`、`mlsd_tie`、`dfse_k2`,变体在新集合上 1–363 个错。
+- 综合(dsp_ip,布线后):滑窗 285 MHz,DFSE 160 MHz(平方在环里),Viterbi 综合中。
+- `adc_dsp_loop` 没做:逐码元自适应的闭环,需单独设计;记 ROADMAP P3 #13。
+
 ## 2026-11-06 · 可综合的流式 FFE + DFE + 判决器(feat/rtl-ffe-dfe-stream)
 
 - 应 dsp_ip 的需要(它要给 Halo 模块出综合估计,整块行为模型做不了):`rtl/ffe_dfe_stream.sv`,四种目标、两套位宽、两个仿真器全逐位同。
