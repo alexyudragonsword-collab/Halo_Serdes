@@ -397,6 +397,17 @@ LPO 预设 53 GBd 2.95 / 5.92 / 17.35 dB。GUI TDECQ 研究对 PAM6 / PAM8 放�
 统计 9.6e-9 在区间内、不乘因子的 2.2e-8 不在(期望 11.9 个错,P ≤ 0.06 %);NRZ 28G 20 mV 82 种子 401 个错,统计 / 时域 1.02×,不乘因子 1.11× 出区间。
 28G 预设本身(2.4e-33)不可测,相位分布 §36 已核。`cairn/DSP发端与PR.md` §37。)
 
+### 13. RTL 的可综合形式(2026-11-06 起)
+
+`rtl/` 里的五个模型都是整块向量的行为模型(`always_comb` 遍历整段 / `task`),只能 lockstep 不能综合。
+第一个流式、可综合的形式已加:`rtl/ffe_dfe_stream.sv`(FFE + DFE + 判决器,四种目标,两套位宽下与金向量逐位同,`tests/test_rtl_lockstep.py::test_rtl_stream_lockstep_bit_exact`)。
+外部(dsp_ip,yosys 0.70 + NanGate45,无线网负载,estimate)量得每码元一拍的时钟周期(含触发器开销 154 ps):delta 3.98 ns、两到三个受控光标 4.01 / 4.15 ns、预编码 1 + D 4.99 ns,面积 16–29 k µm²;
+关键路径是一拍的判决环(历史寄存器 → 取预乘的反馈项 → 加、舍入、饱和 → 判决)。
+
+- [ ] 判决环对上一个判决展开(四个候选并行算、按上一个判决选),环上只剩一个选择器;位精确不变。
+- [ ] 其余四个模型(`adc_dsp_loop`、三种 MLSD)的流式形式;CDR 环与 LMS 更新同样是逐码元的反馈环。
+- 复现:`bash rtl/run_lockstep.sh`(含流式两套位宽);综合口径见 dsp_ip `docs/synthesis.md`。
+
 ### 12. 方向候选(2026-10-28 记,未调研,下次询问时重新评估)
 最近几轮都在两个引擎互相对照的精度上,增量越来越小。以下是更可能改变结论或使用体验的方向,只是判断,没量过:
 - ~~**对外校验**~~(2026-10-30 做了 serdespy 那一半:信道与三条链路的 SER,`tools/external_check.py`、`cairn/external-validation.md`;发现冲激截断的偏差,记为 P1 #42,2026-10-30 已修)。余下:IEEE 802.3 COM 的参考信道 / 参考结果(本环境经代理取不到 IEEE 的表格与信道文件)、SerDes PyBERT(PyPI 上的 `pybert` 是同名 NLP 包,源码仓经代理 403)、公开的测量数据。
