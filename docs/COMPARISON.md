@@ -67,7 +67,7 @@
 7. **三档 mixed-signal 包络** —— NRZ 16 / PAM4 32 默认、舒适 24/28、极限 28/32(2026-10-30 冲激按 ISI 尾巴截断后重新标定,此前 24/32、30/36),
    PAM6 / PAM8 舒适 30/24、极限 32.5/33(2026-10-17),30 GBd 硬顶,经眼图扫描标定的产品级边界。
 8. **unrolled DFE tap-1** —— speculative/展开首抽头,满足判决延迟约束。
-9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、1015 个测试全通过(2026-11-05:1459 项,1456 通过、3 项跳过)、
+9. **工程质量** —— numba JIT 热核(`HALO_NO_JIT=1` fallback)、1015 个测试全通过(2026-11-06:1461 项,1458 通过、3 项跳过)、
    双引擎交叉校验、bit-true 定点路径。
 
 ---
@@ -157,5 +157,5 @@ LPO 模块驱动器 / TIA 的 CTLE 也已建(示例 32:均衡放在光电二极�
 | 无 IBIS-AMI / COM 接口 | `io/ami.py`:AmiModel/IbisAmiModel/NativeCom + 引擎 Tx/Rx 槽 | `23_ami_com.py` | +8 |
 | 时域无 FEXT/NEXT 串扰 | `channel/crosstalk.py`:XtalkAggressor,双引擎共用 | `24_crosstalk.py` | +6 |
 
-全部 1015 测试通过(2026-11-05:1459 项,1456 通过、3 跳过)。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
+全部 1015 测试通过(2026-11-06:1461 项,1458 通过、3 跳过)。IBIS-AMI 与官方 COM 的实际后端为可选依赖,
 接口与原生参考实现无外部依赖、始终可用。
