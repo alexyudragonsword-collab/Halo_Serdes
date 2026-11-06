@@ -68,7 +68,11 @@ def ti_mismatch_sigma(cfg: LinkConfig, x2: float, xd2: float) -> float:
     n_lanes-th sample, drawn once per link -- so this is the ensemble over
     the draws, not one link's: one draw's slicer error is a mixture of
     n_lanes shifts, and the time engine scatters around this from seed to
-    seed. Mode "off" only: ``calibrated`` zeroes offset and gain, a background
+    seed. For one decision the ensemble is exact (a Gaussian shift averaged
+    over the draws is a Gaussian convolution); what the time engine adds is
+    across symbols: with the DFE on, the fixed shifts make its error
+    propagation differ, and the TI-mismatch preset pools to 1.34x below this
+    read over 512 seeds (1.06x with the DFE off). Mode "off" only: ``calibrated`` zeroes offset and gain, a background
     loop with ``mu_skew`` > 0 trims skew, and the calibration loops'
     residuals are left out (cairn/统计引擎非线性项.md)."""
     acfg = cfg.rx.adc
