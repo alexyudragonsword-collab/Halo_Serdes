@@ -32,6 +32,7 @@
 - `adc_dsp_loop` 的流式形式：它是逐码元改自己系数的闭环（15 个 FFE 权重的 LMS、PR 系数、MM 鉴相器 + 环路滤波 + LAT 块队列、后台 ADC 校准与每路延时微调），逐位精确需要单独设计（ROADMAP P3 #13）。
 
 ### 踩到的
+- `sliding_stream.sv` 的窗口移位先在循环里 `wd[i] <= wd[i-1]`，再在循环后 `wd[K+1] <= newd` 覆盖同一元素（两个 NBA，后者胜）：Icarus 12 / 14、Verilator 5.020 / 5.053 都对，Verilator 5.032 有 8 个判决错。改成每个元素只赋一次（`wd[i] <= (step && i == K + 1) ? newd : wd[i-1]`），五个仿真器全对。
 - yosys 0.70 用 `hierarchy -chparam` 推导一个在 generate 循环里例化子模块的顶层时断言失败（`rtlil_bufnorm.cc:679`）；dsp_ip 侧对这个 IP 改用 `chparam -set` + `rename -top`。
 ## [未发布] — 流式 FFE + DFE 的判决环展开(LOOKAHEAD)
 

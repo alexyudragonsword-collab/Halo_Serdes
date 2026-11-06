@@ -104,9 +104,12 @@ module sliding_pass #(
                 out_v     <= wv[WN-1];
                 out_dec   <= wd[WN-1];
                 for (int i = WN - 1; i > 0; i--) begin
-                    wv[i] <= wv[i-1]; wd[i] <= wd[i-1]; wq[i] <= wq[i-1]; wl[i] <= wl[i-1];
+                    wv[i] <= wv[i-1]; wq[i] <= wq[i-1]; wl[i] <= wl[i-1];
+                    // k moves from w[K] to w[K+1], with the step's decision: one write per
+                    // element (a second NBA to wd[K+1] after the loop is what Verilator 5.032
+                    // mis-orders)
+                    wd[i] <= (step && i == K + 1) ? newd : wd[i-1];
                 end
-                if (step) wd[K+1] <= newd;                    // k moves from w[K] to w[K+1]
                 wv[0] <= in_v;
                 wd[0] <= in_dec;
                 wq[0] <= in_valid;

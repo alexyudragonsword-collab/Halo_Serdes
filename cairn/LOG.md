@@ -9,6 +9,7 @@
 - **被推翻的判断**:"原向量足够检验" —— 三个原集合都抓不到平局 / 边界变体(Viterbi 16 状态零平局;滑窗从不出现等于基准、从不在块尾翻转;DFSE K=1 时最旧位即最新位)。补 `vit_tie`、`mlsd_tie`、`dfse_k2`,变体在新集合上 1–363 个错。
 - 综合(dsp_ip,布线后):滑窗 285 MHz,DFSE 160 MHz(平方在环里),Viterbi 综合中。
 - `adc_dsp_loop` 没做:逐码元自适应的闭环,需单独设计;记 ROADMAP P3 #13。
+- 更正(同日):dsp_ip CI 的发行版 Verilator 5.032 上滑窗流式错 8 个判决——同一数组元素两个 NBA(循环移位后再覆盖 `wd[K+1]`)被它排错;改成每元素一次赋值,五个仿真器全对。
 
 ## 2026-11-06 · 流式判决环展开 LOOKAHEAD=1(feat/rtl-stream-loop-unroll)
 
