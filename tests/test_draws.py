@@ -81,9 +81,8 @@ def test_per_link_draws_follow_the_seed_not_the_run(mismatch, monkeypatch):
     tags = []
     real = td.per_link_rng
     monkeypatch.setattr(td, "per_link_rng", lambda cfg, tag: (tags.append(tag), real(cfg, tag))[1])
-    from tests.test_dfe_unrolled import _cfg
-    from halo_serdes.config.schema import DfeConfig
-
-    run_time_link(_cfg(DfeConfig(n_taps=2, tap1_mode="unrolled", comparator_offset_sigma=0.01),
-                       n_symbols=3000))
+    ms = cb.load_preset("NRZ 16G mixed-signal")
+    ms = dataclasses.replace(ms, sim=dataclasses.replace(ms.sim, n_symbols=3000), rx=dataclasses.replace(
+        ms.rx, dfe=dataclasses.replace(ms.rx.dfe, tap1_mode="unrolled", comparator_offset_sigma=0.01)))
+    run_time_link(ms)
     assert td._CMP_DRAW in tags

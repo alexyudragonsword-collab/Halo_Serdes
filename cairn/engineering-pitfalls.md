@@ -782,6 +782,8 @@ nojit 腿先红)。要对齐就取全卷积的 `[n//2 : n//2 + n]`(`statistical.
 
 **测试文件之间不要 `from tests.xxx import`。** `tests/` 不是包,CI 用裸 `pytest -q`(cwd 不在 `sys.path`),
 本地 `python -m pytest` 却能过 —— 2026-10-15 PR #91 四个测试 job 在收集阶段就退出码 2。要共用夹具就复制一份或放进 `conftest.py`。
+  (2026-11-06 PR #146 又踩一次:函数体里的 `from tests.test_dfe_unrolled import _cfg`,收集阶段不报、跑到才 ModuleNotFoundError,本地全量 1457 passed 没拦住。
+  本地核法:`cd /tmp && python -m pytest --rootdir=<repo> <repo>/tests/<file>`,或 `grep -rn "from tests\." tests/`。)
 - **冻结环路不是"同一相位"的公平参照**(2026-10-24,P3 #13):把 bang-bang 环路冻在偏移相位上跑时域,DFE 抽头与电平在那个相位重新自适应
   (NRZ 16G +6 处 w1 0.344 对锁定点 0.386),读数比自由运行在同一相位上乐观 3.8×,其中 1.9× 是参照本身。要比"同一相位",把抽头与电平也冻在
   锁定点光标上 —— 这才等于统计引擎的持有曲线(10 % 内)。
