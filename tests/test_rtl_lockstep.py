@@ -194,3 +194,41 @@ def test_rtl_stream_lockstep_bit_exact(tmp_path):
     r2 = subprocess.run(["vvp", str(sim), f"+vecdir={vec}"], cwd=REPO, capture_output=True,
                         text=True)
     assert "STREAM LOCKSTEP FAIL" in r2.stdout and r2.returncode != 0
+
+
+def test_rtl_stream_lookahead_and_bubbles_bit_exact(tmp_path):
+    """LOOKAHEAD = 1 (the previous decision speculated, the loop reduced to a pick) gives the
+    same stream as LOOKAHEAD = 0, on all four targets, with in_valid every clock and with
+    idle clocks between codes (GAPS = 1; stage 2 then sees the history either just before or
+    just after stage 3's decision). Non-vacuous: a stage 2 that always assumes the previous
+    decision is in flight passes without bubbles and must FAIL with them."""
+    vec = tmp_path / "vectors"
+    subprocess.run(["python", "rtl/gen_vectors.py", str(vec)],
+                   cwd=REPO, check=True, capture_output=True, text=True)
+
+    def run(src, d, la, gaps, widths=None):
+        params = [f"-Ptb_ffe_dfe_stream.{k}={v}" for k, v in (widths or {}).items()]
+        params += [f"-Ptb_ffe_dfe_stream.LOOKAHEAD={la}", f"-Ptb_ffe_dfe_stream.GAPS={gaps}"]
+        sim = tmp_path / f"la{la}_g{gaps}_{d.name}_{len(params)}.vvp"
+        subprocess.run(["iverilog", "-g2012", *params, "-o", str(sim), "-I", str(d),
+                        str(src), "rtl/tb_ffe_dfe_stream.sv"],
+                       cwd=REPO, check=True, capture_output=True, text=True)
+        return subprocess.run(["vvp", str(sim), f"+vecdir={d}"], cwd=REPO,
+                              capture_output=True, text=True)
+
+    src = REPO / "rtl" / "ffe_dfe_stream.sv"
+    for d in (vec, vec / "pr", vec / "pr4", vec / "pre"):
+        for la, gaps, widths in ((1, 0, None), (1, 0, NUMERIC_WIDTHS), (0, 1, None),
+                                 (1, 1, NUMERIC_WIDTHS)):
+            r = run(src, d, la, gaps, widths)
+            assert "STREAM LOCKSTEP PASS" in r.stdout and r.returncode == 0, \
+                (d.name, la, gaps, r.stdout + r.stderr)
+
+    text = src.read_text()
+    good = "hx[L] = v2 ? xl_h[L-1] : xl_h[L];"
+    assert good in text
+    mut = tmp_path / "ffe_dfe_stream_mut.sv"
+    mut.write_text(text.replace(good, "hx[L] = xl_h[L-1];"))
+    assert "STREAM LOCKSTEP PASS" in run(mut, vec / "pr", 1, 0).stdout
+    r = run(mut, vec / "pr", 1, 1)
+    assert "STREAM LOCKSTEP FAIL" in r.stdout and r.returncode != 0

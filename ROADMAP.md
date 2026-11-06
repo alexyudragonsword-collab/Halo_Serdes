@@ -403,8 +403,11 @@ LPO 预设 53 GBd 2.95 / 5.92 / 17.35 dB。GUI TDECQ 研究对 PAM6 / PAM8 放�
 第一个流式、可综合的形式已加:`rtl/ffe_dfe_stream.sv`(FFE + DFE + 判决器,四种目标,两套位宽下与金向量逐位同,`tests/test_rtl_lockstep.py::test_rtl_stream_lockstep_bit_exact`)。
 外部(dsp_ip,yosys 0.70 + NanGate45,无线网负载,estimate)量得每码元一拍的时钟周期(含触发器开销 154 ps):delta 3.98 ns、两到三个受控光标 4.01 / 4.15 ns、预编码 1 + D 4.99 ns,面积 16–29 k µm²;
 关键路径是一拍的判决环(历史寄存器 → 取预乘的反馈项 → 加、舍入、饱和 → 判决)。
+**ABC 数偏悲观**:ABC 不插缓冲,环上一个扇出 63 的 NOR4 独占约 1.6 ns;dsp_ip `tools/pnr.py`(OpenROAD,`repair_design` 插缓冲,全局布线后)量得 delta 454 MHz、两 / 三个受控光标 389 / 355 MHz、预编码 326 MHz。
+判决环已可对上一个判决展开(`LOOKAHEAD=1`,默认 0;位精确同,含空拍流 `GAPS=1`):布线后 delta 520 MHz(+15 %)、预编码 348 MHz(+7 %),
+两 / 三个受控光标反而 318 / 335 MHz(−18 / −6 %)——它们的受控光标与 DFE 抽头还用 x[j−2]、x[j−3],第 2 级仍是一拍的环,又多了 NL+1 份算术。
 
-- [ ] 判决环对上一个判决展开(四个候选并行算、按上一个判决选),环上只剩一个选择器;位精确不变。
+- [ ] 受控光标目标:对 x[j−1]、x[j−2] 两级推测(NL² 份)或把 x[j−2] 项挪出第 2 级;delta / 预编码:第 2 级已是纯前馈,可再切一拍。
 - [ ] 其余四个模型(`adc_dsp_loop`、三种 MLSD)的流式形式;CDR 环与 LMS 更新同样是逐码元的反馈环。
 - 复现:`bash rtl/run_lockstep.sh`(含流式两套位宽);综合口径见 dsp_ip `docs/synthesis.md`。
 

@@ -6,6 +6,19 @@
 
 ---
 
+## [未发布] — 流式 FFE + DFE 的判决环展开(LOOKAHEAD)
+
+### 新增
+- `ffe_dfe_stream.sv` 新参数 `LOOKAHEAD`(默认 0,与之前逐位同、门级同)。`LOOKAHEAD=1`:对上一个判决推测,第 2 级为它的 NL 个取值加"没有上一个判决"各算一份判决器结果并寄存,第 3 级按刚寄存的判决挑一份;环上只剩选择(预编码再加一步解码),多一拍延迟。
+- `tb_ffe_dfe_stream.sv` 新参数 `LOOKAHEAD`、`GAPS`(`GAPS=1`:每 5 个码后空 1 拍、每 13 个后空 3 拍)。四组向量 × 两种形式 × 有 / 无空拍全逐位同(Icarus 12、Verilator 5.020 / 5.053)。
+  新测试 `test_rtl_stream_lookahead_and_bubbles_bit_exact`:含一个"总假设上一个判决在途"的变体,无空拍时通过、有空拍时必须 FAIL(实测 545 个错)。
+
+### 量到的(外部 dsp_ip:yosys 0.70 + NanGate45 综合,OpenROAD 布局、CTS、全局布线;estimate)
+- ABC 的数偏悲观:不插缓冲,环上一个扇出 63 的 NOR4 独占约 1.6 ns。布线后 `LOOKAHEAD=0`:delta 454、受控光标 389 / 355、预编码 326 MHz(ABC 口径 242 / 240 / 232 / 194 MHz)。
+- `LOOKAHEAD=1` 布线后:delta 520 MHz(+15 %)、预编码 348 MHz(+7 %);受控光标 318 / 335 MHz(−18 / −6 %),面积 +7…+22 %。受控光标的第 2 级仍用 x[j−2]、x[j−3],还是一拍的环;按目标选用(ROADMAP P3 #13)。
+
+---
+
 ## [未发布] — 可综合的流式 FFE + DFE + 判决器
 
 ### 新增
