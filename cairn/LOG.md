@@ -14,7 +14,7 @@
 - #45:"有音时因子不乘"在这点不对(乘了 0.93)。用时域自己的(码型类,相对数据边沿的相位)查无音链的误码表 0.79×、打乱 0.56×、引擎 0.40×:
   2.5× = 边缘分布 1.40 × 码型-相位相关 1.41 × 误码表 1.27。静态推锁定点、链上加恒定漂移都不出这份相关;要建是音周期驱动的链,未做。§43 末。
 - 坑:有音时"按时域相位轨迹"要减发端边沿的移动(先前 0.48× 是没减的读数,更正 0.56×);`y_slicer` 默认只留 2 万码元,探针要调大 `SLICER_CAPTURE_SYMBOLS`。
-- 验证:VERIFY2
+- 验证:全量 1457 passed / 3 skipped;ruff;stat_noise / timedomain 编 .so 删 .py、`HALO_NO_JIT=1` test_draws + test_stat_adc_nonlinear 7 passed。
 
 ## 2026-11-05 · 定点闭环流式;#45 重量;每链路抽取改独立流;文档漂移 + Draw spread 截图(feat/fixed-stream-p45-drift)
 
