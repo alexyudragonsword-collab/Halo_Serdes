@@ -30,6 +30,12 @@ for d in "$VEC" "$VEC/pr" "$VEC/pr4" "$VEC/pre"; do   # delta, 1 + aD + bD^2, + 
         -Ptb_ffe_dfe_stream.WD_W=10 -Ptb_ffe_dfe_stream.LV_W=12 -Ptb_ffe_dfe_stream.PR_W=10 \
         -o "$WORK/stream_n.vvp" -I "$d" ffe_dfe_stream.sv tb_ffe_dfe_stream.sv
     vvp "$WORK/stream_n.vvp" +vecdir="$d"
+    # the decision loop unrolled one level (LOOKAHEAD=1), streamed with idle clocks (GAPS=1)
+    iverilog -g2012 -Ptb_ffe_dfe_stream.CODE_W=8 -Ptb_ffe_dfe_stream.WF_W=10 \
+        -Ptb_ffe_dfe_stream.WD_W=10 -Ptb_ffe_dfe_stream.LV_W=12 -Ptb_ffe_dfe_stream.PR_W=10 \
+        -Ptb_ffe_dfe_stream.LOOKAHEAD=1 -Ptb_ffe_dfe_stream.GAPS=1 \
+        -o "$WORK/stream_la.vvp" -I "$d" ffe_dfe_stream.sv tb_ffe_dfe_stream.sv
+    vvp "$WORK/stream_la.vvp" +vecdir="$d"
 done
 for d in "$VEC" "$VEC/pr" "$VEC/pr4" "$VEC/pre" "$VEC/cal"; do   # delta, 1 + aD + bD^2, + cD^3, precoded 1 + D, ADC calibration
     iverilog -g2012 -o "$WORK/loop.vvp" -I "$d" adc_dsp_loop.sv tb_adc_dsp_loop.sv
