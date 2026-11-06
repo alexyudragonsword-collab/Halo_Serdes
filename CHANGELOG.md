@@ -24,9 +24,9 @@
 - `tests/test_rtl_lockstep.py` 三个新测试，各含只在新向量集上才抓得到的变体。
 
 ### 量到的（外部 dsp_ip：yosys 0.70 + NanGate45，OpenROAD 布线后；estimate）
-- 滑窗 MLSD：ABC 4243 ps（227 MHz），布线后 285 MHz，34.3 k µm²。
+- 滑窗 MLSD（每元素一次赋值的版本）：ABC 4084 ps（236 MHz），布线后 278 MHz，33.9 k µm²。
 - DFSE：ABC 8918 ps（110 MHz），布线后 160 MHz，41.5 k µm²（平方在环里）。
-- Viterbi：综合中，数字随后补。
+- Viterbi：16 状态的加比选在本机 ABC 跑不完（`sopb` 50 分钟、`nf` 40 分钟都超时），没有数字；记 ROADMAP。
 
 ### 没做
 - `adc_dsp_loop` 的流式形式：它是逐码元改自己系数的闭环（15 个 FFE 权重的 LMS、PR 系数、MM 鉴相器 + 环路滤波 + LAT 块队列、后台 ADC 校准与每路延时微调），逐位精确需要单独设计（ROADMAP P3 #13）。
