@@ -401,7 +401,7 @@ LPO 预设 53 GBd 2.95 / 5.92 / 17.35 dB。GUI TDECQ 研究对 PAM6 / PAM8 放�
 
 `rtl/` 里的五个模型都是整块向量的行为模型(`always_comb` 遍历整段 / `task`),只能 lockstep 不能综合。
 第一个流式、可综合的形式已加:`rtl/ffe_dfe_stream.sv`(FFE + DFE + 判决器,四种目标,两套位宽下与金向量逐位同,`tests/test_rtl_lockstep.py::test_rtl_stream_lockstep_bit_exact`)。
-外部(dsp_ip,yosys 0.70 + NanGate45,无线网负载,estimate)量得每码元一拍时:delta 3.83 ns、两到三个受控光标 4.00 / 4.10 ns、预编码 1 + D 4.72 ns,面积 16–29 k µm²;
+外部(dsp_ip,yosys 0.70 + NanGate45,无线网负载,estimate)量得每码元一拍的时钟周期(含触发器开销 154 ps):delta 3.98 ns、两到三个受控光标 4.01 / 4.15 ns、预编码 1 + D 4.99 ns,面积 16–29 k µm²;
 关键路径是一拍的判决环(历史寄存器 → 取预乘的反馈项 → 加、舍入、饱和 → 判决)。
 
 - [ ] 判决环对上一个判决展开(四个候选并行算、按上一个判决选),环上只剩一个选择器;位精确不变。

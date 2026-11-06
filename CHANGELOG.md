@@ -14,7 +14,7 @@
   - FFE 的积与和各一级寄存器；DFE / 受控光标项按电平预乘并寄存，所以一拍的判决环里没有乘法器。
   - 四组向量（delta、1 + aD + bD²、+ cD³、预编码 1 + D）在存储位宽和数值位宽（ADC Q8.0、权重 Q10.8、12 位电平）下都逐位同；Icarus 12 与 Verilator 5.020 都过。
   - `run_lockstep.sh` 与 `tests/test_rtl_lockstep.py` 跑它，含改一个金值必 FAIL。
-- 综合（外部 dsp_ip，yosys 0.70 + NanGate45，estimate）：delta 3.83 ns、受控光标 4.00 / 4.10 ns、预编码 4.72 ns。关键路径是判决环（ROADMAP P3 #13）。
+- 综合（外部 dsp_ip，yosys 0.70 + NanGate45，estimate；每码元一拍的时钟周期 = ABC 关键路径 + 触发器 t_cq + t_setup 154 ps）：delta 3.98 ns、受控光标 4.01 / 4.15 ns、预编码 4.99 ns。关键路径是判决环（ROADMAP P3 #13）。
 
 ### 踩到的
 - 三元式 `c ? $signed(a) * b : '0` 整个变成无符号，乘法跟着变无符号（delta / PR 两种目标全错，预编码因 DFE 权重为 0 而侥幸通过），改成 `if`。
