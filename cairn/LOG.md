@@ -14,7 +14,7 @@
   随库七个文件不动(`multiplier is None`)。测试用的倍频文件按 issue 写明的规则手写 —— pll_simulator 的实现不在本会话可见范围,没对它的真文件跑过。
 - ③ 文档里的 commit 引用改为 `63d1012`(原 `67fe1c7`,squash 前);七个数据文件的 `source` 行等下次重新生成。"两者树相同"是对方的说法,未核。
 - 坑一条:倍频 / 分频不是换载频;说明性的句子也要拿数核。`cairn/engineering-pitfalls.md` 时钟剖面类。
-- 验证:时钟剖面 / 表单 / 文档测试通过,ruff;`tx/clock.py` 与 `config/schema.py` 编 .so 删 .py、`HALO_NO_JIT=1` 相关 145 passed。
+- 验证:全量 1471 passed / 3 skipped;ruff;`tx/clock.py` 与 `config/schema.py` 编 .so 删 .py、`HALO_NO_JIT=1` 相关 145 passed。
 
 ## 2026-11-06 · 可综合的流式 FFE + DFE + 判决器(feat/rtl-ffe-dfe-stream)
 
