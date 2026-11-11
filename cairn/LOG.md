@@ -15,6 +15,10 @@
 - ③ 文档里的 commit 引用改为 `63d1012`(原 `67fe1c7`,squash 前);七个数据文件的 `source` 行等下次重新生成。"两者树相同"是对方的说法,未核。
 - 坑一条:倍频 / 分频不是换载频;说明性的句子也要拿数核。`cairn/engineering-pitfalls.md` 时钟剖面类。
 - 验证:全量 1471 passed / 3 skipped;ruff;`tx/clock.py` 与 `config/schema.py` 编 .so 删 .py、`HALO_NO_JIT=1` 相关 145 passed。
+- 生产方回复(issue #149,对方的说法、本会话未重跑):pll_simulator@8019f13 真实生成的 60 个文件(7 个未倍频、53 个倍频,N = 2–32)用 #150 头 1466f5b 的
+  读取器读,与它自己的读取器逐值 0 处不符,`save` → `load` 一致;`f_in × N` 与 `f0` 精确相等;`multiply_by` 总写整数;`git diff 67fe1c7 63d1012` 为空。
+  上面"没对真文件跑过 / 未核"两处由此补上。一个不对称留在对方:它的手写读取器读不了我们 `save` 的块格式杂散行,双方都不改。PR 改为合并即关 issue。
+- CI(PR #150,1466f5b):test 3.10 / 3.11 × jit / nojit 17–30 min、examples 17 min、examples-full 37 min、rtl-lockstep 1 min,全绿。
 
 ## 2026-11-06 · 可综合的流式 FFE + DFE + 判决器(feat/rtl-ffe-dfe-stream)
 
