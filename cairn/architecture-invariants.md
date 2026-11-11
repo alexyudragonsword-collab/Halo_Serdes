@@ -197,7 +197,8 @@ SNR 高估几十倍、并集退化成简单求和。改为按全部噪声抽样�
 ### 1b. 剖面文件是 pll_simulator 与本库之间唯一的接缝(铁律 1 的推论)
 
 **规则**:PLL 的时钟进入链路只能以一份**时钟相噪剖面文件**(`f0_hz`、`f_hz[]`、
-`l_dbc_hz[]`、`spurs[]`、`source`,格式定义在 `docs/clock_profile.md`)的形式,
+`l_dbc_hz[]`、`spurs[]`、`source`,格式定义在 `docs/clock_profile.md`;2026-11-11 起倍频时钟的文件另带
+`multiply_by` / `f_in_hz` / `floor_dbchz` / `spur_rejection_db` 四个键,全有或全无,只作元数据 —— issue #149)的形式,
 由 `tx.clock.kind: profile` + `tx.clock.file` 指向。两个库在 import 层面互不依赖:
 pllsim 写文件,本库读文件;本库只 vendor 了 `synth_from_psd` 与 `integrate_pn`
 两个纯 numpy 函数(`src/halo_serdes/vendor/pllsim/`,`tools/vendor_check.py` 守着)。

@@ -176,6 +176,7 @@ def test_every_bundled_profile_loads_and_is_what_the_format_says(path):
     assert np.all(np.diff(prof.f_hz) > 0)
     assert prof.f_hz.size == prof.l_dbc_hz.size
     assert "pllsim" in prof.source and "commit" in prof.source
+    assert prof.multiplier is None              # a PLL's own output, no multiplier
     for f_s, dbc in prof.spurs:
         assert 0 < f_s < prof.f0_hz and dbc < 0
 
@@ -454,3 +455,106 @@ def test_save_is_whole_or_nothing(tmp_path, monkeypatch):
     assert path.read_text() == old
     assert [q.name for q in tmp_path.iterdir()] == ["p.yaml"]
     assert ClockProfile.load(path).f0_hz == 1e9
+
+
+# ------------------------------------- multiplied clocks and the f0 override (issue #149)
+
+WU19 = REPO / "data" / "clock_profiles" / "bench_wu19_spll_frac_52m_6p253g.yaml"
+
+
+def _multiplied_file(path, n=10, floor=-160.0, rejection=40.0, **changes):
+    """wu19 behind an integer x n multiplier, written as pll_simulator's
+    ``write_clock_profile(multiply_by=n)`` states it (issue #149): N^2 L plus
+    the floor up to f_in / 2, the floor alone above, every spur up
+    20 log10 N, the harmonic leakage one line at f_in. By hand, not through
+    ``save``, so the reader is checked against the format and not itself."""
+    import yaml
+
+    pll = ClockProfile.load(WU19)
+    f = np.geomspace(100.0, n * pll.f0_hz / 2.0, 400)
+    lin = n * n * 10.0 ** (np.interp(np.log10(f), np.log10(pll.f_hz), pll.l_dbc_hz) / 10.0)
+    l_dbc = 10.0 * np.log10(np.where(f <= pll.f0_hz / 2.0, lin, 0.0) + 10.0 ** (floor / 10.0))
+    data = {"f0_hz": n * pll.f0_hz, "f_hz": f.tolist(), "l_dbc_hz": l_dbc.tolist(),
+            "spurs": [{"f_hz": fs, "dbc": d + 20.0 * math.log10(n)} for fs, d in pll.spurs]
+            + [{"f_hz": pll.f0_hz, "dbc": -rejection}],
+            "source": "test: wu19 x%d" % n,
+            "multiply_by": n, "f_in_hz": pll.f0_hz, "floor_dbchz": floor,
+            "spur_rejection_db": rejection}
+    data.update(changes)
+    for k in [k for k, v in data.items() if v is None]:
+        del data[k]
+    path.write_text(yaml.safe_dump(data, sort_keys=False))
+    return path
+
+
+def test_the_f0_override_is_another_clock_not_this_one_multiplied(tmp_path):
+    """Overriding f0 keeps the dBc/Hz: right for another clock specified that
+    way, N times too little jitter for this clock behind a x N multiplier --
+    there the phase is multiplied with the carrier and the seconds stay. Until
+    2026-11-11 the docs named the multiplied clock as the override's use."""
+    pll = ClockProfile.load(WU19)
+    j = pll.rms_jitter_s(1e4, 1e7)
+    assert j == pytest.approx(80.85e-15, rel=1e-3)
+    assert ClockProfile.load(WU19, f0_hz=10 * pll.f0_hz).rms_jitter_s(1e4, 1e7) == pytest.approx(j / 10)
+    assert ClockProfile.load(WU19, f0_hz=pll.f0_hz / 2).rms_jitter_s(1e4, 1e7) == pytest.approx(2 * j)
+    # the multiplied clock's own profile: the same seconds (the -160 dBc/Hz
+    # floor adds 2e-5 of them in this band)
+    x10 = ClockProfile.load(_multiplied_file(tmp_path / "x10.yaml"))
+    assert x10.f0_hz == pytest.approx(10 * pll.f0_hz)
+    assert x10.rms_jitter_s(1e4, 1e7) == pytest.approx(j, rel=1e-3)
+
+
+def test_a_multiplied_profile_loads_keeps_its_four_keys_and_runs(tmp_path):
+    from halo_serdes.tx.clock import ClockMultiplier
+
+    path = _multiplied_file(tmp_path / "x10.yaml")
+    prof = ClockProfile.load(path)
+    pll = ClockProfile.load(WU19)
+    assert pll.multiplier is None
+    assert prof.multiplier == ClockMultiplier(10, pll.f0_hz, -160.0, 40.0)
+    assert prof.multiplier.pll_band_hz == pll.f0_hz / 2.0
+    assert isinstance(prof.multiplier.multiply_by, int)
+    # the curve is used as it stands: above f_in / 2 it is the floor
+    assert np.allclose(prof.l_dbc_hz[prof.f_hz > prof.multiplier.pll_band_hz], -160.0)
+    assert (pll.f0_hz, -40.0) in prof.spurs
+    # save writes them back; a profile without them writes none
+    again = ClockProfile.load(prof.save(tmp_path / "again.yaml"))
+    assert again.multiplier == prof.multiplier and np.allclose(again.l_dbc_hz, prof.l_dbc_hz)
+    assert "multiply_by" not in pll.save(tmp_path / "pll.yaml").read_text()
+    # a dB shift of the whole clock moves the floor and the leakage line with it
+    up = prof.scaled_to_rms(2.0 * prof.rms_jitter_s(1e4, 1e7), 1e4, 1e7).multiplier
+    assert up.floor_dbchz == pytest.approx(-160.0 + 20.0 * math.log10(2.0))
+    assert up.spur_rejection_db == pytest.approx(40.0 - 20.0 * math.log10(2.0))
+    assert (up.multiply_by, up.f_in_hz) == (10, pll.f0_hz)
+    # an override is another clock: the file's own carrier is what f_in * N is checked against
+    assert ClockProfile.load(path, f0_hz=28e9).multiplier == prof.multiplier
+    # and the transmit path takes it like any profile
+    cfg = LinkConfig(symbol_rate=FB, tx=TxConfig(clock=ClockConfig(kind="profile", file=str(path))))
+    jit = edge_jitter_seq(4096, cfg, np.random.default_rng(1))
+    assert np.all(np.isfinite(jit)) and jit.std() > 0
+
+
+@pytest.mark.parametrize("changes,frag", [
+    ({"floor_dbchz": None}, "carries all of"),
+    ({"multiply_by": None, "f_in_hz": None, "floor_dbchz": None}, "carries all of"),
+    ({"multiply_by": 1}, "integer >= 2"),
+    ({"multiply_by": 2.5}, "integer >= 2"),
+    ({"multiply_by": True}, "integer >= 2"),
+    ({"multiply_by": 8}, "is not the file's"),
+    ({"f_in_hz": 6.0e9}, "is not the file's"),
+    ({"f_in_hz": -1.0}, "f_in_hz must be > 0"),
+    ({"floor_dbchz": "low"}, "floor_dbchz is a finite number"),
+    ({"spur_rejection_db": float("nan")}, "spur_rejection_db is a finite number"),
+])
+def test_a_multiplied_profile_that_does_not_add_up_is_refused(tmp_path, changes, frag):
+    path = _multiplied_file(tmp_path / "bad.yaml", **changes)
+    with pytest.raises(ValueError, match=frag) as exc:
+        ClockProfile.load(path)
+    assert "bad.yaml" in str(exc.value)
+
+
+def test_the_form_says_what_the_override_is_not_for():
+    from halo_serdes_app import form_meta
+
+    for path in ("tx.clock.f0_hz", "rx.clock.f0_hz"):
+        assert "multiplied or divided" in form_meta.HELP[path]

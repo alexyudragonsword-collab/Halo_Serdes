@@ -3,6 +3,23 @@
 本文件按倒序记录实质性进展 —— 最新条目在本行正下方。每条保持简短(摘要+指针),
 结论沉淀进 `cairn/<topic>.md`。
 
+## 2026-11-11 · issue #149(pll_simulator):f0 覆盖的用途写错;接受倍频剖面的四个键(feat/clock-profile-multiplied)
+
+- 生产方 pll_simulator 用我们的 `ClockProfile` 核对消费侧后提的 issue,三条;用户决定全做、一个 PR、在 issue 里回复。
+- ① `f0_hz` 覆盖:文档 / docstring 说可用于"分频或倍频后的时钟",物理上不成立(曲线要动 20·log10 N、秒数不变)。本地复现 wu19 10 kHz–10 MHz
+  80.85 fs → 覆盖 ×10 读 8.09 fs。代码不改;`docs/clock_profile.md`、`tx/clock.py`、`ClockConfig` docstring、USAGE 改为"另一个时钟、同样的 dBc/Hz",
+  表单两个 f0 字段加提示(共用 schema,桌面与手机同时有),测试钉住三个数。
+- ② 倍频剖面的四个键:接受。`ClockMultiplier` 挂在 `ClockProfile.multiplier` 上,只作元数据(曲线与杂散已是倍频后的,不再套一次);
+  校验:全有或全无、`multiply_by` 整数 ≥ 2、`f_in_hz × N` = 文件自己的 `f0_hz`(1e-6);`save` 写回,`scaled_to_rms` 连底噪 / 泄漏一起平移。
+  随库七个文件不动(`multiplier is None`)。测试用的倍频文件按 issue 写明的规则手写 —— pll_simulator 的实现不在本会话可见范围,没对它的真文件跑过。
+- ③ 文档里的 commit 引用改为 `63d1012`(原 `67fe1c7`,squash 前);七个数据文件的 `source` 行等下次重新生成。"两者树相同"是对方的说法,未核。
+- 坑一条:倍频 / 分频不是换载频;说明性的句子也要拿数核。`cairn/engineering-pitfalls.md` 时钟剖面类。
+- 验证:全量 1471 passed / 3 skipped;ruff;`tx/clock.py` 与 `config/schema.py` 编 .so 删 .py、`HALO_NO_JIT=1` 相关 145 passed。
+- 生产方回复(issue #149,对方的说法、本会话未重跑):pll_simulator@8019f13 真实生成的 60 个文件(7 个未倍频、53 个倍频,N = 2–32)用 #150 头 1466f5b 的
+  读取器读,与它自己的读取器逐值 0 处不符,`save` → `load` 一致;`f_in × N` 与 `f0` 精确相等;`multiply_by` 总写整数;`git diff 67fe1c7 63d1012` 为空。
+  上面"没对真文件跑过 / 未核"两处由此补上。一个不对称留在对方:它的手写读取器读不了我们 `save` 的块格式杂散行,双方都不改。PR 改为合并即关 issue。
+- CI(PR #150,1466f5b):test 3.10 / 3.11 × jit / nojit 17–30 min、examples 17 min、examples-full 37 min、rtl-lockstep 1 min,全绿。
+
 ## 2026-11-06 · 可综合的流式 FFE + DFE + 判决器(feat/rtl-ffe-dfe-stream)
 
 - 应 dsp_ip 的需要(它要给 Halo 模块出综合估计,整块行为模型做不了):`rtl/ffe_dfe_stream.sv`,四种目标、两套位宽、两个仿真器全逐位同。

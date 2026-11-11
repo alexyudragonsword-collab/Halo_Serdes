@@ -365,7 +365,8 @@ tx:
   clock:
     kind: profile
     file: data/clock_profiles/bench_wu19_spll_frac_52m_6p253g.yaml
-    # f0_hz: 6.253e9     # 可选:覆盖文件里的载波(只改相位→秒的换算,不改曲线)
+    # f0_hz: 6.253e9     # 可选:覆盖文件里的载波(只改相位→秒的换算,不改曲线)。只用于"另一个时钟、同样的 dBc/Hz";
+    #                    # 倍频 / 分频后的时钟不能这样做(曲线也要动 20·log10 N,只改载波会差 N 倍),读倍频剖面 —— docs/clock_profile.md
     # sj_ui: 0.02        # 三项白噪抖动仍可叠加在剖面之上(例如做 JTOL)
 ```
 
