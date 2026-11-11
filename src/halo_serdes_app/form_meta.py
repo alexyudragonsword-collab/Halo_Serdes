@@ -64,11 +64,17 @@ HELP: dict[str, str] = {
     "tx.noise_rms": "White noise added at the transmitter, per UI.",
     "tx.drv_nl": "Driver compression model; each one has its own parameter below.",
     "tx.clock.kind": "white: random jitter only. profile: a measured phase-noise profile.",
+    "tx.clock.f0_hz": ("Carrier the profile's dBc/Hz is read against; empty takes the file's. For another "
+                       "clock with the same dBc/Hz only: a multiplied or divided clock needs its own profile, "
+                       "not this (it would read N times off)."),
     "tx.clock.rj_ui": "Random jitter on every transmit edge, RMS in UI.",
     # rx
     "rx.arch": "mixed_signal: analog CTLE + DFE + bang-bang CDR. adc_dsp: ADC, then FFE/DFE/MLSD in DSP.",
     "rx.vga_gain": "Gain ahead of the slicer or ADC.",
     "rx.noise_rms": "Input-referred white noise at the receiver.",
+    "rx.clock.f0_hz": ("Carrier the profile's dBc/Hz is read against; empty takes the file's. For another "
+                       "clock with the same dBc/Hz only: a multiplied or divided clock needs its own profile, "
+                       "not this (it would read N times off)."),
     "rx.clock.rj_ui": "Random jitter on the sampling clock, RMS in UI.",
     # ctle
     "rx.ctle.peak_db": "Gain at Nyquist relative to DC: how much high-frequency loss the CTLE undoes.",
