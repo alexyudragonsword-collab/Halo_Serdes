@@ -7,11 +7,14 @@
 //   vvp sim +vecdir=<vecdir>
 //
 // The word widths default to CW (dims.svh); a consumer can narrow them (CODE_W, WF_W, WD_W,
-// LV_W, PR_W > 0) to the widths it synthesizes and check the same vectors still pass.
+// LV_W, PR_W > 0) to the widths it synthesizes and check the same vectors still pass, and pick
+// the decision-loop form (LOOKAHEAD 0 / 1); GAPS = 1 streams with idle clocks between codes.
 
 `timescale 1ns/1ps
 module tb_ffe_dfe_stream #(
-    parameter int CODE_W = 0, WF_W = 0, WD_W = 0, LV_W = 0, PR_W = 0
+    parameter int CODE_W = 0, WF_W = 0, WD_W = 0, LV_W = 0, PR_W = 0,
+    parameter int LOOKAHEAD = 0,
+    parameter int GAPS = 0          // 1: idle clocks between some codes (in_valid low)
 );
     `include "dims.svh"
     localparam int CWC = (CODE_W > 0) ? CODE_W : CW;
@@ -33,7 +36,8 @@ module tb_ffe_dfe_stream #(
     ffe_dfe_stream #(.NF(NF), .ND(ND), .NL(NL), .N_PRE(N_PRE), .FFE_SHIFT(FFE_SHIFT),
                      .DFE_SHIFT(DFE_SHIFT), .OUT_BITS(OUT_BITS), .DO_ROUND(DO_ROUND),
                      .PR_MODE(PR_MODE), .PR_NT(PR_NT), .PR_FL(PR_FL), .NPL(NPL),
-                     .CODE_W(CWC), .WF_W(CWF), .WD_W(CWD), .LV_W(CWL), .PR_W(CWP)) dut (
+                     .CODE_W(CWC), .WF_W(CWF), .WD_W(CWD), .LV_W(CWL), .PR_W(CWP),
+                     .LOOKAHEAD(LOOKAHEAD)) dut (
         .clk(clk), .rst(rst), .in_valid(in_valid), .code(code), .w_ffe(w_ffe), .w_dfe(w_dfe),
         .levels(levels), .pr_abc(pr_abc), .pr_lv(pr_lv), .out_valid(out_valid), .v(v), .dec(dec));
 
@@ -96,9 +100,16 @@ module tb_ffe_dfe_stream #(
             code = codes[i];
             in_valid = 1;
             @(posedge clk); #2;
+            // a fixed pattern of bubbles: one idle clock after every 5th code, three after
+            // every 13th, so a stage sometimes sees its successor at once and sometimes later
+            if (GAPS != 0 && (i % 5 == 4 || i % 13 == 12)) begin
+                in_valid = 0;
+                code = '0;
+                repeat ((i % 13 == 12) ? 3 : 1) begin @(posedge clk); #2; end
+            end
         end
         in_valid = 0;
-        repeat (6) @(posedge clk);
+        repeat (8) @(posedge clk);
         #2;
         if (n_out != N_OUT) begin
             $display("  output count %0d != %0d", n_out, N_OUT);

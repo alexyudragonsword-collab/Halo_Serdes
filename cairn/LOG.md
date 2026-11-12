@@ -20,6 +20,14 @@
   上面"没对真文件跑过 / 未核"两处由此补上。一个不对称留在对方:它的手写读取器读不了我们 `save` 的块格式杂散行,双方都不改。PR 改为合并即关 issue。
 - CI(PR #150,1466f5b):test 3.10 / 3.11 × jit / nojit 17–30 min、examples 17 min、examples-full 37 min、rtl-lockstep 1 min,全绿。
 
+## 2026-11-06 · 流式判决环展开 LOOKAHEAD=1(feat/rtl-stream-loop-unroll)
+
+- 对上一个判决推测:第 2 级 NL+1 份判决器结果,第 3 级挑一份。四组向量 × 有 / 无空拍逐位同,第一次跑就过;空拍测试抓得到"历史错位"变体(545 个错),无空拍抓不到。
+- dsp_ip 布线后(OpenROAD):`LOOKAHEAD=0` delta 454 / PR 389 / PR4 355 / 预编码 326 MHz;`=1` 为 520 / 318 / 335 / 348 MHz。
+- **被推翻的判断**:(1)"关键路径是 ~32 级门的判决环" —— ABC 不插缓冲,其中约 1.6 ns 是一个扇出 63 的门,布线后 delta 是 454 MHz 不是 242;(2)"展开一级就能把环缩成选择器" —— 只对 delta / 预编码成立,受控光标还有 x[j−2] 项留在第 2 级的环里。
+- 下一步:ROADMAP P3 #13(受控光标两级推测或挪出 x[j−2] 项;前馈目标再切一拍;其余四个模型)。
+- 验证(2026-11-12,合并 main 的 #146、#150 之后):全量 1472 passed / 3 skipped(30 min,JIT + iverilog 12);ruff 干净。
+
 ## 2026-11-06 · 可综合的流式 FFE + DFE + 判决器(feat/rtl-ffe-dfe-stream)
 
 - 应 dsp_ip 的需要(它要给 Halo 模块出综合估计,整块行为模型做不了):`rtl/ffe_dfe_stream.sv`,四种目标、两套位宽、两个仿真器全逐位同。

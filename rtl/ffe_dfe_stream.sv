@@ -12,15 +12,17 @@
 //                          same cycle
 //
 // The decision loop is one cycle and holds no multiplier (it is the critical path: select the
-// precomputed products by the previous decisions, add, round, saturate, slice; unrolling it
-// over the previous decision is the next step for speed). Every DFE / controlled-cursor term
+// precomputed products by the previous decisions, add, round, saturate, slice). LOOKAHEAD = 1
+// unrolls it over the previous decision (see the g_lookahead branch): one clock more latency,
+// the loop becomes a pick, and the arithmetic only feeds back from two symbols back. Every DFE / controlled-cursor term
 // is weight x level, and those products are precomputed for every level and registered
 // (weights and levels are static loaded registers; after a change of one, the products follow
 // one clock later), so the loop selects a product by the previous decision, adds, rounds and
 // slices. Symbol s is the output of code k = s + N_PRE, so the first N_PRE codes produce
 // nothing; codes before the first one count as zero (the golden's j >= 0 test) and the
 // history before the first decision is empty (its s - t >= 0 test). Outputs: v (slicer input,
-// OUT_BITS signed) and dec (decision index), with out_valid, three clocks after the code.
+// OUT_BITS signed) and dec (decision index), with out_valid, three clocks after the code
+// (four with LOOKAHEAD = 1).
 //
 // Widths: CODE_W (ADC word), WF_W / WD_W (FFE / DFE weights), LV_W (levels), PR_W (PR words)
 // are signed widths. Each product is formed at its natural width (a * b in a variable of
@@ -31,7 +33,8 @@ module ffe_dfe_stream #(
     parameter int NF = 15, ND = 1, NL = 4, N_PRE = 4,
     parameter int FFE_SHIFT = 4, DFE_SHIFT = 8, OUT_BITS = 12, DO_ROUND = 1,
     parameter int PR_MODE = 0, PR_NT = 1, PR_FL = 0, NPL = 1,
-    parameter int CODE_W = 32, WF_W = 32, WD_W = 32, LV_W = 32, PR_W = 32
+    parameter int CODE_W = 32, WF_W = 32, WD_W = 32, LV_W = 32, PR_W = 32,
+    parameter int LOOKAHEAD = 0
 ) (
     input  logic                          clk,
     input  logic                          rst,
@@ -135,8 +138,11 @@ module ffe_dfe_stream #(
     logic [LB:0]   q;                         // composite level index (< 2 NL)
     logic signed [LB+2:0] xc, dm;
 
-    always_comb begin
+    always_comb
         for (int m = 0; m < NL; m++) lv[m] = $signed(levels[m*LV_W +: LV_W]);
+
+    generate if (LOOKAHEAD == 0) begin : g_direct
+    always_comb begin
         // DFE feedback from decisions s - GAP - d
         // (if, not ?: -- an unsigned '0 arm would make the whole conditional unsigned)
         for (int d = 0; d < ND; d++) begin
@@ -215,4 +221,138 @@ module ffe_dfe_stream #(
             end
         end
     end
+    end else begin : g_lookahead
+    // LOOKAHEAD = 1: the previous decision x[j-1] is speculated. Stage 2 computes, for symbol j,
+    // the slicer result for every value x[j-1] could take (NL of them, plus "there is none" for
+    // the first symbol) from the older history only, and registers all of them; stage 3 picks
+    // one by the decision it registered the clock before. The one-cycle loop is that pick (and,
+    // in PR_MODE 2, the precoded decode); the arithmetic sits in stage 2, whose only feedback
+    // is from x[j-2] and older (two registers round the loop). One more clock of latency.
+    localparam bit HAS_L1 = ((GAP == 1) && (ND >= 1)) || ((PR_MODE == 1) && (PR_NT > 1));
+    localparam int NC = HAS_L1 ? NL + 1 : 1;          // candidate NL: no previous decision
+    localparam int QW = LB + 1;
+    logic          v2;
+    logic [LB-1:0] hx [1:H];                          // hx[L] = x[j - L] (L >= 2)
+    logic          hv [1:H];
+    wire  [NC*OUT_BITS-1:0] n_vs;
+    wire  [NC*QW-1:0]       n_q;
+    logic [NC*OUT_BITS-1:0] c_vs;                     // stage 2 register
+    logic [NC*QW-1:0]       c_q;
+
+    // stage 3 decides j - 1 in the same clock stage 2 works on j (v2), or decided it earlier
+    always_comb begin
+        for (int L = 1; L <= H; L++) begin hx[L] = '0; hv[L] = 1'b0; end
+        for (int L = 2; L <= H; L++) begin
+            hx[L] = v2 ? xl_h[L-1] : xl_h[L];
+            hv[L] = v2 ? vh[L-1]   : vh[L];
+        end
+    end
+
+    for (genvar c = 0; c < NC; c++) begin : g_cand
+        logic signed [DP_W-1:0] dp [ND];
+        logic signed [CP_W-1:0] cp [3];
+        logic signed [DA_W-1:0] fbc;
+        logic signed [CA_W-1:0] ctc;
+        logic signed [VV_W-1:0] vvc;
+        logic signed [OUT_BITS-1:0] vsc;
+        logic signed [U_W-1:0]  uc;
+        logic signed [D_W-1:0]  ddc, bdc, lvc;
+        logic [QW-1:0]          qc;
+        always_comb begin
+            for (int d = 0; d < ND; d++) begin
+                dp[d] = '0;
+                if (GAP + d == 1) begin
+                    if (c < NL) dp[d] = dcand[d][c % NL];
+                end else if (hv[GAP + d]) dp[d] = dcand[d][hx[GAP + d]];
+            end
+            fbc = '0;
+            for (int d = 0; d < ND; d++) fbc += DA_W'(dp[d]);
+            if (DO_ROUND == 1 && DFE_SHIFT > 0) fbc += DA_W'(1) <<< (DFE_SHIFT - 1);
+            fbc = fbc >>> DFE_SHIFT;
+            vvc = VV_W'(ffe_q) - VV_W'(FB_W'(fbc));
+            if (vvc > V_HI) vvc = V_HI;
+            else if (vvc < V_LO) vvc = V_LO;
+            vsc = OUT_BITS'(vvc);
+            for (int t = 0; t < 3; t++) begin
+                cp[t] = '0;
+                if (PR_MODE == 1 && t + 1 < PR_NT) begin
+                    if (t == 0) begin
+                        if (c < NL) cp[t] = ccand[t][c % NL];
+                    end else if (hv[t + 1]) cp[t] = ccand[t][hx[t + 1]];
+                end
+            end
+            ctc = '0;
+            if (PR_MODE == 1) begin
+                for (int t = 0; t < 3; t++) ctc += CA_W'(cp[t]);
+                if (DO_ROUND == 1 && PR_FL > 0) ctc += CA_W'(1) <<< (PR_FL - 1);
+                ctc = ctc >>> PR_FL;
+            end
+            qc = '0; uc = '0;
+            if (PR_MODE == 2) begin
+                lvc = D_W'($signed(pr_lv[0 +: LV_W]));
+                bdc = (D_W'(vsc) > lvc) ? (D_W'(vsc) - lvc) : (lvc - D_W'(vsc));
+                for (int m = 1; m < NPL; m++) begin
+                    lvc = D_W'($signed(pr_lv[m*LV_W +: LV_W]));
+                    ddc = (D_W'(vsc) > lvc) ? (D_W'(vsc) - lvc) : (lvc - D_W'(vsc));
+                    if (ddc < bdc) begin bdc = ddc; qc = QW'(m); end
+                end
+            end else begin
+                uc = U_W'(vsc) - U_W'(CT_W'(ctc));
+                bdc = (D_W'(uc) > D_W'(lv[0])) ? (D_W'(uc) - D_W'(lv[0])) : (D_W'(lv[0]) - D_W'(uc));
+                for (int m = 1; m < NL; m++) begin
+                    ddc = (D_W'(uc) > D_W'(lv[m])) ? (D_W'(uc) - D_W'(lv[m])) : (D_W'(lv[m]) - D_W'(uc));
+                    if (ddc < bdc) begin bdc = ddc; qc = QW'(m); end
+                end
+            end
+        end
+        assign n_vs[c*OUT_BITS +: OUT_BITS] = vsc;
+        assign n_q[c*QW +: QW] = qc;
+    end
+
+    // stage 3: pick the candidate of the actual previous decision
+    logic [QW-1:0]          sel, q3;
+    logic signed [OUT_BITS-1:0] vs3;
+    logic [LB-1:0]          xn3, dn3;
+    logic signed [LB+2:0]   xc3, dm3;
+    always_comb begin
+        sel = '0;
+        if (NC > 1) sel = vh[1] ? QW'(xl_h[1]) : QW'(NL);
+        vs3 = c_vs[sel*OUT_BITS +: OUT_BITS];
+        q3  = c_q[sel*QW +: QW];
+        dn3 = LB'(q3); xn3 = LB'(q3); dm3 = '0; xc3 = '0;
+        if (PR_MODE == 2) begin
+            dm3 = $signed({2'b0, q3});
+            if (vh[1]) dm3 = dm3 - $signed({3'b0, dec_p});
+            if (dm3 < 0) dm3 = dm3 + NL;
+            else if (dm3 >= NL) dm3 = dm3 - NL;
+            dn3 = LB'(dm3);
+            xc3 = $signed({2'b0, q3});
+            if (vh[1]) xc3 = xc3 - $signed({3'b0, xl_h[1]});
+            if (xc3 < 0) xc3 = '0;
+            else if (xc3 > NL - 1) xc3 = NL - 1;
+            xn3 = LB'(xc3);
+        end
+    end
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            for (int t = 1; t <= H; t++) begin xl_h[t] <= '0; vh[t] <= 1'b0; end
+            dec_p     <= '0;
+            v2        <= 1'b0;
+            out_valid <= 1'b0;
+        end else begin
+            v2        <= v1;
+            out_valid <= v2;
+            if (v1) begin c_vs <= n_vs; c_q <= n_q; end
+            if (v2) begin
+                v       <= vs3;
+                dec     <= 32'(dn3);
+                dec_p   <= dn3;
+                xl_h[1] <= xn3;
+                vh[1]   <= 1'b1;
+                for (int t = 2; t <= H; t++) begin xl_h[t] <= xl_h[t-1]; vh[t] <= vh[t-1]; end
+            end
+        end
+    end
+    end endgenerate
 endmodule
