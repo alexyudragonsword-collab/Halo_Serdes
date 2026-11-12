@@ -27,6 +27,7 @@
 - 综合(dsp_ip,布线后):滑窗 278 MHz,DFSE 160 MHz(平方在环里);Viterbi 的 ABC 50 / 40 分钟内跑不完(两种脚本),无数字。
 - `adc_dsp_loop` 没做:逐码元自适应的闭环,需单独设计;记 ROADMAP P3 #13。
 - 更正(同日):dsp_ip CI 的发行版 Verilator 5.032 上滑窗流式错 8 个判决——同一数组元素两个 NBA(循环移位后再覆盖 `wd[K+1]`)被它排错;改成每元素一次赋值,五个仿真器全对。
+- 验证(2026-11-12,合并 main 的 #147、#150 之后):全量 1475 passed / 3 skipped(23 min,JIT + iverilog 12);ruff 干净。
 
 ## 2026-11-06 · 流式判决环展开 LOOKAHEAD=1(feat/rtl-stream-loop-unroll)
 
