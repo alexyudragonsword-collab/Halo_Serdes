@@ -37,6 +37,10 @@ spurs:                          # may be empty: `spurs: []`
 source: "pllsim preset bench_wu19_spll_frac_52m_6p253g, linear model (analyze), pllsim 0.9.6, commit 67fe1c7268ab"
 ```
 
+(The `source` lines of the shipped files name `67fe1c7`, a commit of pll_simulator's since-squashed
+`feat/clock-profile-export` branch; pll_simulator reports the squash commit on its main as `63d1012`,
+same tree — issue #149. The files are left byte for byte until they are next regenerated.)
+
 | key | required | meaning |
 |---|---|---|
 | `f0_hz` | yes | PLL output carrier. **Timing is phase / (2π f0_hz).** |
@@ -44,6 +48,27 @@ source: "pllsim preset bench_wu19_spll_frac_52m_6p253g, linear model (analyze), 
 | `l_dbc_hz` | yes | Total single-sideband L(f) = S_φ/2 in dBc/Hz. Same length as `f_hz`. |
 | `spurs` | no | List of `{f_hz, dbc}`. `dbc` is the single-sideband spur level: a sinusoidal phase modulation of peak A rad has sidebands 20·log10(A/2) dB below the carrier. |
 | `source` | no | Free text, English: what produced the curve (preset, model, package version, commit). Shown to a human; never parsed. |
+
+A **multiplied clock** — a PLL followed by an integer ×N multiplier, written by pll_simulator's
+`write_clock_profile(multiply_by=N)` — carries four more keys, all of them or none (2026-11-11, issue #149):
+
+```yaml
+multiply_by: 10                 # N, an integer >= 2
+f_in_hz: 6048000000.0           # the PLL's output, before the multiplier [Hz]; f_in_hz * multiply_by is f0_hz
+floor_dbchz: -160.0             # the multiplier's additive white floor, single-sideband [dBc/Hz]
+spur_rejection_db: 40.0         # the N±1 harmonic leakage, this far below the carrier [dB]
+```
+
+| key | meaning |
+|---|---|
+| `multiply_by` | N. The curve in the file is already the multiplied clock's: N²·L(f) plus the floor up to `f_in_hz / 2`, **the floor alone above it** — there the PLL's profile has no information, and the curve is the multiplier's model, not a measurement of the PLL. |
+| `f_in_hz` | The PLL output the multiplier was fed. The reader checks `f_in_hz × multiply_by` against the file's `f0_hz` (1e-6 relative) and refuses a file where they disagree. |
+| `floor_dbchz` | Already in `l_dbc_hz`; stated so a reader can tell it from the PLL's part. |
+| `spur_rejection_db` | Already in `spurs`: every PLL spur is up 20·log10 N, and the leakage is one line at `f_in_hz`, this many dB below the carrier. |
+
+The reader applies none of them again: synthesis uses `l_dbc_hz` and `spurs` as they stand. They are
+kept on the loaded profile (`ClockProfile.multiplier`) and written back by `save`. A profile without
+them is a PLL's own output, and the shipped seven are untouched.
 
 Unknown keys are an error, like everywhere else in the config layer.
 
@@ -53,8 +78,25 @@ Unknown keys are an error, like everywhere else in the config layer.
 half-rate clock at f_baud/2 is twice the seconds of a full-rate clock. The file
 states f0 so the reader never derives it from `1/UI`. `tx.clock.f0_hz` in the
 link config overrides the file's value and changes only this scale, not the
-curve — the case for it is a profile measured at one carrier and reused for a
-divided or multiplied clock.
+curve. The case for it is **another clock with the same dBc/Hz at another
+carrier** — a spec given in dBc/Hz, say.
+
+It is **not** the way to a multiplied or divided clock. A ×N multiplier
+multiplies the phase by N along with the carrier, so L(f) rises 20·log10 N and
+the seconds do not change (÷N: down 20·log10 N, the seconds again unchanged).
+Overriding f0 alone keeps the curve and so reads the jitter N times too small
+for a multiplier, N times too large for a divider:
+
+| wu19 profile, 10 kHz–10 MHz | RMS jitter |
+|---|---|
+| the file, f0 = 6.253 GHz | 80.85 fs |
+| the same file, `f0_hz` overridden to 62.53 GHz | 8.09 fs (wrong for a ×10 clock) |
+| a ×10 clock: the curve up 20 dB, f0 = 62.53 GHz | 80.85 fs |
+
+For a multiplied clock load its own profile (the four keys above). Until
+2026-11-11 this paragraph named "a profile measured at one carrier and reused
+for a divided or multiplied clock" as the case for the override; that was
+wrong (issue #149, found by pll_simulator).
 
 **L(f) is single-sideband.** The synthesiser wants S_φ(f), the one-sided PSD of
 the phase in rad²/Hz, whose integral is the phase variance. S_φ = 2·10^(L/10).
@@ -125,8 +167,9 @@ beside a frozen desktop bundle and under `$HALO_SERDES_DATA_DIR` on a phone.
 A library caller passes an absolute path.
 
 Shipped profiles (`data/clock_profiles/`): the seven JSSC benchmark anchors of
-pll_simulator's ex14, exported by its ex22 at commit 67fe1c7 on the
-`feat/clock-profile-export` branch. Carriers run 1.5–10.25 GHz; integrated
+pll_simulator's ex14, exported by its ex22 at commit `63d1012` on its main (the
+squash of the `feat/clock-profile-export` branch, whose head `67fe1c7` the
+files' `source` lines still name; same tree, as pll_simulator reports in issue #149). Carriers run 1.5–10.25 GHz; integrated
 jitter 100 Hz..f0/2 runs 40–830 fs.
 
 ## Vendored code

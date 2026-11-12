@@ -26,7 +26,14 @@ The unit convention that is easiest to lose
 The profile's L(f) is phase noise against the PLL output carrier ``f0_hz``,
 and timing is **phase / (2 pi f0_hz)**. A half-rate clock at f_baud/2 with the
 same dBc/Hz carries twice the seconds. The file states f0 for exactly this
-reason, and nothing here derives it from the baud rate. ``l_dbc_hz`` is
+reason, and nothing here derives it from the baud rate. A carrier override
+(``ClockProfile.load(f0_hz=)``, ``clock.f0_hz`` in the config) is for another
+clock with the *same dBc/Hz* at another carrier, a spec given that way. It
+is **not** how a multiplied or divided clock is made: a xN multiplier
+multiplies the phase by N as well as the carrier (L(f) up 20 log10 N, the
+seconds unchanged), so the override alone reads N times too little jitter
+(a divider: N times too much). A multiplied clock is its own profile file,
+which carries how it was made (``ClockMultiplier``). ``l_dbc_hz`` is
 single-sideband L(f) = S_phi/2; the synthesiser wants S_phi, the (one-sided)
 PSD of the phase in rad^2/Hz, whose integral is the phase variance -- the 3 dB
 between them is a sqrt(2) on every jitter number if it is dropped.
@@ -46,6 +53,50 @@ TWOPI = 2.0 * np.pi
 
 _REQUIRED = ("f0_hz", "f_hz", "l_dbc_hz")
 _OPTIONAL = ("spurs", "source")
+#: a multiplied clock's four keys (pll_simulator's ``write_clock_profile(multiply_by=)``):
+#: all of them or none
+_MULTIPLIER = ("multiply_by", "f_in_hz", "floor_dbchz", "spur_rejection_db")
+_MULT_F0_RTOL = 1e-6            # f_in_hz * multiply_by against the file's f0_hz
+
+
+@dataclass(frozen=True)
+class ClockMultiplier:
+    """How a multiplied clock's profile was made: a PLL at ``f_in_hz``
+    followed by an integer x ``multiply_by`` multiplier.
+
+    The file's curve and spur table already hold the result -- N^2 L(f) plus
+    the multiplier's additive white floor ``floor_dbchz`` (single-sideband
+    dBc/Hz) up to ``f_in_hz / 2``, the floor alone above it, every spur up
+    20 log10 N and the N +- 1 harmonic leakage as one line at ``f_in_hz``,
+    ``spur_rejection_db`` below the carrier. Nothing here is applied again;
+    it is carried so a reader can tell which part of the curve is the PLL's.
+    """
+
+    multiply_by: int
+    f_in_hz: float
+    floor_dbchz: float
+    spur_rejection_db: float
+
+    def __post_init__(self):
+        n = self.multiply_by
+        if isinstance(n, bool) or not isinstance(n, (int, np.integer)) or n < 2:
+            raise ValueError(f"clock profile: multiply_by is an integer >= 2, got {n!r}")
+        for name in ("f_in_hz", "floor_dbchz", "spur_rejection_db"):
+            v = getattr(self, name)
+            if isinstance(v, bool) or not isinstance(v, (int, float, np.integer, np.floating)) \
+                    or not np.isfinite(v):
+                raise ValueError(f"clock profile: {name} is a finite number, got {v!r}")
+        if not self.f_in_hz > 0:
+            raise ValueError(f"clock profile: f_in_hz must be > 0, got {self.f_in_hz!r}")
+        object.__setattr__(self, "multiply_by", int(n))
+        for name in ("f_in_hz", "floor_dbchz", "spur_rejection_db"):
+            object.__setattr__(self, name, float(getattr(self, name)))
+
+    @property
+    def pll_band_hz(self) -> float:
+        """``f_in_hz / 2``: up to here the curve is the PLL's (times N^2,
+        plus the floor); above it it is the multiplier's floor model alone."""
+        return self.f_in_hz / 2.0
 
 
 @dataclass(frozen=True)
@@ -54,7 +105,9 @@ class ClockProfile:
 
     ``f_hz`` is the offset grid (ascending, > 0), ``l_dbc_hz`` the total
     single-sideband L(f) on it, ``spurs`` the ``(offset_hz, dbc)`` table and
-    ``source`` the producer's free-text provenance line.
+    ``source`` the producer's free-text provenance line. ``multiplier``: how
+    a multiplied clock's file was made (``ClockMultiplier``), None for a
+    PLL's own output; metadata, the curve is used as it stands.
     """
 
     f0_hz: float
@@ -62,6 +115,7 @@ class ClockProfile:
     l_dbc_hz: np.ndarray
     spurs: tuple[tuple[float, float], ...] = ()
     source: str = ""
+    multiplier: ClockMultiplier | None = None
 
     def __post_init__(self):
         f = np.asarray(self.f_hz, dtype=np.float64)
@@ -80,6 +134,8 @@ class ClockProfile:
         for fs, dbc in self.spurs:
             if not (fs > 0 and np.isfinite(dbc)):
                 raise ValueError(f"clock profile: bad spur ({fs!r}, {dbc!r})")
+        if self.multiplier is not None and not isinstance(self.multiplier, ClockMultiplier):
+            raise ValueError("clock profile: multiplier is a ClockMultiplier or None")
         object.__setattr__(self, "f_hz", f)
         object.__setattr__(self, "l_dbc_hz", l_dbc)
         object.__setattr__(self, "spurs", tuple((float(a), float(b)) for a, b in self.spurs))
@@ -95,7 +151,15 @@ class ClockProfile:
         has -- so this module stays free of any knowledge of where data lives.
 
         ``f0_hz`` overrides the carrier the file states; it changes only the
-        phase-to-seconds scale, not the curve.
+        phase-to-seconds scale, not the curve. That is right for another
+        clock with the same dBc/Hz at another carrier, and wrong for this
+        clock multiplied or divided -- there the curve moves by 20 log10 N
+        with the carrier and the seconds stay (module docstring); load the
+        multiplied clock's own profile instead.
+
+        A multiplied clock's file carries ``multiply_by``, ``f_in_hz``,
+        ``floor_dbchz`` and ``spur_rejection_db`` -- all four or none, with
+        ``f_in_hz * multiply_by`` the file's own ``f0_hz``.
         """
         # Local import, like config/loader.py: the phone compute path must
         # import without PyYAML, and it does -- this function only runs for
@@ -112,7 +176,7 @@ class ClockProfile:
             data = yaml.safe_load(fh) or {}
         if not isinstance(data, dict):
             raise ValueError(f"{path}: a clock profile is a mapping, got {type(data).__name__}")
-        unknown = sorted(set(data) - set(_REQUIRED) - set(_OPTIONAL))
+        unknown = sorted(set(data) - set(_REQUIRED) - set(_OPTIONAL) - set(_MULTIPLIER))
         if unknown:
             raise ValueError(f"{path}: unknown clock-profile key(s) {unknown}; "
                              f"the format is docs/clock_profile.md")
@@ -124,12 +188,30 @@ class ClockProfile:
             if not (isinstance(row, dict) and {"f_hz", "dbc"} <= set(row)):
                 raise ValueError(f"{path}: each spur is {{f_hz, dbc}}, got {row!r}")
             spurs.append((float(row["f_hz"]), float(row["dbc"])))
+        mult = None
+        have = [k for k in _MULTIPLIER if k in data]
+        if have:
+            if len(have) != len(_MULTIPLIER):
+                raise ValueError(
+                    f"{path}: a multiplied clock's profile carries all of {list(_MULTIPLIER)}, "
+                    f"this one only {have}")
+            try:
+                mult = ClockMultiplier(**{k: data[k] for k in _MULTIPLIER})
+            except ValueError as exc:
+                raise ValueError(f"{path}: {exc}") from None
+            # against the file's own carrier: an override is another clock
+            want = mult.f_in_hz * mult.multiply_by
+            if abs(want - float(data["f0_hz"])) > _MULT_F0_RTOL * want:
+                raise ValueError(
+                    f"{path}: f_in_hz * multiply_by = {want:g} Hz is not the file's "
+                    f"f0_hz = {float(data['f0_hz']):g} Hz")
         return cls(
             f0_hz=float(f0_hz if f0_hz is not None else data["f0_hz"]),
             f_hz=np.asarray(data["f_hz"], dtype=np.float64),
             l_dbc_hz=np.asarray(data["l_dbc_hz"], dtype=np.float64),
             spurs=tuple(spurs),
             source=str(data.get("source") or ""),
+            multiplier=mult,
         )
 
     # ------------------------------------------------------------ spectrum
@@ -259,9 +341,14 @@ class ClockProfile:
         if not (have > 0 and rms_s > 0):
             raise ValueError("scaled_to_rms needs a non-zero profile and target")
         shift_db = 20.0 * np.log10(rms_s / have)
+        mult = self.multiplier
+        if mult is not None:
+            # the floor and the leakage line moved with everything else
+            mult = ClockMultiplier(mult.multiply_by, mult.f_in_hz, mult.floor_dbchz + shift_db,
+                                   mult.spur_rejection_db - shift_db)
         return ClockProfile(f0_hz=self.f0_hz, f_hz=self.f_hz, l_dbc_hz=self.l_dbc_hz + shift_db,
                             spurs=tuple((fs, dbc + shift_db) for fs, dbc in self.spurs),
-                            source=self.source)
+                            source=self.source, multiplier=mult)
 
     def save(self, path: str | Path, *, source: str | None = None) -> Path:
         """Write the profile in the file format ``load`` reads
@@ -275,6 +362,11 @@ class ClockProfile:
                 "l_dbc_hz": [float(x) for x in self.l_dbc_hz],
                 "spurs": [{"f_hz": float(a), "dbc": float(b)} for a, b in self.spurs],
                 "source": str(source if source is not None else self.source)}
+        if self.multiplier is not None:
+            m = self.multiplier
+            data.update(multiply_by=int(m.multiply_by), f_in_hz=float(m.f_in_hz),
+                        floor_dbchz=float(m.floor_dbchz),
+                        spur_rejection_db=float(m.spur_rejection_db))
         return write_text_atomic(p, yaml.safe_dump(data, sort_keys=False))
 
     def spur_amplitudes_s(self) -> list[tuple[float, float]]:

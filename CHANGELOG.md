@@ -6,6 +6,19 @@
 
 ---
 
+## [未发布] — 时钟剖面:f0 覆盖的用途更正;接受倍频时钟的剖面(issue #149)
+
+### 修正
+- `tx.clock.f0_hz` / `rx.clock.f0_hz` 的说明:覆盖只用于"另一个时钟、同样的 dBc/Hz、另一个载频"。此前文档写它可用于"分频或倍频后的时钟",
+  照做会让抖动小 N 倍(倍频)或大 N 倍(分频)—— 倍频 / 分频时曲线也要动 20·log10 N,秒数不变。行为不变,改的是文档、docstring 和表单提示。
+
+### 新增
+- 剖面文件可带 `multiply_by` / `f_in_hz` / `floor_dbchz` / `spur_rejection_db`(pll_simulator 的 `write_clock_profile(multiply_by=N)`):
+  读取器接受并校验(全有或全无、整数 N ≥ 2、`f_in_hz × N` 等于 `f0_hz`),放在 `ClockProfile.multiplier`,`save` 写回;合成仍只用 `l_dbc_hz` 与 `spurs`。
+  不带这四个键的文件与之前逐位相同地读。
+
+---
+
 ## [未发布] — 流式 FFE + DFE 的判决环展开(LOOKAHEAD)
 
 ### 新增

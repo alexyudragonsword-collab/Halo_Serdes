@@ -254,7 +254,10 @@ class ClockConfig:
     carrier the file states; it is the frequency the *phase* is measured
     against, and timing is phase / (2 pi f0) -- a half-rate clock carries
     twice the seconds for the same dBc/Hz, which is why neither side derives
-    f0 from the baud rate.
+    f0 from the baud rate. The override is for another clock with the same
+    dBc/Hz at another carrier; a multiplied or divided clock is not that (its
+    curve moves 20 log10 N with the carrier) and takes its own profile file
+    (``docs/clock_profile.md``).
     """
 
     kind: Literal["white", "profile"] = "white"
