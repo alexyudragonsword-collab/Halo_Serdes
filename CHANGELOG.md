@@ -19,6 +19,37 @@
 
 ---
 
+## [未发布] — 三种 MLSD 的流式、可综合形式
+
+### 新增
+- `rtl/viterbi_stream.sv` + `tb_viterbi_stream.sv`：Viterbi MLSD 的流式形式。
+  - 分支度量只依赖 y，先寄存；加比选每拍一个码元。
+  - 回溯指针经写口出到模块外的幸存路径存储器（硬件里是 SRAM，tb 里是数组），全块回溯经读口，与金值同（固定深度回溯与金值不逐位同，不做）。
+- `rtl/sliding_stream.sv` + `tb_sliding_stream.sv`：滑窗 MLSD 的流式形式。
+  - 每一遍是一个流水级，窗口 SEQ_LEN + 2 个码元；符号 k + SEQ_LEN + 1 到达时执行第 k 步，各遍级联。
+  - 依据：金值每一步只改 dec[k]（及 k、k+1 的残差，金值保持它们等于当前判决的残差）。
+- `rtl/dfse_stream.sv` + `tb_dfse_stream.sv`：DFSE 的流式形式。同 Viterbi，但各状态的幸存尾巴是环内状态，分支度量（含平方）留在一拍的加比选里。
+- 三个 tb 都有 `GAPS=1`（码元之间插空拍）和窄字宽参数。四个仿真器（Icarus 12 / 14、Verilator 5.020 / 5.053）全过。
+- 新向量集（`gen_vectors.py`，Python 金值生成，其余向量逐字节不变）：
+  - `vit_tie`：4 状态，度量频繁相等。原 16 状态集一次平局都没有，"后到者胜"的加比选和最佳状态变体都过得了。
+  - `mlsd_tie`：零裕量、粗平方移位。原集合从不出现候选度量等于基准，也从不在块尾翻转。
+  - `dfse_k2`：每状态两个码元（16 状态）。原 4 状态集上"取最旧位"与"取最新位"是同一位。
+- `tests/test_rtl_lockstep.py` 三个新测试，各含只在新向量集上才抓得到的变体。
+
+### 量到的（外部 dsp_ip：yosys 0.70 + NanGate45，OpenROAD 布线后；estimate）
+- 滑窗 MLSD（每元素一次赋值的版本）：ABC 4084 ps（236 MHz），布线后 278 MHz，33.9 k µm²。
+- DFSE：ABC 8918 ps（110 MHz），布线后 160 MHz，41.5 k µm²（平方在环里）。
+- Viterbi：16 状态的加比选在本机 ABC 跑不完（`sopb` 50 分钟、`nf` 40 分钟都超时），没有数字；记 ROADMAP。
+
+### 没做
+- `adc_dsp_loop` 的流式形式：它是逐码元改自己系数的闭环（15 个 FFE 权重的 LMS、PR 系数、MM 鉴相器 + 环路滤波 + LAT 块队列、后台 ADC 校准与每路延时微调），逐位精确需要单独设计（ROADMAP P3 #13）。
+
+### 踩到的
+- `sliding_stream.sv` 的窗口移位先在循环里 `wd[i] <= wd[i-1]`，再在循环后 `wd[K+1] <= newd` 覆盖同一元素（两个 NBA，后者胜）：Icarus 12 / 14、Verilator 5.020 / 5.053 都对，Verilator 5.032 有 8 个判决错。改成每个元素只赋一次（`wd[i] <= (step && i == K + 1) ? newd : wd[i-1]`），五个仿真器全对。
+- yosys 0.70 用 `hierarchy -chparam` 推导一个在 generate 循环里例化子模块的顶层时断言失败（`rtlil_bufnorm.cc:679`）；dsp_ip 侧对这个 IP 改用 `chparam -set` + `rename -top`。
+
+---
+
 ## [未发布] — 流式 FFE + DFE 的判决环展开(LOOKAHEAD)
 
 ### 新增

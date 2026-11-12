@@ -20,6 +20,15 @@
   上面"没对真文件跑过 / 未核"两处由此补上。一个不对称留在对方:它的手写读取器读不了我们 `save` 的块格式杂散行,双方都不改。PR 改为合并即关 issue。
 - CI(PR #150,1466f5b):test 3.10 / 3.11 × jit / nojit 17–30 min、examples 17 min、examples-full 37 min、rtl-lockstep 1 min,全绿。
 
+## 2026-11-06 · 三种 MLSD 的流式形式(feat/rtl-mlsd-stream)
+
+- Viterbi / 滑窗 / DFSE 各一个流式、可综合形式;三者第一次(Viterbi 修一次读口时序)就逐位同,四个仿真器。
+- **被推翻的判断**:"原向量足够检验" —— 三个原集合都抓不到平局 / 边界变体(Viterbi 16 状态零平局;滑窗从不出现等于基准、从不在块尾翻转;DFSE K=1 时最旧位即最新位)。补 `vit_tie`、`mlsd_tie`、`dfse_k2`,变体在新集合上 1–363 个错。
+- 综合(dsp_ip,布线后):滑窗 278 MHz,DFSE 160 MHz(平方在环里);Viterbi 的 ABC 50 / 40 分钟内跑不完(两种脚本),无数字。
+- `adc_dsp_loop` 没做:逐码元自适应的闭环,需单独设计;记 ROADMAP P3 #13。
+- 更正(同日):dsp_ip CI 的发行版 Verilator 5.032 上滑窗流式错 8 个判决——同一数组元素两个 NBA(循环移位后再覆盖 `wd[K+1]`)被它排错;改成每元素一次赋值,五个仿真器全对。
+- 验证(2026-11-12,合并 main 的 #147、#150 之后):全量 1475 passed / 3 skipped(23 min,JIT + iverilog 12);ruff 干净。
+
 ## 2026-11-06 · 流式判决环展开 LOOKAHEAD=1(feat/rtl-stream-loop-unroll)
 
 - 对上一个判决推测:第 2 级 NL+1 份判决器结果,第 3 级挑一份。四组向量 × 有 / 无空拍逐位同,第一次跑就过;空拍测试抓得到"历史错位"变体(545 个错),无空拍抓不到。
